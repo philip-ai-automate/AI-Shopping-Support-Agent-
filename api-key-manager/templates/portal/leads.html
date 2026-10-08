@@ -904,6 +904,9 @@ function lbUpdate(){
   if (LB.all && ids.length < rows.length) LB.all = false;     // unticking one row ends "all matching"
   rows.forEach(function(r){ var c=r.querySelector('.lb-row-ck'); r.classList.toggle('lb-sel', !!(c && c.checked)); });
   var pageAll = rows.length > 0 && ids.length === rows.length;
+  // Every matching lead is on this page (e.g. "show All") and all are ticked:
+  // send the filters, not one field per lead (1,000+ fields gave error 413).
+  if (pageAll && !LB.all && rows.length >= LB.total) LB.all = true;
   var head = document.getElementById('lbSelectPage'); if (head) head.checked = pageAll;
   var bar = document.getElementById('lbBar'); if (!bar) return;
   bar.hidden = ids.length === 0;
@@ -921,7 +924,7 @@ function lbForm(){
     fd.append('all_matching', '1');
     new URLSearchParams(location.search).forEach(function(v, k){ if (LB.filterKeys.indexOf(k) >= 0) fd.append(k, v); });
   } else {
-    lbIds().forEach(function(id){ fd.append('lead_ids', id); });
+    fd.append('lead_ids_csv', lbIds().join(','));   // one field, however many are ticked
   }
   return fd;
 }

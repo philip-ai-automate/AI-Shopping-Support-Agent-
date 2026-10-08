@@ -574,6 +574,14 @@ def run_tenant(tenant_id: int) -> None:
     if gone:
         cur.execute("DELETE FROM documents WHERE tenant_id=%s AND id = ANY(%s)", (tenant_id, gone))
         cur.execute("DELETE FROM website_pages WHERE tenant_id=%s AND status='read' AND doc_id = ANY(%s)", (tenant_id, gone))
+    # Pages the old PhiXtra Export plugin sent (ids page-<wp id> / post-<wp id>)
+    # are replaced by the pages just read, so the AI never has two copies
+    # (2026-10-06, plugin 3.9.11 no longer sends pages).
+    if pages:
+        cur.execute("""DELETE FROM documents WHERE tenant_id=%s AND type IN ('page','post')
+                       AND (id LIKE 'page-%%' OR id LIKE 'post-%%')""", (tenant_id,))
+        if cur.rowcount:
+            print(f"tenant {tenant_id}: {cur.rowcount} old plugin pages replaced", flush=True)
     start_reason = skipped.get(normalise_start(src["url"]))
     detail = None if pages else "We could not find any readable pages on your website." + (
         f" Your home page: {start_reason}." if start_reason else "")

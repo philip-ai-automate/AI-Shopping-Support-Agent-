@@ -7,6 +7,9 @@ import psycopg2.extras
 import psycopg2.errors
 import os, secrets, string, json as _json
 import zeptomail_api
+import email_outreach
+import email_ai_writer
+import ai_designer
 import bulksmsng_api
 from datetime import datetime, timedelta, timezone
 
@@ -428,6 +431,14 @@ PLAN_FEATURE_CATALOG = {
         ("campaigns_email.segments_edit",   "Edit Email Segment membership"),
         ("campaigns_email.segments_delete", "Delete an Email Segment"),
         ("campaigns_email.reports_view", "Reports — view"),
+        ("campaigns_email.ai_write", "Write emails with AI (uses the business's AI designs)"),
+        ("campaigns_email.saved_see_all", "See all saved emails, not just their own (off = only emails they saved and ones shared with them)"),
+        ("campaigns_email.sequences_view",   "Email Sequence — view"),
+        ("campaigns_email.sequences_create", "Create an Email Sequence"),
+        ("campaigns_email.sequences_edit",   "Edit an Email Sequence (emails, people, start/pause)"),
+        ("campaigns_email.sequences_send",   "Send a sequence email by hand"),
+        ("campaigns_email.sequences_delete", "Delete an Email Sequence"),
+        ("campaigns_email.tracking",     "Opens, clicks and replies on each lead's history (plan unlock)"),
     ],
     "Social Media": [
         ("social.posts_view",   "Social Media — view"),
@@ -644,6 +655,11 @@ ROLE_FORM_GRID = {
         {"label": "Segment", "view": "campaigns_email.segments_view", "create": "campaigns_email.segments_create",
          "edit": "campaigns_email.segments_edit", "delete": "campaigns_email.segments_delete"},
         {"label": "Reports", "view": "campaigns_email.reports_view"},
+        {"label": "Saved Emails", "other": ["campaigns_email.saved_see_all", "campaigns_email.ai_write"]},
+        {"label": "Sequence", "view": "campaigns_email.sequences_view", "create": "campaigns_email.sequences_create",
+         "edit": "campaigns_email.sequences_edit", "delete": "campaigns_email.sequences_delete",
+         "other": ["campaigns_email.sequences_send"]},
+        {"label": "Email tracking on leads (plan unlock)", "other": ["campaigns_email.tracking"]},
     ],
     "Social Media": [
         {"label": "Social Post", "view": "social.posts_view", "create": "social.posts_create",
@@ -760,6 +776,10 @@ PLAN_ONLY_FEATURE_KEYS = {
     # Not pages: Roles ticks read in code that limit which leads (2026-10-06),
     # contacts/companies and Inbox chats (2026-10-08) a team member sees.
     "leads.see_all", "crm.contacts_see_all", "inbox.see_all",
+    # Saved Emails: which saved emails a team member sees (2026-10-08).
+    "campaigns_email.saved_see_all",
+    # Read when an email campaign sends (2026-10-08), not a page of its own.
+    "campaigns_email.tracking",
 }
 
 # Modules every team member can open whatever their role, so the Roles screen
@@ -1005,7 +1025,9 @@ def _staff_only_their_own_contacts():
 
 
 _EMAIL_PAGE_ENDPOINTS = {"portal.email_campaigns", "portal.email_campaign_segments_page",
-                         "portal.email_campaigns_reports", "portal.email_campaign_report"}
+                         "portal.email_campaigns_reports", "portal.email_campaign_report",
+                         "portal.email_sequences", "portal.email_sequence_detail",
+                         "portal.email_saved_emails"}
 
 
 @portal_bp.before_request
@@ -1513,6 +1535,7 @@ DESTRUCTIVE_FEATURE_KEYS = {
     "campaigns_wa.all_delete",
     "campaigns_email.all_delete",
     "campaigns_email.segments_delete",
+    "campaigns_email.sequences_delete",
     "woo.verified_specs_delete",
     "ai.handoff_rules_delete",
     "ai.agent_profiles_delete",
@@ -2020,8 +2043,8 @@ def _onboarding_status(tenant_id: int, customer_id: int):
         except Exception as e:
             print("⚠️ _onboarding_status: onboarding_state query failed:", e)
 
-        all_done = (has_key and ai_plugin_confirmed and export_plugin_confirmed
-                    and sync_configured_confirmed and sync_done and kb_configured)
+        # 3.9.11: one plugin — the Export install / sync-config steps are gone.
+        all_done = (has_key and ai_plugin_confirmed and sync_done and kb_configured)
 
         # ── WA-specific checks ─────────────────────────────────────────────
         wa_connected             = False
@@ -10851,8 +10874,7 @@ def _dashboard_plan_flags(tenant_id: int, plan_info) -> tuple:
     (channel_mode) — Enterprise / Enterprise Dual today — so it follows the
     Plan editor as plans are added; there the Upgrade button is hidden.
     Connect Website box = the plan covers a website (dual / custom 'both' /
-    woocommerce), includes Store Information, and no website is connected
-    and the Export plugin isn't sending pages."""
+    woocommerce), includes Store Information, and no website is connected."""
     top, connect = False, False
     try:
         plan = plan_info or {}
@@ -10871,7 +10893,7 @@ def _dashboard_plan_flags(tenant_id: int, plan_info) -> tuple:
         cur.close(); conn.close()
         if website_plan and not has_site and _plan_grants_feature(plan, "store.info") \
                 and _plan_grants_feature(plan, "store.website_connect"):
-            connect = not _website_plugin_sends_pages(tenant_id)
+            connect = True
     except Exception as e:
         print("⚠️ _dashboard_plan_flags:", e)
     return top, connect
@@ -10883,21 +10905,6 @@ def _dashboard_plan_flags(tenant_id: int, plan_info) -> tuple:
 # background); its pages are documents type 'page', id site-<tenant>-<hash>.
 WEBSITE_FREQUENCIES = [("manual", "Only when I click Sync now"), ("daily", "Daily"), ("weekly", "Weekly"), ("monthly", "Monthly")]
 _WEBSITE_FREQ_DAYS = {"daily": 1, "weekly": 7, "monthly": 30}
-
-
-def _website_plugin_sends_pages(tenant_id: int) -> int:
-    """How many website pages the PhiXtra Export plugin (WooCommerce sync)
-    sends for this business (ids page-<wp id> / post-<wp id>). While it sends
-    pages, Connect Website stays switched off so the AI never gets two copies."""
-    try:
-        conn = get_db_connection(); cur = conn.cursor()
-        cur.execute("""SELECT COUNT(*) FROM documents WHERE tenant_id=%s AND type IN ('page','post')
-                       AND (id LIKE 'page-%%' OR id LIKE 'post-%%')""", (tenant_id,))
-        n = int(cur.fetchone()[0]); cur.close(); conn.close()
-        return n
-    except Exception as e:
-        print("⚠️ _website_plugin_sends_pages:", e)
-        return 0
 
 
 def _website_schedule_allowed(tenant_id: int) -> bool:
@@ -10980,12 +10987,8 @@ def store_info_website_connect():
     r3 = _require_team_permission("store.info_create")
     if r3: return r3
 
-    plugin_pages = _website_plugin_sends_pages(tenant_id)
     source = _website_source(tenant_id)
     if request.method == "POST":
-        if plugin_pages:
-            flash("Your website pages already reach your AI through the PhiXtra plugin.", "warning")
-            return redirect(url_for("portal.store_info_website_connect"))
         if source:
             return redirect(url_for("portal.store_info_website_sync"))
         raw = (request.form.get("url") or "").strip()
@@ -11019,13 +11022,13 @@ def store_info_website_connect():
                          action="website_connected" if result.get("ok") else "website_connect_failed",
                          tenant_id=tenant_id, details={"url": site_url, "reason": result.get("reason"),
                                                        "detail": result.get("detail")})
-        return render_template("portal/store_info_website_connect.html", customer=customer, **_website_reader_ids(), plugin_pages=0,
+        return render_template("portal/store_info_website_connect.html", customer=customer, **_website_reader_ids(),
                                source=_website_source(tenant_id), result=result,
                                attempts=_website_connect_attempts(tenant_id),
                                form_url="" if result.get("ok") else raw)
 
     return render_template("portal/store_info_website_connect.html", customer=customer, **_website_reader_ids(),
-                           plugin_pages=plugin_pages, source=source, result=None,
+                           source=source, result=None,
                            attempts=_website_connect_attempts(tenant_id), form_url="")
 
 
@@ -11116,8 +11119,7 @@ def store_info_website_sync():
                            pages_read=pages_read, pages_skipped=pages_skipped, pages_removed=pages_removed,
                            frequencies=WEBSITE_FREQUENCIES, max_pages=100, schedule_ok=schedule_ok,
                            schedule_plan=None if schedule_ok else _min_plan_for_feature(
-                               "store.website_schedule", _merchant_plan_mode(customer)),
-                           plugin_pages=_website_plugin_sends_pages(tenant_id))
+                               "store.website_schedule", _merchant_plan_mode(customer)))
 
 
 @portal_bp.route("/store-info/website/delete", methods=["GET", "POST"])
@@ -11667,7 +11669,8 @@ def tutorials():
     r = _require_login()
     if r: return r
     customer = _get_customer(_customer_id())
-    return render_template("portal/tutorials.html", customer=customer, **_website_reader_ids())
+    return render_template("portal/tutorials.html", customer=customer, **_website_reader_ids(),
+                           show_phixtra_appendix=int(customer["tenant_id"]) == PHIXTRA_SUPPORT_TENANT_ID)
 
 
 @portal_bp.route("/video-tutorials", methods=["GET"])
@@ -19931,66 +19934,72 @@ def _inject_unsubscribe_footer(html_content: str, from_name: str) -> str:
     return html_content + footer
 
 
-def _render_campaign_email_html(hero_heading, body_html, cta_text, cta_url, image_url, from_name):
-    """Render the structured compose-form fields into one branded HTML email.
-    Leaves a literal {{UNSUBSCRIBE_URL}} placeholder in the footer link — the send loop
-    substitutes a real per-recipient unsubscribe URL into it just before sending, since
-    this same rendered html_body is stored once and reused for every recipient."""
-    import html as _html_mod
-    unsub_href = "{{UNSUBSCRIBE_URL}}"
+def _render_campaign_email_html(hero_heading, body_html, cta_text, cta_url, image_url, from_name,
+                                tenant_id=None, extra=None):
+    """Render the Template Builder fields into one branded HTML email (the
+    business's own logo, colour, sign-off and footer address — see
+    email_outreach.render_designed_email). Leaves a literal {{UNSUBSCRIBE_URL}}
+    placeholder; the send loop puts each recipient's own link in."""
+    extra = extra or {}
+    brand = {}
+    if tenant_id:
+        try:
+            conn = get_db_connection(); cur = conn.cursor()
+            brand = email_outreach.get_brand(cur, int(tenant_id))
+            cur.close(); conn.close()
+        except Exception as e:
+            print("⚠️ email brand load error:", e)
+    poster = None
+    if extra.get("video_url"):
+        try:
+            poster = email_outreach.make_video_poster(extra["video_url"], extra.get("video_picture_url"),
+                                                      brand.get("brand_color"))
+        except Exception as e:
+            print("⚠️ video poster error:", e)
+    signoff = extra.get("signoff")
+    if signoff is None:
+        signoff = brand.get("signoff")
+    return email_outreach.render_designed_email(
+        hero_heading=hero_heading, body_html=_sanitize_quill_html(body_html), cta_text=cta_text,
+        cta_url=cta_url, image_url=image_url, from_name=from_name, brand=brand,
+        video_url=extra.get("video_url"), video_poster_url=poster, signoff=signoff)
 
-    body_html_safe = (
-        f'<div style="font-size:15px;line-height:1.6;color:#334155;">'
-        f'{_sanitize_quill_html(body_html)}</div>'
-    )
 
-    image_html = ""
-    if image_url:
-        image_html = (
-            f'<img src="{_html_mod.escape(image_url)}" alt="" '
-            f'style="max-width:100%;border-radius:12px;margin:0 0 24px;display:block;">'
-        )
+def _builder_fields(form) -> dict:
+    """The Template Builder's fields from a posted form — what gets saved on
+    the campaign (to reopen it in the builder) and in saved templates."""
+    g = lambda k: (form.get(k) or "").strip()
+    return {
+        "hero_heading": g("hero_heading"), "body_html": g("body_html"),
+        "cta_text": g("cta_text"), "cta_url": g("cta_url"), "image_url": g("image_url"),
+        "video_url": g("video_url"), "video_picture_url": g("video_picture_url"),
+        "signoff": form.get("signoff") if form.get("signoff") is not None else None,
+    }
 
-    cta_html = ""
-    if cta_text and cta_url:
-        cta_html = f'''
-        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px 0 8px;">
-          <tr><td style="border-radius:10px;background:#0f172a;">
-            <a href="{_html_mod.escape(cta_url)}"
-               style="display:inline-block;padding:14px 28px;font-size:14px;font-weight:700;
-                      color:#fff;text-decoration:none;">{_html_mod.escape(cta_text)}</a>
-          </td></tr>
-        </table>'''
 
-    return f'''<!doctype html>
-<html>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px;">
-    <tr><td align="center">
-      <table role="presentation" width="100%" style="max-width:560px;background:#fff;border-radius:16px;overflow:hidden;">
-        <tr><td style="padding:28px 32px 0;">
-          <img src="https://phixtra.com/wp-content/uploads/2026/03/PhiXtra-Logo-Website.png-1000x1000-1.png"
-               alt="PhiXtra" style="height:32px;">
-        </td></tr>
-        <tr><td style="padding:24px 32px 8px;">
-          <h1 style="margin:0 0 20px;font-size:24px;line-height:1.3;color:#0f172a;font-weight:800;">
-            {_html_mod.escape(hero_heading or "")}
-          </h1>
-          {image_html}
-          {body_html_safe}
-          {cta_html}
-        </td></tr>
-        <tr><td style="padding:24px 32px 32px;border-top:1px solid #e2e8f0;margin-top:24px;">
-          <p style="margin:20px 0 0;font-size:11px;color:#94a3b8;">
-            You're receiving this because you're a contact of {_html_mod.escape(from_name or "this business")}.
-            <a href="{unsub_href}" style="color:#94a3b8;text-decoration:underline;">Unsubscribe</a>
-          </p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>'''
+def _render_builder(fields: dict, from_name: str, tenant_id: int) -> str:
+    return _render_campaign_email_html(
+        fields["hero_heading"], fields["body_html"], fields["cta_text"] or None, fields["cta_url"] or None,
+        fields["image_url"] or None, from_name, tenant_id=tenant_id,
+        extra={"video_url": fields.get("video_url") or None,
+               "video_picture_url": fields.get("video_picture_url") or None,
+               "signoff": fields.get("signoff")})
+
+
+def _default_reply_to(customer: dict) -> str:
+    """Replies go to whoever is sending: the logged-in team member's own
+    address, else the account owner's."""
+    tm_id = session.get("team_member_id")
+    if tm_id:
+        try:
+            conn = get_db_connection(); cur = conn.cursor()
+            cur.execute("SELECT email FROM team_members WHERE id=%s", (int(tm_id),))
+            row = cur.fetchone(); cur.close(); conn.close()
+            if row and row[0]:
+                return row[0]
+        except Exception:
+            pass
+    return (customer.get("email") or "").strip()
 
 
 def _send_email_campaign_now(campaign_id: int, tenant_id: int):
@@ -20036,10 +20045,28 @@ def _send_email_campaign_now(campaign_id: int, tenant_id: int):
         except Exception as _se:
             print("⚠️ email suppression fetch error:", _se)
 
+        track = bool(row.get("track"))
+        reply_to = (row.get("reply_to") or "").strip() or None
         sent = failed = 0
         for email in emails:
             rec_status = "failed"
             rec_error  = None
+            ctx = {"email": email, "lead_id": None, "contact_id": None}
+            token = email_outreach.new_token() if track else None
+            rec_id = None
+            try:
+                rc = get_db_connection(); rcc = rc.cursor()
+                ctx = email_outreach.recipient_context(rcc, tenant_id, email)
+                rcc.execute(
+                    """INSERT INTO email_campaign_recipients
+                           (campaign_id, tenant_id, email, status, lead_id, contact_id, token)
+                       VALUES (%s, %s, %s, 'pending', %s, %s, %s) RETURNING id""",
+                    (campaign_id, tenant_id, email, ctx.get("lead_id"), ctx.get("contact_id"), token),
+                )
+                rec_id = rcc.fetchone()[0]
+                rc.commit(); rcc.close(); rc.close()
+            except Exception as _re:
+                print(f"⚠️ [EMAIL CAMPAIGN {campaign_id}] recipient row error:", _re)
 
             if email.lower() in suppressed:
                 rec_status = "suppressed"
@@ -20048,10 +20075,15 @@ def _send_email_campaign_now(campaign_id: int, tenant_id: int):
             else:
                 unsub_token = _encrypt_key(f"{tenant_id}:{email}")
                 unsub_url = f"https://portal.phixtra.com/email/unsubscribe?t={unsub_token}"
-                final_html = (row["html_body"] or "").replace("{{UNSUBSCRIBE_URL}}", unsub_url)
+                body = row["html_body"] or ""
+                if token:
+                    body = email_outreach.add_tracking(body, token)
+                body = email_outreach.apply_merge(body, ctx, as_html=True)
+                final_html = body.replace("{{UNSUBSCRIBE_URL}}", unsub_url)
+                subject = email_outreach.apply_merge(row["subject"], ctx, as_html=False)
                 ok, err = zeptomail_api.send_email(
                     sender["token"], sender["from_email"], sender["from_name"],
-                    email, "", row["subject"], final_html,
+                    email, ctx.get("full") or "", subject, final_html, reply_to=reply_to,
                 )
                 if ok:
                     sent += 1
@@ -20063,12 +20095,20 @@ def _send_email_campaign_now(campaign_id: int, tenant_id: int):
 
             try:
                 rc = get_db_connection(); rcc = rc.cursor()
-                rcc.execute(
-                    """INSERT INTO email_campaign_recipients
-                           (campaign_id, tenant_id, email, status, error_msg, sent_at)
-                       VALUES (%s, %s, %s, %s, %s, NOW())""",
-                    (campaign_id, tenant_id, email, rec_status, rec_error),
-                )
+                if rec_id:
+                    rcc.execute("UPDATE email_campaign_recipients SET status=%s, error_msg=%s, sent_at=NOW() WHERE id=%s",
+                                (rec_status, rec_error, rec_id))
+                else:
+                    rcc.execute(
+                        """INSERT INTO email_campaign_recipients
+                               (campaign_id, tenant_id, email, status, error_msg, sent_at)
+                           VALUES (%s, %s, %s, %s, %s, NOW())""",
+                        (campaign_id, tenant_id, email, rec_status, rec_error),
+                    )
+                if rec_status == "sent" and (ctx.get("lead_id") or ctx.get("contact_id")):
+                    email_outreach.log_event(rcc, tenant_id, "sent", campaign_id=campaign_id, recipient_id=rec_id,
+                                             lead_id=ctx.get("lead_id"), contact_id=ctx.get("contact_id"),
+                                             email=email, detail=subject)
                 rc.commit(); rcc.close(); rc.close()
             except Exception:
                 pass
@@ -20469,6 +20509,11 @@ def email_campaigns():
     customer = _get_customer(_customer_id())
     gate = _require_email_campaigns_plan(customer)
     if gate: return gate
+    return _render_email_campaigns_page(customer)
+
+
+def _render_email_campaigns_page(customer: dict):
+    """The All Campaigns page."""
     tenant_id = int(customer["tenant_id"])
 
     campaigns = []
@@ -20477,7 +20522,7 @@ def email_campaigns():
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         _ls_exec(cur, 
-            "SELECT * FROM email_campaigns WHERE tenant_id=%s ORDER BY created_at DESC LIMIT 100",
+            "SELECT * FROM email_campaigns WHERE tenant_id=%s AND sequence_id IS NULL ORDER BY created_at DESC LIMIT 100",
             (tenant_id,),
         )
         campaigns = cur.fetchall()
@@ -20492,13 +20537,42 @@ def email_campaigns():
         print("⚠️ email_campaigns fetch error:", e)
 
     sender = _get_email_sender(tenant_id)
+    design = {}
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        design = email_outreach.get_brand(cur, tenant_id)
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ email design load error:", e)
 
     return render_template(
         "portal/email_campaigns.html",
         campaigns=campaigns,
         pipeline_email_count=pipeline_email_count,
         sender=sender,
+        design=design,
+        default_reply_to=_default_reply_to(customer),
+        merge_fields=[f for f, _ in email_outreach.MERGE_FIELDS],
+        tracking_on=_plan_grants_feature(_get_tenant_plan(tenant_id), "campaigns_email.tracking"),
     )
+
+
+def _email_ai_write_status(tenant_id: int):
+    """For the New Email page's ✨ Write with AI box: None = don't show it
+    (role or plan), else how many AI designs are left."""
+    if not _team_member_has_permission("campaigns_email.ai_write"):
+        return None
+    if not _plan_grants_feature(_get_tenant_plan(tenant_id), "campaigns_email.ai_write"):
+        return None
+    try:
+        allow = ai_designer.allowance(ai_designer.tenant_owner(tenant_id), tenant_id)
+    except Exception as e:
+        print("⚠️ ai allowance error:", e)
+        return None
+    return {"left": allow["left"] + allow["extra"], "none_msg": ai_designer.no_designs_message(allow),
+            "kinds": [("first_contact", "First contact"), ("follow_up", "Follow-up"), ("offer", "Offer"),
+                      ("newsletter", "Newsletter"), ("event", "Event / demo")],
+            "tones": [("friendly", "Friendly"), ("professional", "Professional"), ("short", "Short")]}
 
 
 def _parse_campaign_form(tenant_id: int, customer: dict, form):
@@ -20528,8 +20602,8 @@ def _parse_campaign_form(tenant_id: int, customer: dict, form):
     else:
         import re as _re_body_check
         body_has_text = bool(_re_body_check.sub(r"<[^>]*>|&nbsp;", "", body_html).strip())
-        if not name or not subject or not hero_heading or not body_has_text:
-            return None, "Campaign name, subject, heading and message body are required."
+        if not name or not subject or not body_has_text:
+            return None, "Campaign name, subject and message are required."
 
     # "segment": a new Email Segment (plain id) or an older lead-based group ("old:<id>")
     segment_id = contact_segment_id = None
@@ -20603,10 +20677,17 @@ def _parse_campaign_form(tenant_id: int, customer: dict, form):
     sender = _get_email_sender(tenant_id)
     from_name = sender["from_name"] if sender else (customer.get("business_name") or "")
 
+    builder = None
     if template_mode == "raw":
         html_body = _inject_unsubscribe_footer(_strip_unsafe_html(raw_html), from_name)
     else:
-        html_body = _render_campaign_email_html(hero_heading, body_html, cta_text, cta_url, image_url, from_name)
+        builder = _builder_fields(form)
+        html_body = _render_builder(builder, from_name, tenant_id)
+
+    reply_to = (form.get("reply_to") or "").strip() or _default_reply_to(customer)
+    if reply_to and not _re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", reply_to):
+        return None, "The 'Replies go to' address doesn't look like an email address."
+    track = _plan_grants_feature(_get_tenant_plan(tenant_id), "campaigns_email.tracking")
 
     scheduled_at = None
     status = "draft"
@@ -20623,6 +20704,8 @@ def _parse_campaign_form(tenant_id: int, customer: dict, form):
         "emails": emails, "send_now": send_now, "sender": sender, "segment_id": segment_id,
         "contact_segment_id": contact_segment_id,
         "exclude_label_ids": exclude_label_ids or None,
+        "reply_to": reply_to or None, "track": track,
+        "builder": psycopg2.extras.Json(builder) if builder else None,
     }, None
 
 
@@ -20650,13 +20733,15 @@ def email_campaigns_create():
             """
             INSERT INTO email_campaigns
               (tenant_id, name, subject, preheader, html_body, status,
-               scheduled_at, segment_id, recipients, total_count, exclude_label_ids, contact_segment_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               scheduled_at, segment_id, recipients, total_count, exclude_label_ids, contact_segment_id,
+               reply_to, track, fields)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (tenant_id, fields["name"], fields["subject"], fields["preheader"], fields["html_body"],
              fields["status"], fields["scheduled_at"], fields["segment_id"],
-             "\n".join(fields["emails"]), len(fields["emails"]), fields["exclude_label_ids"], fields["contact_segment_id"]),
+             "\n".join(fields["emails"]), len(fields["emails"]), fields["exclude_label_ids"], fields["contact_segment_id"],
+             fields["reply_to"], fields["track"], fields["builder"]),
         )
         campaign_id = cur.fetchone()[0]
         conn.commit()
@@ -20702,7 +20787,7 @@ def email_campaigns_edit_data(campaign_id: int):
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
-            "SELECT * FROM email_campaigns WHERE id=%s AND tenant_id=%s AND status != 'running'",
+            "SELECT * FROM email_campaigns WHERE id=%s AND tenant_id=%s AND status != 'running' AND sequence_id IS NULL",
             (campaign_id, tenant_id),
         )
         row = cur.fetchone()
@@ -20718,6 +20803,8 @@ def email_campaigns_edit_data(campaign_id: int):
         "subject":      row["subject"],
         "preheader":    row["preheader"] or "",
         "html_body":    row["html_body"] or "",
+        "fields":       row.get("fields"),
+        "reply_to":     row.get("reply_to") or "",
         "recipients":   [e for e in (row["recipients"] or "").splitlines() if e.strip()],
         "scheduled_at": row["scheduled_at"].strftime("%Y-%m-%dT%H:%M") if row["scheduled_at"] else None,
     })
@@ -20738,7 +20825,8 @@ def email_campaigns_update(campaign_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT status FROM email_campaigns WHERE id=%s AND tenant_id=%s", (campaign_id, tenant_id))
+        # A sequence's own email (sequence_id set) is changed on its Sequence, never here.
+        cur.execute("SELECT status FROM email_campaigns WHERE id=%s AND tenant_id=%s AND sequence_id IS NULL", (campaign_id, tenant_id))
         existing = cur.fetchone()
         cur.close(); conn.close()
     except Exception as e:
@@ -20771,13 +20859,15 @@ def email_campaigns_update(campaign_id: int):
                 """
                 INSERT INTO email_campaigns
                   (tenant_id, name, subject, preheader, html_body, status,
-                   scheduled_at, segment_id, recipients, total_count, exclude_label_ids, contact_segment_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   scheduled_at, segment_id, recipients, total_count, exclude_label_ids, contact_segment_id,
+                   reply_to, track, fields)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (tenant_id, fields["name"], fields["subject"], fields["preheader"], fields["html_body"],
                  fields["status"], fields["scheduled_at"], fields["segment_id"],
-                 "\n".join(fields["emails"]), len(fields["emails"]), fields["exclude_label_ids"], fields["contact_segment_id"]),
+                 "\n".join(fields["emails"]), len(fields["emails"]), fields["exclude_label_ids"], fields["contact_segment_id"],
+                 fields["reply_to"], fields["track"], fields["builder"]),
             )
             campaign_id = cur.fetchone()[0]
         else:
@@ -20786,12 +20876,13 @@ def email_campaigns_update(campaign_id: int):
                 UPDATE email_campaigns
                 SET name=%s, subject=%s, preheader=%s, html_body=%s, status=%s,
                     scheduled_at=%s, segment_id=%s, recipients=%s, total_count=%s, exclude_label_ids=%s,
-                    contact_segment_id=%s
+                    contact_segment_id=%s, reply_to=%s, track=%s, fields=%s
                 WHERE id=%s AND tenant_id=%s
                 """,
                 (fields["name"], fields["subject"], fields["preheader"], fields["html_body"], fields["status"],
                  fields["scheduled_at"], fields["segment_id"], "\n".join(fields["emails"]), len(fields["emails"]),
-                 fields["exclude_label_ids"], fields["contact_segment_id"], campaign_id, tenant_id),
+                 fields["exclude_label_ids"], fields["contact_segment_id"],
+                 fields["reply_to"], fields["track"], fields["builder"], campaign_id, tenant_id),
             )
         conn.commit()
         cur.close(); conn.close()
@@ -20854,7 +20945,7 @@ def email_campaigns_preview():
             return jsonify({"html": ""})
         html_body = _inject_unsubscribe_footer(_strip_unsafe_html(raw_html), from_name)
     else:
-        html_body = _render_campaign_email_html(hero_heading, body_html, cta_text, cta_url, image_url, from_name)
+        html_body = _render_builder(_builder_fields(request.form), from_name, tenant_id)
 
     preview_html = html_body.replace("{{UNSUBSCRIBE_URL}}", "#")
     return jsonify({"html": preview_html})
@@ -20877,7 +20968,8 @@ def email_campaigns_send_test_draft():
     if gate: return jsonify({"error": "upgrade required"}), 403
     tenant_id = int(customer["tenant_id"])
 
-    test_email = (customer.get("email") or "").strip()
+    # The test goes to whoever pressed the button (a team member's own inbox).
+    test_email = _default_reply_to(customer)
     if not test_email:
         return jsonify({"error": "No account email on file to send the test to."}), 400
 
@@ -20899,14 +20991,18 @@ def email_campaigns_send_test_draft():
             return jsonify({"error": "Add your custom HTML first."}), 400
         html_body = _inject_unsubscribe_footer(_strip_unsafe_html(raw_html), sender["from_name"])
     else:
-        html_body = _render_campaign_email_html(hero_heading, body_html, cta_text, cta_url, image_url, sender["from_name"])
+        html_body = _render_builder(_builder_fields(request.form), sender["from_name"], tenant_id)
+    # Names are filled with the fallbacks ("Hi there") — a test has no recipient.
+    html_body = email_outreach.apply_merge(html_body, {}, as_html=True)
+    subject = email_outreach.apply_merge(subject, {}, as_html=False)
+    reply_to = (request.form.get("reply_to") or "").strip() or _default_reply_to(customer)
 
     test_html = html_body.replace(
         "{{UNSUBSCRIBE_URL}}", "https://portal.phixtra.com/email/unsubscribe?t=test"
     )
     ok, err = zeptomail_api.send_email(
         sender["token"], sender["from_email"], sender["from_name"],
-        test_email, "", f"[TEST] {subject}", test_html,
+        test_email, "", f"[TEST] {subject}", test_html, reply_to=reply_to or None,
     )
     if ok:
         return jsonify({"ok": True, "sent_to": test_email})
@@ -20925,7 +21021,8 @@ def email_campaigns_send_test(campaign_id: int):
     if gate: return jsonify({"error": "upgrade required"}), 403
     tenant_id = int(customer["tenant_id"])
 
-    test_email = (customer.get("email") or "").strip()
+    # The test goes to whoever pressed the button (a team member's own inbox).
+    test_email = _default_reply_to(customer)
     if not test_email:
         return jsonify({"error": "No account email on file to send the test to."}), 400
 
@@ -20945,12 +21042,13 @@ def email_campaigns_send_test(campaign_id: int):
     if not row:
         return jsonify({"error": "Campaign not found."}), 404
 
-    preview_html = (row["html_body"] or "").replace(
+    preview_html = email_outreach.apply_merge(row["html_body"] or "", {}, as_html=True).replace(
         "{{UNSUBSCRIBE_URL}}", "https://portal.phixtra.com/email/unsubscribe?t=test"
     )
     ok, err = zeptomail_api.send_email(
         sender["token"], sender["from_email"], sender["from_name"],
-        test_email, "", f"[TEST] {row['subject']}", preview_html,
+        test_email, "", f"[TEST] {email_outreach.apply_merge(row['subject'], {}, as_html=False)}", preview_html,
+        reply_to=row.get("reply_to") or None,
     )
     if ok:
         return jsonify({"ok": True, "sent_to": test_email})
@@ -20978,7 +21076,7 @@ def email_campaigns_duplicate_data(campaign_id: int):
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
-            "SELECT name, subject, preheader, html_body FROM email_campaigns "
+            "SELECT name, subject, preheader, html_body, fields, reply_to FROM email_campaigns "
             "WHERE id=%s AND tenant_id=%s",
             (campaign_id, tenant_id),
         )
@@ -20995,6 +21093,8 @@ def email_campaigns_duplicate_data(campaign_id: int):
         "subject":   row["subject"],
         "preheader": row["preheader"] or "",
         "html_body": row["html_body"] or "",
+        "fields":    row.get("fields"),
+        "reply_to":  row.get("reply_to") or "",
     })
 
 
@@ -22435,7 +22535,7 @@ def email_campaign_report(campaign_id: int):
             return redirect(url_for("portal.email_campaigns"))
 
         cur.execute(
-            """SELECT email, status, error_msg, sent_at
+            """SELECT email, status, error_msg, sent_at, lead_id, opened_at, clicked_at, replied_at
                FROM email_campaign_recipients
                WHERE campaign_id=%s
                ORDER BY sent_at ASC NULLS LAST""",
@@ -22505,10 +22605,1665 @@ def email_unsubscribe():
                     )
                 conn.commit()
                 cur.close(); conn.close()
+                _email_log_unsubscribe(int(tenant_id_str), email)
         except Exception as e:
             print("⚠️ email_unsubscribe error:", e)
             email = None
     return render_template("portal/email_unsubscribed.html", email=email)
+
+
+# ── Email tracking, replies, design settings, saved templates (2026-10-08) ──
+# Opens/clicks land on email_events (shown on the lead's page). Every business
+# with campaigns_email.tracking on its plan gets them; see email_outreach.py.
+
+_EMAIL_PIXEL = (b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00"
+                b",\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;")
+# Company mail filters (e.g. Microsoft Safe Links) open every link the moment
+# an email arrives. A click this soon after sending is a filter, not a person.
+_EMAIL_SCANNER_SECONDS = 90
+
+
+def _email_recipient_by_token(cur, token: str):
+    cur.execute("""SELECT r.*, c.name AS campaign_name, c.html_body
+                   FROM email_campaign_recipients r JOIN email_campaigns c ON c.id = r.campaign_id
+                   WHERE r.token=%s""", (token,))
+    return cur.fetchone()
+
+
+def _email_lead_contacted(cur, rec, what: str):
+    """A person engaging with the email (clicked, or replied) moves a lead
+    still at New to Contacted, recorded on its stage history."""
+    if not rec.get("lead_id"):
+        return
+    cur.execute("SELECT stage FROM merchant_pipeline_leads WHERE id=%s AND tenant_id=%s",
+                (rec["lead_id"], rec["tenant_id"]))
+    lead = cur.fetchone()
+    if not lead or lead["stage"] != "new_lead":
+        return
+    cur.execute("""UPDATE merchant_pipeline_leads SET stage='contacted', contact_channel='email',
+                       contact_date=COALESCE(contact_date, CURRENT_DATE), updated_at=NOW()
+                   WHERE id=%s AND stage='new_lead'""", (rec["lead_id"],))
+    if cur.rowcount:
+        cur.execute("""INSERT INTO merchant_pipeline_stage_history (lead_id, from_stage, to_stage, changed_by, notes)
+                       VALUES (%s, 'new_lead', 'contacted', 'Email campaign', %s)""",
+                    (rec["lead_id"], f"{what} — “{rec.get('campaign_name') or 'email'}”"))
+
+
+@portal_bp.route("/e/o/<token>.gif")
+@public_route
+def email_track_open(token: str):
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        rec = _email_recipient_by_token(cur, token)
+        if rec:
+            cur.execute("""UPDATE email_campaign_recipients SET open_count=open_count+1,
+                               opened_at=COALESCE(opened_at, NOW()) WHERE id=%s""", (rec["id"],))
+            if not rec["opened_at"] and (rec["lead_id"] or rec["contact_id"]):
+                email_outreach.log_event(cur, rec["tenant_id"], "opened", campaign_id=rec["campaign_id"],
+                                         recipient_id=rec["id"], lead_id=rec["lead_id"],
+                                         contact_id=rec["contact_id"], email=rec["email"],
+                                         detail=rec["campaign_name"])
+            conn.commit()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ email_track_open error:", e)
+    return Response(_EMAIL_PIXEL, mimetype="image/gif", headers={"Cache-Control": "no-store, max-age=0"})
+
+
+@portal_bp.route("/e/c/<token>/<int:n>", methods=["GET", "HEAD"])
+@public_route
+def email_track_click(token: str, n: int):
+    target = "https://phixtra.com/"
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        rec = _email_recipient_by_token(cur, token)
+        if rec:
+            links = email_outreach.trackable_links(rec["html_body"])
+            if 0 <= n < len(links):
+                target = _html_mod_unescape(links[n])
+            sent_at = rec.get("sent_at")
+            too_soon = bool(sent_at and (datetime.now(sent_at.tzinfo) - sent_at).total_seconds() < _EMAIL_SCANNER_SECONDS)
+            if request.method == "GET" and not too_soon:
+                first = not rec["clicked_at"]
+                cur.execute("""UPDATE email_campaign_recipients SET click_count=click_count+1,
+                                   clicked_at=COALESCE(clicked_at, NOW()),
+                                   opened_at=COALESCE(opened_at, NOW()) WHERE id=%s""", (rec["id"],))
+                if rec["lead_id"] or rec["contact_id"]:
+                    email_outreach.log_event(cur, rec["tenant_id"], "clicked", campaign_id=rec["campaign_id"],
+                                             recipient_id=rec["id"], lead_id=rec["lead_id"],
+                                             contact_id=rec["contact_id"], email=rec["email"],
+                                             detail=target)
+                if first:
+                    _email_lead_contacted(cur, rec, "Clicked a link in the email")
+                conn.commit()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ email_track_click error:", e)
+    return redirect(target, code=302)
+
+
+def _html_mod_unescape(s: str) -> str:
+    import html as _h
+    return _h.unescape(s or "")
+
+
+def _email_log_unsubscribe(tenant_id: int, email: str):
+    """Put the unsubscribe on each matching lead's history."""
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("""SELECT id, wa_contact_id FROM merchant_pipeline_leads
+                       WHERE tenant_id=%s AND lower(email)=lower(%s)""", (tenant_id, email))
+        for lead_id, contact_id in cur.fetchall():
+            email_outreach.log_event(cur, tenant_id, "unsubscribed", lead_id=lead_id,
+                                     contact_id=contact_id, email=email)
+        _seq_stop_matching(cur, tenant_id, "Unsubscribed", email=email)
+        conn.commit(); cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ email unsubscribe log error:", e)
+
+
+@portal_bp.route("/leads/<int:lead_id>/email-replied", methods=["POST"])
+@team_feature("leads.page")
+def lead_email_replied(lead_id: int):
+    """One click on the lead: 'they replied to our email' — recorded on its
+    history, marks the latest campaign email to them as replied, and moves a
+    New lead to Contacted."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
+    if not lead:
+        flash("Lead not found.", "danger")
+        return redirect(url_for("portal.leads_page"))
+    actor = _current_actor(customer)["label"]
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""SELECT r.*, c.name AS campaign_name FROM email_campaign_recipients r
+                       JOIN email_campaigns c ON c.id = r.campaign_id
+                       WHERE r.tenant_id=%s AND (r.lead_id=%s OR lower(r.email)=lower(%s)) AND r.status='sent'
+                       ORDER BY r.sent_at DESC NULLS LAST LIMIT 1""",
+                    (tenant_id, lead_id, lead.get("email") or ""))
+        rec = cur.fetchone()
+        if rec:
+            cur.execute("UPDATE email_campaign_recipients SET replied_at=COALESCE(replied_at, NOW()) WHERE id=%s", (rec["id"],))
+        email_outreach.log_event(cur, tenant_id, "replied", campaign_id=rec["campaign_id"] if rec else None,
+                                 recipient_id=rec["id"] if rec else None, lead_id=lead_id,
+                                 contact_id=lead.get("wa_contact_id"), email=lead.get("email"),
+                                 detail=rec["campaign_name"] if rec else None, actor=actor)
+        _email_lead_contacted(cur, {"lead_id": lead_id, "tenant_id": tenant_id,
+                                    "campaign_name": rec["campaign_name"] if rec else "email"},
+                              f"Replied to the email (marked by {actor})")
+        _seq_stop_matching(cur, tenant_id, "Replied", email=lead.get("email"), lead_id=lead_id)
+        cur.execute("UPDATE merchant_pipeline_leads SET updated_at=NOW() WHERE id=%s", (lead_id,))
+        conn.commit(); cur.close(); conn.close()
+        flash("Marked as replied — it's on this lead's history.", "success")
+    except Exception as e:
+        print("⚠️ lead_email_replied error:", e)
+        flash("Could not save that. Please try again.", "danger")
+    return redirect(url_for("portal.lead_detail", lead_id=lead_id) + "#emails")
+
+
+def _lead_email_history(tenant_id: int, lead_id: int) -> list:
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""SELECT e.kind, e.detail, e.actor, e.created_at, c.name AS campaign_name, c.subject
+                       FROM email_events e LEFT JOIN email_campaigns c ON c.id = e.campaign_id
+                       WHERE e.tenant_id=%s AND e.lead_id=%s ORDER BY e.created_at DESC LIMIT 50""",
+                    (tenant_id, lead_id))
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+        return rows
+    except Exception as e:
+        print("⚠️ _lead_email_history error:", e)
+        return []
+
+
+@portal_bp.route("/email/campaigns/design", methods=["GET", "POST"])
+@team_feature("campaigns_email.all_create")
+def email_campaigns_design():
+    """The business's email look: logo, brand colour, sign-off, footer address
+    and the 'why you're getting this' line. GET = JSON, POST = save."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.all_create"):
+        return jsonify({"error": "forbidden"}), 403
+    customer = _get_customer(_customer_id())
+    gate = _require_email_campaigns_plan(customer)
+    if gate: return jsonify({"error": "upgrade required"}), 403
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        if request.method == "POST":
+            f = request.form
+            color = (f.get("brand_color") or "").strip()
+            if color and not _re.fullmatch(r"#[0-9A-Fa-f]{6}", color):
+                return jsonify({"error": "Colour must look like #0B1D40."}), 400
+            vals = [(f.get(k) or "").strip() or None for k in ("logo_url", "footer_address", "footer_note", "signoff")]
+            cur.execute("""INSERT INTO email_brand_settings (tenant_id, logo_url, brand_color, footer_address, footer_note, signoff, updated_at)
+                           VALUES (%s,%s,%s,%s,%s,%s,NOW())
+                           ON CONFLICT (tenant_id) DO UPDATE SET logo_url=EXCLUDED.logo_url, brand_color=EXCLUDED.brand_color,
+                               footer_address=EXCLUDED.footer_address, footer_note=EXCLUDED.footer_note,
+                               signoff=EXCLUDED.signoff, updated_at=NOW()""",
+                        (tenant_id, vals[0], color or None, vals[1], vals[2], vals[3]))
+            conn.commit()
+        brand = email_outreach.get_brand(cur, tenant_id)
+        return jsonify({"ok": True, "design": brand})
+    finally:
+        cur.close(); conn.close()
+
+
+# ── Who sees which saved email (2026-10-08) ──
+# Staff see the ones they saved and ones the owner / IT shared with them.
+# The owner, roles that manage the Team (e.g. IT Admin), and roles with
+# "See all saved emails" see every one, and only they can share.
+
+def _saved_emails_see_all() -> bool:
+    return _role_sees_all("campaigns_email.saved_see_all")
+
+
+def _can_share_saved_emails() -> bool:
+    return _segments_see_all()  # owner or a Team manager
+
+
+def _tpl_vis(alias: str = "t"):
+    """(" AND …", params) limiting an email_templates query to what the
+    viewer may see."""
+    if _saved_emails_see_all():
+        return "", []
+    tm = int(session["team_member_id"])
+    return (f" AND ({alias}.created_by_key = %s OR EXISTS (SELECT 1 FROM email_template_shares sh "
+            f"WHERE sh.template_id = {alias}.id AND sh.team_member_id = %s))", [f"team:{tm}", tm])
+
+
+def _tpl_is_mine(row) -> bool:
+    """May change / overwrite / delete it: see-all, or they saved it."""
+    if _saved_emails_see_all():
+        return True
+    return (row.get("created_by_key") if isinstance(row, dict) else row) == f"team:{int(session['team_member_id'])}"
+
+
+@portal_bp.route("/email/templates", methods=["GET"])
+@team_feature("campaigns_email.all_create")
+def email_templates_list():
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.all_create"):
+        return jsonify({"error": "forbidden"}), 403
+    customer = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    vis, vp = _tpl_vis("t")
+    cur.execute("SELECT t.id, t.name, t.fields FROM email_templates t WHERE t.tenant_id=%s" + vis + " ORDER BY t.name",
+                [tenant_id] + vp)
+    rows = cur.fetchall()
+    cur.close(); conn.close()
+    return jsonify({"templates": rows})
+
+
+@portal_bp.route("/email/templates/save", methods=["POST"])
+@team_feature("campaigns_email.all_create")
+def email_templates_save():
+    """Save the compose drawer's message (subject, preheader and Template
+    Builder fields) as a reusable template. Same name = overwrite."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.all_create"):
+        return jsonify({"error": "forbidden"}), 403
+    customer = _get_customer(_customer_id())
+    gate = _require_email_campaigns_plan(customer)
+    if gate: return jsonify({"error": "upgrade required"}), 403
+    tenant_id = int(customer["tenant_id"])
+    name = (request.form.get("template_name") or "").strip()[:255]
+    if not name:
+        return jsonify({"error": "Give the template a name."}), 400
+    fields = _builder_fields(request.form)
+    fields.update(subject=(request.form.get("subject") or "").strip(),
+                  preheader=(request.form.get("preheader") or "").strip())
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("SELECT id, created_by_key FROM email_templates WHERE tenant_id=%s AND lower(name)=lower(%s)", (tenant_id, name))
+    row = cur.fetchone()
+    if row and not _tpl_is_mine(row[1]):
+        cur.close(); conn.close()
+        return jsonify({"error": "A saved email with that name already exists and isn't yours to change. "
+                                 "Please give yours a different name."}), 409
+    actor = _current_actor(customer)
+    if row:
+        cur.execute("UPDATE email_templates SET fields=%s, updated_at=NOW() WHERE id=%s",
+                    (psycopg2.extras.Json(fields), row[0]))
+    else:
+        cur.execute("INSERT INTO email_templates (tenant_id, name, fields, created_by, created_by_key) VALUES (%s,%s,%s,%s,%s)",
+                    (tenant_id, name, psycopg2.extras.Json(fields), actor["label"], actor["key"]))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({"ok": True, "updated": bool(row)})
+
+
+@portal_bp.route("/email/templates/<int:template_id>/delete", methods=["POST"])
+@team_feature("campaigns_email.all_delete")
+def email_templates_delete(template_id: int):
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.all_delete"):
+        return jsonify({"error": "forbidden"}), 403
+    customer = _get_customer(_customer_id())
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("SELECT created_by_key FROM email_templates WHERE id=%s AND tenant_id=%s",
+                (template_id, int(customer["tenant_id"])))
+    own = cur.fetchone()
+    if not own or not _tpl_is_mine(own[0]):
+        cur.close(); conn.close()
+        return jsonify({"error": "You can only delete saved emails you made yourself."}), 403
+    cur.execute("""SELECT s.name FROM email_sequence_steps st JOIN email_sequences s ON s.id = st.sequence_id
+                   WHERE st.template_id=%s AND s.tenant_id=%s LIMIT 1""", (template_id, int(customer["tenant_id"])))
+    used = cur.fetchone()
+    if used:
+        cur.close(); conn.close()
+        return jsonify({"error": f"This email is used in the sequence “{used[0]}”. Take it out of that sequence first."}), 409
+    cur.execute("DELETE FROM email_templates WHERE id=%s AND tenant_id=%s", (template_id, int(customer["tenant_id"])))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({"ok": True})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EMAIL SEQUENCES (2026-10-08) — a run of saved emails sent days apart to each
+# person added. Each email either goes automatically when it's due, or waits
+# for a team member to send it ("by hand"). A person stops getting them when
+# they reply, unsubscribe, an email can't be delivered, or their lead is
+# closed (Won/Lost/Dropped/Not a fit), or when staff press Stop. Staff can
+# also send someone's next email straight away. One-off campaigns are
+# unchanged. Each email of a sequence has its own email_campaigns row
+# (status 'sequence', sequence_id set) so opens/clicks, reports and the
+# lead's Emails tab work exactly as for campaigns. For every business; Roles
+# and the Plan editor decide via the campaigns_email.sequences_* keys.
+# ══════════════════════════════════════════════════════════════════════════════
+
+_SEQ_STATUS_WORDS = {
+    "active": "Waiting for next email", "ready": "Ready for you to send", "sending": "Sending",
+    "finished": "Finished", "stopped": "Stopped",
+}
+_SEQ_OUTCOME_WORDS = {"won": "Won", "lost": "Lost", "dropped": "Dropped", "not_a_fit": "Not a fit"}
+# Staff without "See all leads" see people whose lead is theirs, plus people
+# added by plain email address (no lead). Run with _ls_exec.
+_SEQ_PEOPLE_VISIBLE = ("(p.lead_id IS NULL OR EXISTS (SELECT 1 FROM merchant_pipeline_leads l "
+                       "WHERE l.id = p.lead_id))")
+
+
+def _seq_get(cur, tenant_id: int, seq_id: int):
+    cur.execute("SELECT * FROM email_sequences WHERE id=%s AND tenant_id=%s", (seq_id, tenant_id))
+    return cur.fetchone()
+
+
+def _seq_steps(cur, seq_id: int) -> list:
+    cur.execute("""SELECT s.*, t.name AS template_name, t.fields AS template_fields
+                   FROM email_sequence_steps s
+                   LEFT JOIN email_templates t ON t.id = s.template_id
+                       AND t.tenant_id = (SELECT tenant_id FROM email_sequences WHERE id = s.sequence_id)
+                   WHERE s.sequence_id=%s ORDER BY s.position""", (seq_id,))
+    return cur.fetchall()
+
+
+def _seq_prepare_step(cur, seq, step, from_name: str):
+    """The step's own email_campaigns row, holding the email as it is now
+    (saved template + the business's email design). Returns it, or None if
+    the step has no saved email with a subject."""
+    f = step.get("template_fields") or {}
+    if not (f.get("subject") or "").strip():
+        return None
+    fields = {k: f.get(k) or "" for k in ("hero_heading", "body_html", "cta_text", "cta_url",
+                                           "image_url", "video_url", "video_picture_url")}
+    fields["signoff"] = f.get("signoff")
+    tenant_id = int(seq["tenant_id"])
+    html_body = _render_builder(fields, from_name, tenant_id)
+    name = f"{seq['name']} · Email {step['position']}"
+    track = _plan_grants_feature(_get_tenant_plan(tenant_id), "campaigns_email.tracking")
+    vals = (name, f["subject"].strip(), (f.get("preheader") or "").strip() or None, html_body,
+            seq.get("reply_to"), psycopg2.extras.Json(fields), track)
+    if step.get("campaign_id"):
+        cur.execute("""UPDATE email_campaigns SET name=%s, subject=%s, preheader=%s, html_body=%s,
+                           reply_to=%s, fields=%s, track=%s
+                       WHERE id=%s AND tenant_id=%s RETURNING *""", vals + (step["campaign_id"], tenant_id))
+        row = cur.fetchone()
+        if row:
+            return row
+    cur.execute("""INSERT INTO email_campaigns (tenant_id, name, subject, preheader, html_body, reply_to,
+                       fields, track, status, recipients, total_count, sent_count, failed_count, sequence_id)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'sequence','',0,0,0,%s) RETURNING *""",
+                (tenant_id,) + vals + (seq["id"],))
+    row = cur.fetchone()
+    cur.execute("UPDATE email_sequence_steps SET campaign_id=%s WHERE id=%s", (row["id"], step["id"]))
+    return row
+
+
+def _seq_stop_reason(cur, person):
+    """Why this person shouldn't get any more emails, or None."""
+    tenant_id, email = person["tenant_id"], person["email"]
+    cur.execute("SELECT 1 FROM email_suppressions WHERE tenant_id=%s AND lower(email)=lower(%s) LIMIT 1",
+                (tenant_id, email))
+    if cur.fetchone():
+        return "Unsubscribed"
+    cur.execute("""SELECT 1 FROM email_events WHERE tenant_id=%s AND kind='replied' AND created_at >= %s
+                   AND (lower(email)=lower(%s) OR (%s::bigint IS NOT NULL AND lead_id=%s)) LIMIT 1""",
+                (tenant_id, person["watch_from"], email, person["lead_id"], person["lead_id"]))
+    if cur.fetchone():
+        return "Replied"
+    if person["lead_id"]:
+        cur.execute("SELECT stage, outcome, dropped_at FROM merchant_pipeline_leads WHERE id=%s",
+                    (person["lead_id"],))
+        lead = cur.fetchone()
+        if lead:
+            if lead["outcome"] in _SEQ_OUTCOME_WORDS:
+                return f"Lead marked {_SEQ_OUTCOME_WORDS[lead['outcome']]}"
+            if lead["dropped_at"]:
+                return "Lead marked Dropped"
+            if lead["stage"] == "won":
+                return "Lead marked Won"
+    return None
+
+
+def _seq_stop_matching(cur, tenant_id: int, reason: str, email: str = None, lead_id: int = None):
+    """Stop every running sequence for this address / lead straight away."""
+    cur.execute("""UPDATE email_sequence_people SET status='stopped', stop_reason=%s, next_due_at=NULL, updated_at=NOW()
+                   WHERE tenant_id=%s AND status IN ('active','ready')
+                     AND (lower(email)=lower(%s) OR (%s::bigint IS NOT NULL AND lead_id=%s))""",
+                (reason, tenant_id, email or "", lead_id, lead_id))
+
+
+def _seq_deliver(cur, camp, tenant_id: int, email: str, sender: dict, lead_id=None):
+    """Send one sequence email; records it like a campaign recipient (so
+    opens/clicks/reports/lead history all work). Returns (ok, error)."""
+    ctx = email_outreach.recipient_context(cur, tenant_id, email)
+    if lead_id and ctx.get("lead_id") != lead_id:
+        ctx["lead_id"] = lead_id
+    token = email_outreach.new_token() if camp.get("track") else None
+    cur.execute("""INSERT INTO email_campaign_recipients (campaign_id, tenant_id, email, status, lead_id, contact_id, token)
+                   VALUES (%s,%s,%s,'pending',%s,%s,%s) RETURNING id""",
+                (camp["id"], tenant_id, email, ctx.get("lead_id"), ctx.get("contact_id"), token))
+    rec_id = cur.fetchone()["id"]
+    unsub_url = f"https://portal.phixtra.com/email/unsubscribe?t={_encrypt_key(f'{tenant_id}:{email}')}"
+    body = camp["html_body"] or ""
+    if token:
+        body = email_outreach.add_tracking(body, token)
+    body = email_outreach.apply_merge(body, ctx, as_html=True).replace("{{UNSUBSCRIBE_URL}}", unsub_url)
+    subject = email_outreach.apply_merge(camp["subject"], ctx, as_html=False)
+    try:
+        ok, err = zeptomail_api.send_email(sender["token"], sender["from_email"], sender["from_name"],
+                                           email, ctx.get("full") or "", subject, body,
+                                           reply_to=(camp.get("reply_to") or None))
+    except Exception as e:
+        ok, err = False, str(e)
+    cur.execute("UPDATE email_campaign_recipients SET status=%s, error_msg=%s, sent_at=NOW() WHERE id=%s",
+                ("sent" if ok else "failed", None if ok else (err or "")[:400], rec_id))
+    cur.execute("""UPDATE email_campaigns SET total_count=COALESCE(total_count,0)+1,
+                       sent_count=COALESCE(sent_count,0)+%s, failed_count=COALESCE(failed_count,0)+%s,
+                       completed_at=NOW() WHERE id=%s""", (1 if ok else 0, 0 if ok else 1, camp["id"]))
+    if ok and (ctx.get("lead_id") or ctx.get("contact_id")):
+        email_outreach.log_event(cur, tenant_id, "sent", campaign_id=camp["id"], recipient_id=rec_id,
+                                 lead_id=ctx.get("lead_id"), contact_id=ctx.get("contact_id"),
+                                 email=email, detail=subject)
+    return ok, err
+
+
+def _seq_send_next(person_id: int):
+    """Send one person their next email now (automatic step that's due, or a
+    team member pressing Send). Claims the row first, so two portal workers
+    can never send the same email twice. Returns (ok, message)."""
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("SELECT * FROM email_sequence_people WHERE id=%s", (person_id,))
+        p = cur.fetchone()
+        if not p or p["status"] not in ("active", "ready"):
+            return False, "Already sent or stopped."
+        cur.execute("""UPDATE email_sequence_people SET status='sending', updated_at=NOW()
+                       WHERE id=%s AND status=%s AND steps_sent=%s""", (p["id"], p["status"], p["steps_sent"]))
+        conn.commit()
+        if not cur.rowcount:
+            return False, "Already being sent."
+
+        def _put_back(msg):
+            cur.execute("UPDATE email_sequence_people SET status=%s WHERE id=%s AND status='sending'",
+                        (p["status"], p["id"]))
+            conn.commit()
+            return False, msg
+
+        tenant_id = int(p["tenant_id"])
+        seq = _seq_get(cur, tenant_id, p["sequence_id"])
+        steps = _seq_steps(cur, p["sequence_id"])
+        if not seq or not steps:
+            return _put_back("This sequence has no emails yet.")
+        if p["steps_sent"] >= len(steps):
+            cur.execute("UPDATE email_sequence_people SET status='finished', next_due_at=NULL, updated_at=NOW() WHERE id=%s",
+                        (p["id"],))
+            conn.commit()
+            return False, "They've had every email in this sequence."
+        reason = _seq_stop_reason(cur, p)
+        if reason:
+            cur.execute("""UPDATE email_sequence_people SET status='stopped', stop_reason=%s, next_due_at=NULL,
+                               updated_at=NOW() WHERE id=%s""", (reason, p["id"]))
+            conn.commit()
+            return False, f"Not sent: {reason.lower()}."
+        sender = _get_email_sender(tenant_id)
+        if not sender:
+            return _put_back("No sending address is set up for this business.")
+        step = steps[p["steps_sent"]]
+        camp = _seq_prepare_step(cur, seq, step, sender["from_name"])
+        if not camp:
+            conn.commit()
+            return _put_back(f"Email {step['position']} has no saved email chosen.")
+        ok, err = _seq_deliver(cur, camp, tenant_id, p["email"], sender, lead_id=p["lead_id"])
+        if not ok:
+            cur.execute("""UPDATE email_sequence_people SET status='stopped', next_due_at=NULL, updated_at=NOW(),
+                               stop_reason=%s WHERE id=%s""", ("Email couldn't be delivered", p["id"]))
+        elif p["steps_sent"] + 1 < len(steps):
+            nxt = steps[p["steps_sent"] + 1]
+            cur.execute("""UPDATE email_sequence_people SET steps_sent=steps_sent+1, last_sent_at=NOW(),
+                               status='active', next_due_at=NOW() + make_interval(days => %s), updated_at=NOW()
+                           WHERE id=%s""", (int(nxt["wait_days"] or 0), p["id"]))
+        else:
+            cur.execute("""UPDATE email_sequence_people SET steps_sent=steps_sent+1, last_sent_at=NOW(),
+                               status='finished', next_due_at=NULL, updated_at=NOW() WHERE id=%s""", (p["id"],))
+        conn.commit()
+        return (True, f"Email {step['position']} sent.") if ok else (False, f"Couldn't deliver: {err or 'unknown error'}")
+    except Exception as e:
+        conn.rollback()
+        print(f"⚠️ _seq_send_next error (person {person_id}):", e)
+        try:
+            cur.execute("UPDATE email_sequence_people SET status='active' WHERE id=%s AND status='sending'", (person_id,))
+            conn.commit()
+        except Exception:
+            pass
+        return False, "Something went wrong. Please try again."
+    finally:
+        cur.close(); conn.close()
+
+
+def _email_sequence_tick():
+    """Due people in running sequences: automatic email → send it; by-hand
+    email → mark Ready for the team; closed/replied/unsubscribed → stop."""
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""SELECT p.*, st.send_mode,
+                              (SELECT count(*) FROM email_sequence_steps x WHERE x.sequence_id = p.sequence_id) AS n_steps
+                       FROM email_sequence_people p
+                       JOIN email_sequences s ON s.id = p.sequence_id AND s.status = 'active'
+                       JOIN tenants tn ON tn.id = p.tenant_id AND NOT COALESCE(tn.is_training, FALSE)
+                       LEFT JOIN email_sequence_steps st ON st.sequence_id = p.sequence_id AND st.position = p.steps_sent + 1
+                       WHERE p.status = 'active' AND p.next_due_at <= NOW()
+                       ORDER BY p.next_due_at LIMIT 300""")
+        due = cur.fetchall()
+        no_sender = set()  # businesses with no sending address: skip them, never block the others
+        for p in due:
+            if not p["n_steps"] or p["tenant_id"] in no_sender:
+                continue
+            if p["steps_sent"] >= p["n_steps"]:
+                cur.execute("UPDATE email_sequence_people SET status='finished', next_due_at=NULL, updated_at=NOW() "
+                            "WHERE id=%s AND status='active'", (p["id"],))
+                conn.commit()
+                continue
+            if p["send_mode"] == "manual":
+                reason = _seq_stop_reason(cur, p)
+                if reason:
+                    cur.execute("""UPDATE email_sequence_people SET status='stopped', stop_reason=%s, next_due_at=NULL,
+                                       updated_at=NOW() WHERE id=%s AND status='active'""", (reason, p["id"]))
+                else:
+                    cur.execute("UPDATE email_sequence_people SET status='ready', updated_at=NOW() "
+                                "WHERE id=%s AND status='active'", (p["id"],))
+                conn.commit()
+                continue
+            ok, msg = _seq_send_next(p["id"])
+            if not ok and msg.startswith("No sending address"):
+                # Nothing can go out for this business; try it again next minute.
+                no_sender.add(p["tenant_id"])
+    finally:
+        cur.close(); conn.close()
+
+
+def _email_sequence_scheduler_loop():
+    while True:
+        try:
+            _email_sequence_tick()
+        except Exception as e:
+            print("⚠️ email sequence scheduler error:", e)
+        _time.sleep(60)
+
+
+if not getattr(_threading, "_phixtra_email_sequence_sched_started", False):
+    _threading._phixtra_email_sequence_sched_started = True  # type: ignore[attr-defined]
+    _threading.Thread(target=_email_sequence_scheduler_loop, daemon=True).start()
+
+
+def _seq_add_people(cur, tenant_id: int, seq_id: int, people: list, actor: str) -> dict:
+    """people = [(email, lead_id or None)]. Skips unsubscribed addresses and
+    anyone already in this sequence. Their first email is due after step 1's
+    wait (0 = straight away when the sequence is running)."""
+    cur.execute("SELECT wait_days FROM email_sequence_steps WHERE sequence_id=%s ORDER BY position LIMIT 1", (seq_id,))
+    first = cur.fetchone()
+    first_wait = int(first["wait_days"] or 0) if first else 0
+    cur.execute("SELECT lower(email) AS e FROM email_suppressions WHERE tenant_id=%s", (tenant_id,))
+    suppressed = {r["e"] for r in cur.fetchall()}
+    out = {"added": 0, "already": 0, "unsubscribed": 0, "bad": 0}
+    seen = set()
+    for email, lead_id in people:
+        email = (email or "").strip()
+        k = email.lower()
+        if not _re_seq_email.fullmatch(email):
+            out["bad"] += 1
+            continue
+        if k in seen:
+            continue
+        seen.add(k)
+        if k in suppressed:
+            out["unsubscribed"] += 1
+            continue
+        contact_id = None
+        if not lead_id:
+            ctx = email_outreach.recipient_context(cur, tenant_id, email)
+            lead_id, contact_id = ctx.get("lead_id"), ctx.get("contact_id")
+        cur.execute("""INSERT INTO email_sequence_people (tenant_id, sequence_id, email, lead_id, contact_id,
+                           next_due_at, added_by)
+                       VALUES (%s,%s,%s,%s,%s, NOW() + make_interval(days => %s), %s)
+                       ON CONFLICT (sequence_id, lower(email)) DO NOTHING""",
+                    (tenant_id, seq_id, email, lead_id, contact_id, first_wait, actor))
+        out["added" if cur.rowcount else "already"] += 1
+    return out
+
+
+_re_seq_email = __import__("re").compile(r"[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+")
+
+
+def _seq_page_guard(key: str, allowed: bool, json_reply: bool = False):
+    """Login + Roles tick + plan, for every sequence route. Each route passes
+    its own _team_member_has_permission(key) as `allowed`. Returns
+    (customer, None) or (None, response)."""
+    r = _require_login()
+    if r:
+        return None, (jsonify({"error": "unauthorised"}), 401) if json_reply else r
+    if not allowed:
+        if json_reply:
+            return None, (jsonify({"error": "forbidden"}), 403)
+        return None, _require_team_permission(key)
+    customer = _get_customer(_customer_id())
+    gate = _require_plan_sub_feature(customer, key, "Email Sequences")
+    if gate:
+        return None, (jsonify({"error": "upgrade required"}), 403) if json_reply else gate
+    return customer, None
+
+
+@portal_bp.route("/email/sequences")
+@team_feature("campaigns_email.sequences_view")
+def email_sequences():
+    customer, resp = _seq_page_guard("campaigns_email.sequences_view", _team_member_has_permission("campaigns_email.sequences_view"))
+    if resp: return resp
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        _ls_exec(cur, """
+            SELECT s.*,
+                   (SELECT count(*) FROM email_sequence_steps st WHERE st.sequence_id = s.id) AS n_steps,
+                   count(p.id) AS n_people,
+                   count(p.id) FILTER (WHERE p.status IN ('active','sending')) AS n_active,
+                   count(p.id) FILTER (WHERE p.status = 'ready') AS n_ready,
+                   count(p.id) FILTER (WHERE p.status = 'finished') AS n_finished,
+                   count(p.id) FILTER (WHERE p.status = 'stopped') AS n_stopped,
+                   count(p.id) FILTER (WHERE p.stop_reason = 'Replied') AS n_replied
+            FROM email_sequences s
+            LEFT JOIN email_sequence_people p ON p.sequence_id = s.id AND """ + _SEQ_PEOPLE_VISIBLE + """
+            WHERE s.tenant_id=%s GROUP BY s.id ORDER BY s.created_at DESC""", (tenant_id,))
+        sequences = cur.fetchall()
+    finally:
+        cur.close(); conn.close()
+    return render_template("portal/email_sequences.html", sequences=sequences,
+                           sender=_get_email_sender(tenant_id))
+
+
+@portal_bp.route("/email/sequences/create", methods=["POST"])
+@team_feature("campaigns_email.sequences_create")
+def email_sequences_create():
+    customer, resp = _seq_page_guard("campaigns_email.sequences_create", _team_member_has_permission("campaigns_email.sequences_create"))
+    if resp: return resp
+    name = (request.form.get("name") or "").strip()[:255]
+    if not name:
+        flash("Give the sequence a name.", "warning")
+        return redirect(url_for("portal.email_sequences"))
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("""INSERT INTO email_sequences (tenant_id, name, status, reply_to, created_by)
+                   VALUES (%s,%s,'paused',%s,%s) RETURNING id""",
+                (int(customer["tenant_id"]), name, _default_reply_to(customer) or None,
+                 _current_actor(customer)["label"]))
+    seq_id = cur.fetchone()[0]
+    conn.commit(); cur.close(); conn.close()
+    flash("Sequence created. Choose its emails, then add people.", "success")
+    return redirect(url_for("portal.email_sequence_detail", seq_id=seq_id))
+
+
+@portal_bp.route("/email/sequences/<int:seq_id>")
+@team_feature("campaigns_email.sequences_view")
+def email_sequence_detail(seq_id: int):
+    customer, resp = _seq_page_guard("campaigns_email.sequences_view", _team_member_has_permission("campaigns_email.sequences_view"))
+    if resp: return resp
+    tenant_id = int(customer["tenant_id"])
+    show = request.args.get("show") or "all"
+    q = (request.args.get("q") or "").strip()
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        seq = _seq_get(cur, tenant_id, seq_id)
+        if not seq:
+            flash("Sequence not found.", "warning")
+            return redirect(url_for("portal.email_sequences"))
+        steps = _seq_steps(cur, seq_id)
+        # Results per email: sent / opened / clicked / replied.
+        for st in steps:
+            st["stats"] = {"sent": 0, "opened": 0, "clicked": 0, "replied": 0}
+            if st["campaign_id"]:
+                cur.execute("""SELECT count(*) FILTER (WHERE status='sent') AS sent,
+                                      count(opened_at) AS opened, count(clicked_at) AS clicked,
+                                      count(replied_at) AS replied
+                               FROM email_campaign_recipients WHERE campaign_id=%s""", (st["campaign_id"],))
+                st["stats"] = cur.fetchone()
+        _ls_exec(cur, "SELECT p.status, count(*) AS n FROM email_sequence_people p WHERE p.sequence_id=%s AND "
+                 + _SEQ_PEOPLE_VISIBLE + " GROUP BY p.status", (seq_id,))
+        counts = {r["status"]: r["n"] for r in cur.fetchall()}
+        where, params = ["p.sequence_id=%s", _SEQ_PEOPLE_VISIBLE], [seq_id]
+        if show in ("active", "ready", "finished", "stopped"):
+            where.append("p.status = ANY(%s)")
+            params.append(["active", "sending"] if show == "active" else [show])
+        if q:
+            where.append("(p.email ILIKE %s OR ld.customer_name ILIKE %s OR ld.contact_person ILIKE %s)")
+            params += [f"%{q}%"] * 3
+        _ls_exec(cur, """
+            SELECT p.*, ld.customer_name, ld.contact_person
+            FROM email_sequence_people p
+            LEFT JOIN merchant_pipeline_leads ld ON ld.id = p.lead_id
+            WHERE """ + " AND ".join(where) + """
+            ORDER BY (p.status='ready') DESC, p.next_due_at NULLS LAST, p.id LIMIT 300""", params)
+        people = cur.fetchall()
+        vis, vp = _tpl_vis("t")
+        cur.execute("SELECT t.id, t.name, t.fields->>'subject' AS subject FROM email_templates t WHERE t.tenant_id=%s AND "
+                    "(t.id IN (SELECT template_id FROM email_sequence_steps WHERE sequence_id=%s AND template_id IS NOT NULL)"
+                    + (" OR TRUE" if not vis else " OR (TRUE" + vis + ")") + ") ORDER BY t.name",
+                    [tenant_id, seq_id] + vp)
+        templates = cur.fetchall()
+        _ls_exec(cur, "SELECT DISTINCT business_category FROM merchant_pipeline_leads WHERE tenant_id=%s "
+                 "AND business_category IS NOT NULL AND business_category <> '' AND email IS NOT NULL "
+                 "ORDER BY business_category LIMIT 300", (tenant_id,))
+        categories = [r["business_category"] for r in cur.fetchall()]
+        vis, vp = _seg_vis("s", "email")
+        _ls_exec(cur, "SELECT s.id, s.name FROM wa_segments s WHERE s.tenant_id=%s" + vis + " ORDER BY lower(s.name)",
+                 [tenant_id] + vp)
+        segments = cur.fetchall()
+    finally:
+        cur.close(); conn.close()
+    stage_labels = dict(pipeline_effective_stage_labels(tenant_id))
+    stage_labels["new_lead"] = "New Lead"
+    return render_template(
+        "portal/email_sequence.html", seq=seq, steps=steps, people=people, counts=counts,
+        total_people=sum(counts.values()), show=show, q=q, templates=templates, categories=categories,
+        segments=segments, stages=[(s, stage_labels.get(s, s)) for s in PIPELINE_STAGE_ORDER if s != "won"],
+        status_words=_SEQ_STATUS_WORDS, sender=_get_email_sender(tenant_id),
+        default_reply_to=_default_reply_to(customer))
+
+
+@portal_bp.route("/email/sequences/<int:seq_id>/save", methods=["POST"])
+@team_feature("campaigns_email.sequences_edit")
+def email_sequence_save(seq_id: int):
+    """Name, 'Replies go to' and the list of emails (saved email + days to
+    wait + automatic/by hand). People already part-way through carry on from
+    the email number they reached."""
+    customer, resp = _seq_page_guard("campaigns_email.sequences_edit", _team_member_has_permission("campaigns_email.sequences_edit"))
+    if resp: return resp
+    tenant_id = int(customer["tenant_id"])
+    back = redirect(url_for("portal.email_sequence_detail", seq_id=seq_id))
+    name = (request.form.get("name") or "").strip()[:255]
+    reply_to = (request.form.get("reply_to") or "").strip()
+    if reply_to and not _re_seq_email.fullmatch(reply_to):
+        flash("The 'Replies go to' address doesn't look like an email address.", "warning")
+        return back
+    tpl_ids = request.form.getlist("template_id")
+    waits = request.form.getlist("wait_days")
+    modes = request.form.getlist("send_mode")
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        seq = _seq_get(cur, tenant_id, seq_id)
+        if not seq:
+            flash("Sequence not found.", "warning")
+            return redirect(url_for("portal.email_sequences"))
+        vis, vp = _tpl_vis("t")
+        cur.execute("SELECT t.id FROM email_templates t WHERE t.tenant_id=%s AND "
+                    "(t.id IN (SELECT template_id FROM email_sequence_steps WHERE sequence_id=%s AND template_id IS NOT NULL)"
+                    + (" OR TRUE" if not vis else " OR (TRUE" + vis + ")") + ")", [tenant_id, seq_id] + vp)
+        own = {r["id"] for r in cur.fetchall()}
+        rows = []
+        for i, t in enumerate(tpl_ids):
+            if not t.isdigit() or int(t) not in own:
+                continue
+            try:
+                w = max(0, min(365, int((waits[i] if i < len(waits) else "0") or 0)))
+            except ValueError:
+                w = 0
+            m = "manual" if (modes[i] if i < len(modes) else "") == "manual" else "auto"
+            rows.append((int(t), w, m))
+        old = _seq_steps(cur, seq_id)
+        cur.execute("UPDATE email_sequences SET name=%s, reply_to=%s, updated_at=NOW() WHERE id=%s",
+                    (name or seq["name"], reply_to or None, seq_id))
+        # Keep each position's own campaign row (its sends/opens/clicks stay
+        # with "Email N"); drop rows past the new end.
+        for pos, (t, w, m) in enumerate(rows, start=1):
+            if pos <= len(old):
+                cur.execute("UPDATE email_sequence_steps SET template_id=%s, wait_days=%s, send_mode=%s WHERE id=%s",
+                            (t, w, m, old[pos - 1]["id"]))
+            else:
+                cur.execute("""INSERT INTO email_sequence_steps (sequence_id, position, template_id, wait_days, send_mode)
+                               VALUES (%s,%s,%s,%s,%s)""", (seq_id, pos, t, w, m))
+        cur.execute("DELETE FROM email_sequence_steps WHERE sequence_id=%s AND position > %s", (seq_id, len(rows)))
+        # Anyone who has now had every email is finished.
+        cur.execute("""UPDATE email_sequence_people SET status='finished', next_due_at=NULL, updated_at=NOW()
+                       WHERE sequence_id=%s AND status IN ('active','ready') AND steps_sent >= %s AND %s > 0""",
+                    (seq_id, len(rows), len(rows)))
+        # Their names in Reports follow the sequence name.
+        cur.execute("""UPDATE email_campaigns c SET name = %s || ' · Email ' || st.position
+                       FROM email_sequence_steps st WHERE st.campaign_id = c.id AND st.sequence_id=%s""",
+                    (name or seq["name"], seq_id))
+        conn.commit()
+        flash("Sequence saved.", "success")
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ email_sequence_save error:", e)
+        flash("Could not save. Please try again.", "danger")
+    finally:
+        cur.close(); conn.close()
+    return back
+
+
+@portal_bp.route("/email/sequences/<int:seq_id>/status", methods=["POST"])
+@team_feature("campaigns_email.sequences_edit")
+def email_sequence_status(seq_id: int):
+    """Start (automatic emails go out when due) or Pause (nothing goes out
+    automatically; sending by hand still works)."""
+    customer, resp = _seq_page_guard("campaigns_email.sequences_edit", _team_member_has_permission("campaigns_email.sequences_edit"))
+    if resp: return resp
+    tenant_id = int(customer["tenant_id"])
+    want = "active" if request.form.get("status") == "active" else "paused"
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        if not _seq_get(cur, tenant_id, seq_id):
+            return redirect(url_for("portal.email_sequences"))
+        if want == "active":
+            steps = _seq_steps(cur, seq_id)
+            if not steps:
+                flash("Choose at least one email before starting.", "warning")
+                return redirect(url_for("portal.email_sequence_detail", seq_id=seq_id))
+            missing = [s["position"] for s in steps if not (s.get("template_fields") or {}).get("subject")]
+            if missing:
+                flash(f"Email {missing[0]} has no saved email (or its subject is empty).", "warning")
+                return redirect(url_for("portal.email_sequence_detail", seq_id=seq_id))
+        cur.execute("UPDATE email_sequences SET status=%s, updated_at=NOW() WHERE id=%s", (want, seq_id))
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    flash("Sequence started — emails go out as they fall due." if want == "active"
+          else "Sequence paused — nothing goes out automatically. You can still send by hand.", "success")
+    return redirect(url_for("portal.email_sequence_detail", seq_id=seq_id))
+
+
+@portal_bp.route("/email/sequences/<int:seq_id>/people/add", methods=["POST"])
+@team_feature("campaigns_email.sequences_edit")
+def email_sequence_add_people(seq_id: int):
+    """Add people from: leads (optionally by stage / business category), an
+    Email Segment, or typed/pasted email addresses."""
+    customer, resp = _seq_page_guard("campaigns_email.sequences_edit", _team_member_has_permission("campaigns_email.sequences_edit"))
+    if resp: return resp
+    tenant_id = int(customer["tenant_id"])
+    back = redirect(url_for("portal.email_sequence_detail", seq_id=seq_id))
+    source = request.form.get("source") or ""
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        if not _seq_get(cur, tenant_id, seq_id):
+            return redirect(url_for("portal.email_sequences"))
+        cur.execute("SELECT count(*) AS n FROM email_sequence_steps WHERE sequence_id=%s", (seq_id,))
+        if not cur.fetchone()["n"]:
+            flash("Choose the sequence's emails first, then add people.", "warning")
+            return back
+        people = []
+        if source == "leads":
+            where, params = ["tenant_id=%s", "email IS NOT NULL", "email <> ''", "dropped_at IS NULL",
+                             "(outcome IS NULL OR outcome NOT IN ('won','lost','dropped','not_a_fit'))",
+                             "stage <> 'won'"], [tenant_id]
+            stage = request.form.get("stage") or ""
+            if stage in PIPELINE_STAGE_ORDER:
+                where.append("stage=%s"); params.append(stage)
+            cat = (request.form.get("category") or "").strip()
+            if cat:
+                where.append("business_category=%s"); params.append(cat)
+            _ls_exec(cur, "SELECT id, email FROM merchant_pipeline_leads WHERE " + " AND ".join(where)
+                     + " ORDER BY id LIMIT 5000", params)
+            people = [(r["email"], r["id"]) for r in cur.fetchall()]
+        elif source == "segment" and (request.form.get("segment_id") or "").isdigit():
+            people = [(e, None) for e in _email_segment_audience(cur, tenant_id, int(request.form["segment_id"]))]
+        elif source == "emails":
+            people = [(e, None) for e in _re_seq_email.findall(request.form.get("emails") or "")]
+        if not people:
+            flash("Nobody found to add. Check your choice and try again.", "warning")
+            return back
+        res = _seq_add_people(cur, tenant_id, seq_id, people, _current_actor(customer)["label"])
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ email_sequence_add_people error:", e)
+        flash("Could not add people. Please try again.", "danger")
+        return back
+    finally:
+        cur.close(); conn.close()
+    bits = [f"{res['added']} added"]
+    if res["already"]: bits.append(f"{res['already']} already in this sequence")
+    if res["unsubscribed"]: bits.append(f"{res['unsubscribed']} skipped (unsubscribed)")
+    if res["bad"]: bits.append(f"{res['bad']} not valid email addresses")
+    flash(" · ".join(bits) + ".", "success" if res["added"] else "warning")
+    return back
+
+
+def _seq_safe_next(default):
+    nxt = request.form.get("next") or ""
+    return nxt if nxt.startswith("/") and not nxt.startswith("//") else default
+
+
+@portal_bp.route("/email/sequences/<int:seq_id>/people/action", methods=["POST"])
+@team_feature("campaigns_email.sequences_edit", "campaigns_email.sequences_send")
+def email_sequence_people_action(seq_id: int):
+    """send (next email now) / stop / resume / remove, for ticked people or
+    one person; send_ready = send everyone who's Ready."""
+    action = request.form.get("action") or ""
+    key = "campaigns_email.sequences_send" if action in ("send", "send_ready") else "campaigns_email.sequences_edit"
+    customer, resp = _seq_page_guard(key, _team_member_has_permission(key))
+    if resp: return resp
+    tenant_id = int(customer["tenant_id"])
+    back = redirect(_seq_safe_next(url_for("portal.email_sequence_detail", seq_id=seq_id)))
+    ids = [int(i) for i in request.form.getlist("person_id") if i.isdigit()]
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        if not _seq_get(cur, tenant_id, seq_id):
+            return redirect(url_for("portal.email_sequences"))
+        if action == "send_ready":
+            _ls_exec(cur, "SELECT p.id FROM email_sequence_people p WHERE p.sequence_id=%s AND p.status='ready' AND "
+                     + _SEQ_PEOPLE_VISIBLE + " ORDER BY p.id LIMIT 500", (seq_id,))
+        else:
+            _ls_exec(cur, "SELECT p.id FROM email_sequence_people p WHERE p.sequence_id=%s AND p.id = ANY(%s) AND "
+                     + _SEQ_PEOPLE_VISIBLE, (seq_id, ids))
+        ids = [r["id"] for r in cur.fetchall()]
+        if not ids:
+            flash("Nobody selected.", "warning")
+            return back
+        if action in ("send", "send_ready"):
+            cur.close(); conn.close(); conn = None
+            results = [_seq_send_next(i) for i in ids]
+            sent = sum(1 for ok, _ in results if ok)
+            problems = [m for ok, m in results if not ok]
+            if sent:
+                flash(f"{sent} email{'s' if sent != 1 else ''} sent.", "success")
+            if problems:
+                flash(f"{len(problems)} not sent: {problems[0]}", "warning")
+            return back
+        if action == "stop":
+            cur.execute("""UPDATE email_sequence_people SET status='stopped', next_due_at=NULL, updated_at=NOW(),
+                               stop_reason=%s WHERE id = ANY(%s) AND status IN ('active','ready')""",
+                        (f"Stopped by {_current_actor(customer)['label']}", ids))
+            flash(f"Stopped for {cur.rowcount}.", "success")
+        elif action == "resume":
+            cur.execute("SELECT * FROM email_sequence_people WHERE id = ANY(%s) AND status='stopped'", (ids,))
+            resumed = blocked = 0
+            for p in cur.fetchall():
+                p = dict(p); p["watch_from"] = datetime.now(timezone.utc)
+                reason = _seq_stop_reason(cur, p)
+                if reason and reason != "Replied":
+                    blocked += 1
+                    continue
+                cur.execute("""UPDATE email_sequence_people SET status='active', stop_reason=NULL, watch_from=NOW(),
+                                   next_due_at=NOW(), updated_at=NOW() WHERE id=%s""", (p["id"],))
+                resumed += 1
+            msg = f"Resumed for {resumed}." + (f" {blocked} can't be resumed (unsubscribed or lead closed)." if blocked else "")
+            flash(msg, "success" if resumed else "warning")
+        elif action == "remove":
+            cur.execute("DELETE FROM email_sequence_people WHERE id = ANY(%s)", (ids,))
+            flash(f"Removed {cur.rowcount} from this sequence.", "success")
+        conn.commit()
+    finally:
+        if conn:
+            cur.close(); conn.close()
+    return back
+
+
+@portal_bp.route("/email/sequences/<int:seq_id>/delete", methods=["POST"])
+@team_feature("campaigns_email.sequences_delete")
+def email_sequence_delete(seq_id: int):
+    """Deletes the sequence and its people list. Emails already sent stay on
+    each lead's history and in Reports."""
+    customer, resp = _seq_page_guard("campaigns_email.sequences_delete", _team_member_has_permission("campaigns_email.sequences_delete"))
+    if resp: return resp
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("DELETE FROM email_sequences WHERE id=%s AND tenant_id=%s", (seq_id, int(customer["tenant_id"])))
+    conn.commit(); cur.close(); conn.close()
+    flash("Sequence deleted. Emails already sent stay on each lead's history.", "success")
+    return redirect(url_for("portal.email_sequences"))
+
+
+@portal_bp.route("/leads/<int:lead_id>/email-sequence", methods=["POST"])
+@team_feature("campaigns_email.sequences_edit")
+def lead_add_to_sequence(lead_id: int):
+    """From a lead's page: put this lead into a sequence."""
+    customer, resp = _seq_page_guard("campaigns_email.sequences_edit", _team_member_has_permission("campaigns_email.sequences_edit"))
+    if resp: return resp
+    tenant_id = int(customer["tenant_id"])
+    back = redirect(url_for("portal.lead_detail", lead_id=lead_id) + "#emails")
+    lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
+    seq_raw = request.form.get("sequence_id") or ""
+    if not lead or not lead.get("email") or not seq_raw.isdigit():
+        flash("Choose a sequence (the lead needs an email address).", "warning")
+        return back
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        seq = _seq_get(cur, tenant_id, int(seq_raw))
+        if not seq:
+            flash("Sequence not found.", "warning")
+            return back
+        cur.execute("SELECT count(*) AS n FROM email_sequence_steps WHERE sequence_id=%s", (seq["id"],))
+        if not cur.fetchone()["n"]:
+            flash("That sequence has no emails yet.", "warning")
+            return back
+        res = _seq_add_people(cur, tenant_id, seq["id"], [(lead["email"], lead_id)], _current_actor(customer)["label"])
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    if res["added"]:
+        flash(f"Added to “{seq['name']}”." + ("" if seq["status"] == "active"
+              else " The sequence is paused, so nothing goes out automatically until it's started."), "success")
+    elif res["unsubscribed"]:
+        flash("Not added: this address has unsubscribed from your emails.", "warning")
+    else:
+        flash(f"Already in “{seq['name']}”.", "warning")
+    return back
+
+
+def _lead_sequences(tenant_id: int, lead: dict) -> dict:
+    """For the lead page: sequences this lead is in, and ones it can join."""
+    out = {"in": [], "choices": []}
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""SELECT p.*, s.name AS seq_name, s.status AS seq_status,
+                              (SELECT count(*) FROM email_sequence_steps x WHERE x.sequence_id = s.id) AS n_steps
+                       FROM email_sequence_people p JOIN email_sequences s ON s.id = p.sequence_id
+                       WHERE p.tenant_id=%s AND (p.lead_id=%s OR lower(p.email)=lower(%s))
+                       ORDER BY p.added_at DESC""", (tenant_id, lead["id"], lead.get("email") or ""))
+        out["in"] = cur.fetchall()
+        taken = {p["sequence_id"] for p in out["in"]}
+        cur.execute("SELECT id, name, status FROM email_sequences WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+        out["choices"] = [s for s in cur.fetchall() if s["id"] not in taken]
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _lead_sequences error:", e)
+    return out
+
+
+# ── Saved Emails page (2026-10-08) — every saved template in one list, with
+# a preview, "Use in a campaign" (opens the compose drawer filled in) and
+# "Add to a sequence" (adds it as that sequence's next email). Uses the
+# existing campaign keys: view = campaigns_email.all_view, delete =
+# campaigns_email.all_delete; adding to a sequence = sequences_edit. ──
+
+def _saved_email_snippet(fields: dict, n: int = 160) -> str:
+    import re as _re_snip, html as _html_snip
+    text = _re_snip.sub(r"<[^>]+>", " ", (fields or {}).get("body_html") or "")
+    text = _re_snip.sub(r"\s+", " ", _html_snip.unescape(text)).strip()
+    return text[:n] + ("…" if len(text) > n else "")
+
+
+@portal_bp.route("/email/saved-emails")
+@team_feature("campaigns_email.all_view")
+def email_saved_emails():
+    """Saved Emails (list redesign approved 2026-10-08): compact rows grouped
+    by day / week / month, filters (search, when, saved by [owner/IT],
+    show), 25 per page, preview in a side panel. Staff see only their own
+    and ones shared with them (_tpl_vis)."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("campaigns_email.all_view")
+    if _rperm: return _rperm
+    customer = _get_customer(_customer_id())
+    gate = _require_email_campaigns_plan(customer)
+    if gate: return gate
+    tenant_id = int(customer["tenant_id"])
+    import re as _re_se
+    a = request.args
+    q = (a.get("q") or "").strip()[:100]
+    when = a.get("when") or ("month" if not a else "any")
+    by = (a.get("by") or "").strip()
+    show = a.get("show") or "all"
+    group = a.get("group") if a.get("group") in ("day", "week", "month") else "week"
+    sort = a.get("sort") if a.get("sort") in ("new", "old", "name") else "new"
+    try:
+        page = max(1, int(a.get("page") or 1))
+    except ValueError:
+        page = 1
+    per = 25
+    see_all = _saved_emails_see_all()
+    can_share = _can_share_saved_emails()
+    actor = _current_actor(customer)
+
+    vis, vp = _tpl_vis("t")
+    where, params = ["t.tenant_id=%s" + vis], [tenant_id] + vp
+    when_label = {"any": "Any time", "today": "Today", "7d": "Last 7 days", "month": "This month", "lastmonth": "Last month"}
+    if when == "today":
+        where.append("t.updated_at >= date_trunc('day', NOW())")
+    elif when == "7d":
+        where.append("t.updated_at >= NOW() - interval '7 days'")
+    elif when == "month":
+        where.append("t.updated_at >= date_trunc('month', NOW())")
+    elif when == "lastmonth":
+        where.append("t.updated_at >= date_trunc('month', NOW()) - interval '1 month' AND t.updated_at < date_trunc('month', NOW())")
+    elif _re_se.fullmatch(r"\d{4}-\d{2}", when):
+        where.append("to_char(t.updated_at, 'YYYY-MM') = %s"); params.append(when)
+        when_label[when] = datetime.strptime(when, "%Y-%m").strftime("%B %Y")
+    elif when == "dates":
+        f_, t_ = a.get("from") or "", a.get("to") or ""
+        if _re_se.fullmatch(r"\d{4}-\d{2}-\d{2}", f_):
+            where.append("t.updated_at >= %s::date"); params.append(f_)
+        if _re_se.fullmatch(r"\d{4}-\d{2}-\d{2}", t_):
+            where.append("t.updated_at < %s::date + 1"); params.append(t_)
+        when_label["dates"] = f"{f_ or '…'} to {t_ or '…'}"
+    else:
+        when = "any"
+    if see_all and by:
+        if by == "me":
+            where.append("t.created_by_key = %s"); params.append(actor["key"])
+        elif by == "business":
+            where.append("t.created_by_key IS NULL")
+        elif _re_se.fullmatch(r"(team|owner):\d+", by):
+            where.append("t.created_by_key = %s"); params.append(by)
+        else:
+            by = ""
+    else:
+        by = ""
+    if show == "seq":
+        where.append("EXISTS (SELECT 1 FROM email_sequence_steps x WHERE x.template_id = t.id)")
+    elif show == "unused":
+        where.append("NOT EXISTS (SELECT 1 FROM email_sequence_steps x WHERE x.template_id = t.id)")
+    elif show == "shared":
+        where.append("EXISTS (SELECT 1 FROM email_template_shares x WHERE x.template_id = t.id)")
+    elif show == "video":
+        where.append("COALESCE(t.fields->>'video_url', '') <> ''")
+    else:
+        show = "all"
+    if q:
+        where.append("(t.name ILIKE %s OR t.fields->>'subject' ILIKE %s OR t.fields->>'body_html' ILIKE %s)")
+        params += [f"%{q}%"] * 3
+    order = {"new": "t.updated_at DESC, t.id DESC", "old": "t.updated_at ASC, t.id", "name": "lower(t.name), t.id"}[sort]
+
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("SELECT count(*) AS n FROM email_templates t WHERE " + " AND ".join(where), params)
+        total = cur.fetchone()["n"]
+        pages = max(1, (total + per - 1) // per)
+        page = min(page, pages)
+        cur.execute("""SELECT t.id, t.name, t.fields, t.created_by, t.created_by_key, t.created_at, t.updated_at,
+                              COALESCE((SELECT array_agg(s.name || ' · Email ' || st.position ORDER BY s.name, st.position)
+                                        FROM email_sequence_steps st JOIN email_sequences s ON s.id = st.sequence_id
+                                        WHERE st.template_id = t.id), '{}') AS used_in,
+                              COALESCE((SELECT array_agg(sh.team_member_id) FROM email_template_shares sh
+                                        WHERE sh.template_id = t.id), '{}') AS shared_ids
+                       FROM email_templates t WHERE """ + " AND ".join(where)
+                    + f" ORDER BY {order} LIMIT %s OFFSET %s", params + [per, (page - 1) * per])
+        emails = cur.fetchall()
+        # Summary figures for everything this person can see (no filters).
+        cur.execute("""SELECT count(*) AS total,
+                              count(*) FILTER (WHERE t.created_at >= date_trunc('month', NOW())) AS this_month,
+                              count(*) FILTER (WHERE EXISTS (SELECT 1 FROM email_sequence_steps x WHERE x.template_id = t.id)) AS in_seq,
+                              count(DISTINCT COALESCE(t.created_by_key, 'business')) AS writers
+                       FROM email_templates t WHERE t.tenant_id=%s""" + vis, [tenant_id] + vp)
+        stats = cur.fetchone()
+        cur.execute("SELECT DISTINCT to_char(t.updated_at, 'YYYY-MM') AS m FROM email_templates t WHERE t.tenant_id=%s" + vis
+                    + " ORDER BY 1 DESC LIMIT 12", [tenant_id] + vp)
+        months = [(r["m"], datetime.strptime(r["m"], "%Y-%m").strftime("%B %Y")) for r in cur.fetchall()]
+        writers = []
+        if see_all:
+            cur.execute("""SELECT DISTINCT ON (COALESCE(created_by_key, 'business')) COALESCE(created_by_key, 'business') AS k, created_by
+                           FROM email_templates WHERE tenant_id=%s ORDER BY COALESCE(created_by_key, 'business'), updated_at DESC""",
+                        (tenant_id,))
+            for w in cur.fetchall():
+                if w["k"] == actor["key"]:
+                    continue
+                label = "The business (no person)" if w["k"] == "business" else display_actor(w["created_by"] or "Someone", w["k"])
+                writers.append((w["k"], label))
+        members = []
+        if can_share:
+            cur.execute("SELECT id, name, email FROM team_members WHERE tenant_id=%s AND is_active=TRUE ORDER BY lower(name)",
+                        (tenant_id,))
+            members = cur.fetchall()
+        cur.execute("SELECT id, name, status FROM email_sequences WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+        sequences = cur.fetchall()
+    finally:
+        cur.close(); conn.close()
+
+    names = {m["id"]: m["name"] for m in members}
+    now = datetime.now().astimezone()
+    today = now.date()
+    week0 = today - timedelta(days=today.weekday())
+    business_name = (_get_email_sender(tenant_id) or {}).get("from_name") or customer.get("business_name") or "The business"
+
+    def group_label(d):
+        if group == "day":
+            if d == today: return "Today"
+            if d == today - timedelta(days=1): return "Yesterday"
+            return d.strftime("%a %-d %b %Y") if d.year != today.year else d.strftime("%A %-d %B")
+        if group == "week":
+            ws = d - timedelta(days=d.weekday()); we = ws + timedelta(days=6)
+            span = f"{ws.strftime('%-d %b')} – {we.strftime('%-d %b')}"
+            if ws == week0: return f"This week · {span}"
+            if ws == week0 - timedelta(days=7): return f"Last week · {span}"
+            return f"Week of {ws.strftime('%-d %b %Y')}"
+        return d.strftime("%B %Y")
+
+    def when_text(dt):
+        d = dt.astimezone(now.tzinfo).date()
+        t = dt.astimezone(now.tzinfo).strftime("%H:%M")
+        if d == today: return f"Today, {t}"
+        if d == today - timedelta(days=1): return f"Yesterday, {t}"
+        return dt.astimezone(now.tzinfo).strftime("%a %-d %b, %H:%M" if d.year == today.year else "%-d %b %Y")
+
+    groups = []
+    for e in emails:
+        f = e["fields"] or {}
+        e["subject"] = f.get("subject") or ""
+        e["snippet"] = _saved_email_snippet(f, 110)
+        e["has_video"] = bool(f.get("video_url"))
+        e["mine"] = _tpl_is_mine(e)
+        e["shared_names"] = [names[i] for i in e["shared_ids"] if i in names]
+        if e["created_by_key"]:
+            e["who"] = display_actor(e["created_by"] or "Someone", e["created_by_key"])
+        else:
+            e["who"] = business_name
+        e["initials"] = "".join(w[0] for w in (e["who"] or "?").split()[:2]).upper()
+        e["when"] = when_text(e["updated_at"])
+        label = group_label(e["updated_at"].astimezone(now.tzinfo).date()) if sort != "name" else ""
+        if not groups or groups[-1]["label"] != label:
+            groups.append({"label": label, "rows": []})
+        groups[-1]["rows"].append(e)
+
+    seq_on = (_plan_grants_feature(_get_tenant_plan(tenant_id), "campaigns_email.sequences_edit")
+              and _team_member_has_permission("campaigns_email.sequences_edit"))
+    filters = {"q": q, "when": when, "by": by, "show": show, "group": group, "sort": sort}
+    by_label = dict(writers).get(by) or ("Me" if by == "me" else "")
+    return render_template("portal/email_saved_emails.html", groups=groups, total=total, page=page, pages=pages, per=per,
+                           stats=stats, months=months, writers=writers, filters=filters,
+                           when_label=when_label.get(when, "Any time"), by_label=by_label,
+                           sequences=sequences if seq_on else [], seq_on=seq_on,
+                           can_share=can_share, members=members, see_all=see_all)
+
+
+@portal_bp.route("/email/saved-emails/<int:template_id>/copy", methods=["POST"])
+@team_feature("campaigns_email.all_create")
+def email_saved_email_copy(template_id: int):
+    """Make a copy: a new saved email of yours, opened for editing."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("campaigns_email.all_create")
+    if _rperm: return _rperm
+    customer = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    vis, vp = _tpl_vis("t")
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("SELECT t.name, t.fields FROM email_templates t WHERE t.id=%s AND t.tenant_id=%s" + vis,
+                    [template_id, tenant_id] + vp)
+        src = cur.fetchone()
+        if not src:
+            flash("That saved email wasn't found.", "warning")
+            return redirect(url_for("portal.email_saved_emails"))
+        base = f"Copy of {src['name']}"[:240]
+        name, n = base, 2
+        while True:
+            cur.execute("SELECT 1 FROM email_templates WHERE tenant_id=%s AND lower(name)=lower(%s)", (tenant_id, name))
+            if not cur.fetchone():
+                break
+            name, n = f"{base} ({n})", n + 1
+        actor = _current_actor(customer)
+        cur.execute("""INSERT INTO email_templates (tenant_id, name, fields, created_by, created_by_key)
+                       VALUES (%s,%s,%s,%s,%s) RETURNING id""",
+                    (tenant_id, name, psycopg2.extras.Json(src["fields"] or {}), actor["label"], actor["key"]))
+        new_id = cur.fetchone()["id"]
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    flash(f"Copied as “{name}”. Change it and press Save email.", "success")
+    return redirect(url_for("portal.email_saved_email_edit", template_id=new_id))
+
+
+@portal_bp.route("/email/saved-emails/<int:template_id>/preview")
+@team_feature("campaigns_email.all_view")
+def email_saved_email_preview(template_id: int):
+    """The saved email as it will look (business design, names left as
+    {{First Name}} etc.), for the preview window."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.all_view"):
+        return jsonify({"error": "forbidden"}), 403
+    customer = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    vis, vp = _tpl_vis("t")
+    cur.execute("SELECT t.name, t.fields FROM email_templates t WHERE t.id=%s AND t.tenant_id=%s" + vis,
+                [template_id, tenant_id] + vp)
+    row = cur.fetchone(); cur.close(); conn.close()
+    if not row:
+        return jsonify({"error": "not found"}), 404
+    f = row["fields"] or {}
+    fields = {k: f.get(k) or "" for k in ("hero_heading", "body_html", "cta_text", "cta_url",
+                                           "image_url", "video_url", "video_picture_url")}
+    fields["signoff"] = f.get("signoff")
+    sender = _get_email_sender(tenant_id)
+    from_name = sender["from_name"] if sender else (customer.get("business_name") or "")
+    html_out = _render_builder(fields, from_name, tenant_id).replace("{{UNSUBSCRIBE_URL}}", "#")
+    ctx, shown_as = {}, None
+    try:
+        conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        _ls_exec(cur, """SELECT email FROM merchant_pipeline_leads WHERE tenant_id=%s AND email IS NOT NULL AND email <> ''
+                         AND dropped_at IS NULL ORDER BY updated_at DESC NULLS LAST LIMIT 1""", (tenant_id,))
+        lead = cur.fetchone()
+        if lead:
+            ctx = email_outreach.recipient_context(cur, tenant_id, lead["email"])
+            shown_as = " · ".join(x for x in (ctx.get("full"), ctx.get("business")) if x) or None
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ saved email preview lead error:", e)
+    return jsonify({"name": row["name"], "html": email_outreach.apply_merge(html_out, ctx, as_html=True),
+                    "subject": email_outreach.apply_merge(f.get("subject") or "", ctx, as_html=False),
+                    "preheader": email_outreach.apply_merge(f.get("preheader") or "", ctx, as_html=False),
+                    "shown_as": shown_as, "from_name": from_name})
+
+
+@portal_bp.route("/email/saved-emails/<int:template_id>/add-to-sequence", methods=["POST"])
+@team_feature("campaigns_email.sequences_edit")
+def email_saved_email_add_to_sequence(template_id: int):
+    """Add this saved email as the chosen sequence's next (last) email:
+    sent automatically, 3 days after the one before (straight away if it's
+    the first). Change either on the sequence's page."""
+    customer, resp = _seq_page_guard("campaigns_email.sequences_edit",
+                                     _team_member_has_permission("campaigns_email.sequences_edit"))
+    if resp: return resp
+    tenant_id = int(customer["tenant_id"])
+    seq_raw = request.form.get("sequence_id") or ""
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        vis, vp = _tpl_vis("t")
+        cur.execute("SELECT t.name FROM email_templates t WHERE t.id=%s AND t.tenant_id=%s" + vis,
+                    [template_id, tenant_id] + vp)
+        tpl = cur.fetchone()
+        seq = _seq_get(cur, tenant_id, int(seq_raw)) if seq_raw.isdigit() else None
+        if not tpl or not seq:
+            flash("Choose a sequence.", "warning")
+            return redirect(url_for("portal.email_saved_emails"))
+        cur.execute("SELECT count(*) AS n FROM email_sequence_steps WHERE sequence_id=%s", (seq["id"],))
+        n = cur.fetchone()["n"]
+        cur.execute("""INSERT INTO email_sequence_steps (sequence_id, position, template_id, wait_days, send_mode)
+                       VALUES (%s,%s,%s,%s,'auto')""", (seq["id"], n + 1, template_id, 0 if n == 0 else 3))
+        cur.execute("UPDATE email_sequences SET updated_at=NOW() WHERE id=%s", (seq["id"],))
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    flash(f"“{tpl['name']}” added as Email {n + 1} of “{seq['name']}”. Check the days to wait and how it's sent, then Save.",
+          "success")
+    return redirect(url_for("portal.email_sequence_detail", seq_id=seq["id"]))
+
+
+@portal_bp.route("/email/saved-emails/<int:template_id>/share", methods=["POST"])
+@team_feature("campaigns_email.all_view")
+def email_saved_email_share(template_id: int):
+    """Owner / IT: choose which team members can see and use this saved
+    email (replaces the list)."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("campaigns_email.all_view")
+    if _rperm: return _rperm
+    customer = _get_customer(_customer_id())
+    if not _can_share_saved_emails():
+        flash("Only the owner or IT can share saved emails.", "warning")
+        return redirect(url_for("portal.email_saved_emails"))
+    tenant_id = int(customer["tenant_id"])
+    ids = {int(i) for i in request.form.getlist("team_member_id") if i.isdigit()}
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT name FROM email_templates WHERE id=%s AND tenant_id=%s", (template_id, tenant_id))
+        tpl = cur.fetchone()
+        if not tpl:
+            return redirect(url_for("portal.email_saved_emails"))
+        cur.execute("SELECT id FROM team_members WHERE tenant_id=%s AND id = ANY(%s)", (tenant_id, list(ids)))
+        ids = [r[0] for r in cur.fetchall()]
+        cur.execute("DELETE FROM email_template_shares WHERE template_id=%s AND NOT (team_member_id = ANY(%s))",
+                    (template_id, ids))
+        for i in ids:
+            cur.execute("""INSERT INTO email_template_shares (template_id, team_member_id, shared_by)
+                           VALUES (%s,%s,%s) ON CONFLICT DO NOTHING""",
+                        (template_id, i, _current_actor(customer)["label"]))
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    flash(f"“{tpl[0]}” is now shared with {len(ids)} team member{'s' if len(ids) != 1 else ''}." if ids
+          else f"“{tpl[0]}” is no longer shared with anyone.", "success")
+    return redirect(url_for("portal.email_saved_emails") + f"#se-{template_id}")
+
+
+@portal_bp.route("/email/ai/write", methods=["POST"])
+@team_feature("campaigns_email.ai_write")
+def email_ai_write():
+    """✨ Write with AI: a new draft (1 AI design) or a free rewrite
+    (`how` set, up to 5 per draft). Fills the editor; never sends."""
+    r = _require_login()
+    if r: return jsonify({"error": "Please log in again."}), 401
+    if not _team_member_has_permission("campaigns_email.ai_write"):
+        return jsonify({"error": "Your role can't write emails with AI. Ask your manager."}), 403
+    customer = _get_customer(_customer_id())
+    if not _plan_grants_feature(_get_tenant_plan(int(customer["tenant_id"])), "campaigns_email.ai_write"):
+        return jsonify({"error": "Writing emails with AI isn't included in your plan."}), 403
+    tenant_id = int(customer["tenant_id"])
+    actor = _current_actor(customer)
+    sender = _get_email_sender(tenant_id)
+    business = (sender or {}).get("from_name") or customer.get("business_name") or "the business"
+    vis, vp = _tpl_vis("t")
+    f = request.form
+    try:
+        if (f.get("how") or "").strip():
+            out = email_ai_writer.rewrite(
+                tenant_id, actor["key"], actor["label"], business, int(f.get("draft_id") or 0), f.get("how"),
+                {k: f.get(k) or "" for k in ("subject", "body_html", "cta_text", "cta_url")}, vis, vp)
+        else:
+            out = email_ai_writer.write(tenant_id, actor["key"], actor["label"], business, f.get("brief"),
+                                        f.get("kind"), f.get("tone"), vis, vp)
+    except email_ai_writer.WriterError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        print("⚠️ email_ai_write error:", e)
+        return jsonify({"error": "Something went wrong. This wasn't counted. Please try again."}), 500
+    allow = ai_designer.allowance(ai_designer.tenant_owner(tenant_id), tenant_id)
+    out["designs_left"] = allow["left"] + allow["extra"]
+    return jsonify(dict(out, ok=True))
+
+
+# ── New Email / Edit page (2026-10-08 redesign, mock-up approved) ──
+# Its own page: on-page guide, editor sections on the left, the real email
+# on the right ("Preview as" a lead, Desktop / Phone) with Send test inside.
+
+def _render_email_editor(customer: dict, template: dict = None):
+    tenant_id = int(customer["tenant_id"])
+    sender = _get_email_sender(tenant_id)
+    design = {}
+    leads = []
+    try:
+        conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        design = email_outreach.get_brand(cur, tenant_id)
+        _ls_exec(cur, """SELECT id, contact_person, customer_name, email FROM merchant_pipeline_leads
+                         WHERE tenant_id=%s AND email IS NOT NULL AND email <> '' AND dropped_at IS NULL
+                         ORDER BY updated_at DESC NULLS LAST LIMIT 40""", (tenant_id,))
+        leads = cur.fetchall()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ email editor load error:", e)
+    return render_template(
+        "portal/email_editor.html", template=template, design=design, sender=sender,
+        merge_fields=[f for f, _ in email_outreach.MERGE_FIELDS], preview_leads=leads,
+        test_to=_default_reply_to(customer), ai_write=_email_ai_write_status(tenant_id),
+        can_test=_team_member_has_permission("campaigns_email.all_send"))
+
+
+def _email_editor_render(customer: dict, form):
+    """(subject, preheader, html, from_name) for the editor's fields, names
+    filled in for the chosen lead (or the "there" fallbacks)."""
+    tenant_id = int(customer["tenant_id"])
+    sender = _get_email_sender(tenant_id)
+    from_name = sender["from_name"] if sender else (customer.get("business_name") or "")
+    html_body = _render_builder(_builder_fields(form), from_name, tenant_id)
+    ctx = {}
+    lead_raw = form.get("lead_id") or ""
+    if lead_raw.isdigit() and _lead_visible(tenant_id, int(lead_raw)):
+        conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT email FROM merchant_pipeline_leads WHERE id=%s AND tenant_id=%s", (int(lead_raw), tenant_id))
+        row = cur.fetchone()
+        if row and row["email"]:
+            ctx = email_outreach.recipient_context(cur, tenant_id, row["email"])
+        cur.close(); conn.close()
+    html_body = email_outreach.apply_merge(html_body, ctx, as_html=True)
+    subject = email_outreach.apply_merge((form.get("subject") or "").strip(), ctx, as_html=False)
+    preheader = email_outreach.apply_merge((form.get("preheader") or "").strip(), ctx, as_html=False)
+    return subject, preheader, html_body, from_name
+
+
+@portal_bp.route("/email/editor/preview", methods=["POST"])
+@team_feature("campaigns_email.all_create")
+def email_editor_preview():
+    r = _require_login()
+    if r: return jsonify({"error": "Please log in again."}), 401
+    if not _team_member_has_permission("campaigns_email.all_create"):
+        return jsonify({"error": "forbidden"}), 403
+    customer = _get_customer(_customer_id())
+    try:
+        subject, preheader, html_body, from_name = _email_editor_render(customer, request.form)
+    except Exception as e:
+        print("⚠️ email editor preview error:", e)
+        return jsonify({"error": "Couldn't build the preview. Try again."}), 500
+    return jsonify({"html": html_body.replace("{{UNSUBSCRIBE_URL}}", "#"), "subject": subject,
+                    "preheader": preheader, "from_name": from_name})
+
+
+@portal_bp.route("/email/editor/send-test", methods=["POST"])
+@team_feature("campaigns_email.all_send")
+def email_editor_send_test():
+    """One test email of what's in the editor to the address typed (the
+    sender's own by default). Subject starts with [TEST]. 20 an hour each."""
+    r = _require_login()
+    if r: return jsonify({"error": "Please log in again."}), 401
+    if not _team_member_has_permission("campaigns_email.all_send"):
+        return jsonify({"error": "Your role can't send test emails. Ask your manager."}), 403
+    customer = _get_customer(_customer_id())
+    gate = _require_email_campaigns_plan(customer)
+    if gate: return jsonify({"error": "Email Campaigns isn't included in your plan."}), 403
+    tenant_id = int(customer["tenant_id"])
+    import re as _re_t, time as _time_t
+    to = (request.form.get("to") or "").strip()
+    if not _re_t.fullmatch(r"[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+", to):
+        return jsonify({"error": "Type one email address to send the test to."}), 400
+    if not (request.form.get("subject") or "").strip():
+        return jsonify({"error": "Add a subject line first."}), 400
+    sent_log = [t for t in session.get("email_test_log", []) if t > _time_t.time() - 3600]
+    if len(sent_log) >= 20:
+        return jsonify({"error": "You've sent 20 tests in the last hour. Please wait a little."}), 429
+    sender = _get_email_sender(tenant_id)
+    if not sender:
+        return jsonify({"error": "No sending address is set up for this business yet, so tests can't go out. "
+                                 "Ask PhiXtra support to set one up."}), 400
+    subject, preheader, html_body, from_name = _email_editor_render(customer, request.form)
+    html_body = html_body.replace("{{UNSUBSCRIBE_URL}}", "https://portal.phixtra.com/email/unsubscribe?t=test")
+    try:
+        ok, err = zeptomail_api.send_email(sender["token"], sender["from_email"], sender["from_name"],
+                                           to, "", f"[TEST] {subject}", html_body,
+                                           reply_to=_default_reply_to(customer) or None)
+    except Exception as e:
+        ok, err = False, str(e)
+    if not ok:
+        print("⚠️ email editor test send failed:", err)
+        return jsonify({"error": f"The test couldn't be sent: {err or 'unknown error'}"}), 502
+    session["email_test_log"] = sent_log + [_time_t.time()]
+    return jsonify({"ok": True, "to": to, "from": sender["from_email"],
+                    "at": datetime.now().strftime("%H:%M")})
+
+
+@portal_bp.route("/email/new")
+@team_feature("campaigns_email.all_create")
+def email_new():
+    """New Email: write an email and save it to Saved Emails."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("campaigns_email.all_create")
+    if _rperm: return _rperm
+    customer = _get_customer(_customer_id())
+    gate = _require_email_campaigns_plan(customer)
+    if gate: return gate
+    return _render_email_editor(customer)
+
+
+@portal_bp.route("/email/saved-emails/<int:template_id>/edit")
+@team_feature("campaigns_email.all_create")
+def email_saved_email_edit(template_id: int):
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("campaigns_email.all_create")
+    if _rperm: return _rperm
+    customer = _get_customer(_customer_id())
+    gate = _require_email_campaigns_plan(customer)
+    if gate: return gate
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    vis, vp = _tpl_vis("t")
+    cur.execute("SELECT t.id, t.name, t.fields, t.created_by_key FROM email_templates t WHERE t.id=%s AND t.tenant_id=%s" + vis,
+                [template_id, int(customer["tenant_id"])] + vp)
+    tpl = cur.fetchone(); cur.close(); conn.close()
+    if not tpl or not _tpl_is_mine(tpl):
+        flash("You can only edit saved emails you made yourself.", "warning")
+        return redirect(url_for("portal.email_saved_emails"))
+    return _render_email_editor(customer, {"id": tpl["id"], "name": tpl["name"], "fields": tpl["fields"] or {}})
+
+
+@portal_bp.route("/email/saved-emails/save", methods=["POST"])
+@team_feature("campaigns_email.all_create")
+def email_saved_email_save():
+    """Save from the New Email / Edit page. template_id set = update that
+    one (theirs only; may be renamed); otherwise a new saved email."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("campaigns_email.all_create"):
+        return jsonify({"error": "forbidden"}), 403
+    customer = _get_customer(_customer_id())
+    gate = _require_email_campaigns_plan(customer)
+    if gate: return jsonify({"error": "upgrade required"}), 403
+    tenant_id = int(customer["tenant_id"])
+    name = (request.form.get("name") or "").strip()[:255]
+    fields = _builder_fields(request.form)
+    fields.update(subject=(request.form.get("subject") or "").strip(),
+                  preheader=(request.form.get("preheader") or "").strip())
+    import re as _re_se
+    if not name:
+        return jsonify({"error": "Give the email a name — it's how you'll find it in Saved Emails."}), 400
+    if not fields["subject"]:
+        return jsonify({"error": "Add a subject line."}), 400
+    if len(fields["subject"]) > 120 or len(fields.get("preheader") or "") > 120:
+        return jsonify({"error": "Keep the subject line and preview text to 120 characters each."}), 400
+    if not _re_se.sub(r"<[^>]*>|&nbsp;", "", fields.get("body_html") or "").strip():
+        return jsonify({"error": "Write the message."}), 400
+    tid_raw = request.form.get("template_id") or ""
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("SELECT id, created_by_key FROM email_templates WHERE tenant_id=%s AND lower(name)=lower(%s)",
+                    (tenant_id, name))
+        same = cur.fetchone()
+        if tid_raw.isdigit():
+            cur.execute("SELECT id, created_by_key FROM email_templates WHERE id=%s AND tenant_id=%s",
+                        (int(tid_raw), tenant_id))
+            row = cur.fetchone()
+            if not row or not _tpl_is_mine(row):
+                return jsonify({"error": "You can only edit saved emails you made yourself."}), 403
+            if same and same["id"] != row["id"]:
+                return jsonify({"error": "Another saved email already has that name. Please choose a different one."}), 409
+            cur.execute("UPDATE email_templates SET name=%s, fields=%s, updated_at=NOW() WHERE id=%s",
+                        (name, psycopg2.extras.Json(fields), row["id"]))
+            tid, msg = row["id"], f"“{name}” saved."
+        else:
+            if same:
+                return jsonify({"error": "A saved email already has that name. Please choose a different one."}), 409
+            actor = _current_actor(customer)
+            cur.execute("""INSERT INTO email_templates (tenant_id, name, fields, created_by, created_by_key)
+                           VALUES (%s,%s,%s,%s,%s) RETURNING id""",
+                        (tenant_id, name, psycopg2.extras.Json(fields), actor["label"], actor["key"]))
+            tid, msg = cur.fetchone()["id"], f"“{name}” saved to Saved Emails."
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    flash(msg, "success")
+    return jsonify({"ok": True, "id": tid, "next": url_for("portal.email_saved_emails") + f"#se-{tid}"})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -30626,7 +32381,9 @@ def _bulk_selected_lead_ids(cur, tenant_id: int, form, scope: str, actor_key: st
                     f"WHERE {' AND '.join(clauses)} AND {_BULK_SCOPES['leads']}",
                     [tenant_id] + params)
     else:
-        ids = sorted({int(v) for v in form.getlist("lead_ids") if str(v).isdigit()})
+        # lead_ids_csv: the Leads page sends its ticked rows as one field.
+        raw = list(form.getlist("lead_ids")) + str(form.get("lead_ids_csv") or "").split(",")
+        ids = sorted({int(v) for v in raw if str(v).strip().isdigit()})
         if not ids:
             return []
         _ssql, _sparams = _lead_scope("mpl")
@@ -32497,6 +34254,8 @@ def lead_detail(lead_id: int):
         last_worked_by=last_worked_by,
         not_a_fit_reasons=PIPELINE_NOT_A_FIT_REASONS,
         assignees=_lead_assignees(tenant_id, customer),
+        email_history=_lead_email_history(tenant_id, lead_id),
+        lead_sequences=_lead_sequences(tenant_id, lead),
     )
 
 

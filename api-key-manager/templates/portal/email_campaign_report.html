@@ -118,6 +118,29 @@
   </div>
 </div>
 
+{% if campaign.track %}
+{% set _opened = recipients|selectattr('opened_at')|list|length %}
+{% set _clicked = recipients|selectattr('clicked_at')|list|length %}
+{% set _replied = recipients|selectattr('replied_at')|list|length %}
+<div class="rpt-stats">
+  <div class="rpt-stat">
+    <div class="rpt-stat-label">Opened</div>
+    <div class="rpt-stat-value">{{ _opened }}</div>
+    <div class="rpt-stat-sub">A guide only: some mail apps block pictures</div>
+  </div>
+  <div class="rpt-stat">
+    <div class="rpt-stat-label">Clicked</div>
+    <div class="rpt-stat-value">{{ _clicked }}</div>
+    <div class="rpt-stat-sub">{{ (_clicked / sent * 100)|round|int if sent else 0 }}% of emails sent</div>
+  </div>
+  <div class="rpt-stat">
+    <div class="rpt-stat-label">Replied</div>
+    <div class="rpt-stat-value">{{ _replied }}</div>
+    <div class="rpt-stat-sub">Marked on the lead by your team</div>
+  </div>
+</div>
+{% endif %}
+
 <div class="section-card">
   <div class="section-card-header">
     <h2>Recipient Breakdown</h2>
@@ -143,17 +166,20 @@
   <div style="overflow-x:auto">
     <table class="rpt-table" id="recipTable">
       <thead>
-        <tr><th>#</th><th>Email</th><th>Status</th><th>Sent At</th><th>Error</th></tr>
+        <tr><th>#</th><th>Email</th><th>Status</th><th>Sent At</th>{% if campaign.track %}<th>Engagement</th>{% endif %}<th>Error</th></tr>
       </thead>
       <tbody>
         {% for r in recipients %}
         <tr data-status="{{ 'sent' if r.status == 'sent' else 'failed' }}" data-email="{{ r.email|lower }}">
           <td style="color:var(--muted);font-size:12px">{{ loop.index }}</td>
-          <td style="font-weight:600">{{ r.email }}</td>
+          <td style="font-weight:600">{% if r.lead_id %}<a href="{{ url_for('portal.lead_detail', lead_id=r.lead_id) }}#emails" style="color:inherit">{{ r.email }}</a>{% else %}{{ r.email }}{% endif %}</td>
           <td><span class="badge badge-{{ r.status }}">{{ r.status|capitalize }}</span></td>
           <td style="font-size:12px;color:var(--muted);white-space:nowrap">
             {{ r.sent_at.strftime('%d %b %Y %H:%M:%S') if r.sent_at else '—' }}
           </td>
+          {% if campaign.track %}<td style="font-size:12px;white-space:nowrap">
+            {% if r.replied_at %}<strong>Replied</strong>{% elif r.clicked_at %}<strong>Clicked</strong>{% elif r.opened_at %}Opened{% else %}<span style="color:var(--muted)">—</span>{% endif %}
+          </td>{% endif %}
           <td style="font-size:12px;color:#dc2626;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
               title="{{ r.error_msg or '' }}">
             {{ r.error_msg or '—' }}

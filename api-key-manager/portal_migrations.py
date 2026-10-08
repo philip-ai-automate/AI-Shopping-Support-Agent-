@@ -4075,6 +4075,174 @@ def ensure_portal_tables():
             cur.execute(_GRANT_ONCE_SQL, (pid, "store.website_connect"))
         cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('store.website_connect') ON CONFLICT DO NOTHING")
 
+        # ── Email outreach (2026-10-08): designed emails, saved templates,
+        # name filling, opens/clicks/replies on the lead's history. ──
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS email_brand_settings (
+                tenant_id      INTEGER PRIMARY KEY,
+                logo_url       TEXT,
+                brand_color    VARCHAR(9),
+                footer_address TEXT,
+                footer_note    TEXT,
+                signoff        TEXT,
+                updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS email_templates (
+                id           BIGSERIAL PRIMARY KEY,
+                tenant_id    INTEGER      NOT NULL,
+                name         VARCHAR(255) NOT NULL,
+                fields       JSONB        NOT NULL DEFAULT '{}'::jsonb,
+                created_by   VARCHAR(160),
+                created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS email_templates_t_idx ON email_templates (tenant_id, name)")
+        for _col, _type in (("reply_to", "VARCHAR(255)"), ("fields", "JSONB"), ("track", "BOOLEAN")):
+            if not _column_exists(cur, "email_campaigns", _col):
+                cur.execute(f"ALTER TABLE email_campaigns ADD COLUMN {_col} {_type}")
+        for _col, _type in (("lead_id", "BIGINT"), ("contact_id", "BIGINT"), ("token", "VARCHAR(40)"),
+                            ("opened_at", "TIMESTAMPTZ"), ("open_count", "INTEGER NOT NULL DEFAULT 0"),
+                            ("clicked_at", "TIMESTAMPTZ"), ("click_count", "INTEGER NOT NULL DEFAULT 0"),
+                            ("replied_at", "TIMESTAMPTZ")):
+            if not _column_exists(cur, "email_campaign_recipients", _col):
+                cur.execute(f"ALTER TABLE email_campaign_recipients ADD COLUMN {_col} {_type}")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS ecr_token_idx ON email_campaign_recipients (token) WHERE token IS NOT NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS ecr_lead_idx ON email_campaign_recipients (lead_id) WHERE lead_id IS NOT NULL")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS email_events (
+                id           BIGSERIAL PRIMARY KEY,
+                tenant_id    INTEGER      NOT NULL,
+                campaign_id  BIGINT,
+                recipient_id BIGINT,
+                lead_id      BIGINT,
+                contact_id   BIGINT,
+                email        VARCHAR(255),
+                kind         VARCHAR(20)  NOT NULL,
+                detail       TEXT,
+                actor        VARCHAR(160),
+                created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS email_events_lead_idx ON email_events (lead_id, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS email_events_contact_idx ON email_events (contact_id, created_at DESC)")
+        # Tracking + CRM history = plans that already have Email Campaigns
+        # (user 2026-10-08: "Pro and above"); the Plan editor decides after.
+        cur.execute("SELECT id FROM plans WHERE COALESCE(feat_email_campaigns, FALSE)")
+        for (pid,) in cur.fetchall():
+            cur.execute(_GRANT_ONCE_SQL, (pid, "campaigns_email.tracking"))
+        cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('campaigns_email.tracking') ON CONFLICT DO NOTHING")
+
+        # ── Email sequences (2026-10-08): a run of saved emails sent days
+        # apart, each step automatic or sent by hand; stops on reply,
+        # unsubscribe or a closed lead. Each step has its own email_campaigns
+        # row (status 'sequence') so tracking, reports and lead history work
+        # unchanged. ──
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS email_sequences (
+                id          BIGSERIAL PRIMARY KEY,
+                tenant_id   INTEGER      NOT NULL,
+                name        VARCHAR(255) NOT NULL,
+                status      VARCHAR(20)  NOT NULL DEFAULT 'paused',
+                reply_to    VARCHAR(255),
+                created_by  VARCHAR(160),
+                created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS email_sequences_t_idx ON email_sequences (tenant_id)")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS email_sequence_steps (
+                id           BIGSERIAL PRIMARY KEY,
+                sequence_id  BIGINT       NOT NULL REFERENCES email_sequences(id) ON DELETE CASCADE,
+                position     INTEGER      NOT NULL,
+                template_id  BIGINT,
+                wait_days    INTEGER      NOT NULL DEFAULT 0,
+                send_mode    VARCHAR(10)  NOT NULL DEFAULT 'auto',
+                campaign_id  BIGINT
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS email_sequence_steps_s_idx ON email_sequence_steps (sequence_id, position)")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS email_sequence_people (
+                id           BIGSERIAL PRIMARY KEY,
+                tenant_id    INTEGER      NOT NULL,
+                sequence_id  BIGINT       NOT NULL REFERENCES email_sequences(id) ON DELETE CASCADE,
+                email        VARCHAR(255) NOT NULL,
+                lead_id      BIGINT,
+                contact_id   BIGINT,
+                steps_sent   INTEGER      NOT NULL DEFAULT 0,
+                next_due_at  TIMESTAMPTZ,
+                status       VARCHAR(20)  NOT NULL DEFAULT 'active',
+                stop_reason  TEXT,
+                added_by     VARCHAR(160),
+                added_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                last_sent_at TIMESTAMPTZ,
+                watch_from   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS esp_seq_email_idx ON email_sequence_people (sequence_id, lower(email))")
+        cur.execute("CREATE INDEX IF NOT EXISTS esp_due_idx ON email_sequence_people (status, next_due_at)")
+        cur.execute("CREATE INDEX IF NOT EXISTS esp_lead_idx ON email_sequence_people (lead_id) WHERE lead_id IS NOT NULL")
+        if not _column_exists(cur, "email_campaigns", "sequence_id"):
+            cur.execute("ALTER TABLE email_campaigns ADD COLUMN sequence_id BIGINT")
+        # Same plans as tracking (approved 2026-10-08: tracking, sequences and
+        # mailbox on Pro and above); the Plan editor decides after.
+        _seq_keys = ("campaigns_email.sequences_view", "campaigns_email.sequences_create",
+                     "campaigns_email.sequences_edit", "campaigns_email.sequences_send",
+                     "campaigns_email.sequences_delete")
+        cur.execute("SELECT id FROM plans WHERE COALESCE(feat_email_campaigns, FALSE)")
+        for (pid,) in cur.fetchall():
+            for _k in _seq_keys:
+                cur.execute(_GRANT_ONCE_SQL, (pid, _k))
+        for _k in _seq_keys:
+            cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES (%s) ON CONFLICT DO NOTHING", (_k,))
+
+        # ── Saved Emails access (2026-10-08): staff see the saved emails they
+        # saved plus ones the owner / IT shared with them; "See all saved
+        # emails" (campaigns_email.saved_see_all) opens them all. Old rows
+        # (no key) count as the business's own: only see-all can see them. ──
+        cur.execute("ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS created_by_key VARCHAR(40)")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS email_template_shares (
+                template_id    BIGINT       NOT NULL REFERENCES email_templates(id) ON DELETE CASCADE,
+                team_member_id INTEGER      NOT NULL,
+                shared_by      VARCHAR(160),
+                created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (template_id, team_member_id)
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS ets_member_idx ON email_template_shares (team_member_id)")
+        cur.execute("SELECT id FROM plans WHERE COALESCE(feat_email_campaigns, FALSE)")
+        for (pid,) in cur.fetchall():
+            cur.execute(_GRANT_ONCE_SQL, (pid, "campaigns_email.saved_see_all"))
+        cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('campaigns_email.saved_see_all') ON CONFLICT DO NOTHING")
+
+        # ── Write with AI (2026-10-08): drafts the AI wrote on New Email.
+        # Uses the AI designs balance (ai_design_usage, actions email_draft /
+        # email_rewrite). The Roles tick starts ON for roles that can already
+        # create emails (approved: "a tick so you can turn it off"). ──
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS email_ai_drafts (
+                id             BIGSERIAL PRIMARY KEY,
+                tenant_id      INTEGER      NOT NULL,
+                created_by_key VARCHAR(40),
+                brief          TEXT,
+                kind           VARCHAR(30),
+                tone           VARCHAR(30),
+                result         JSONB,
+                rewrites_used  INTEGER      NOT NULL DEFAULT 0,
+                created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS email_ai_drafts_t_idx ON email_ai_drafts (tenant_id, created_at DESC)")
+        cur.execute("SELECT id FROM plans WHERE COALESCE(feat_email_campaigns, FALSE)")
+        for (pid,) in cur.fetchall():
+            cur.execute(_GRANT_ONCE_SQL, (pid, "campaigns_email.ai_write"))
+        cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('campaigns_email.ai_write') ON CONFLICT DO NOTHING")
+        cur.execute("CREATE TABLE IF NOT EXISTS role_key_backfill_seen (feature_key TEXT PRIMARY KEY)")
+        cur.execute("SELECT 1 FROM role_key_backfill_seen WHERE feature_key='campaigns_email.ai_write'")
+        if not cur.fetchone():
+            cur.execute("""UPDATE tenant_roles SET permissions = permissions || jsonb_build_object('campaigns_email.ai_write', true)
+                           WHERE (permissions->>'campaigns_email.all_create') = 'true'""")
+            cur.execute("INSERT INTO role_key_backfill_seen (feature_key) VALUES ('campaigns_email.ai_write')")
+
         # Anything a backfill above granted this run is now "seen" — never
         # re-granted on a later start (see _GRANT_ONCE_SQL).
         cur.execute("""

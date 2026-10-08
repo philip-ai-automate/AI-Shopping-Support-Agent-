@@ -1,0 +1,517 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ 'Edit email' if template else 'New email' }} — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap">
+<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+<style>
+/* New Email / Edit (2026-10-08, approved mock-up): sticky action bar, on-page
+   guide, editor sections on the left, the real email on the right. */
+.ne { --navy:#0B1D40; --ink:#111E2D; --mut:#5A6B85; --ln:#DCE3EE; --cv:#F3F5F9; --pp:#FFFFFF; --soft:#EEF2F9;
+      --good:#12804A; --warn:#B54708; --bad:#B42318;
+      --fh:"Poppins","Segoe UI",Arial,sans-serif; --fb:"Inter","Segoe UI",Arial,sans-serif;
+      font-family: var(--fb); color: var(--ink); }
+.ne * { box-sizing: border-box; }
+.ne-bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--pp); border: 1px solid var(--ln);
+          border-radius: 12px; padding: 12px 18px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 18px;
+          box-shadow: 0 1px 2px rgba(11,29,64,.05); }
+.ne-crumbs { font-size: 12px; color: var(--mut); }
+.ne-crumbs a { color: var(--mut); text-decoration: none; } .ne-crumbs a:hover { color: var(--ink); }
+.ne-crumbs b { color: var(--ink); font-weight: 600; }
+.ne-bar h1 { font: 700 19px/1.25 var(--fh); margin: 2px 0 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; text-wrap: balance; }
+.ne-state { font: 600 10.5px var(--fb); letter-spacing: .05em; text-transform: uppercase; border-radius: 999px; padding: 3px 9px; background: var(--soft); color: var(--mut); }
+.ne-state.saved { background: #E7F6EE; color: var(--good); }
+.ne-state.dirty { background: #FEF3E2; color: var(--warn); }
+.ne-acts { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ne-btn { font: 600 13px var(--fb); border-radius: 8px; padding: 9px 14px; border: 1px solid var(--ln); background: var(--pp); color: var(--ink);
+          cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; line-height: 1.2; }
+.ne-btn:hover { border-color: #B9C6DB; }
+.ne-btn:disabled { opacity: .55; cursor: default; }
+.ne-btn.pri { background: var(--navy); border-color: var(--navy); color: #fff; }
+.ne-btn.quiet { border-color: transparent; background: transparent; color: var(--mut); }
+.ne-btn.sm { padding: 6px 10px; font-size: 12px; }
+.ne-pill { font: 600 12px var(--fb); color: var(--navy); background: var(--pp); border: 1px solid var(--ln); border-radius: 999px; padding: 7px 12px; cursor: pointer; }
+.ne :focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+.ne-msg { margin: -6px 0 16px; padding: 10px 14px; border-radius: 10px; font-size: 13px; }
+.ne-msg.err { background: #FEF0EE; border: 1px solid #F8C7C0; color: var(--bad); }
+.ne-msg.ok { background: #ECF8F1; border: 1px solid #BFE6CF; color: var(--good); }
+.ne-work { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.ne-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ne-panel { background: var(--pp); border: 1px solid var(--ln); border-radius: 12px; }
+.ne-ph { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 13px 18px; border-bottom: 1px solid var(--ln); flex-wrap: wrap; }
+.ne-ph h2 { font: 600 15px var(--fh); margin: 0; color: var(--ink); }
+.ne-note { font-size: 12px; color: var(--mut); }
+.ne-pb { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.ne-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.ne-f { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ne-lab { font-size: 12px; font-weight: 600; color: var(--ink); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.ne-lab span { font-weight: 400; color: var(--mut); }
+.ne-in { font: 14px var(--fb); color: var(--ink); border: 1px solid var(--ln); border-radius: 8px; padding: 9px 11px; background: var(--pp); width: 100%; }
+.ne-in:focus { border-color: #8EA5CC; outline: none; box-shadow: 0 0 0 3px rgba(11,29,64,.08); }
+textarea.ne-in { resize: vertical; line-height: 1.5; }
+.ne-count { font-size: 11px; color: var(--mut); font-variant-numeric: tabular-nums; font-weight: 500; }
+.ne-count.ok { color: var(--good); } .ne-count.over { color: var(--bad); }
+.ne .ne-insert { font: 600 12px var(--fb); color: var(--navy); background: var(--soft); border: 1px solid var(--ln); border-radius: 6px; padding: 5px 8px; cursor: pointer; width: auto; flex: none; min-width: 0; }
+.ne-inline { display: flex; gap: 8px; align-items: center; }
+.ne-inline .ne-in { flex: 1; }
+/* guide */
+.ne-guide summary { list-style: none; cursor: pointer; }
+.ne-guide summary::-webkit-details-marker { display: none; }
+.ne-guide summary .ne-ph { border-bottom: none; background: #F7F9FC; border-radius: 12px; }
+.ne-guide[open] summary .ne-ph { border-bottom: 1px solid var(--ln); border-radius: 12px 12px 0 0; }
+.ne-guide .chev::after { content: "Show guide ▾"; }
+.ne-guide[open] .chev::after { content: "Hide guide ▴"; }
+.ne-steps { list-style: none; counter-reset: s; margin: 0; padding: 16px 18px 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 22px; }
+.ne-steps li { counter-increment: s; display: grid; grid-template-columns: 26px 1fr; gap: 10px; font-size: 13px; line-height: 1.5; }
+.ne-steps li::before { content: counter(s); width: 24px; height: 24px; border-radius: 50%; background: var(--navy); color: #fff;
+                       display: grid; place-items: center; font: 600 12px var(--fh); }
+.ne-steps b { display: block; font-weight: 600; }
+.ne-steps span { color: var(--mut); }
+.ne-tips { margin: 0 18px 16px; padding: 12px 14px; background: var(--soft); border-radius: 8px; font-size: 12.5px; display: grid; gap: 6px; line-height: 1.5; }
+.ne-tips p { margin: 0; }
+/* AI */
+.ne-ai { border-color: #C9D3E6; }
+.ne-ai .ne-ph { background: linear-gradient(90deg, #F2F5FB, var(--pp)); border-radius: 12px 12px 0 0; }
+.ne-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.ne-chip { font: 500 12.5px var(--fb); border: 1px solid var(--ln); background: var(--pp); color: var(--ink); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+.ne-chip.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+.ne-aifoot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ne-aimsg { font-size: 12.5px; color: var(--mut); }
+.ne-aimsg.err { color: var(--bad); } .ne-aimsg.ok { color: var(--good); }
+/* editor */
+.ne-editor { border: 1px solid var(--ln); border-radius: 8px; overflow: hidden; }
+.ne-edtop { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: #F8FAFC; border-bottom: 1px solid var(--ln); padding: 0 8px 0 0; }
+.ne-editor #quillToolbar { border: none; background: transparent; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 6px 8px; font-family: var(--fb); flex: 1; min-width: 0; }
+.ne-edtop .ne-insert { margin: 6px 0 6px 8px; }
+.ne-editor .ql-container.ql-snow { border: none; font: 14.5px/1.65 var(--fb); }
+.ne-editor .ql-editor { min-height: 240px; padding: 16px 18px; }
+.ne-editor .ql-editor blockquote { border-left: 3px solid #9DB8E8; color: var(--navy); padding-left: 12px; }
+.ne-editor .ql-editor.ql-blank::before { color: #98A5B9; font-style: normal; }
+#quillToolbar .ql-picker.ql-size .ql-picker-label::before, #quillToolbar .ql-picker.ql-size .ql-picker-item::before { content: attr(data-value) !important; }
+#quillToolbar .ql-picker.ql-size .ql-picker-label:not([data-value])::before { content: '12' !important; }
+#quillToolbar .ql-picker.ql-font .ql-picker-label::before, #quillToolbar .ql-picker.ql-font .ql-picker-item::before { content: attr(data-value) !important; }
+#quillToolbar .ql-picker.ql-font .ql-picker-label:not([data-value])::before,
+#quillToolbar .ql-picker.ql-font .ql-picker-label[data-value=""]::before,
+#quillToolbar .ql-picker.ql-font .ql-picker-item[data-value=""]::before { content: 'Default font' !important; }
+#quillToolbar .ql-picker.ql-size { width: 64px; } #quillToolbar .ql-picker.ql-font { width: 112px; } #quillToolbar .ql-picker.ql-header { width: 108px; }
+#quillToolbar .ql-formats, #quillToolbar > * { margin-right: 0; }
+.ne-sep { width: 1px; height: 18px; background: var(--ln); margin: 0 4px; }
+.ne-media { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; border: 1.5px dashed var(--ln); border-radius: 8px; padding: 12px; font-size: 12.5px; color: var(--mut); }
+.ne-media img { max-height: 64px; max-width: 160px; border-radius: 6px; border: 1px solid var(--ln); }
+details.ne-panel > summary { list-style: none; cursor: pointer; }
+details.ne-panel > summary::-webkit-details-marker { display: none; }
+details.ne-panel:not([open]) > summary .ne-ph { border-bottom: none; }
+/* preview */
+.ne-side { position: sticky; top: 92px; display: flex; flex-direction: column; gap: 16px; }
+.ne-tabs { display: inline-flex; background: var(--soft); border-radius: 8px; padding: 3px; gap: 2px; }
+.ne-tab { font: 600 12px var(--fb); border: none; background: transparent; color: var(--mut); padding: 5px 12px; border-radius: 6px; cursor: pointer; }
+.ne-tab.on { background: var(--pp); color: var(--ink); box-shadow: 0 1px 2px rgba(11,29,64,.12); }
+.ne-as { display: flex; gap: 8px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--ln); background: #FAFBFD; font-size: 12.5px; flex-wrap: wrap; }
+.ne-as select { font: 13px var(--fb); border: 1px solid var(--ln); border-radius: 7px; padding: 6px 9px; background: var(--pp); color: var(--ink); max-width: 100%; }
+.ne-live { margin-left: auto; font-size: 11.5px; font-weight: 600; color: var(--good); }
+.ne-live.busy { color: var(--mut); }
+.ne-inbox { padding: 12px 16px; border-bottom: 1px solid var(--ln); display: grid; grid-template-columns: 34px 1fr; gap: 10px; }
+.ne-av { width: 34px; height: 34px; border-radius: 50%; background: var(--navy); color: #fff; display: grid; place-items: center; font: 700 12px var(--fh); }
+.ne-from { font-weight: 600; font-size: 13px; }
+.ne-subj { font-size: 13px; overflow-wrap: anywhere; }
+.ne-pre { font-size: 12px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ne-stage { background: var(--cv); padding: 14px; display: flex; justify-content: center; max-height: 68vh; overflow: auto; }
+.ne-stage iframe { width: 100%; max-width: 640px; border: 0; background: var(--cv); min-height: 420px; transition: max-width .2s; }
+.ne-stage.phone iframe { max-width: 375px; }
+.ne-callout { font-size: 12px; color: var(--mut); padding: 10px 16px; border-top: 1px solid var(--ln); }
+.ne-test { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 14px 16px; border-top: 1px solid var(--ln); }
+.ne-test .ne-in { flex: 1; min-width: 190px; }
+.ne-testres { width: 100%; font-size: 12.5px; border-radius: 8px; padding: 8px 10px; }
+.ne-testres.ok { color: var(--good); background: #ECF8F1; border: 1px solid #BFE6CF; }
+.ne-testres.err { color: var(--bad); background: #FEF0EE; border: 1px solid #F8C7C0; }
+.ne-checks { list-style: none; margin: 0; padding: 14px 18px; display: flex; flex-direction: column; gap: 9px; font-size: 13px; }
+.ne-checks li { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: start; }
+.ne-dot { width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; color: #fff; margin-top: 2px; background: var(--warn); }
+.ne-dot.ok { background: var(--good); } .ne-dot.na { background: #A9B4C6; }
+.ne-checks small { color: var(--mut); display: block; font-size: 12px; }
+@media (max-width: 1180px) { .ne-work { grid-template-columns: 1fr; } .ne-side { position: static; } }
+@media (max-width: 700px) {
+  .ne-bar { position: static; }
+  .ne-row, .ne-steps { grid-template-columns: 1fr; }
+  .ne-acts { margin-left: 0; width: 100%; }
+  .ne-bar { padding: 10px 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .ne-stage iframe { transition: none; } }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set f = (template.fields if template else {}) %}
+<div class="ne" id="ne">
+  <header class="ne-bar">
+    <div>
+      <div class="ne-crumbs"><a href="{{ url_for('portal.email_campaigns') }}">Email Campaigns</a> / <a href="{{ url_for('portal.email_saved_emails') }}">Saved Emails</a> / <b>{{ 'Edit email' if template else 'New email' }}</b></div>
+      <h1><span id="neTitle">{{ template.name if template else 'New email' }}</span>
+        <span class="ne-state {{ 'saved' if template }}" id="neState">{{ 'Saved' if template else 'Draft · not saved' }}</span></h1>
+    </div>
+    <div class="ne-acts">
+      <button type="button" class="ne-pill" onclick="neGuide(true)">📘 How to use this page</button>
+      <a class="ne-btn quiet" href="{{ url_for('portal.email_saved_emails') }}">Cancel</a>
+      <button type="button" class="ne-btn pri" id="neSave" onclick="neSaveEmail()">Save email</button>
+    </div>
+  </header>
+  <div class="ne-msg" id="neMsg" hidden></div>
+
+  <div class="ne-work">
+    <div class="ne-col">
+
+      <details class="ne-panel ne-guide" id="neGuide" open>
+        <summary><div class="ne-ph"><h2>📘 How to use this page</h2><span class="ne-note chev"></span></div></summary>
+        <ol class="ne-steps">
+          <li><div><b>Let AI write it, or write your own</b><span>{% if ai_write %}Type what the email is for in ✨ Write with AI and press Write it. Or skip it and type the email yourself.{% else %}Type the email in the sections below.{% endif %}</span></div></li>
+          <li><div><b>Name it and write the subject</b><span>The name is only for your team. The subject and preview text are what people see in their inbox.</span></div></li>
+          <li><div><b>Write the message</b><span>Use Insert name to add the person's first name or business name. They fill in for each person when it's sent.</span></div></li>
+          <li><div><b>Add one button</b><span>Button text says what happens, such as "Book a demo". The link is where it goes.</span></div></li>
+          <li><div><b>Check the preview</b><span>Pick a lead in Preview as to see their names filled in. Switch to Phone to see the mobile view.</span></div></li>
+          <li><div><b>Send yourself a test, then save</b><span>Send test goes to the address shown. Save email puts it in Saved Emails, ready for campaigns and sequences.</span></div></li>
+        </ol>
+        <div class="ne-tips">
+          <p><b>Good to know</b></p>
+          <p>Nothing is sent from this page except a test. Customers only get this email when you use it in a campaign or a sequence.</p>
+          <p>Your logo, colours, address and the unsubscribe link are added automatically. Change them with Email design on All Campaigns.</p>
+          <p>More detail, with pictures: <a href="{{ url_for('portal.tutorials', topic='email') }}#eml-new">the full Email Campaigns guide</a>.</p>
+          {% if ai_write %}<p>Each AI email uses 1 AI design. Try again, Shorter, More formal and Friendlier are free, up to 5 per email.</p>{% endif %}
+        </div>
+      </details>
+
+      {% if ai_write %}
+      <section class="ne-panel ne-ai" aria-labelledby="neAiH">
+        <div class="ne-ph"><h2 id="neAiH">✨ Write with AI</h2>
+          <span class="ne-note">{% if ai_write.left %}<b id="aiLeft">{{ ai_write.left }}</b> AI designs left · 1 per email, then 5 free rewrites{% else %}{{ ai_write.none_msg }}{% endif %}</span></div>
+        <div class="ne-pb">
+          <div class="ne-f">
+            <label class="ne-lab" for="aiBrief">What is this email for?</label>
+            <textarea class="ne-in" id="aiBrief" rows="2" maxlength="1200" placeholder="e.g. Follow-up for retail shops that didn't reply. Mention customers can send a photo on WhatsApp to find a product. Invite them to book a demo."></textarea>
+          </div>
+          <div class="ne-row">
+            <div class="ne-f"><span class="ne-lab">Type of email</span>
+              <div class="ne-chips" data-group="kind">{% for v, l in ai_write.kinds %}<button type="button" class="ne-chip {% if loop.first %}on{% endif %}" data-v="{{ v }}">{{ l }}</button>{% endfor %}</div></div>
+            <div class="ne-f"><span class="ne-lab">Tone</span>
+              <div class="ne-chips" data-group="tone">{% for v, l in ai_write.tones %}<button type="button" class="ne-chip {% if loop.first %}on{% endif %}" data-v="{{ v }}">{{ l }}</button>{% endfor %}</div></div>
+          </div>
+          <div class="ne-aifoot">
+            <button type="button" class="ne-btn pri" id="aiGo" onclick="aiWrite()" {% if not ai_write.left %}disabled{% endif %}>✨ Write it</button>
+            <span id="aiRewrites" hidden>
+              <button type="button" class="ne-btn sm" onclick="aiWrite('again')">↻ Try again</button>
+              <button type="button" class="ne-btn sm" onclick="aiWrite('shorter')">Shorter</button>
+              <button type="button" class="ne-btn sm" onclick="aiWrite('formal')">More formal</button>
+              <button type="button" class="ne-btn sm" onclick="aiWrite('friendlier')">Friendlier</button>
+              <span class="ne-note" id="aiRewLeft"></span>
+            </span>
+          </div>
+          <div class="ne-aimsg" id="aiMsg"></div>
+        </div>
+      </section>
+      {% endif %}
+
+      <section class="ne-panel" aria-labelledby="neDetH">
+        <div class="ne-ph"><h2 id="neDetH">Email details</h2><span class="ne-note">What people see in their inbox</span></div>
+        <div class="ne-pb">
+          <div class="ne-f"><label class="ne-lab" for="fName">Email name <span>Only your team sees this</span></label>
+            <input class="ne-in" id="fName" maxlength="255" placeholder="e.g. Retail 5 · follow-up" value="{{ template.name if template else '' }}"></div>
+          <div class="ne-f"><label class="ne-lab" for="fSubject">Subject line <span class="ne-count" data-for="fSubject"></span></label>
+            <div class="ne-inline">
+              <input class="ne-in" id="fSubject" maxlength="120" placeholder="What the email is about" value="{{ f.subject or '' }}">
+              <select class="ne-insert" data-target="subject" aria-label="Insert a name into the subject"><option value="">Insert name ▾</option>{% for m in merge_fields %}<option>{{ m }}</option>{% endfor %}</select>
+            </div></div>
+          <div class="ne-f"><label class="ne-lab" for="fPre">Preview text <span class="ne-count" data-for="fPre"></span></label>
+            <input class="ne-in" id="fPre" maxlength="120" placeholder="One line shown after the subject in the inbox" value="{{ f.preheader or '' }}"></div>
+        </div>
+      </section>
+
+      <section class="ne-panel" aria-labelledby="neMsgH">
+        <div class="ne-ph"><h2 id="neMsgH">Message</h2><span class="ne-note">Names fill in for each person when it's sent</span></div>
+        <div class="ne-pb">
+          <div class="ne-f"><label class="ne-lab" for="fHero">Heading <span>Optional. Leave empty for a personal-looking email</span></label>
+            <input class="ne-in" id="fHero" placeholder="Main headline of the email" value="{{ f.hero_heading or '' }}"></div>
+          <div class="ne-editor">
+            <div class="ne-edtop">
+            <div id="quillToolbar">
+              <select class="ql-header"><option value="1">Heading 1</option><option value="2">Heading 2</option><option value="3">Heading 3</option><option selected>Normal text</option></select>
+              <select class="ql-font"><option value="" selected>Default font</option><option value="Calibri">Calibri</option><option value="Arial">Arial</option><option value="Georgia">Georgia</option><option value="Verdana">Verdana</option><option value="Tahoma">Tahoma</option></select>
+              <select class="ql-size"><option value="10pt">10</option><option value="11pt">11</option><option value="12pt" selected>12</option><option value="14pt">14</option><option value="16pt">16</option><option value="18pt">18</option><option value="24pt">24</option></select>
+              <span class="ne-sep"></span>
+              <button class="ql-bold" title="Bold"></button><button class="ql-italic" title="Italic"></button><button class="ql-underline" title="Underline"></button>
+              <select class="ql-color" title="Text colour"></select>
+              <span class="ne-sep"></span>
+              <select class="ql-align" title="Alignment"></select>
+              <button class="ql-list" value="ordered" title="Numbered list"></button><button class="ql-list" value="bullet" title="Bulleted list"></button>
+              <button class="ql-blockquote" title="Quote line"></button>
+              <span class="ne-sep"></span>
+              <button class="ql-link" title="Link"></button><button class="ql-image" title="Picture in the message"></button><button class="ql-clean" title="Clear formatting"></button>
+            </div>
+            <select class="ne-insert" data-target="body" aria-label="Insert a name into the message"><option value="">Insert name ▾</option>{% for m in merge_fields %}<option>{{ m }}</option>{% endfor %}</select>
+            </div>
+            <div id="quillEditor"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="ne-panel" aria-labelledby="neBtnH">
+        <div class="ne-ph"><h2 id="neBtnH">Button</h2><span class="ne-note">One clear next step. Optional</span></div>
+        <div class="ne-pb">
+          <div class="ne-row">
+            <div class="ne-f"><label class="ne-lab" for="fCtaText">Button text</label><input class="ne-in" id="fCtaText" placeholder="e.g. Book a demo" value="{{ f.cta_text or '' }}"></div>
+            <div class="ne-f"><label class="ne-lab" for="fCtaUrl">Button link</label><input class="ne-in" id="fCtaUrl" placeholder="https://…" value="{{ f.cta_url or '' }}"></div>
+          </div>
+        </div>
+      </section>
+
+      <details class="ne-panel" id="neMedia" {% if f.image_url or f.video_url %}open{% endif %}>
+        <summary><div class="ne-ph"><h2>Picture and video</h2><span class="ne-note">Optional · click to open</span></div></summary>
+        <div class="ne-pb">
+          <div class="ne-f"><span class="ne-lab">Picture above the message <span>JPG or PNG</span></span>
+            <div class="ne-media">
+              <img id="imgThumb" alt="" {% if not f.image_url %}hidden{% endif %} src="{{ f.image_url or '' }}">
+              <button type="button" class="ne-btn sm" onclick="document.getElementById('imgFile').click()">Upload picture</button>
+              <button type="button" class="ne-btn sm quiet" id="imgRemove" {% if not f.image_url %}hidden{% endif %} onclick="neSetImage('')">Remove</button>
+              <span id="imgStatus"></span>
+              <input type="file" id="imgFile" accept="image/jpeg,image/png" hidden>
+            </div></div>
+          <div class="ne-f"><label class="ne-lab" for="fVideo">Video link <span>Email can't play video. It shows a picture with a play button that opens this link. Type {{ '{{' }}Video}} on its own line in the message to place it there.</span></label>
+            <input class="ne-in" id="fVideo" placeholder="Your website, YouTube or Vimeo link" value="{{ f.video_url or '' }}"></div>
+          <div class="ne-media">
+            <button type="button" class="ne-btn sm" onclick="document.getElementById('vidFile').click()">Picture for the video</button>
+            <span id="vidStatus">{{ 'Picture added.' if f.video_picture_url else "Optional. YouTube links use the video's own picture." }}</span>
+            <input type="file" id="vidFile" accept="image/jpeg,image/png" hidden>
+          </div>
+        </div>
+      </details>
+
+      <section class="ne-panel" aria-labelledby="neSigH">
+        <div class="ne-ph"><h2 id="neSigH">Sign-off</h2><span class="ne-note">First line is the name, lines under it are smaller</span></div>
+        <div class="ne-pb"><textarea class="ne-in" id="fSignoff" rows="2" aria-labelledby="neSigH" placeholder="Your name&#10;Company · email">{{ f.signoff if (template and f.signoff is not none) else (design.signoff or '') }}</textarea></div>
+      </section>
+    </div>
+
+    <aside class="ne-side" aria-label="Preview">
+      <section class="ne-panel">
+        <div class="ne-ph"><h2>Preview</h2>
+          <div class="ne-tabs" role="tablist"><button type="button" class="ne-tab on" data-v="desktop">Desktop</button><button type="button" class="ne-tab" data-v="phone">Phone</button></div></div>
+        <div class="ne-as">
+          <label for="pvLead">Preview as</label>
+          <select id="pvLead">
+            <option value="">Someone with no name saved</option>
+            {% for l in preview_leads %}<option value="{{ l.id }}" {% if loop.first %}selected{% endif %}>{{ l.contact_person or l.customer_name or l.email }}{% if l.contact_person and l.customer_name %} · {{ l.customer_name }}{% endif %}</option>{% endfor %}
+          </select>
+          <span class="ne-live" id="pvLive">● Updates as you type</span>
+        </div>
+        <div class="ne-inbox">
+          <div class="ne-av" id="pvAv">{{ ((sender.from_name if sender else '') or 'PX')[:2]|upper }}</div>
+          <div style="min-width:0"><div class="ne-from" id="pvFrom">{{ sender.from_name if sender else '' }}</div>
+            <div class="ne-subj" id="pvSubj">—</div><div class="ne-pre" id="pvPre"></div></div>
+        </div>
+        <div class="ne-stage" id="pvStage"><iframe id="pvFrame" title="Email preview" sandbox="allow-same-origin"></iframe></div>
+        <div class="ne-callout">This is the real email as it will be sent: your logo, colours, footer and video picture, with the chosen person's names filled in.</div>
+        {% if can_test %}
+        <div class="ne-test">
+          <label class="ne-lab" for="testTo" style="width:100%">Send a test to</label>
+          <input class="ne-in" id="testTo" type="email" value="{{ test_to or '' }}">
+          <button type="button" class="ne-btn" id="testBtn" onclick="neSendTest()">Send test</button>
+          <div class="ne-testres" id="testRes" hidden></div>
+        </div>
+        {% else %}
+        <div class="ne-callout">Your role can't send test emails. Ask your manager if you need to.</div>
+        {% endif %}
+      </section>
+
+      <section class="ne-panel">
+        <div class="ne-ph"><h2>Before you save</h2><span class="ne-note" id="ckCount"></span></div>
+        <ul class="ne-checks" id="ckList"></ul>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+<script>
+(function () {
+  const TEMPLATE = {{ (template or {})|tojson }}
+  const F = TEMPLATE.fields || {}
+  const $ = id => document.getElementById(id)
+  let imageUrl = F.image_url || '', videoPic = F.video_picture_url || '', testSent = false, dirty = false
+
+  // ── editor ──
+  const SizeStyle = Quill.import('attributors/style/size'); SizeStyle.whitelist = ['10pt','11pt','12pt','14pt','16pt','18pt','24pt']; Quill.register(SizeStyle, true)
+  const FontStyle = Quill.import('attributors/style/font'); FontStyle.whitelist = ['Calibri','Arial','Georgia','Verdana','Tahoma']; Quill.register(FontStyle, true)
+  const quill = new Quill('#quillEditor', { theme: 'snow', placeholder: 'Write your message…',
+    modules: { toolbar: { container: '#quillToolbar', handlers: { image: function () {
+      const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/jpeg,image/png'; inp.click()
+      inp.onchange = () => upload(inp.files[0], d => {
+        if (d.url) { const r = quill.getSelection(true); quill.insertEmbed(r.index, 'image', d.url, 'user'); quill.setSelection(r.index + 1) }
+        else showMsg('The picture could not be uploaded: ' + (d.error || 'unknown error'), 'err')
+      })
+    } } } } })
+  if (F.body_html) quill.clipboard.dangerouslyPasteHTML(F.body_html)
+  window.neQuill = quill
+
+  function upload(file, done) {
+    if (!file) return
+    const fd = new FormData(); fd.append('image', file)
+    fetch('{{ url_for("portal.email_campaigns_upload_image") }}', { method: 'POST', body: fd })
+      .then(r => r.json()).then(done).catch(() => done({ error: 'check your connection' }))
+  }
+  window.neSetImage = function (url) {
+    imageUrl = url; $('imgThumb').hidden = !url; $('imgThumb').src = url || ''; $('imgRemove').hidden = !url; changed()
+  }
+  $('imgFile').addEventListener('change', e => { $('imgStatus').textContent = 'Uploading…'
+    upload(e.target.files[0], d => { $('imgStatus').textContent = d.url ? '' : 'Upload failed: ' + (d.error || ''); if (d.url) neSetImage(d.url); e.target.value = '' }) })
+  $('vidFile').addEventListener('change', e => { $('vidStatus').textContent = 'Uploading…'
+    upload(e.target.files[0], d => { if (d.url) { videoPic = d.url; $('vidStatus').textContent = 'Picture added. The play button is added for you.'; changed() }
+      else $('vidStatus').textContent = 'Upload failed: ' + (d.error || ''); e.target.value = '' }) })
+
+  // Insert name ▾ (subject or message)
+  let lastSubjectPos = null
+  $('fSubject').addEventListener('blur', e => { lastSubjectPos = e.target.selectionStart })
+  document.querySelectorAll('.ne-insert').forEach(sel => sel.addEventListener('change', () => {
+    const v = sel.value; sel.value = ''; if (!v) return
+    const tok = '{' + '{' + v + '}' + '}'
+    if (sel.dataset.target === 'subject') {
+      const el = $('fSubject'), at = lastSubjectPos ?? el.value.length
+      el.value = (el.value.slice(0, at) + tok + el.value.slice(at)).slice(0, 120); el.focus(); el.selectionStart = el.selectionEnd = at + tok.length
+    } else {
+      const r = quill.getSelection(true); quill.insertText(r.index, tok, 'user'); quill.setSelection(r.index + tok.length)
+    }
+    changed()
+  }))
+
+  // ── fields ──
+  function fields() {
+    return { name: $('fName').value.trim(), subject: $('fSubject').value.trim(), preheader: $('fPre').value.trim(),
+             hero_heading: $('fHero').value.trim(), body_html: quill.root.innerHTML, cta_text: $('fCtaText').value.trim(),
+             cta_url: $('fCtaUrl').value.trim(), image_url: imageUrl, video_url: $('fVideo').value.trim(),
+             video_picture_url: videoPic, signoff: $('fSignoff').value }
+  }
+  function formData(extra) { const fd = new FormData(); Object.entries(Object.assign(fields(), extra || {})).forEach(([k, v]) => fd.append(k, v ?? '')); return fd }
+  function showMsg(t, cls) { const m = $('neMsg'); m.textContent = t || ''; m.className = 'ne-msg ' + (cls || ''); m.hidden = !t; if (t) m.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }
+
+  // counters
+  function counts() {
+    document.querySelectorAll('.ne-count').forEach(c => {
+      const n = $(c.dataset.for).value.length
+      c.textContent = n + ' / 120' + (c.dataset.for === 'fSubject' ? ' · about 60 show on a phone' : ' · shown after the subject')
+      c.className = 'ne-count ' + (n > 120 ? 'over' : n ? 'ok' : '')
+    })
+  }
+
+  // checklist
+  function checks() {
+    const f = fields(), text = quill.getText().trim()
+    const items = [
+      [f.subject.length > 0 && f.subject.length <= 120, 'Subject line fits (120 characters or fewer)', 'The first 60 or so show on a phone, so put the important words first.'],
+      [text.length > 0 && /\{\{\s*(First Name|Full Name|Name)/i.test(text), "Uses the person's name", 'Add it with Insert name so each person sees their own name.'],
+      [!f.cta_text && !f.cta_url ? null : !!(f.cta_text && /^https?:\/\//.test(f.cta_url)), 'Button has text and a link', f.cta_text || f.cta_url ? 'A button needs both text and a link starting with https://' : 'No button. That is fine for a plain email.'],
+      [testSent, 'Test sent', testSent ? '' : 'See it in a real inbox before anyone else does.'],
+    ]
+    $('ckList').innerHTML = items.map(([ok, label, hint]) =>
+      `<li><span class="ne-dot ${ok === null ? 'na' : ok ? 'ok' : ''}">${ok === null ? '–' : ok ? '✓' : '!'}</span><span>${label}${!ok && hint ? `<small>${hint}</small>` : ok === null ? `<small>${hint}</small>` : ''}</span></li>`).join('')
+    const scored = items.filter(i => i[0] !== null)
+    $('ckCount').textContent = scored.filter(i => i[0]).length + ' of ' + scored.length + ' done'
+  }
+
+  // live preview
+  let pvTimer = null, pvSeq = 0
+  function frameHeight() {
+    const fr = $('pvFrame'); try { fr.style.height = (fr.contentDocument.documentElement.scrollHeight + 4) + 'px' } catch (e) {}
+  }
+  function preview() {
+    const seq = ++pvSeq; $('pvLive').textContent = 'Updating…'; $('pvLive').className = 'ne-live busy'
+    fetch('{{ url_for("portal.email_editor_preview") }}', { method: 'POST', body: formData({ lead_id: $('pvLead').value }) })
+      .then(r => r.json()).then(d => {
+        if (seq !== pvSeq) return
+        if (d.error) { $('pvLive').textContent = d.error; return }
+        $('pvSubj').textContent = d.subject || '(no subject yet)'; $('pvPre').textContent = d.preheader || ''
+        if (d.from_name) $('pvFrom').textContent = d.from_name
+        const fr = $('pvFrame'); fr.onload = frameHeight; fr.srcdoc = d.html
+        $('pvLive').textContent = '● Updates as you type'; $('pvLive').className = 'ne-live'
+      }).catch(() => { $('pvLive').textContent = 'Preview offline. Check your connection.' })
+  }
+  function changed() {
+    if (!dirty && TEMPLATE.id) { $('neState').textContent = 'Unsaved changes'; $('neState').className = 'ne-state dirty' }
+    dirty = true; counts(); checks(); clearTimeout(pvTimer); pvTimer = setTimeout(preview, 600)
+  }
+  ;['fName', 'fSubject', 'fPre', 'fHero', 'fCtaText', 'fCtaUrl', 'fVideo', 'fSignoff'].forEach(id => $(id).addEventListener('input', changed))
+  $('fName').addEventListener('input', () => { $('neTitle').textContent = $('fName').value.trim() || 'New email' })
+  quill.on('text-change', changed)
+  $('pvLead').addEventListener('change', preview)
+  document.querySelectorAll('.ne-tab').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('.ne-tab').forEach(x => x.classList.toggle('on', x === t))
+    $('pvStage').classList.toggle('phone', t.dataset.v === 'phone'); setTimeout(frameHeight, 250)
+  }))
+  window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = '' } })
+
+  // guide: open the first time; remember Hide per person on this device
+  window.neGuide = function (open) { $('neGuide').open = open; if (open) $('neGuide').scrollIntoView({ behavior: 'smooth', block: 'start' }) }
+  try { if (localStorage.getItem('neGuideHidden') === '1') $('neGuide').open = false } catch (e) {}
+  $('neGuide').addEventListener('toggle', () => { try { localStorage.setItem('neGuideHidden', $('neGuide').open ? '0' : '1') } catch (e) {} })
+
+  // save
+  window.neSaveEmail = function () {
+    const btn = $('neSave'); btn.disabled = true; btn.textContent = 'Saving…'
+    fetch('{{ url_for("portal.email_saved_email_save") }}', { method: 'POST', body: formData(TEMPLATE.id ? { template_id: TEMPLATE.id } : {}) })
+      .then(r => r.json()).then(d => {
+        if (d.ok) { dirty = false; window.location.href = d.next; return }
+        showMsg(d.error || 'Could not save. Please try again.', 'err'); btn.disabled = false; btn.textContent = 'Save email'
+      }).catch(() => { showMsg('Could not save. Check your connection and try again.', 'err'); btn.disabled = false; btn.textContent = 'Save email' })
+  }
+
+  // send test
+  window.neSendTest = function () {
+    const btn = $('testBtn'), res = $('testRes'); btn.disabled = true; btn.textContent = 'Sending…'; res.hidden = true
+    fetch('{{ url_for("portal.email_editor_send_test") }}', { method: 'POST', body: formData({ to: $('testTo').value.trim(), lead_id: $('pvLead').value }) })
+      .then(r => r.json()).then(d => {
+        res.hidden = false
+        if (d.ok) { testSent = true; checks(); res.className = 'ne-testres ok'; res.textContent = `✓ Test sent to ${d.to} at ${d.at} from ${d.from}. Check that inbox, and the spam folder too.` }
+        else { res.className = 'ne-testres err'; res.textContent = d.error || 'The test could not be sent.' }
+      }).catch(() => { res.hidden = false; res.className = 'ne-testres err'; res.textContent = 'The test could not be sent. Check your connection.' })
+      .finally(() => { btn.disabled = false; btn.textContent = 'Send test' })
+  }
+
+  {% if ai_write %}
+  // ✨ Write with AI: fills the editor; staff check it and press Save email.
+  let draftId = null
+  document.querySelectorAll('.ne-chips').forEach(g => g.addEventListener('click', e => {
+    const b = e.target.closest('.ne-chip'); if (!b) return; g.querySelectorAll('.ne-chip').forEach(x => x.classList.toggle('on', x === b)) }))
+  const pick = g => (document.querySelector('.ne-chips[data-group="' + g + '"] .ne-chip.on') || {}).dataset.v
+  const aiMsg = (t, cls) => { $('aiMsg').textContent = t || ''; $('aiMsg').className = 'ne-aimsg ' + (cls || '') }
+  window.aiWrite = function (how) {
+    const brief = $('aiBrief').value.trim()
+    if (!how && brief.length < 8) { aiMsg('Tell the AI a little more about what the email is for.', 'err'); return }
+    if (!how && quill.getText().trim().length > 20 && !window.confirm("Replace what's in the editor with the AI's email?")) return
+    const fd = formData({ brief, kind: pick('kind'), tone: pick('tone') })
+    if (how) { fd.append('how', how); fd.append('draft_id', draftId) }
+    const btns = document.querySelectorAll('.ne-ai button'); btns.forEach(b => b.disabled = true)
+    aiMsg(how ? 'Rewriting…' : 'Writing your email… this takes about 5 to 20 seconds.')
+    fetch('{{ url_for("portal.email_ai_write") }}', { method: 'POST', body: fd })
+      .then(r => r.json()).then(d => {
+        if (!d.ok) { aiMsg(d.error || "Something went wrong. This wasn't counted.", 'err'); return }
+        draftId = d.draft_id; const e = d.email
+        $('fSubject').value = (e.subject || '').slice(0, 120); $('fPre').value = (e.preheader || '').slice(0, 120)
+        quill.setText(''); quill.clipboard.dangerouslyPasteHTML(e.body_html || '')
+        if (e.cta_text) $('fCtaText').value = e.cta_text
+        if (e.cta_url && !$('fCtaUrl').value) $('fCtaUrl').value = e.cta_url
+        $('aiRewrites').hidden = false
+        $('aiRewLeft').textContent = d.rewrites_left + ' free rewrite' + (d.rewrites_left === 1 ? '' : 's') + ' left'
+        if ($('aiLeft')) $('aiLeft').textContent = d.designs_left
+        if (!$('fName').value.trim()) { $('fName').value = (e.subject || '').slice(0, 80); $('neTitle').textContent = $('fName').value }
+        aiMsg(how ? 'Rewritten. Check it in the preview, then press Save email.'
+                  : ($('fCtaUrl').value ? 'Done. Read it through in the preview, change anything you like, then press Save email.'
+                                        : 'Done. Add the link for the button, check the preview, then press Save email.'), 'ok')
+        changed()
+      })
+      .catch(() => aiMsg("Couldn't reach the server. Check your connection. This wasn't counted.", 'err'))
+      .finally(() => { btns.forEach(b => b.disabled = false); if (!+(($('aiLeft') || {}).textContent || 0)) $('aiGo').disabled = true })
+  }
+  {% endif %}
+
+  counts(); checks(); preview(); dirty = false
+})()
+</script>
+{% endblock %}

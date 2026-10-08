@@ -48,12 +48,7 @@
 </script>
 {% endif %}
 
-{% if plugin_pages %}
-<div class="ws-note" role="status">
-  <div style="font-size:18px;line-height:1">ℹ️</div>
-  <div><strong>Your website pages already reach your AI</strong> through the PhiXtra Export plugin on your WooCommerce site ({{ plugin_pages }} page{{ 's' if plugin_pages != 1 }}). To avoid giving your AI two copies of the same pages, Connect Website is switched off while the plugin is sending pages.</div>
-</div>
-{% elif source and not result %}
+{% if source and not result %}
 <div class="ws-note" role="status">
   <div style="font-size:18px;line-height:1">✅</div>
   <div><strong>{{ source.url }}</strong> is connected{% if source.status == 'connected' %} but not synced yet{% endif %}. Go to <a href="{{ url_for('portal.store_info_website_sync') }}">Sync Website</a>{% if source.status == 'connected' %} and click Sync now{% endif %}. To connect a different website, first use <a href="{{ url_for('portal.store_info_website_delete') }}">Delete Website</a>.</div>
@@ -61,9 +56,9 @@
 {% endif %}
 
 {% if not source %}
-<form method="POST" class="ws-card" id="ws_form" {% if plugin_pages %}aria-disabled="true" style="opacity:.5;pointer-events:none"{% endif %}>
+<form method="POST" class="ws-card" id="ws_form">
   <label class="ws-lbl" for="ws_url">Your website address</label>
-  <input class="ws-input" type="text" id="ws_url" name="url" value="{{ form_url }}" placeholder="example.com" {% if plugin_pages %}disabled{% else %}required{% endif %}/>
+  <input class="ws-input" type="text" id="ws_url" name="url" value="{{ form_url }}" placeholder="example.com" required/>
   <div class="ws-help">Works with any website: Wix, Shopify, Squarespace, WordPress or a custom site. Website has a firewall or Cloudflare? <a href="{{ url_for('portal.tutorials') }}?topic=website#web-allow" target="_blank" rel="noopener">Let PhiXtra in first</a>.</div>
 
   <div class="ws-info" style="margin-top:18px">
@@ -72,7 +67,7 @@
   </div>
 
   <div style="margin-top:18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-    <button type="submit" id="ws_btn" class="btn btn-primary" style="padding:11px 24px;font-size:14px" {% if plugin_pages %}disabled{% endif %}>Connect</button>
+    <button type="submit" id="ws_btn" class="btn btn-primary" style="padding:11px 24px;font-size:14px">Connect</button>
     <span id="ws_checking" class="ws-meta" style="display:none"><span class="ws-spin" style="display:inline-block;vertical-align:middle;margin-right:6px"></span>Checking your website… this can take up to 30 seconds.</span>
   </div>
 </form>

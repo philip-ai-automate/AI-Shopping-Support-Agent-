@@ -347,6 +347,9 @@
     {% if staff_can_open('portal.email_campaign_segments_page') %}
     <a class="btn-preview" href="{{ url_for('portal.email_campaign_segments_page') }}" style="text-decoration:none">📋 Email Segments</a>
     {% endif %}
+    {% if staff_can_open('portal.email_campaigns_design') %}
+    <button type="button" class="btn-preview" onclick="openDesignModal()">🎨 Email design</button>
+    {% endif %}
     {% if staff_can_open('portal.email_campaigns_create') %}
     <button class="btn-new-camp" onclick="openDrawer()">
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
@@ -520,6 +523,17 @@
 
       <!-- Step 1: Message -->
       <div class="step-panel active" id="panel-1">
+        <div class="field" id="tplRow" style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px 16px">
+          <label class="field-label">Start from a saved template <span class="field-hint">optional — fills in the subject and message</span></label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <select class="field-input" id="f-template-pick" style="flex:1;min-width:200px" onchange="applyTemplate(this.value)">
+              <option value="">— Blank email —</option>
+            </select>
+            {% if staff_can_open('portal.email_templates_delete') %}
+            <button type="button" class="btn-ghost" id="btnTplDelete" style="display:none" onclick="deleteTemplate()">Delete template</button>
+            {% endif %}
+          </div>
+        </div>
         <div class="drawer-section-head">Campaign details</div>
         <div class="field">
           <label class="field-label">Campaign name <span class="field-hint">internal only, contacts won't see this</span></label>
@@ -529,6 +543,7 @@
           <div class="field">
             <label class="field-label">Subject line</label>
             <input type="text" class="field-input" id="f-subject" name="subject" placeholder="What's the email about?">
+            <div class="merge-btns" data-target="subject"></div>
           </div>
           <div class="field">
             <label class="field-label">Preheader <span class="field-hint">optional preview text</span></label>
@@ -574,11 +589,12 @@
 
         <div id="builderFields">
         <div class="field">
-          <label class="field-label">Heading</label>
+          <label class="field-label">Heading <span class="field-hint">optional — leave empty for a personal-looking email</span></label>
           <input type="text" class="field-input" id="f-hero" name="hero_heading" placeholder="Main headline of the email">
         </div>
         <div class="field">
-          <label class="field-label">Message</label>
+          <label class="field-label">Message <span class="field-hint">add pictures anywhere with 🖼, quote lines with ❝</span></label>
+          <div class="merge-btns" data-target="quill"></div>
           <div id="quillToolbar">
             <select class="ql-header">
               <option value="1">Heading 1</option>
@@ -623,6 +639,7 @@
             <select class="ql-align" title="Alignment"></select>
             <button class="ql-list" value="ordered" title="Numbered list"></button>
             <button class="ql-list" value="bullet" title="Bulleted list"></button>
+            <button class="ql-blockquote" title="Quote line"></button>
             <button class="ql-link" title="Insert link"></button>
             <button class="ql-image" title="Insert image"></button>
             <button class="ql-clean" title="Clear formatting"></button>
@@ -631,7 +648,7 @@
           <input type="hidden" id="f-body" name="body_html">
         </div>
         <div class="field">
-          <label class="field-label">Header image <span class="field-hint">optional</span></label>
+          <label class="field-label">Picture above the message <span class="field-hint">optional</span></label>
           <div style="display:flex;gap:10px;align-items:center">
             <button type="button" class="btn-upload" id="btnUpload" onclick="document.getElementById('f-image-file').click()">
               📤 Upload from computer
@@ -654,7 +671,27 @@
             <input type="text" class="field-input" id="f-cta-url" name="cta_url" placeholder="https://…">
           </div>
         </div>
+        <div class="field">
+          <label class="field-label">Video <span class="field-hint">optional — email can't play video, so it shows a picture with a ▶ button that opens your link. It goes under the message, or type {{ '{{' }}Video}} on its own line in the message to place it there.</span></label>
+          <input type="text" class="field-input" id="f-video-url" name="video_url" placeholder="Link to the video (your website, YouTube or Vimeo)">
+          <div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap">
+            <button type="button" class="btn-upload" id="btnVideoPic" onclick="document.getElementById('f-video-pic-file').click()">📤 Picture for the video (optional)</button>
+            <input type="file" id="f-video-pic-file" accept="image/jpeg,image/png" style="display:none" onchange="uploadVideoPicture(this)">
+            <span id="videoPicStatus" style="font-size:12px;color:#64748b">No picture: YouTube links use the video's own, others a plain card.</span>
+          </div>
+          <input type="hidden" id="f-video-pic-url" name="video_picture_url">
         </div>
+        <div class="field">
+          <label class="field-label">Sign-off <span class="field-hint">first line is the name, the lines under it are smaller</span></label>
+          <textarea class="field-textarea" id="f-signoff" name="signoff" style="min-height:64px" placeholder="Your name&#10;Company · email"></textarea>
+        </div>
+        </div>
+        <div class="field" style="margin-top:18px">
+          <label class="field-label">Replies go to <span class="field-hint">when someone presses Reply</span></label>
+          <input type="email" class="field-input" id="f-reply-to" name="reply_to" placeholder="you@company.com">
+          {% if tracking_on %}<div style="font-size:12px;color:#64748b;margin-top:6px">Opens and clicks are recorded on each lead's history. Use "They replied" on the lead when a reply comes in.</div>{% endif %}
+        </div>
+        <input type="hidden" id="f-template-name" name="template_name">
       </div>
 
       <!-- Step 2: Recipients -->
@@ -762,6 +799,7 @@
     <div style="display:flex;gap:10px;align-items:center">
       <button class="btn-ghost" id="btnBack" style="display:none" onclick="prevStep()">← Back</button>
       <button type="button" class="btn-preview" onclick="openPreview()">👁 Preview</button>
+      <button type="button" class="btn-preview" id="btnSaveTpl" onclick="saveAsTemplate()">💾 Save as template</button>
       {% if staff_can_open('portal.email_campaigns_send_test_draft') %}
       <button type="button" class="btn-preview" id="btnSendTestDraft" onclick="sendTestDraft()">✉️ Send Test</button>
       {% endif %}
@@ -771,6 +809,52 @@
       <button class="btn-next" id="btnNext" onclick="nextStep()">Continue →</button>
       <button class="btn-launch" id="btnLaunch" style="display:none" onclick="submitCampaign()">🚀 Launch Campaign</button>
     </div>
+  </div>
+</div>
+
+<!-- ═══ EMAIL DESIGN MODAL ═══ -->
+<div class="preview-overlay" id="designOverlay" onclick="closeDesignModal()">
+  <div class="preview-modal" style="height:auto;max-height:88vh" onclick="event.stopPropagation()">
+    <div class="preview-head">
+      <h3>Email design</h3>
+      <button type="button" class="drawer-close" style="background:#f1f5f9;border-color:rgba(3,12,24,.1);color:#64748b" onclick="closeDesignModal()">✕</button>
+    </div>
+    <form id="designForm" class="seg-modal-body" onsubmit="saveDesign(event)">
+      <p style="font-size:13px;color:#64748b;margin:0 0 16px">How every email from your business looks. Changes apply to emails you create or edit from now on.</p>
+      <div class="field">
+        <label class="field-label">Logo</label>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <img id="dLogoPreview" alt="" style="max-height:40px;max-width:160px;display:none">
+          <button type="button" class="btn-upload" onclick="document.getElementById('dLogoFile').click()">📤 Upload logo</button>
+          <input type="file" id="dLogoFile" accept="image/jpeg,image/png" style="display:none" onchange="uploadDesignLogo(this)">
+          <span id="dLogoStatus" style="font-size:12px;color:#64748b">No logo: your business name is shown instead.</span>
+        </div>
+        <input type="hidden" id="dLogo" name="logo_url">
+      </div>
+      <div class="field">
+        <label class="field-label">Brand colour <span class="field-hint">buttons and quote lines</span></label>
+        <div style="display:flex;gap:10px;align-items:center">
+          <input type="color" id="dColorPick" value="#0B1D40" oninput="document.getElementById('dColor').value=this.value.toUpperCase()" style="width:44px;height:36px;border:none;background:none">
+          <input type="text" class="field-input" id="dColor" name="brand_color" placeholder="#0B1D40" style="max-width:140px" oninput="if(/^#[0-9A-Fa-f]{6}$/.test(this.value))document.getElementById('dColorPick').value=this.value">
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label">Default sign-off</label>
+        <textarea class="field-textarea" id="dSignoff" name="signoff" style="min-height:64px" placeholder="Your name&#10;Company · email"></textarea>
+      </div>
+      <div class="field">
+        <label class="field-label">Business address <span class="field-hint">shown in the footer; the law expects a real postal address on marketing email</span></label>
+        <input type="text" class="field-input" id="dAddress" name="footer_address" placeholder="Company name, street, city, country">
+      </div>
+      <div class="field">
+        <label class="field-label">Why they're getting it <span class="field-hint">shown before the Unsubscribe link</span></label>
+        <input type="text" class="field-input" id="dNote" name="footer_note" placeholder="You're receiving this because you're a contact of {{ (sender.from_name if sender else '')|e }}.">
+      </div>
+      <div class="drawer-foot" style="padding:16px 0 0;border:none">
+        <span id="dStatus" style="font-size:12px;color:#64748b"></span>
+        <button type="submit" class="btn-launch">Save design</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -900,6 +984,154 @@ quill.on('text-change', function() {
 })
 
 const CAMPAIGN_CREATE_URL = "{{ url_for('portal.email_campaigns_create') }}"
+let EMAIL_DESIGN = {{ design|tojson }}
+const DEFAULT_REPLY_TO = {{ default_reply_to|tojson }}
+const MERGE_FIELDS = {{ merge_fields|tojson }}
+let EMAIL_TEMPLATES = []
+
+// "+ First Name" buttons — put a {{ '{{' }}…}} name field at the cursor.
+document.querySelectorAll('.merge-btns').forEach(function (box) {
+  box.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin:6px 0'
+  MERGE_FIELDS.slice(0, 2).concat(['Full Name']).forEach(function (f) {
+    const b = document.createElement('button')
+    b.type = 'button'; b.className = 'btn-upload'; b.style.padding = '4px 10px'; b.style.fontSize = '12px'
+    b.textContent = '+ ' + f
+    b.title = 'Filled in from the CRM for each person. If it is missing: ' + (f === 'Business Name' ? '"your business"' : '"there"')
+    b.onclick = function () { insertMergeField(box.dataset.target, '{' + '{' + f + '}' + '}') }
+    box.appendChild(b)
+  })
+})
+function insertMergeField(target, token) {
+  if (target === 'quill') {
+    const range = quill.getSelection(true)
+    quill.insertText(range.index, token, 'user')
+    quill.setSelection(range.index + token.length)
+  } else {
+    const el = document.getElementById('f-subject')
+    const at = el.selectionStart ?? el.value.length
+    el.value = el.value.slice(0, at) + token + el.value.slice(el.selectionEnd ?? at)
+    el.focus(); el.selectionStart = el.selectionEnd = at + token.length
+  }
+}
+
+function loadTemplates(selectId) {
+  return fetch('{{ url_for("portal.email_templates_list") }}').then(r => r.json()).then(data => {
+    EMAIL_TEMPLATES = data.templates || []
+    const sel = document.getElementById('f-template-pick')
+    sel.innerHTML = '<option value="">— Blank email —</option>' +
+      EMAIL_TEMPLATES.map(t => '<option value="' + t.id + '">' + escapeHtml(t.name) + '</option>').join('')
+    if (selectId) sel.value = String(selectId)
+  }).catch(() => {})
+}
+function fillBuilder(f) {
+  f = f || {}
+  selectTemplateMode('structured')
+  document.getElementById('f-hero').value = f.hero_heading || ''
+  quill.setText('')
+  if (f.body_html) quill.clipboard.dangerouslyPasteHTML(f.body_html)
+  document.getElementById('f-body').value = quill.root.innerHTML
+  document.getElementById('f-cta-text').value = f.cta_text || ''
+  document.getElementById('f-cta-url').value = f.cta_url || ''
+  document.getElementById('f-image-url').value = f.image_url || ''
+  document.getElementById('imgPreviewWrap').style.display = f.image_url ? 'block' : 'none'
+  if (f.image_url) document.getElementById('imgPreview').src = f.image_url
+  document.getElementById('f-video-url').value = f.video_url || ''
+  document.getElementById('f-video-pic-url').value = f.video_picture_url || ''
+  document.getElementById('videoPicStatus').textContent = f.video_picture_url ? 'Picture added.' : 'No picture: YouTube links use the video\'s own, others a plain card.'
+  document.getElementById('f-signoff').value = (f.signoff != null) ? f.signoff : (EMAIL_DESIGN.signoff || '')
+}
+function applyTemplate(id) {
+  const delBtn = document.getElementById('btnTplDelete')
+  if (delBtn) delBtn.style.display = id ? '' : 'none'
+  if (!id) return
+  const t = EMAIL_TEMPLATES.find(x => String(x.id) === String(id))
+  if (!t) return
+  const f = t.fields || {}
+  if (!document.getElementById('f-name').value.trim()) document.getElementById('f-name').value = t.name
+  document.getElementById('f-subject').value = f.subject || ''
+  document.getElementById('f-preheader').value = f.preheader || ''
+  fillBuilder(f)
+}
+function saveAsTemplate() {
+  if (document.getElementById('f-template-mode').value !== 'structured') { alert('Templates save the Template Builder. Switch from Custom HTML first.'); return }
+  const pick = document.getElementById('f-template-pick')
+  const current = EMAIL_TEMPLATES.find(x => String(x.id) === pick.value)
+  const name = (prompt('Template name', current ? current.name : (document.getElementById('f-name').value || '')) || '').trim()
+  if (!name) return
+  document.getElementById('f-body').value = quill.root.innerHTML
+  document.getElementById('f-template-name').value = name
+  const fd = new FormData(document.getElementById('campForm'))
+  fetch('{{ url_for("portal.email_templates_save") }}', { method: 'POST', body: fd })
+    .then(r => r.json()).then(data => {
+      if (data.error) { alert(data.error); return }
+      loadTemplates().then(() => {
+        const t = EMAIL_TEMPLATES.find(x => x.name.toLowerCase() === name.toLowerCase())
+        if (t) { pick.value = String(t.id); const d = document.getElementById('btnTplDelete'); if (d) d.style.display = '' }
+      })
+      alert(data.updated ? 'Template "' + name + '" updated.' : 'Saved as template "' + name + '".')
+    }).catch(() => alert('Could not save — check your connection'))
+}
+function deleteTemplate() {
+  const id = document.getElementById('f-template-pick').value
+  const t = EMAIL_TEMPLATES.find(x => String(x.id) === id)
+  if (!t || !confirmDelete('Delete the template "' + t.name + '"? Campaigns already made from it are not affected.')) return
+  fetch('/email/templates/' + id + '/delete', { method: 'POST' }).then(r => r.json()).then(d => { if (d.error) alert(d.error); loadTemplates() })
+}
+function confirmDelete(msg) { try { return window.confirm(msg) } catch (e) { return true } }
+
+function uploadTo(file, done) {
+  const fd = new FormData(); fd.append('image', file)
+  fetch('{{ url_for("portal.email_campaigns_upload_image") }}', { method: 'POST', body: fd })
+    .then(r => r.json()).then(done).catch(() => done({ error: 'Upload failed — check your connection' }))
+}
+function uploadVideoPicture(input) {
+  const file = input.files[0]; if (!file) return
+  const st = document.getElementById('videoPicStatus'); st.textContent = 'Uploading…'
+  uploadTo(file, function (data) {
+    if (data.url) { document.getElementById('f-video-pic-url').value = data.url; st.textContent = 'Picture added. The ▶ button is added for you.' }
+    else st.textContent = 'Error: ' + (data.error || 'upload failed')
+    input.value = ''
+  })
+}
+
+function openDesignModal() {
+  const d = EMAIL_DESIGN || {}
+  document.getElementById('dLogo').value = d.logo_url || ''
+  const lp = document.getElementById('dLogoPreview')
+  lp.style.display = d.logo_url ? '' : 'none'; if (d.logo_url) lp.src = d.logo_url
+  document.getElementById('dLogoStatus').textContent = d.logo_url ? '' : 'No logo: your business name is shown instead.'
+  document.getElementById('dColor').value = d.brand_color || ''
+  document.getElementById('dColorPick').value = d.brand_color || '#0B1D40'
+  document.getElementById('dSignoff').value = d.signoff || ''
+  document.getElementById('dAddress').value = d.footer_address || ''
+  document.getElementById('dNote').value = d.footer_note || ''
+  document.getElementById('dStatus').textContent = ''
+  document.getElementById('designOverlay').classList.add('open')
+}
+function closeDesignModal() { document.getElementById('designOverlay').classList.remove('open') }
+function uploadDesignLogo(input) {
+  const file = input.files[0]; if (!file) return
+  const st = document.getElementById('dLogoStatus'); st.textContent = 'Uploading…'
+  uploadTo(file, function (data) {
+    if (data.url) {
+      document.getElementById('dLogo').value = data.url
+      const lp = document.getElementById('dLogoPreview'); lp.src = data.url; lp.style.display = ''
+      st.textContent = ''
+    } else st.textContent = 'Error: ' + (data.error || 'upload failed')
+    input.value = ''
+  })
+}
+function saveDesign(ev) {
+  ev.preventDefault()
+  const st = document.getElementById('dStatus'); st.textContent = 'Saving…'
+  fetch('{{ url_for("portal.email_campaigns_design") }}', { method: 'POST', body: new FormData(document.getElementById('designForm')) })
+    .then(r => r.json()).then(data => {
+      if (data.error) { st.textContent = data.error; st.style.color = '#dc2626'; return }
+      EMAIL_DESIGN = data.design || {}
+      st.style.color = '#16a34a'; st.textContent = 'Saved.'
+      setTimeout(closeDesignModal, 600)
+    }).catch(() => { st.textContent = 'Could not save — check your connection' })
+}
 // What this person's role may do in the Segments pop-ups (owner: all true).
 const CAN_SEG_CREATE = {{ 'true' if staff_can_open('portal.email_segments_create') else 'false' }}
 const CAN_SEG_DELETE = {{ 'true' if staff_can_open('portal.email_segments_delete') else 'false' }}
@@ -923,9 +1155,14 @@ function duplicateCampaign(id) {
       document.getElementById('f-name').value      = data.name + ' (copy)'
       document.getElementById('f-subject').value    = data.subject
       document.getElementById('f-preheader').value  = data.preheader
-      selectTemplateMode('raw')
-      document.getElementById('f-raw-html').value = data.html_body
-      updateRawHtmlPreview()
+      if (data.reply_to) document.getElementById('f-reply-to').value = data.reply_to
+      if (data.fields) {
+        fillBuilder(data.fields)
+      } else {
+        selectTemplateMode('raw')
+        document.getElementById('f-raw-html').value = data.html_body
+        updateRawHtmlPreview()
+      }
       // Content is already filled in — jump straight to picking a fresh audience.
       goStep(2)
     })
@@ -942,9 +1179,14 @@ function editCampaign(id) {
       document.getElementById('f-name').value      = data.name
       document.getElementById('f-subject').value    = data.subject
       document.getElementById('f-preheader').value  = data.preheader
-      selectTemplateMode('raw')
-      document.getElementById('f-raw-html').value = data.html_body
-      updateRawHtmlPreview()
+      if (data.reply_to) document.getElementById('f-reply-to').value = data.reply_to
+      if (data.fields) {
+        fillBuilder(data.fields)
+      } else {
+        selectTemplateMode('raw')
+        document.getElementById('f-raw-html').value = data.html_body
+        updateRawHtmlPreview()
+      }
       selectRecipientSource('manual')
       document.getElementById('f-recipients').value = data.recipients.join('\n')
       countRecipients()
@@ -1185,6 +1427,13 @@ function resetDrawer() {
   document.getElementById('reviewPreviewFrame').style.display = 'none'
   setPreviewDevice('desktop')
   setReviewDevice('desktop')
+  document.getElementById('f-video-pic-url').value = ''
+  document.getElementById('videoPicStatus').textContent = 'No picture: YouTube links use the video\'s own, others a plain card.'
+  document.getElementById('f-signoff').value = EMAIL_DESIGN.signoff || ''
+  document.getElementById('f-reply-to').value = DEFAULT_REPLY_TO || ''
+  document.getElementById('f-template-pick').value = ''
+  { const d = document.getElementById('btnTplDelete'); if (d) d.style.display = 'none' }
+  loadTemplates()
   selectTemplateMode('structured')
   selectRecipientSource('pipeline')
   selectTiming('now')
@@ -1199,8 +1448,7 @@ function validateStep(n) {
     if (mode === 'raw') {
       if (!document.getElementById('f-raw-html').value.trim()) { shake('f-raw-html'); return false }
     } else {
-      if (!document.getElementById('f-hero').value.trim())    { shake('f-hero'); return false }
-      if (!quill.getText().trim())                            { shake('quillEditor'); return false }
+      if (!quill.getText().trim() && !quill.root.querySelector('img')) { shake('quillEditor'); return false }
     }
   }
   if (n === 2) {
@@ -1509,6 +1757,13 @@ if (new URLSearchParams(window.location.search).get('view') === 'segments') {
   window._wantSegment = want
   openDrawer()
   selectRecipientSource('segment')
+})()
+;(function () {
+  // "Use in a campaign" on the Saved Emails page: new campaign, that email filled in.
+  const want = new URLSearchParams(window.location.search).get('use_template')
+  if (!want || !/^\d+$/.test(want) || typeof openDrawer !== 'function') return
+  openDrawer()
+  loadTemplates(want).then(() => applyTemplate(want))
 })()
 </script>
 

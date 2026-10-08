@@ -61,7 +61,7 @@
   {% endcall %}
 
   {# ── Step 4: Download & install AI assistant plugin ─────────────────────── #}
-  {% call step(4, "Download & install the PhiXtra AI Assistant plugin", onboarding.ai_plugin_confirmed) %}
+  {% call step(4, "Download & install the PhiXtra AI Sales Agent plugin", onboarding.ai_plugin_confirmed) %}
     {% if onboarding.ai_plugin_confirmed %}
       <p class="muted" style="font-size:14px">✅ Confirmed — plugin installed.</p>
     {% else %}
@@ -73,7 +73,7 @@
           {% if plugins.ai_assistant %}
             <p style="margin-bottom:10px;color:var(--muted)">Version: <strong>{{ plugins.ai_assistant.version or 'latest' }}</strong></p>
             <a href="{{ url_for('portal.plugin_download', plugin_key='ai_assistant') }}"
-               class="btn btn-primary btn-sm">⬇ Download PhiXtra AI Assistant plugin</a>
+               class="btn btn-primary btn-sm">⬇ Download PhiXtra AI Sales Agent plugin</a>
           {% else %}
             <p style="color:var(--muted)">Plugin not yet available for download. Contact <a href="mailto:support@phixtra.com">support@phixtra.com</a> to request it.</p>
           {% endif %}
@@ -108,99 +108,21 @@
     {% endif %}
   {% endcall %}
 
-  {# ── Step 5: Download & install Export plugin ───────────────────────────── #}
-  {% call step(5, "Download & install the PhiXtra Export plugin", onboarding.export_plugin_confirmed) %}
-    {% if onboarding.export_plugin_confirmed %}
-      <p class="muted" style="font-size:14px">✅ Confirmed — export plugin installed.</p>
-    {% else %}
-      <div style="font-size:14px">
-        <p style="margin-bottom:12px">This plugin syncs your WooCommerce products and pages to the PhiXtra AI knowledge base so your assistant can answer questions about them.</p>
-
-        <div style="background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:12px;padding:14px 16px;margin-bottom:14px">
-          <div style="font-weight:700;margin-bottom:6px;color:#1D4ED8">Step 4a — Download the plugin</div>
-          {% if plugins.phixtra_export %}
-            <p style="margin-bottom:10px;color:var(--muted)">Version: <strong>{{ plugins.phixtra_export.version or 'latest' }}</strong></p>
-            <a href="{{ url_for('portal.plugin_download', plugin_key='phixtra_export') }}"
-               class="btn btn-primary btn-sm">⬇ Download PhiXtra Export plugin</a>
-          {% else %}
-            <p style="color:var(--muted)">Plugin not yet available for download. Contact <a href="mailto:support@phixtra.com">support@phixtra.com</a> to request it.</p>
-          {% endif %}
-        </div>
-
-        <div style="margin-bottom:14px">
-          <div style="font-weight:700;margin-bottom:8px">Step 4b — Install in WordPress</div>
-          <ol style="padding-left:20px;line-height:2.2;color:var(--txt)">
-            <li>In WordPress go to <strong>Plugins → Add New → Upload Plugin</strong></li>
-            <li>Click <strong>Choose File</strong>, select the zip you just downloaded, then click <strong>Install Now</strong></li>
-            <li>Click <strong>Activate Plugin</strong></li>
-          </ol>
-        </div>
-
-        <form method="POST" action="{{ url_for('portal.onboarding_confirm_step') }}" style="margin-top:4px">
-          <input type="hidden" name="step" value="export_plugin"/>
-          <button type="submit" class="btn btn-sm" style="border-color:var(--good);color:var(--good)">
-            ✓ I have installed this plugin
-          </button>
-        </form>
-      </div>
-    {% endif %}
-  {% endcall %}
-
-  {# ── Step 6: Configure PhiXtra Sync ────────────────────────────────────── #}
-  {% call step(6, "Configure PhiXtra Sync", onboarding.sync_configured_confirmed) %}
-    {% if onboarding.sync_configured_confirmed %}
-      <p class="muted" style="font-size:14px">✅ Confirmed — sync configured.</p>
-    {% else %}
-      <div style="font-size:14px">
-        <ol style="padding-left:20px;line-height:2.2;color:var(--txt);margin-bottom:14px">
-          <li>In WordPress go to <strong>WooCommerce → PhiXtra Export → PhiXtra Sync</strong></li>
-          <li>Copy your API key from the <a href="{{ url_for('portal.api_keys') }}" target="_blank">API Keys page</a></li>
-          <li>Paste it into the <strong>Bearer Token</strong> field — this is the same key as step 4</li>
-          <li>Tick <strong>Enable Sync</strong></li>
-          <li>Select what to sync: <strong>Products</strong> (required), Posts and Pages (optional)</li>
-          <li>Click <strong>Save Settings</strong></li>
-        </ol>
-        {% if keys %}
-        <div style="background:rgba(3,12,24,0.04);border:1px solid var(--line);border-radius:10px;padding:11px 14px;margin-bottom:14px;font-size:13px">
-          Your API key ends in: <strong>…{{ (keys[0].website or '')[-4:] if keys else '' }}</strong>
-          &nbsp;— copy the full key from the <a href="{{ url_for('portal.api_keys') }}">API Keys page</a>
-        </div>
-        {% endif %}
-        <form method="POST" action="{{ url_for('portal.onboarding_confirm_step') }}">
-          <input type="hidden" name="step" value="sync_config"/>
-          <button type="submit" class="btn btn-sm" style="border-color:var(--good);color:var(--good)">
-            ✓ I have configured PhiXtra Sync
-          </button>
-        </form>
-      </div>
-    {% endif %}
-  {% endcall %}
-
   {# ── Step 7: Run first full sync ───────────────────────────────────────── #}
-  {% call step(7, "Run your first full sync", onboarding.synced) %}
+  {% call step(5, "Your products sync by themselves", onboarding.synced) %}
     {% if onboarding.synced %}
-      <p class="muted" style="font-size:14px">✅ Full sync complete — your products have been sent to the knowledge base.</p>
+      <p class="muted" style="font-size:14px">✅ Your products have reached PhiXtra.</p>
     {% else %}
       <div style="font-size:14px">
-        {% if not onboarding.sync_configured_confirmed %}
-          <p class="muted">Complete step 5 first, then come back here.</p>
-        {% else %}
-          <ol style="padding-left:20px;line-height:2.2;color:var(--txt)">
-            <li>In WordPress go to <strong>WooCommerce → PhiXtra Export → PhiXtra Sync</strong></li>
-            <li>Click <strong>"Queue Full Sync Now"</strong></li>
-            <li>WordPress will batch-process your products and pages in the background</li>
-            <li>A full sync on a typical store takes 5–15 minutes</li>
-          </ol>
-          <p style="margin-top:10px" class="muted">
-            This page will show a green tick automatically once sync activity is detected.
-          </p>
-        {% endif %}
+        <p style="margin-bottom:8px">Once your API key is saved in the PhiXtra AI Sales Agent plugin (step 4), it sends your published WooCommerce products by itself. It usually takes a few minutes.</p>
+        <p style="margin-bottom:8px">To send them again, open <strong>WordPress → PhiXtra AI → PhiXtra AI Sales Agent → Products</strong> and click <strong>Sync all products now</strong>.</p>
+        <p class="muted">This page shows a green tick once your products arrive.</p>
       </div>
     {% endif %}
   {% endcall %}
 
   {# ── Step 8: Knowledge base setup (admin action) ──────────────────────── #}
-  {% call step(8, "Knowledge base setup", onboarding.kb_configured) %}
+  {% call step(6, "Knowledge base setup", onboarding.kb_configured) %}
     {% if onboarding.kb_configured %}
       <p class="muted" style="font-size:14px">✅ Your knowledge base has been configured by the PhiXtra team.</p>
     {% else %}
@@ -217,14 +139,13 @@
 
   {# ── Step 9: Verify AI is live ─────────────────────────────────────────── #}
   {%  set all_prev_done = onboarding.key_active and onboarding.ai_plugin_confirmed
-      and onboarding.export_plugin_confirmed and onboarding.sync_configured_confirmed
       and onboarding.synced and onboarding.kb_configured %}
-  {% call step(9, "Verify your AI assistant is live", all_prev_done) %}
+  {% call step(7, "Verify your AI assistant is live", all_prev_done) %}
     {% if all_prev_done %}
       <p class="muted" style="font-size:14px">✅ All steps complete — your AI assistant is live!</p>
     {% else %}
       <div style="font-size:14px">
-        <p style="margin-bottom:8px">Once steps 1–7 are all ticked, visit your WooCommerce store and open the AI chat widget.</p>
+        <p style="margin-bottom:8px">Once steps 1–6 are all ticked, visit your WooCommerce store and open the AI chat widget.</p>
         <p style="margin-bottom:8px">Ask it a question about a product. When you see a response, you are live.</p>
         <p class="muted">Activity will appear on your <a href="{{ url_for('portal.dashboard') }}">Dashboard</a> automatically.</p>
       </div>

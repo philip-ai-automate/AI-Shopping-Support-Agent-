@@ -116,6 +116,9 @@
     <button class="tut-nav-item" id="card-leads" onclick="showGuide('leads')">
       <span class="tut-nav-icon">🔥</span><span class="tut-nav-label">Leads (full guide)</span>
     </button>
+    <button class="tut-nav-item" id="card-email" onclick="showGuide('email')">
+      <span class="tut-nav-icon">✉️</span><span class="tut-nav-label">Email Campaigns (full guide)</span>
+    </button>
     <button class="tut-nav-item" id="card-website" onclick="showGuide('website')">
       <span class="tut-nav-icon">🌐</span><span class="tut-nav-label">Website &amp; Firewall</span>
     </button>
@@ -150,6 +153,14 @@
     {% include "portal/help/leads_guide.html" %}
   </div>
 </div><!-- end guide-leads -->
+
+<!-- ── Email Campaigns Guide (added 2026-10-08) ───────────────────────────── -->
+<div class="guide-section" id="guide-email">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Email Campaigns Guide</div>
+    {% include "portal/help/email_guide.html" %}
+  </div>
+</div><!-- end guide-email -->
 
 <!-- ── Website & Firewall Guide (added 2026-10-03) ───────────────────────── -->
 <div class="guide-section" id="guide-website">
@@ -189,6 +200,7 @@ function showGuide(id) {
   if (!topic && hash.indexOf('team-') === 0) topic = 'team';
   if (!topic && hash.indexOf('lead-') === 0) topic = 'leads';
   if (!topic && hash.indexOf('web-') === 0) topic = 'website';
+  if (!topic && hash.indexOf('eml-') === 0) topic = 'email';
   if (!topic || !document.getElementById('guide-' + topic)) return;
   showGuide(topic);
   var target = hash && document.getElementById(hash);

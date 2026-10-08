@@ -11,11 +11,7 @@
 
 {% if not source %}
 <div class="ws-card">
-  {% if plugin_pages %}
-  Your website pages reach your AI through the PhiXtra Export plugin on your WooCommerce site, so there is nothing to sync here.
-  {% else %}
   No website connected yet. <a href="{{ url_for('portal.store_info_website_connect') }}">Connect your website</a> so your AI can learn from it.
-  {% endif %}
 </div>
 {% else %}
 

@@ -1,0 +1,372 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ seq.name }} — Email Sequence — PhiXtra Portal{% endblock %}
+
+{% set can_edit = staff_can_open('portal.email_sequence_save') %}
+{% set can_send = staff_can('campaigns_email.sequences_send') %}
+{% set can_delete = staff_can_open('portal.email_sequence_delete') %}
+
+{% block head %}
+<style>
+.sq-back { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; color:var(--muted); text-decoration:none; margin-bottom:16px; }
+.sq-back:hover { color:var(--ink); }
+.sq-top { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-bottom:20px; }
+.sq-top h1 { font-size:22px; font-weight:800; color:var(--ink); margin:0; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.sq-top .acts { display:flex; gap:8px; flex-wrap:wrap; }
+.sq-btn { display:inline-flex; align-items:center; gap:6px; padding:9px 16px; border-radius:10px; font-size:13px; font-weight:700;
+          border:none; background:#0B1D40; color:#fff; cursor:pointer; text-decoration:none; white-space:nowrap; }
+.sq-btn.light { background:#fff; color:#0B1D40; border:1.5px solid #cbd5e1; }
+.sq-btn.danger { background:#fff; color:#b42318; border:1.5px solid #fda29b; }
+.sq-btn.small { padding:5px 10px; font-size:12px; border-radius:8px; }
+.sq-btn:disabled { opacity:.5; cursor:default; }
+.pill { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; white-space:nowrap; }
+.pill-on { background:#dcfce7; color:#166534; } .pill-off { background:#f1f5f9; color:#475569; }
+.pill-ready { background:#fef3c7; color:#92400e; } .pill-done { background:#e0e7ff; color:#3730a3; }
+.pill-stop { background:#fee4e2; color:#912018; } .pill-wait { background:#e0f2fe; color:#075985; }
+.sq-warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:12px; padding:12px 16px; font-size:13px; margin-bottom:18px; }
+.sq-card { background:#fff; border:1px solid rgba(3,12,24,.08); border-radius:16px; margin-bottom:22px; }
+.sq-card-h { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:16px 22px; border-bottom:1px solid rgba(3,12,24,.07); }
+.sq-card-h h2 { font-size:15px; font-weight:700; color:var(--ink); margin:0; }
+.sq-card-h p { font-size:12.5px; color:var(--muted); margin:2px 0 0; }
+.sq-card-b { padding:18px 22px; }
+.fld { display:flex; flex-direction:column; gap:5px; font-size:12px; font-weight:600; color:var(--muted); }
+.fld input, .fld select, .fld textarea { padding:8px 11px; border:1.5px solid #e2e8f0; border-radius:9px; font-size:13px; color:var(--ink); background:#fff; font-weight:400; }
+.row2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:18px; }
+.step { border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; margin-bottom:10px; background:#fbfcfe; }
+.step-top { display:grid; grid-template-columns:90px 1fr 190px 210px 34px; gap:12px; align-items:end; }
+.step-n { font-weight:800; color:#0B1D40; font-size:14px; padding-bottom:9px; }
+.step-wait { display:flex; align-items:center; gap:6px; }
+.step-wait input { width:70px; }
+.step-stats { font-size:12px; color:var(--muted); margin-top:9px; }
+.step-stats a { color:#0B1D40; font-weight:600; }
+.step-x { background:none; border:none; color:#98a2b3; font-size:18px; cursor:pointer; padding-bottom:7px; }
+.step-x:hover { color:#b42318; }
+.add-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
+.add-tab { padding:7px 14px; border-radius:20px; font-size:12.5px; font-weight:600; border:1.5px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; }
+.add-tab.on { border-color:#0B1D40; background:#0B1D40; color:#fff; }
+.add-pane { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+.add-pane[hidden] { display:none; }
+.chips { display:flex; gap:6px; flex-wrap:wrap; }
+.chip { padding:6px 13px; border-radius:20px; font-size:12px; font-weight:600; border:1.5px solid #e2e8f0; background:#fff; color:#475569; text-decoration:none; }
+.chip.on { border-color:#0B1D40; background:#0B1D40; color:#fff; }
+.ptable-wrap { overflow-x:auto; }
+.ptable { width:100%; border-collapse:collapse; min-width:860px; }
+.ptable th { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; padding:10px 14px; text-align:left; background:#f8fafc; border-bottom:1px solid rgba(3,12,24,.07); }
+.ptable td { padding:11px 14px; font-size:13px; border-bottom:1px solid rgba(3,12,24,.05); vertical-align:middle; }
+.ptable tr.is-ready td { background:#fffbeb; }
+.ptable a { color:var(--ink); }
+.muted { color:var(--muted); }
+.bulk { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:12px 22px; border-bottom:1px solid rgba(3,12,24,.07); background:#f8fafc; }
+.empty { padding:36px 20px; text-align:center; color:var(--muted); font-size:13px; }
+@media (max-width: 900px) {
+  .step-top { grid-template-columns:1fr 1fr; }
+  .step-n { grid-column:1 / -1; padding-bottom:0; }
+  .row2 { grid-template-columns:1fr; }
+}
+@media (max-width: 600px) {
+  .step-top { grid-template-columns:1fr; }
+  .step-x { justify-self:end; padding-bottom:0; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('portal.email_sequences') }}" class="sq-back">
+  <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+  Back to Sequences
+</a>
+
+<div class="sq-top">
+  <h1>{{ seq.name }}
+    {% if seq.status == 'active' %}<span class="pill pill-on">● Running</span>{% else %}<span class="pill pill-off">❚❚ Paused</span>{% endif %}
+  </h1>
+  <div class="acts">
+    {% if can_edit %}
+    <form method="POST" action="{{ url_for('portal.email_sequence_status', seq_id=seq.id) }}" style="margin:0">
+      {% if seq.status == 'active' %}
+      <input type="hidden" name="status" value="paused">
+      <button class="sq-btn light" type="submit" title="Nothing goes out automatically while paused. You can still send by hand.">❚❚ Pause</button>
+      {% else %}
+      <input type="hidden" name="status" value="active">
+      <button class="sq-btn" type="submit">▶ Start sequence</button>
+      {% endif %}
+    </form>
+    {% endif %}
+    {% if can_delete %}
+    <form method="POST" action="{{ url_for('portal.email_sequence_delete', seq_id=seq.id) }}" style="margin:0" onsubmit="return sqConfirm(this)">
+      <button class="sq-btn danger" type="submit" data-confirm="Click again to delete">Delete</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if not sender %}
+<div class="sq-warn">No sending address is set up for this business yet, so sequence emails can't go out. Ask PhiXtra support to set one up.</div>
+{% elif seq.status != 'active' %}
+<div class="sq-warn" style="background:#f8fafc;border-color:#e2e8f0;color:#475569">This sequence is paused: nothing goes out automatically. You can still send anyone's next email yourself from the list below. Press <strong>Start sequence</strong> when you're ready.</div>
+{% endif %}
+
+<!-- ── The emails ── -->
+<div class="sq-card">
+  <div class="sq-card-h">
+    <div>
+      <h2>The emails</h2>
+      <p>Pick each email from your saved templates. "Send automatically" goes out by itself when it's due. "I'll send it myself" waits in <strong>Ready to send</strong> for you.</p>
+    </div>
+  </div>
+  <div class="sq-card-b">
+    {% if can_edit %}
+    <form method="POST" action="{{ url_for('portal.email_sequence_save', seq_id=seq.id) }}" id="stepsForm">
+      <div class="row2">
+        <label class="fld">Sequence name<input type="text" name="name" value="{{ seq.name }}" maxlength="255" required></label>
+        <label class="fld">Replies go to<input type="email" name="reply_to" value="{{ seq.reply_to or '' }}" placeholder="{{ default_reply_to }}"></label>
+      </div>
+      {% if not templates %}
+      <div class="sq-warn" style="margin-bottom:12px">You don't have any saved emails yet. Use <a href="{{ url_for('portal.email_new') }}">New Email</a> to write one. It will then show here.</div>
+      {% endif %}
+      <div id="steps">
+        {% for st in steps %}
+        <div class="step">
+          <div class="step-top">
+            <div class="step-n">Email <span class="n">{{ loop.index }}</span></div>
+            <label class="fld">Saved email
+              <select name="template_id" required>
+                {% if not st.template_name %}<option value="">— choose a saved email —</option>{% endif %}
+                {% for t in templates %}<option value="{{ t.id }}" {% if t.id == st.template_id %}selected{% endif %}>{{ t.name }}</option>{% endfor %}
+              </select>
+            </label>
+            <label class="fld"><span class="wait-label">{{ 'Send it' if loop.first else 'Wait' }}</span>
+              <span class="step-wait"><input type="number" name="wait_days" min="0" max="365" value="{{ st.wait_days }}"> <span class="wait-after">{{ 'days after being added' if loop.first else 'days after the email before' }}</span></span>
+            </label>
+            <label class="fld">How it's sent
+              <select name="send_mode">
+                <option value="auto" {% if st.send_mode != 'manual' %}selected{% endif %}>Send automatically</option>
+                <option value="manual" {% if st.send_mode == 'manual' %}selected{% endif %}>I'll send it myself</option>
+              </select>
+            </label>
+            <button type="button" class="step-x" title="Remove this email" onclick="sqRemoveStep(this)">✕</button>
+          </div>
+          {% if st.campaign_id and st.stats.sent %}
+          <div class="step-stats">Sent {{ st.stats.sent }} · Opened {{ st.stats.opened }} · Clicked {{ st.stats.clicked }} · Replied {{ st.stats.replied }}
+            · <a href="{{ url_for('portal.email_campaign_report', campaign_id=st.campaign_id) }}">See who</a></div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+        <button type="button" class="sq-btn light" onclick="sqAddStep()" {% if not templates %}disabled{% endif %}>+ Add an email</button>
+        <button type="submit" class="sq-btn">Save</button>
+      </div>
+      <p class="muted" style="font-size:12px;margin:12px 0 0">Changing an email here changes it for everyone who hasn't had it yet. People part-way through carry on from where they are.</p>
+    </form>
+    <template id="stepTpl">
+      <div class="step">
+        <div class="step-top">
+          <div class="step-n">Email <span class="n"></span></div>
+          <label class="fld">Saved email
+            <select name="template_id" required>
+              <option value="">— choose a saved email —</option>
+              {% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="fld"><span class="wait-label">Wait</span>
+            <span class="step-wait"><input type="number" name="wait_days" min="0" max="365" value="3"> <span class="wait-after">days after the email before</span></span>
+          </label>
+          <label class="fld">How it's sent
+            <select name="send_mode">
+              <option value="auto">Send automatically</option>
+              <option value="manual">I'll send it myself</option>
+            </select>
+          </label>
+          <button type="button" class="step-x" title="Remove this email" onclick="sqRemoveStep(this)">✕</button>
+        </div>
+      </div>
+    </template>
+    {% else %}
+      {% for st in steps %}
+      <div class="step">
+        <strong>Email {{ loop.index }}</strong> · {{ st.template_name or 'No saved email chosen' }}
+        <span class="muted"> · {{ st.wait_days }} days {{ 'after being added' if loop.first else 'after the email before' }} · {{ "I'll send it myself" if st.send_mode == 'manual' else 'Sent automatically' }}</span>
+        {% if st.campaign_id and st.stats.sent %}<div class="step-stats">Sent {{ st.stats.sent }} · Opened {{ st.stats.opened }} · Clicked {{ st.stats.clicked }} · Replied {{ st.stats.replied }}</div>{% endif %}
+      </div>
+      {% else %}
+      <div class="muted">No emails chosen yet.</div>
+      {% endfor %}
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── Add people ── -->
+{% if can_edit %}
+<div class="sq-card">
+  <div class="sq-card-h">
+    <div>
+      <h2>Add people</h2>
+      <p>People who unsubscribed, people already in this sequence, and closed leads are skipped.</p>
+    </div>
+  </div>
+  <div class="sq-card-b">
+    {% if not steps %}
+    <div class="muted" style="font-size:13px">Choose the emails above first, then add people.</div>
+    {% else %}
+    <div class="add-tabs">
+      <button type="button" class="add-tab on" data-pane="leads">From your leads</button>
+      <button type="button" class="add-tab" data-pane="segment">From an Email Segment</button>
+      <button type="button" class="add-tab" data-pane="emails">Type email addresses</button>
+    </div>
+    <form method="POST" action="{{ url_for('portal.email_sequence_add_people', seq_id=seq.id) }}" class="add-pane" data-pane="leads">
+      <input type="hidden" name="source" value="leads">
+      <label class="fld">Stage
+        <select name="stage"><option value="">Any open stage</option>{% for v, l in stages %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
+      </label>
+      <label class="fld">Business category
+        <select name="category"><option value="">Any category</option>{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select>
+      </label>
+      <button class="sq-btn" type="submit">Add these leads</button>
+    </form>
+    <form method="POST" action="{{ url_for('portal.email_sequence_add_people', seq_id=seq.id) }}" class="add-pane" data-pane="segment" hidden>
+      <input type="hidden" name="source" value="segment">
+      <label class="fld">Email Segment
+        <select name="segment_id" required><option value="">— choose —</option>{% for s in segments %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select>
+      </label>
+      <button class="sq-btn" type="submit">Add this segment</button>
+    </form>
+    <form method="POST" action="{{ url_for('portal.email_sequence_add_people', seq_id=seq.id) }}" class="add-pane" data-pane="emails" hidden>
+      <input type="hidden" name="source" value="emails">
+      <label class="fld" style="flex:1;min-width:260px">Email addresses (one per line, or separated by commas)
+        <textarea name="emails" rows="3" required></textarea>
+      </label>
+      <button class="sq-btn" type="submit">Add</button>
+    </form>
+    <p class="muted" style="font-size:12px;margin:12px 0 0">You can also add one lead at a time from the lead's page, under ✉️ Emails.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── People ── -->
+<div class="sq-card">
+  <div class="sq-card-h">
+    <div>
+      <h2>People ({{ total_people }})</h2>
+      <p>Who is in this sequence, which email they're on, and what's next.</p>
+    </div>
+    {% if can_send and counts.get('ready') %}
+    <form method="POST" action="{{ url_for('portal.email_sequence_people_action', seq_id=seq.id) }}" style="margin:0">
+      <input type="hidden" name="action" value="send_ready">
+      <button class="sq-btn" type="submit">✉️ Send to everyone ready ({{ counts.get('ready') }})</button>
+    </form>
+    {% endif %}
+  </div>
+  <div class="bulk">
+    {% set _act = (counts.get('active', 0) + counts.get('sending', 0)) %}
+    <div class="chips">
+      <a class="chip {% if show == 'all' %}on{% endif %}" href="?show=all">All {{ total_people }}</a>
+      <a class="chip {% if show == 'active' %}on{% endif %}" href="?show=active">Waiting {{ _act }}</a>
+      <a class="chip {% if show == 'ready' %}on{% endif %}" href="?show=ready">Ready to send {{ counts.get('ready', 0) }}</a>
+      <a class="chip {% if show == 'finished' %}on{% endif %}" href="?show=finished">Finished {{ counts.get('finished', 0) }}</a>
+      <a class="chip {% if show == 'stopped' %}on{% endif %}" href="?show=stopped">Stopped {{ counts.get('stopped', 0) }}</a>
+    </div>
+    <form method="GET" style="margin:0 0 0 auto;display:flex;gap:6px">
+      <input type="hidden" name="show" value="{{ show }}">
+      <input type="search" name="q" value="{{ q }}" placeholder="Search name or email" style="padding:7px 11px;border:1.5px solid #e2e8f0;border-radius:9px;font-size:13px">
+    </form>
+  </div>
+  {% if people %}
+  <form method="POST" action="{{ url_for('portal.email_sequence_people_action', seq_id=seq.id) }}" id="peopleForm">
+    {% if can_edit or can_send %}
+    <div class="bulk" style="background:#fff">
+      <span class="muted" style="font-size:12.5px">With ticked people:</span>
+      {% if can_send %}<button class="sq-btn small" type="submit" name="action" value="send">Send next email now</button>{% endif %}
+      {% if can_edit %}
+      <button class="sq-btn small light" type="submit" name="action" value="stop">Stop</button>
+      <button class="sq-btn small light" type="submit" name="action" value="resume">Resume</button>
+      <button class="sq-btn small danger" type="submit" name="action" value="remove" data-confirm="Click again to remove" onclick="return sqConfirm(this)">Remove</button>
+      {% endif %}
+    </div>
+    {% endif %}
+    <div class="ptable-wrap">
+    <table class="ptable">
+      <thead><tr>
+        <th style="width:30px">{% if can_edit or can_send %}<input type="checkbox" onclick="document.querySelectorAll('.pchk').forEach(c => c.checked = this.checked)">{% endif %}</th>
+        <th>Person</th><th>Emails sent</th><th>Next</th><th>Status</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for p in people %}
+        {% set nxt = steps[p.steps_sent] if p.steps_sent < steps|length else none %}
+        <tr class="{% if p.status == 'ready' %}is-ready{% endif %}">
+          <td>{% if can_edit or can_send %}<input type="checkbox" class="pchk" name="person_id" value="{{ p.id }}">{% endif %}</td>
+          <td>
+            {% if p.lead_id %}<a href="{{ url_for('portal.lead_detail', lead_id=p.lead_id) }}#emails" style="font-weight:600;text-decoration:none">{{ p.contact_person or p.customer_name or p.email }}</a>{% else %}<strong>{{ p.email }}</strong>{% endif %}
+            <div class="muted" style="font-size:12px">{% if p.lead_id %}{% if p.customer_name and p.contact_person %}{{ p.customer_name }} · {% endif %}{{ p.email }}{% else %}Added by email address{% endif %}</div>
+          </td>
+          <td class="muted">{{ p.steps_sent }} of {{ steps|length }}{% if p.last_sent_at %}<div style="font-size:11.5px">last {{ p.last_sent_at.strftime('%d %b, %H:%M') }}</div>{% endif %}</td>
+          <td>
+            {% if p.status in ('active', 'ready', 'sending') and nxt %}
+              Email {{ p.steps_sent + 1 }}
+              <div class="muted" style="font-size:12px">
+                {% if p.status == 'ready' %}waiting for you to send
+                {% elif nxt.send_mode == 'manual' %}ready for you from {{ p.next_due_at.strftime('%d %b') if p.next_due_at else '—' }}
+                {% else %}goes out {{ p.next_due_at.strftime('%d %b, %H:%M') if p.next_due_at else '—' }}{% if seq.status != 'active' %} (once started){% endif %}{% endif %}
+              </div>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td>
+            {% if p.status == 'ready' %}<span class="pill pill-ready">Ready to send</span>
+            {% elif p.status in ('active', 'sending') %}<span class="pill pill-wait">Waiting</span>
+            {% elif p.status == 'finished' %}<span class="pill pill-done">Finished</span>
+            {% else %}<span class="pill pill-stop">Stopped</span>{% if p.stop_reason %}<div class="muted" style="font-size:11.5px;margin-top:3px">{{ p.stop_reason }}</div>{% endif %}{% endif %}
+          </td>
+          <td style="text-align:right;white-space:nowrap">
+            {% if can_send and p.status in ('active', 'ready') and nxt %}<button class="sq-btn small" type="button" onclick="sqOne('send', {{ p.id }})">Send email {{ p.steps_sent + 1 }} now</button>{% endif %}
+            {% if can_edit and p.status in ('active', 'ready') %}<button class="sq-btn small light" type="button" onclick="sqOne('stop', {{ p.id }})">Stop</button>{% endif %}
+            {% if can_edit and p.status == 'stopped' and nxt %}<button class="sq-btn small light" type="button" onclick="sqOne('resume', {{ p.id }})">Resume</button>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </form>
+  {% if people|length >= 300 %}<p class="muted" style="font-size:12px;padding:10px 22px">Showing the first 300. Use the search or the filters above to find someone.</p>{% endif %}
+  {% else %}
+  <div class="empty">{% if q or show != 'all' %}Nobody matches.{% else %}Nobody in this sequence yet.{% endif %}</div>
+  {% endif %}
+</div>
+
+<form method="POST" action="{{ url_for('portal.email_sequence_people_action', seq_id=seq.id) }}" id="oneForm" hidden>
+  <input type="hidden" name="action"><input type="hidden" name="person_id">
+</form>
+
+<script>
+function sqConfirm(el) {
+  const btn = el.tagName === 'FORM' ? el.querySelector('[data-confirm]') : el;
+  if (btn.dataset.armed) return true;
+  btn.dataset.armed = '1'; btn.dataset.label = btn.textContent; btn.textContent = btn.dataset.confirm;
+  setTimeout(() => { delete btn.dataset.armed; btn.textContent = btn.dataset.label; }, 4000);
+  return false;
+}
+function sqOne(action, id) {
+  const f = document.getElementById('oneForm');
+  f.action.value = action; f.person_id.value = id; f.submit();
+}
+function sqRenumber() {
+  document.querySelectorAll('#steps .step').forEach((s, i) => {
+    s.querySelector('.n').textContent = i + 1;
+    s.querySelector('.wait-label').textContent = i === 0 ? 'Send it' : 'Wait';
+    s.querySelector('.wait-after').textContent = i === 0 ? 'days after being added' : 'days after the email before';
+  });
+}
+function sqAddStep() {
+  const box = document.getElementById('steps');
+  const node = document.getElementById('stepTpl').content.firstElementChild.cloneNode(true);
+  if (!box.children.length) node.querySelector('[name=wait_days]').value = 0;
+  box.appendChild(node); sqRenumber();
+}
+function sqRemoveStep(btn) { btn.closest('.step').remove(); sqRenumber(); }
+document.querySelectorAll('.add-tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.add-tab').forEach(x => x.classList.toggle('on', x === t));
+  document.querySelectorAll('.add-pane').forEach(p => p.hidden = p.dataset.pane !== t.dataset.pane);
+}));
+{% if can_edit and not steps and templates %}sqAddStep();{% endif %}
+</script>
+{% endblock %}

@@ -1,0 +1,83 @@
+{% extends "portal/base.html" %}
+{% block title %}Email Sequences — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+.sq-head { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+.sq-head h1 { font-size:22px; font-weight:800; color:var(--ink); margin:0 0 4px; }
+.sq-head p { font-size:13px; color:var(--muted); margin:0; max-width:640px; line-height:1.55; }
+.sq-new { display:flex; gap:8px; flex-wrap:wrap; }
+.sq-new input { padding:9px 12px; border:1.5px solid #e2e8f0; border-radius:10px; font-size:13px; width:240px; max-width:100%; }
+.sq-btn { display:inline-flex; align-items:center; gap:6px; padding:9px 16px; border-radius:10px; font-size:13px; font-weight:700;
+          border:none; background:#0B1D40; color:#fff; cursor:pointer; text-decoration:none; }
+.sq-btn.light { background:#fff; color:#0B1D40; border:1.5px solid #cbd5e1; }
+.sq-warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:12px; padding:12px 16px; font-size:13px; margin-bottom:18px; }
+.sq-card { background:#fff; border:1px solid rgba(3,12,24,.08); border-radius:16px; overflow-x:auto; }
+.sq-table { width:100%; border-collapse:collapse; min-width:720px; }
+.sq-table th { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; padding:11px 18px;
+               text-align:left; background:#f8fafc; border-bottom:1px solid rgba(3,12,24,.07); }
+.sq-table td { padding:13px 18px; font-size:13px; border-bottom:1px solid rgba(3,12,24,.05); vertical-align:middle; }
+.sq-table tr:last-child td { border-bottom:none; }
+.sq-name { font-weight:700; color:var(--ink); text-decoration:none; }
+.sq-name:hover { text-decoration:underline; }
+.pill { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; white-space:nowrap; }
+.pill-on { background:#dcfce7; color:#166534; }
+.pill-off { background:#f1f5f9; color:#475569; }
+.pill-ready { background:#fef3c7; color:#92400e; }
+.num { font-variant-numeric:tabular-nums; }
+.muted { color:var(--muted); }
+.sq-empty { padding:48px 20px; text-align:center; color:var(--muted); font-size:13px; }
+.sq-empty h3 { font-size:15px; color:var(--ink); margin:0 0 6px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sq-head">
+  <div>
+    <h1>Email Sequences</h1>
+    <p>A set of emails sent a few days apart. Each email goes out automatically, or waits for you to send it yourself.
+       A person stops getting them as soon as they reply, unsubscribe, or their lead is closed.</p>
+  </div>
+  {% if staff_can_open('portal.email_sequences_create') %}
+  <form class="sq-new" method="POST" action="{{ url_for('portal.email_sequences_create') }}">
+    <input type="text" name="name" placeholder="New sequence name, e.g. Retail outreach" required maxlength="255">
+    <button class="sq-btn" type="submit">+ New sequence</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if not sender %}
+<div class="sq-warn">No sending address is set up for this business yet, so sequence emails can't go out. Ask PhiXtra support to set one up.</div>
+{% endif %}
+
+<div class="sq-card">
+  {% if sequences %}
+  <table class="sq-table">
+    <thead><tr>
+      <th>Sequence</th><th>Emails</th><th>Status</th><th>Waiting</th><th>Ready to send</th><th>Finished</th><th>Stopped</th><th>Replied</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for s in sequences %}
+      <tr>
+        <td><a class="sq-name" href="{{ url_for('portal.email_sequence_detail', seq_id=s.id) }}">{{ s.name }}</a>
+            <div class="muted" style="font-size:11.5px">Made by {{ s.created_by or '—' }} · {{ s.created_at.strftime('%d %b %Y') if s.created_at else '' }}</div></td>
+        <td class="num">{{ s.n_steps }}</td>
+        <td>{% if s.status == 'active' %}<span class="pill pill-on">● Running</span>{% else %}<span class="pill pill-off">❚❚ Paused</span>{% endif %}</td>
+        <td class="num">{{ s.n_active }}</td>
+        <td class="num">{% if s.n_ready %}<span class="pill pill-ready">{{ s.n_ready }}</span>{% else %}0{% endif %}</td>
+        <td class="num">{{ s.n_finished }}</td>
+        <td class="num">{{ s.n_stopped }}</td>
+        <td class="num">{{ s.n_replied }}</td>
+        <td style="text-align:right"><a class="sq-btn light" href="{{ url_for('portal.email_sequence_detail', seq_id=s.id) }}">Open</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="sq-empty">
+    <h3>No sequences yet</h3>
+    Give your first sequence a name above. Then choose its emails from your saved templates and add people.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

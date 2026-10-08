@@ -590,6 +590,17 @@ def _chat(req: ChatRequest):
     if not _quota["allowed"]:
         print(f"🚫 [QUOTA] tenant={tenant_id} BLOCKED — {_quota['messages_used']}/{_quota['messages_limit']} msgs used")
         _log_overage_event(int(tenant_id), _quota)
+        # Website chat out of AI messages (2026-10-06): same as AI off — the
+        # message goes to the team with a polite reply, instead of an empty
+        # reply the chat box shows as "Sorry, something went wrong."
+        # WhatsApp keeps the quota_exceeded answer the gateway handles.
+        if (req.channel or "") != "whatsapp" and not _sid0.startswith(("wa-", "cw-")):
+            from web_team_chat import plugin_reply as _tc_plugin_reply
+            _tc_msg = (req.message or "").strip()
+            if _tc_msg:
+                _out = _tc_plugin_reply(int(tenant_id), (_sid0 or "w-" + uuid.uuid4().hex[:24])[:64], _tc_msg[:2000])
+                _out["quota_exceeded"] = True
+                return _out
         return {
             "reply": "",
             "session_id": req.session_id or "",
@@ -1646,6 +1657,41 @@ class HandoffContactRequest(BaseModel):
     visitor_name:  str | None = None
     visitor_phone: str | None = None
     visitor_email: str | None = None
+
+
+class TeamChatPollRequest(BaseModel):
+    api_key: str
+    session_id: str
+    after: int = 0
+    history: bool = False
+
+
+_TEAM_POLL_KEYS: dict = {}   # sha256(api key) → (tenant_id, business name, checked at)
+
+
+@app.post("/team-chat/poll")
+def team_chat_poll(req: TeamChatPollRequest):
+    """The WordPress plugin's chat box checks in every few seconds once its
+    chat has gone to the team (2026-10-06, plugin 3.9.10): the visitor counts
+    as on the page, and new staff replies come back to show live. The key
+    check is remembered for a minute, so polling doesn't re-check it each time."""
+    import hashlib as _hl, time as _t
+    sid = (req.session_id or "").strip()[:64]
+    if not sid or not req.api_key:
+        return {"replies": [], "history": [], "last_id": max(int(req.after or 0), 0)}
+    h = _hl.sha256(req.api_key.encode("utf-8")).hexdigest()
+    hit = _TEAM_POLL_KEYS.get(h)
+    if not hit or _t.time() - hit[2] > 60:
+        tenant, error = verify_api_key(req.api_key)
+        if error:
+            _TEAM_POLL_KEYS.pop(h, None)
+            raise HTTPException(status_code=401, detail=error)
+        hit = (int(tenant["tenant_id"]), tenant.get("name") or "", _t.time())
+        if len(_TEAM_POLL_KEYS) > 5000:
+            _TEAM_POLL_KEYS.clear()
+        _TEAM_POLL_KEYS[h] = hit
+    from web_team_chat import poll as _tc_poll
+    return _tc_poll(hit[0], sid, max(int(req.after or 0), 0), hit[1], history=bool(req.history))
 
 
 @app.post("/handoff-contact")

@@ -894,7 +894,7 @@
     {% endif %}
 
     <!-- ── Email Campaigns group — a separate channel from WhatsApp Campaigns, not part of PhiXtra Connect ── -->
-    {% set _email_camp_group = request.endpoint in ('portal.email_campaigns',) %}
+    {% set _email_camp_group = request.endpoint in ('portal.email_campaigns', 'portal.email_sequences', 'portal.email_sequence_detail', 'portal.email_saved_emails', 'portal.email_new', 'portal.email_saved_email_edit') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _email_camp_group %}open{% endif %}"
            onclick="sbToggle(this)">
@@ -912,11 +912,32 @@
           {% if 'campaigns_email.all_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
+        {% if staff_can_open('portal.email_new') %}
+        <a href="{{ url_for('portal.email_new') }}"
+           class="{% if request.endpoint == 'portal.email_new' %}active{% endif %}">
+          New Email
+          {% if 'campaigns_email.all_create' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </a>
+        {% endif %}
+        {% if staff_can_open('portal.email_saved_emails') %}
+        <a href="{{ url_for('portal.email_saved_emails') }}"
+           class="{% if request.endpoint in ('portal.email_saved_emails', 'portal.email_saved_email_edit') %}active{% endif %}">
+          Saved Emails
+          {% if 'campaigns_email.all_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </a>
+        {% endif %}
         {% if staff_can_open('portal.email_campaign_segments_page') %}
         <a href="{{ url_for('portal.email_campaign_segments_page') }}"
            class="{% if request.endpoint == 'portal.email_campaign_segments_page' %}active{% endif %}">
           Email Segment
           {% if 'campaigns_email.segments_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </a>
+        {% endif %}
+        {% if staff_can_open('portal.email_sequences') %}
+        <a href="{{ url_for('portal.email_sequences') }}"
+           class="{% if request.endpoint in ('portal.email_sequences', 'portal.email_sequence_detail') %}active{% endif %}">
+          Sequences
+          {% if 'campaigns_email.sequences_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
       </div>
@@ -1565,6 +1586,14 @@
          'socialcal.analytics': 'soc-analytics',
          'social.brand_kit': 'soc-brand',
          'social.usage': 'soc-usage',
+         'portal.email_campaigns': 'eml-camp',
+         'portal.email_campaign_report': 'eml-camp-report',
+         'portal.email_campaigns_reports': 'eml-camp-report',
+         'portal.email_new': 'eml-new',
+         'portal.email_saved_email_edit': 'eml-new',
+         'portal.email_saved_emails': 'eml-saved',
+         'portal.email_sequences': 'eml-seq',
+         'portal.email_sequence_detail': 'eml-seq-people',
          'portal.team_page': 'team-members',
          'portal.team_create': 'team-add',
          'portal.team_edit': 'team-edit',
@@ -1580,7 +1609,7 @@
        }.get(request.endpoint) %}
     {% if _help_anchor %}
     <div style="display:flex;justify-content:flex-end;margin:0 0 8px">
-      <a href="{{ url_for('portal.tutorials', topic=('social' if _help_anchor.startswith('soc-') else 'team' if _help_anchor.startswith('team-') else 'leads' if _help_anchor.startswith('lead-') else 'crm')) }}#{{ _help_anchor }}"
+      <a href="{{ url_for('portal.tutorials', topic=('social' if _help_anchor.startswith('soc-') else 'team' if _help_anchor.startswith('team-') else 'leads' if _help_anchor.startswith('lead-') else 'email' if _help_anchor.startswith('eml-') else 'crm')) }}#{{ _help_anchor }}"
          style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--ink);padding:5px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;text-decoration:none">
         📚 How to use this page
       </a>

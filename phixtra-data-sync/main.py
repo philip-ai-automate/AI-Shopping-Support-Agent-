@@ -74,6 +74,13 @@ def clean_domain(domain: str) -> str:
     return d
 
 
+def _bare(domain: str) -> str:
+    """Domain without a leading "www." — the shop's WordPress address and the
+    website saved on its PhiXtra account may differ only by www (2026-10-06)."""
+    d = clean_domain(domain)
+    return d[4:] if d.startswith("www.") else d
+
+
 def validate_bearer(authorization: Optional[str], x_phixtra_tenant: Optional[str] = None) -> Dict[str, Any]:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing/invalid Authorization Bearer token")
@@ -92,9 +99,10 @@ def validate_bearer(authorization: Optional[str], x_phixtra_tenant: Optional[str
                 SELECT k.id, k.tenant_id, k.is_active, k.api_key_hash, t.domain, t.status
                 FROM api_keys k
                 JOIN tenants t ON t.id = k.tenant_id
-                WHERE k.is_active = TRUE AND t.status IN ('active', 'pending') AND LOWER(t.domain) = %s
+                WHERE k.is_active = TRUE AND t.status IN ('active', 'pending')
+                  AND regexp_replace(LOWER(t.domain), '^www\\.', '') = %s
                 LIMIT 500
-            """, (tenant_domain,))
+            """, (_bare(tenant_domain),))
         else:
             cur.execute("""
                 SELECT k.id, k.tenant_id, k.is_active, k.api_key_hash, t.domain, t.status
@@ -637,7 +645,7 @@ def sync_batch(
     auth = validate_bearer(authorization, x_phixtra_tenant)
 
     tenant_domain = clean_domain(auth["domain"])
-    if clean_domain(req.tenant_id) != tenant_domain:
+    if _bare(req.tenant_id) != _bare(tenant_domain):
         raise HTTPException(status_code=403, detail="tenant_id mismatch")
 
     tenant_id = int(auth.get("tenant_id") or 0)

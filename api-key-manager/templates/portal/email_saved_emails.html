@@ -1,0 +1,356 @@
+{% extends "portal/base.html" %}
+{% block title %}Saved Emails — PhiXtra Portal{% endblock %}
+
+{% set can_use = staff_can_open('portal.email_campaigns_create') %}
+{% set can_new = staff_can_open('portal.email_new') %}
+{% set can_edit = staff_can_open('portal.email_saved_email_edit') %}
+{% set can_delete = staff_can('campaigns_email.all_delete') %}
+{% macro link() %}{{ url_for('portal.email_saved_emails', **dict(filters, page=1, **kwargs)) }}{% endmacro %}
+
+{% block head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap">
+<style>
+/* Saved Emails (list redesign approved 2026-10-08): sticky filter bar over a
+   compact list grouped by day / week / month; preview in a side panel. */
+.se, .se-drawer, .se-dlg { --navy:#0B1D40; --ink:#111E2D; --mut:#5A6B85; --ln:#DCE3EE; --cv:#F3F5F9; --pp:#FFFFFF; --soft:#EEF2F9; --good:#12804A; --vio:#3730A3; --bad:#B42318;
+      --fh:"Poppins","Segoe UI",Arial,sans-serif; --fb:"Inter","Segoe UI",Arial,sans-serif; font-family: var(--fb); color: var(--ink); }
+.se * { box-sizing: border-box; }
+.se-head { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.se-head h1 { font: 700 22px/1.2 var(--fh); margin: 0 0 4px; }
+.se-head p { margin: 0; font-size: 13px; color: var(--mut); max-width: 640px; }
+.se-head .acts { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.se-btn { font: 600 13px var(--fb); border-radius: 8px; padding: 8px 14px; border: 1px solid var(--ln); background: var(--pp); color: var(--ink);
+          cursor: pointer; white-space: nowrap; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; line-height: 1.2; }
+.se-btn:hover { border-color: #B9C6DB; }
+.se-btn.pri { background: var(--navy); border-color: var(--navy); color: #fff; }
+.se-btn.sm { padding: 5px 10px; font-size: 12px; }
+.se-btn.danger { color: var(--bad); border-color: #F3C1BA; }
+.se :focus-visible, .se-drawer :focus-visible, .se-dlg :focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+.se-guide { background: var(--pp); border: 1px solid var(--ln); border-radius: 12px; margin-bottom: 14px; }
+.se-guide summary { list-style: none; cursor: pointer; padding: 10px 16px; font: 600 13.5px var(--fh); display: flex; justify-content: space-between; }
+.se-guide summary::-webkit-details-marker { display: none; }
+.se-guide summary::after { content: "Show ▾"; font: 500 12px var(--fb); color: var(--mut); }
+.se-guide[open] summary::after { content: "Hide ▴"; }
+.se-guide ul { margin: 0; padding: 4px 18px 14px 34px; font-size: 13px; color: var(--mut); display: grid; gap: 4px; line-height: 1.5; }
+.se-guide b { color: var(--ink); font-weight: 600; }
+.se-stats { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.se-stat { background: var(--pp); border: 1px solid var(--ln); border-radius: 10px; padding: 8px 14px; font-size: 12.5px; color: var(--mut); }
+.se-stat b { color: var(--ink); font: 600 16px var(--fh); margin-right: 6px; font-variant-numeric: tabular-nums; }
+.se-tools { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 6; background: var(--pp); border: 1px solid var(--ln); border-radius: 12px 12px 0 0;
+            padding: 12px 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 0; }
+.se-search { flex: 1 1 240px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--ln); border-radius: 8px; padding: 0 10px; background: var(--pp); }
+.se-search input { border: 0; padding: 8px 0; font: 14px var(--fb); width: 100%; background: transparent; outline: none; }
+.se .se-tools select, .se .se-tools input[type=date] { font: 13px var(--fb); border: 1px solid var(--ln); border-radius: 8px; padding: 7px 9px; background: var(--pp); color: var(--ink); width: auto; }
+.se-lbl { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--mut); }
+.se-seg { display: inline-flex; background: var(--soft); border-radius: 8px; padding: 3px; gap: 2px; }
+.se-seg a { font: 600 12px var(--fb); color: var(--mut); padding: 5px 11px; border-radius: 6px; text-decoration: none; }
+.se-seg a.on { background: var(--pp); color: var(--ink); box-shadow: 0 1px 2px rgba(11,29,64,.12); }
+.se-chips { display: flex; gap: 6px; flex-wrap: wrap; padding: 9px 16px; background: #FAFBFD; border: 1px solid var(--ln); border-top: 0; font-size: 12px; align-items: center; }
+.se-chip { border: 1px solid var(--ln); background: var(--pp); border-radius: 999px; padding: 3px 6px 3px 10px; display: inline-flex; gap: 4px; align-items: center; }
+.se-chip a { color: var(--mut); text-decoration: none; padding: 0 4px; }
+.se-count { margin-left: auto; color: var(--mut); }
+.se .se-count select { font: 12px var(--fb); border: 0; background: none; color: var(--mut); cursor: pointer; width: auto; padding: 0; }
+.se-list { background: var(--pp); border: 1px solid var(--ln); border-top: 0; border-radius: 0 0 12px 12px; overflow-x: auto; }
+.se table { width: 100%; border-collapse: collapse; min-width: 860px; }
+.se th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--mut); padding: 9px 14px; border-bottom: 1px solid var(--ln); }
+.se td { padding: 10px 14px; border-bottom: 1px solid #EDF1F7; vertical-align: middle; font-size: 13px; }
+.se tr.grp td { background: #F7F9FC; font: 600 12.5px var(--fb); padding: 7px 14px; border-bottom: 1px solid var(--ln); }
+.se tr.grp span { color: var(--mut); font-weight: 500; margin-left: 6px; }
+.se tr.row:hover td { background: #FAFCFF; }
+.se tr.row.sel td { background: #F1F5FD; }
+.se-nm { font-weight: 600; }
+.se-sj { max-width: 46ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.se-sn { color: var(--mut); font-size: 12px; max-width: 52ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.se-who { display: flex; gap: 8px; align-items: center; white-space: nowrap; }
+.se-av { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 700 10px var(--fh); color: #fff; background: var(--navy); flex: none; }
+.se-when { color: var(--mut); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.se-tag { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 999px; padding: 2px 8px; background: var(--soft); color: #475569; margin: 1px 2px 1px 0; white-space: nowrap; }
+.se-tag.seq { background: #E8E7FB; color: var(--vio); }
+.se-tag.shr { background: #E7F6EE; color: var(--good); }
+.se-acts { white-space: nowrap; text-align: right; }
+.se-more { position: relative; display: inline-block; }
+.se-more summary { list-style: none; }
+.se-more summary::-webkit-details-marker { display: none; }
+.se-menu { position: absolute; right: 0; top: 32px; background: var(--pp); border: 1px solid var(--ln); border-radius: 10px; box-shadow: 0 12px 30px rgba(11,29,64,.16);
+           padding: 6px; width: 210px; z-index: 8; text-align: left; display: grid; }
+.se-menu a, .se-menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; border-radius: 6px; font: 13px var(--fb); color: var(--ink);
+                              text-decoration: none; background: none; border: 0; cursor: pointer; }
+.se-menu a:hover, .se-menu button:hover { background: var(--soft); }
+.se-menu .bad { color: var(--bad); }
+.se-menu form { margin: 0; }
+.se-foot { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; font-size: 12.5px; color: var(--mut); flex-wrap: wrap; gap: 8px; }
+.se-pager { display: flex; gap: 6px; }
+.se-empty { padding: 44px 20px; text-align: center; color: var(--mut); font-size: 13.5px; }
+.se-empty b { display: block; color: var(--ink); font: 600 15px var(--fh); margin-bottom: 4px; }
+/* preview panel */
+.se-scrim { position: fixed; inset: 0; background: rgba(11,29,64,.18); z-index: 900; }
+.se-drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(560px, 100%); background: #fff; border-left: 1px solid #DCE3EE;
+             box-shadow: -16px 0 40px rgba(11,29,64,.14); display: flex; flex-direction: column; z-index: 901;
+             font-family: "Inter","Segoe UI",Arial,sans-serif; color: #111E2D; }
+.se-drawer[hidden], .se-scrim[hidden] { display: none; }
+.se-dh { padding: calc(14px + env(safe-area-inset-top, 0px)) 20px 14px; border-bottom: 1px solid #DCE3EE; display: flex; gap: 12px; align-items: flex-start; }
+.se-dh h2 { font: 600 16px "Poppins","Segoe UI",Arial,sans-serif; margin: 0; }
+.se-meta { font-size: 12px; color: #5A6B85; }
+.se-dact { display: flex; gap: 8px; padding: 12px 20px; border-bottom: 1px solid #DCE3EE; flex-wrap: wrap; }
+.se-dact form { margin: 0; }
+.se-dinbox { padding: 10px 20px; border-bottom: 1px solid #DCE3EE; font-size: 12.5px; display: grid; gap: 2px; }
+.se-dinbox span { color: #5A6B85; }
+.se-dbody { overflow: auto; background: #F3F5F9; padding: 14px; flex: 1; }
+.se-dbody iframe { width: 100%; border: 0; min-height: 500px; background: #F3F5F9; }
+.se-dnote { padding: 10px 20px calc(10px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid #DCE3EE; font-size: 12px; color: #5A6B85; }
+/* small dialogs */
+.se-dlg { border: 1px solid #DCE3EE; border-radius: 14px; padding: 0; width: min(420px, 94vw); font-family: "Inter","Segoe UI",Arial,sans-serif; color: #111E2D; }
+.se-dlg::backdrop { background: rgba(11,29,64,.3); }
+.se-dlg form { margin: 0; }
+.se-dlg h3 { font: 600 15px "Poppins","Segoe UI",Arial,sans-serif; margin: 0; padding: 14px 18px; border-bottom: 1px solid #DCE3EE; }
+.se-dlg .bd { padding: 14px 18px; display: grid; gap: 10px; font-size: 13px; }
+.se-dlg .ft { padding: 12px 18px; border-top: 1px solid #DCE3EE; display: flex; justify-content: flex-end; gap: 8px; }
+.se-dlg select { font: 13px "Inter",Arial,sans-serif; border: 1px solid #DCE3EE; border-radius: 8px; padding: 8px 10px; width: 100%; }
+.se-dlg label.m { display: flex; gap: 8px; align-items: center; padding: 3px 0; }
+.se-dlg label.m input { width: 16px; height: 16px; flex: none; margin: 0; }
+.se-dlg .list { max-height: 240px; overflow: auto; }
+.se-dlg small { color: #5A6B85; }
+@media (max-width: 700px) { .se-tools { position: static; } .se-head .acts { margin-left: 0; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="se" id="se">
+  <div class="se-head">
+    <div>
+      <h1>Saved Emails</h1>
+      <p>{% if see_all %}Every email your team has saved. Team members see only their own and ones shared with them.{% else %}Emails you saved, and ones shared with you.{% endif %}</p>
+    </div>
+    <div class="acts">
+      {% if can_new %}<a class="se-btn pri" href="{{ url_for('portal.email_new') }}">+ New email</a>{% endif %}
+    </div>
+  </div>
+
+  <details class="se-guide" id="seGuide">
+    <summary>📘 How to use this page</summary>
+    <ul>
+      <li><b>Find an email:</b> search by name, subject or any words in it, or narrow it down with When{% if see_all %}, Saved by{% endif %} and Show.</li>
+      <li><b>Group by:</b> Day, Week or Month puts the emails under headings by when they were last changed.</li>
+      <li>More detail, with pictures: <a href="{{ url_for('portal.tutorials', topic='email') }}#eml-saved">the full Email Campaigns guide</a>.</li>
+      <li><b>Preview</b> opens the email on the right, with a real lead's names filled in.</li>
+      <li><b>Use ▾</b> puts it in a campaign or a sequence, edits it, or makes a copy to start a new one.{% if can_share %} Share lets chosen team members use it.{% endif %}</li>
+      <li>{% if see_all %}Team members only see the emails they saved and ones you share with them.{% else %}You only see emails you saved and ones your manager shared with you. You can edit and delete only your own.{% endif %}</li>
+    </ul>
+  </details>
+
+  <div class="se-stats">
+    <div class="se-stat"><b>{{ stats.total }}</b>saved email{{ '' if stats.total == 1 else 's' }}</div>
+    <div class="se-stat"><b>{{ stats.this_month }}</b>saved this month</div>
+    <div class="se-stat"><b>{{ stats.in_seq }}</b>used in sequences</div>
+    {% if see_all %}<div class="se-stat"><b>{{ stats.writers }}</b>{{ 'person' if stats.writers == 1 else 'people' }} writing emails</div>{% endif %}
+  </div>
+
+  <form class="se-tools" id="seFilters" method="GET" role="search">
+    <label class="se-search"><span aria-hidden="true">🔍</span>
+      <input type="search" name="q" id="seQ" value="{{ filters.q }}" placeholder="Search name, subject or words in the email" aria-label="Search saved emails"></label>
+    <label class="se-lbl" for="seWhen">When</label>
+    <select name="when" id="seWhen">
+      {% for v, l in [('any', 'Any time'), ('today', 'Today'), ('7d', 'Last 7 days'), ('month', 'This month'), ('lastmonth', 'Last month')] %}
+      <option value="{{ v }}" {% if filters.when == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      {% for v, l in months %}<option value="{{ v }}" {% if filters.when == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      <option value="dates" {% if filters.when == 'dates' %}selected{% endif %}>Pick dates…</option>
+    </select>
+    <span id="seDates" {% if filters.when != 'dates' %}hidden{% endif %}>
+      <input type="date" name="from" aria-label="From" value="{{ request.args.get('from', '') }}"> to
+      <input type="date" name="to" aria-label="To" value="{{ request.args.get('to', '') }}">
+    </span>
+    {% if see_all %}
+    <label class="se-lbl" for="seBy">Saved by</label>
+    <select name="by" id="seBy">
+      <option value="">Everyone</option><option value="me" {% if filters.by == 'me' %}selected{% endif %}>Me</option>
+      {% for k, l in writers %}<option value="{{ k }}" {% if filters.by == k %}selected{% endif %}>{{ l }}</option>{% endfor %}
+    </select>
+    {% endif %}
+    <label class="se-lbl" for="seShow">Show</label>
+    <select name="show" id="seShow">
+      {% for v, l in [('all', 'All emails'), ('seq', 'Used in a sequence'), ('unused', 'Not used in a sequence'), ('shared', 'Shared with others'), ('video', 'With a video')] %}
+      <option value="{{ v }}" {% if filters.show == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+    </select>
+    <input type="hidden" name="group" value="{{ filters.group }}">
+    <input type="hidden" name="sort" value="{{ filters.sort }}">
+    <span class="se-lbl">Group by</span>
+    <div class="se-seg">{% for v, l in [('day', 'Day'), ('week', 'Week'), ('month', 'Month')] %}<a href="{{ link(group=v) }}" class="{{ 'on' if filters.group == v }}">{{ l }}</a>{% endfor %}</div>
+  </form>
+  <div class="se-chips">
+    <span class="se-lbl">Showing</span>
+    {% if filters.q %}<span class="se-chip">“{{ filters.q }}”<a href="{{ link(q='') }}" aria-label="Remove search">✕</a></span>{% endif %}
+    <span class="se-chip">{{ when_label }}{% if filters.when != 'any' %}<a href="{{ link(when='any') }}" aria-label="Show any time">✕</a>{% endif %}</span>
+    {% if see_all %}<span class="se-chip">{{ by_label or 'Everyone' }}{% if filters.by %}<a href="{{ link(by='') }}" aria-label="Show everyone">✕</a>{% endif %}</span>{% endif %}
+    {% if filters.show != 'all' %}<span class="se-chip">{{ {'seq': 'Used in a sequence', 'unused': 'Not used in a sequence', 'shared': 'Shared with others', 'video': 'With a video'}[filters.show] }}<a href="{{ link(show='all') }}" aria-label="Show all emails">✕</a></span>{% endif %}
+    <span class="se-count">{{ total }} email{{ '' if total == 1 else 's' }} ·
+      <select aria-label="Sort" onchange="location.href=this.value">
+        {% for v, l in [('new', 'newest changed first'), ('old', 'oldest first'), ('name', 'name A–Z')] %}<option value="{{ link(sort=v) }}" {% if filters.sort == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select></span>
+  </div>
+
+  <div class="se-list">
+    {% if groups %}
+    {% set shown = namespace(n=0) %}
+    <table>
+      <thead><tr><th>Email</th><th>Saved by</th><th>Last changed</th><th>Where it's used</th><th><span style="visibility:hidden">Actions</span></th></tr></thead>
+      <tbody>
+      {% for g in groups %}
+        {% if g.label %}<tr class="grp"><td colspan="5">{{ g.label }} <span>{{ g.rows|length }} email{{ '' if g.rows|length == 1 else 's' }}</span></td></tr>{% endif %}
+        {% for e in g.rows %}
+        {% set shown.n = shown.n + 1 %}
+        <tr class="row" id="se-{{ e.id }}" data-id="{{ e.id }}" data-name="{{ e.name }}" data-who="{{ e.who }}" data-when="{{ e.when }}"
+            data-used="{{ (e.used_in|join(', ')) or 'Not used in a sequence yet' }}" data-shared="{{ e.shared_ids|tojson }}">
+          <td><div class="se-nm">{{ e.name }}</div><div class="se-sj">{{ e.subject or '(no subject)' }}</div><div class="se-sn">{{ e.snippet }}</div></td>
+          <td><div class="se-who"><span class="se-av">{{ e.initials }}</span>{{ e.who }}{% if not e.mine and not see_all %} <span class="se-tag shr">Shared with you</span>{% endif %}</div></td>
+          <td class="se-when">{{ e.when }}</td>
+          <td>
+            {% for u in e.used_in %}<span class="se-tag seq">{{ u }}</span>{% endfor %}
+            {% if can_share and e.shared_names %}<span class="se-tag shr" title="{{ e.shared_names|join(', ') }}">Shared with {{ e.shared_names|length }}</span>{% endif %}
+            {% if e.has_video %}<span class="se-tag">Video</span>{% endif %}
+            {% if not e.used_in %}<span class="se-tag">Not used yet</span>{% endif %}
+          </td>
+          <td class="se-acts">
+            <button type="button" class="se-btn sm" onclick="sePreview({{ e.id }})">Preview</button>
+            <details class="se-more">
+              <summary class="se-btn sm">Use ▾</summary>
+              <div class="se-menu" role="menu">
+                {% if can_use %}<a href="{{ url_for('portal.email_campaigns') }}?use_template={{ e.id }}">Use in a campaign</a>{% endif %}
+                {% if seq_on and sequences %}<button type="button" onclick="seOpenSeq({{ e.id }})">Add to a sequence</button>{% endif %}
+                {% if e.mine and can_edit %}<a href="{{ url_for('portal.email_saved_email_edit', template_id=e.id) }}">Edit</a>{% endif %}
+                {% if can_new %}<form method="POST" action="{{ url_for('portal.email_saved_email_copy', template_id=e.id) }}"><button type="submit">Make a copy</button></form>{% endif %}
+                {% if can_share %}<button type="button" onclick="seOpenShare({{ e.id }})">Share…</button>{% endif %}
+                {% if can_delete and e.mine %}<button type="button" class="bad" onclick="seOpenDelete({{ e.id }})">Delete…</button>{% endif %}
+              </div>
+            </details>
+          </td>
+        </tr>
+        {% endfor %}
+      {% endfor %}
+      </tbody>
+    </table>
+    <div class="se-foot">
+      <span>Showing {{ (page - 1) * per + 1 }}–{{ (page - 1) * per + shown.n }} of {{ total }} · {{ per }} per page</span>
+      <div class="se-pager">
+        {% if page > 1 %}<a class="se-btn sm" href="{{ url_for('portal.email_saved_emails', **dict(filters, page=page - 1)) }}">‹ Previous</a>{% endif %}
+        <span style="align-self:center">Page {{ page }} of {{ pages }}</span>
+        {% if page < pages %}<a class="se-btn sm" href="{{ url_for('portal.email_saved_emails', **dict(filters, page=page + 1)) }}">Next ›</a>{% endif %}
+      </div>
+    </div>
+    {% else %}
+    <div class="se-empty">
+      {% if stats.total == 0 %}
+        <b>No saved emails yet</b>
+        {% if can_new %}Press <a href="{{ url_for('portal.email_new') }}">+ New email</a> to write your first one.{% endif %}
+      {% else %}
+        <b>No emails match</b>
+        Nothing for {{ when_label|lower }}{% if filters.q %} matching “{{ filters.q }}”{% endif %}.
+        <a href="{{ url_for('portal.email_saved_emails', when='any') }}">Show all {{ stats.total }} emails</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- preview panel -->
+<div class="se-scrim" id="seScrim" hidden onclick="seClose()"></div>
+<aside class="se-drawer" id="seDrawer" hidden aria-label="Email preview">
+  <div class="se-dh"><div style="min-width:0"><h2 id="sdName"></h2><div class="se-meta" id="sdMeta"></div></div>
+    <button type="button" class="se-btn sm" style="margin-left:auto" onclick="seClose()">Close ✕</button></div>
+  <div class="se-dact" id="sdActs"></div>
+  <div class="se-dinbox"><div id="sdFromRow"><span>From:</span> <b id="sdFrom"></b></div><div><span>Subject:</span> <b id="sdSubj"></b></div><div><span>Preview text:</span> <span id="sdPre" style="color:#111E2D"></span></div></div>
+  <div class="se-dbody"><iframe id="sdFrame" title="Email preview" sandbox="allow-same-origin"></iframe></div>
+  <div class="se-dnote" id="sdNote"></div>
+</aside>
+
+<!-- dialogs -->
+<dialog class="se-dlg" id="dlgSeq"><form method="POST" id="fSeq">
+  <h3>Add to a sequence</h3>
+  <div class="bd"><label for="seqPick">It becomes the sequence's last email, sent 3 days after the one before. You can change that on the sequence.</label>
+    <select name="sequence_id" id="seqPick" required><option value="">Choose a sequence…</option>{% for s in sequences %}<option value="{{ s.id }}">{{ s.name }}{% if s.status != 'active' %} (paused){% endif %}</option>{% endfor %}</select></div>
+  <div class="ft"><button type="button" class="se-btn" onclick="this.closest('dialog').close()">Cancel</button><button type="submit" class="se-btn pri">Add</button></div>
+</form></dialog>
+{% if can_share %}
+<dialog class="se-dlg" id="dlgShare"><form method="POST" id="fShare">
+  <h3>Who can see and use this email</h3>
+  <div class="bd"><div class="list">
+    {% for m in members %}<label class="m"><input type="checkbox" name="team_member_id" value="{{ m.id }}"> <span><b style="font-weight:600">{{ m.name }}</b> <small>{{ m.email }}</small></span></label>
+    {% else %}<small>No team members yet.</small>{% endfor %}
+  </div></div>
+  <div class="ft"><button type="button" class="se-btn" onclick="this.closest('dialog').close()">Cancel</button><button type="submit" class="se-btn pri">Save</button></div>
+</form></dialog>
+{% endif %}
+<dialog class="se-dlg" id="dlgDel">
+  <h3>Delete this email?</h3>
+  <div class="bd"><span id="delName"></span><small>Campaigns already sent with it aren't affected. This can't be undone.</small><span id="delErr" style="color:#B42318"></span></div>
+  <div class="ft"><button type="button" class="se-btn" onclick="this.closest('dialog').close()">Cancel</button><button type="button" class="se-btn danger" id="delGo">Delete</button></div>
+</dialog>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id)
+  const row = id => document.querySelector('tr.row[data-id="' + id + '"]')
+  // filters: a change applies straight away; search applies after a short pause
+  const f = $('seFilters')
+  ;['seWhen', 'seBy', 'seShow'].forEach(id => $(id) && $(id).addEventListener('change', () => {
+    if (id === 'seWhen' && $('seWhen').value === 'dates') { $('seDates').hidden = false; return }
+    f.submit()
+  }))
+  document.querySelectorAll('#seDates input').forEach(i => i.addEventListener('change', () => f.submit()))
+  let t = null
+  $('seQ').addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => f.submit(), 700) })
+  if ($('seQ').value) { $('seQ').focus(); const n = $('seQ').value.length; $('seQ').setSelectionRange(n, n) }
+  // close an open Use ▾ menu when clicking elsewhere
+  document.addEventListener('click', e => document.querySelectorAll('details.se-more[open]').forEach(d => { if (!d.contains(e.target)) d.open = false }))
+  // guide remembers open/closed per person on this device
+  try { if (localStorage.getItem('seGuideOpen') === '1') $('seGuide').open = true } catch (e) {}
+  $('seGuide').addEventListener('toggle', () => { try { localStorage.setItem('seGuideOpen', $('seGuide').open ? '1' : '0') } catch (e) {} })
+
+  // preview panel
+  window.sePreview = function (id) {
+    const r = row(id); document.querySelectorAll('tr.row.sel').forEach(x => x.classList.remove('sel')); r.classList.add('sel')
+    $('sdName').textContent = r.dataset.name
+    $('sdMeta').textContent = 'Saved by ' + r.dataset.who + ' · ' + r.dataset.when + ' · ' + r.dataset.used
+    $('sdActs').innerHTML = ''
+    r.querySelectorAll('.se-menu > a, .se-menu > button, .se-menu > form').forEach((el, i) => {
+      const c = el.cloneNode(true)
+      const b = c.tagName === 'FORM' ? c.querySelector('button') : c
+      b.className = 'se-btn sm' + (i === 0 ? ' pri' : '') + (el.classList.contains('bad') ? ' danger' : '')
+      $('sdActs').appendChild(c)
+    })
+    $('sdFrom').textContent = ''; $('sdSubj').textContent = ''; $('sdPre').textContent = ''; $('sdNote').textContent = 'Loading…'; $('sdFrame').srcdoc = ''
+    $('seScrim').hidden = false; $('seDrawer').hidden = false
+    fetch('/email/saved-emails/' + id + '/preview').then(x => x.json()).then(d => {
+      if (d.error) { $('sdNote').textContent = 'This email could not be shown.'; return }
+      $('sdFrom').textContent = d.from_name || ''; $('sdFromRow').hidden = !d.from_name; $('sdSubj').textContent = d.subject || '(no subject)'; $('sdPre').textContent = d.preheader || '—'
+      const fr = $('sdFrame'); fr.onload = () => { try { fr.style.height = (fr.contentDocument.documentElement.scrollHeight + 4) + 'px' } catch (e) {} }
+      fr.srcdoc = d.html
+      $('sdNote').textContent = d.shown_as ? 'Shown with the names of a real lead: ' + d.shown_as + '. Each person sees their own.' : 'Names show as "there" here. Each person sees their own when it is sent.'
+    }).catch(() => { $('sdNote').textContent = 'Could not load the preview. Check your connection.' })
+  }
+  window.seClose = function () { $('seScrim').hidden = true; $('seDrawer').hidden = true; document.querySelectorAll('tr.row.sel').forEach(x => x.classList.remove('sel')) }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('seDrawer').hidden) seClose() })
+
+  // dialogs
+  window.seOpenSeq = function (id) { $('fSeq').action = '/email/saved-emails/' + id + '/add-to-sequence'; $('dlgSeq').showModal() }
+  window.seOpenShare = function (id) {
+    if (!$('fShare')) return
+    const shared = JSON.parse(row(id).dataset.shared || '[]')
+    $('fShare').action = '/email/saved-emails/' + id + '/share'
+    $('fShare').querySelectorAll('input[type=checkbox]').forEach(c => c.checked = shared.includes(+c.value))
+    $('dlgShare').showModal()
+  }
+  window.seOpenDelete = function (id) {
+    $('delName').textContent = '“' + row(id).dataset.name + '” will be removed from Saved Emails.'; $('delErr').textContent = ''
+    $('delGo').onclick = () => fetch('/email/templates/' + id + '/delete', { method: 'POST' }).then(x => x.json()).then(d => {
+      if (d.error) { $('delErr').textContent = d.error; return }
+      location.reload()
+    }).catch(() => { $('delErr').textContent = 'Could not delete. Check your connection.' })
+    $('dlgDel').showModal()
+  }
+  // arriving from a save (#se-<id>): show that email
+  const m = location.hash.match(/^#se-(\d+)$/); if (m && row(m[1])) { row(m[1]).scrollIntoView({ block: 'center' }); row(m[1]).classList.add('sel') }
+})()
+</script>
+{% endblock %}

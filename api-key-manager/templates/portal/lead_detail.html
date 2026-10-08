@@ -295,6 +295,7 @@
       <button type="button" class="lc-tab disabled">✅ Tasks <span class="lc-soon">NEW</span></button>
       <button type="button" class="lc-tab disabled">📞 Calls <span class="lc-soon">NEW</span></button>
       <button type="button" class="lc-tab" onclick="lcShowTab('history')" id="lcHistoryTab">🕒 Stage History</button>
+      <button type="button" class="lc-tab" onclick="lcShowTab('emails')" id="lcEmailsTab">✉️ Emails{% if email_history %} ({{ email_history|length }}){% endif %}</button>
     </div>
     <div id="lcNotesPane">
       {% if lead.notes %}
@@ -322,6 +323,71 @@
       {% else %}
       <div style="font-size:12.5px;color:var(--muted)">No stage moves recorded yet.</div>
       {% endif %}
+    </div>
+    <div id="lcEmailsPane" style="display:none">
+      {% if lead.email %}
+      <form method="POST" action="{{ url_for('portal.lead_email_replied', lead_id=lead.id) }}" style="margin:0 0 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button type="submit" class="lc-tab" style="cursor:pointer">↩️ They replied to our email</button>
+        <span style="font-size:12px;color:var(--muted)">Replies arrive in your own mailbox. Tick this so the team can see it here.</span>
+      </form>
+      {% endif %}
+      {% if 'campaigns_email.sequences_view' in granted_features and staff_can('campaigns_email.sequences_view') and lead.email %}
+      {% set _seq_can_edit = staff_can('campaigns_email.sequences_edit') %}
+      <div style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 14px">
+        <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:8px">📨 Email sequences</div>
+        {% for p in lead_sequences['in'] %}
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12.5px;padding:6px 0;border-top:1px dashed var(--line)">
+          <a href="{{ url_for('portal.email_sequence_detail', seq_id=p.sequence_id) }}" style="font-weight:600;color:var(--ink)">{{ p.seq_name }}</a>
+          <span style="color:var(--muted)">{{ p.steps_sent }} of {{ p.n_steps }} sent ·
+            {% if p.status == 'ready' %}email {{ p.steps_sent + 1 }} ready for you to send
+            {% elif p.status in ('active', 'sending') %}email {{ p.steps_sent + 1 }} due {{ p.next_due_at.strftime('%d %b') if p.next_due_at else '—' }}{% if p.seq_status != 'active' %} (sequence paused){% endif %}
+            {% elif p.status == 'finished' %}finished
+            {% else %}stopped{% if p.stop_reason %}: {{ p.stop_reason }}{% endif %}{% endif %}</span>
+          {% if p.status in ('active', 'ready') %}
+          <span style="margin-left:auto;display:flex;gap:6px">
+            {% if staff_can('campaigns_email.sequences_send') %}
+            <form method="POST" action="{{ url_for('portal.email_sequence_people_action', seq_id=p.sequence_id) }}" style="margin:0">
+              <input type="hidden" name="action" value="send"><input type="hidden" name="person_id" value="{{ p.id }}">
+              <input type="hidden" name="next" value="{{ url_for('portal.lead_detail', lead_id=lead.id) }}#emails">
+              <button type="submit" class="lc-tab" style="cursor:pointer">Send email {{ p.steps_sent + 1 }} now</button>
+            </form>
+            {% endif %}
+            {% if _seq_can_edit %}
+            <form method="POST" action="{{ url_for('portal.email_sequence_people_action', seq_id=p.sequence_id) }}" style="margin:0">
+              <input type="hidden" name="action" value="stop"><input type="hidden" name="person_id" value="{{ p.id }}">
+              <input type="hidden" name="next" value="{{ url_for('portal.lead_detail', lead_id=lead.id) }}#emails">
+              <button type="submit" class="lc-tab" style="cursor:pointer">Stop</button>
+            </form>
+            {% endif %}
+          </span>
+          {% endif %}
+        </div>
+        {% else %}
+        <div style="font-size:12.5px;color:var(--muted)">Not in any sequence.</div>
+        {% endfor %}
+        {% if _seq_can_edit and lead_sequences['choices'] %}
+        <form method="POST" action="{{ url_for('portal.lead_add_to_sequence', lead_id=lead.id) }}" style="margin:10px 0 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <select name="sequence_id" required style="max-width:320px;padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12.5px">
+            <option value="">— add to a sequence —</option>
+            {% for s in lead_sequences['choices'] %}<option value="{{ s.id }}">{{ s.name }}{% if s.status != 'active' %} (paused){% endif %}</option>{% endfor %}
+          </select>
+          <button type="submit" class="lc-tab" style="cursor:pointer">Add</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% set _email_words = {'sent': 'Email sent', 'opened': 'Opened the email', 'clicked': 'Clicked a link', 'replied': 'Replied', 'unsubscribed': 'Unsubscribed from emails'} %}
+      {% for e in email_history %}
+      <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:8px">
+        <strong>{{ _email_words.get(e.kind, e.kind) }}</strong>
+        <span style="color:var(--muted)"> — {{ e.created_at.strftime('%d %b %Y, %H:%M') if e.created_at else '' }}{% if e.actor %}, marked by {{ e.actor }}{% endif %}</span>
+        {% if e.campaign_name %}<div style="color:var(--muted);margin-top:3px">Campaign: {{ e.campaign_name }}{% if e.kind == 'sent' and e.detail %} · “{{ e.detail }}”{% endif %}</div>{% endif %}
+        {% if e.kind == 'clicked' and e.detail %}<div style="color:var(--muted);margin-top:3px;word-break:break-all">Link: {{ e.detail }}</div>{% endif %}
+      </div>
+      {% else %}
+      <div style="font-size:12.5px;color:var(--muted)">No campaign emails to this lead yet.</div>
+      {% endfor %}
+      {% if email_history %}<div style="font-size:11.5px;color:var(--muted);margin-top:6px">"Opened" is a guide only: some mail apps load pictures automatically, others block them.</div>{% endif %}
     </div>
   </div>
 </div>
@@ -445,10 +511,12 @@
 
 <script>
 function lcShowTab(which) {
-  document.getElementById('lcNotesPane').style.display = which === 'notes' ? 'block' : 'none';
-  document.getElementById('lcHistoryPane').style.display = which === 'history' ? 'block' : 'none';
-  document.getElementById('lcNotesTab').classList.toggle('active', which === 'notes');
-  document.getElementById('lcHistoryTab').classList.toggle('active', which === 'history');
+  ['notes', 'history', 'emails'].forEach(function (t) {
+    var cap = t.charAt(0).toUpperCase() + t.slice(1);
+    document.getElementById('lc' + cap + 'Pane').style.display = which === t ? 'block' : 'none';
+    document.getElementById('lc' + cap + 'Tab').classList.toggle('active', which === t);
+  });
 }
+if (location.hash === '#emails') lcShowTab('emails');
 </script>
 {% endblock %}

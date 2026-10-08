@@ -113,7 +113,7 @@
 <div class="page-header" style="margin-bottom:20px">
   <div class="section-title">WooCommerce Sync</div>
   <div style="font-size:13px;color:var(--muted)">
-    Read-only view of all content synced from your WooCommerce store via the PhiXtra Export plugin.
+    Read-only view of the products your WooCommerce store sends through the PhiXtra AI Sales Agent plugin.
   </div>
 </div>
 
@@ -121,9 +121,9 @@
 <div class="ws-info-banner">
   <span style="font-size:16px">ℹ️</span>
   <div>
-    Products are <strong>read-only</strong> here — to add, edit, or remove a product, log into your WooCommerce store
-    and run a <strong>Full Sync</strong> from the PhiXtra Export plugin settings. Pages and posts can be deleted
-    below if they're outdated, but note a future Full Sync will bring back anything still live on your site.
+    Products are <strong>read-only</strong> here — add, edit or remove them in your WooCommerce store and the
+    PhiXtra AI Sales Agent plugin sends the change by itself. Older pages and posts sent by the previous
+    PhiXtra Export plugin can be deleted below; Connect Website now reads your pages.
     {% if last_sync %}
       Last sync: <strong>{{ last_sync.strftime('%d %b %Y, %H:%M') }}</strong>.
     {% endif %}
@@ -355,7 +355,7 @@
     {% else %}
       <div style="font-size:15px;font-weight:600">No synced content yet.</div>
       <div style="font-size:13px;margin-top:6px">
-        Install the PhiXtra Export plugin on your WooCommerce store and run a Full Sync.
+        Install the PhiXtra AI Sales Agent plugin on your WooCommerce store and save your API key. Your products then sync by themselves.
       </div>
     {% endif %}
   </div>

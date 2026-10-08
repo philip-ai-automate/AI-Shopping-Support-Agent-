@@ -1,0 +1,535 @@
+{# Email Campaigns How-To Guide (2026-10-08). Ids are prefixed eml-, pictures live in
+   static/portal/tutorial/email/ (taken on the training account). Shown to every team member;
+   the PhiXtra outreach appendix only shows for PhiXtra's own account (show_phixtra_appendix). #}
+{% macro shot(name, alt, caption) -%}
+<figure><img src="{{ url_for('static', filename='portal/tutorial/email/' ~ name ~ '.jpg') }}" alt="{{ alt }}" loading="lazy">
+{% if caption %}<figcaption>{{ caption }}</figcaption>{% endif %}</figure>
+{%- endmacro %}
+<style>
+.emlg{
+  --g-ink:#030C18; --g-navy:#0B1D40; --g-gold:#B8860B; --g-gold-soft:#FBF3DE;
+  --g-card:#FFFFFF; --g-txt:#1A2433; --g-muted:#5B6678; --g-line:#DDE3EB;
+  --g-chip:#EEF2F7; --g-good:#0F9F5F; --g-good-soft:#E7F7EF; --g-bad:#D92D20; --g-bad-soft:#FDECEA;
+  --g-vio:#3730A3; --g-vio-soft:#ECEBFC; --g-link:#1D4ED8; --g-shadow:0 1px 2px rgba(3,12,24,.06);
+  color:var(--g-txt); font-size:15px; line-height:1.65;
+}
+.emlg *{box-sizing:border-box}
+.emlg a{color:var(--g-link)}
+.emlg .g-head{margin:0 0 18px}
+.emlg .g-lede{max-width:72ch;color:var(--g-muted);margin:0 0 6px;font-size:14px}
+.emlg .g-meta{font-size:12px;color:var(--g-muted)}
+.emlg nav.toc{background:var(--g-card);border:1px solid var(--g-line);border-radius:12px;padding:6px 14px;margin:0 0 26px;font-size:13.5px}
+.emlg nav.toc summary{cursor:pointer;font-weight:750;color:var(--g-ink);padding:8px 0;list-style-position:inside}
+.emlg nav.toc ol{list-style:none;margin:0;padding:0 0 8px;columns:3 220px;column-gap:18px}
+.emlg nav.toc ol > li{break-inside:avoid;margin:0}
+.emlg nav.toc ol ol{columns:1;padding:0 0 6px 12px;font-size:12.5px}
+.emlg nav.toc a{display:block;padding:4px 8px;border-radius:6px;color:var(--g-txt);text-decoration:none}
+.emlg nav.toc a:hover{background:var(--g-chip)}
+.emlg nav.toc ol ol a{color:var(--g-muted);padding:2px 8px}
+.emlg main{display:block;max-width:880px}
+.emlg section.part{padding-top:8px;margin-bottom:52px}
+.emlg h2{font-size:23px;line-height:1.25;color:var(--g-ink);margin:0 0 6px;scroll-margin-top:80px;font-weight:800;text-wrap:balance}
+.emlg h2 .num{color:var(--g-gold);font-weight:800;margin-right:8px}
+.emlg .where{font-size:13px;color:var(--g-muted);margin:0 0 16px}
+.emlg h3{font-size:18px;color:var(--g-ink);margin:32px 0 8px;scroll-margin-top:80px;font-weight:750}
+.emlg h4{font-size:15px;color:var(--g-ink);margin:20px 0 6px;font-weight:700}
+.emlg p,.emlg li{max-width:72ch}
+.emlg p{margin:0 0 12px}
+.emlg ul,.emlg ol{padding-left:22px;margin:0 0 12px}
+.emlg li{margin:4px 0}
+.emlg .ui{display:inline-block;font-size:.88em;font-weight:650;padding:1px 7px;border:1px solid var(--g-line);border-radius:5px;background:var(--g-card);color:var(--g-ink);white-space:nowrap;box-shadow:var(--g-shadow)}
+.emlg .tok{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.86em;background:#E6ECF8;color:var(--g-navy);border-radius:4px;padding:1px 5px;white-space:nowrap}
+.emlg figure{margin:16px 0 24px}
+.emlg figure img{display:block;width:100%;max-width:100%;height:auto;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card)}
+.emlg figure.half img{max-width:560px}
+.emlg figcaption{font-size:13px;color:var(--g-muted);margin-top:8px}
+.emlg .box{border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px;border:1px solid var(--g-line);background:var(--g-card)}
+.emlg .box > :first-child{margin-top:0}.emlg .box > :last-child{margin-bottom:0}
+.emlg .box b.t{display:block;font-size:12px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px}
+.emlg .tip{background:var(--g-good-soft);border-color:transparent}.emlg .tip b.t{color:var(--g-good)}
+.emlg .careful{background:var(--g-bad-soft);border-color:transparent}.emlg .careful b.t{color:var(--g-bad)}
+.emlg .know{background:var(--g-gold-soft);border-color:transparent}.emlg .know b.t{color:var(--g-gold)}
+.emlg .tbl{overflow-x:auto;margin:14px 0 22px;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card)}
+.emlg table{border-collapse:collapse;width:100%;font-size:13.5px}
+.emlg th,.emlg td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--g-line)}
+.emlg th{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--g-muted);background:var(--g-chip);font-weight:700}
+.emlg tr:last-child td{border-bottom:0}
+.emlg td:first-child{font-weight:650;color:var(--g-ink)}
+.emlg ol.steps{counter-reset:s;list-style:none;padding-left:0}
+.emlg ol.steps > li{counter-increment:s;position:relative;padding-left:36px;margin:10px 0}
+.emlg ol.steps > li::before{content:counter(s);position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:50%;background:var(--g-navy);color:#fff;font-size:12.5px;font-weight:700;display:grid;place-items:center}
+.emlg .map{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:18px 0}
+.emlg .map div{background:var(--g-card);border:1px solid var(--g-line);border-radius:8px;padding:12px 14px;font-size:14px}
+.emlg .map b{display:block;color:var(--g-ink);margin-bottom:2px}
+.emlg .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin:18px 0}
+.emlg .flow .n{flex:1 1 120px;background:var(--g-card);border:1px solid var(--g-line);border-radius:8px;padding:10px 12px;font-size:13px}
+.emlg .flow .n b{display:block;color:var(--g-navy);font-size:13.5px;margin-bottom:2px}
+.emlg .flow .n.hi{border-color:var(--g-navy);box-shadow:inset 3px 0 0 var(--g-navy)}
+.emlg .flow i{align-self:center;font-style:normal;color:var(--g-muted);font-weight:700}
+.emlg .life{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:16px 0}
+.emlg .life div{border-radius:8px;padding:10px 12px;font-size:13px;border:1px solid var(--g-line)}
+.emlg .life b{display:block;font-size:12px;letter-spacing:.05em;text-transform:uppercase;margin-bottom:3px}
+.emlg .s-wait{background:#E0F2FE}.emlg .s-wait b{color:#075985}
+.emlg .s-ready{background:#FEF3C7}.emlg .s-ready b{color:#92400E}
+.emlg .s-done{background:#E0E7FF}.emlg .s-done b{color:#3730A3}
+.emlg .s-stop{background:#FEE4E2}.emlg .s-stop b{color:#912018}
+.emlg .check{list-style:none;padding-left:0}
+.emlg .check li{position:relative;padding-left:28px}
+.emlg .check li::before{content:"";position:absolute;left:2px;top:6px;width:14px;height:14px;border:2px solid var(--g-navy);border-radius:3px}
+.emlg .appendix{border:2px solid var(--g-gold);border-radius:12px;padding:18px 20px;background:#FFFDF6}
+.emlg .badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:var(--g-gold-soft);color:var(--g-gold);border-radius:999px;padding:2px 9px;margin-bottom:6px}
+.emlg .g-top{display:inline-block;font-size:12px;font-weight:700;color:var(--g-muted);text-decoration:none;margin-top:6px}
+@media (max-width:640px){.emlg{font-size:14.5px}.emlg h2{font-size:20px}}
+</style>
+<div class="emlg" id="eml-top">
+<div class="g-head">
+  <p class="g-lede">Everything under <b>Email Campaigns</b> in the side menu, screen by screen and button by button: writing an email (by hand or with AI), keeping a library of saved emails, sending one-off campaigns, running sequences that follow up for you, and seeing who opened, clicked and replied on each lead. Every picture is from the live portal.</p>
+  <p class="g-meta">Written for sales and marketing staff. Parts marked "For owners and IT" cover settings only they can change.</p>
+</div>
+
+<nav class="toc"><details open><summary>Contents</summary>
+<ol>
+  <li><a href="#eml-intro">1. The big picture</a><ol><li><a href="#eml-intro-map">Where everything is</a></li><li><a href="#eml-intro-which">Campaign, sequence or saved email?</a></li></ol></li>
+  <li><a href="#eml-new">2. Writing an email</a><ol><li><a href="#eml-new-details">Email details</a></li><li><a href="#eml-new-names">Names that fill in</a></li><li><a href="#eml-new-message">The message</a></li><li><a href="#eml-new-button">Button, picture and video</a></li><li><a href="#eml-new-preview">Preview</a></li><li><a href="#eml-new-test">Send a test</a></li><li><a href="#eml-new-save">Save, and edit later</a></li></ol></li>
+  <li><a href="#eml-ai">3. Write with AI</a></li>
+  <li><a href="#eml-saved">4. Saved Emails</a><ol><li><a href="#eml-saved-find">Finding an email</a></li><li><a href="#eml-saved-use">Use ▾</a></li><li><a href="#eml-saved-staff">What staff see</a></li></ol></li>
+  <li><a href="#eml-camp">5. One-off campaigns</a><ol><li><a href="#eml-camp-new">New Campaign, step by step</a></li><li><a href="#eml-camp-report">Campaign reports</a></li></ol></li>
+  <li><a href="#eml-seq">6. Sequences</a><ol><li><a href="#eml-seq-build">Build a sequence</a></li><li><a href="#eml-seq-add">Add people</a></li><li><a href="#eml-seq-start">Start and pause</a></li><li><a href="#eml-seq-people">The people list</a></li><li><a href="#eml-seq-stop">Why someone stopped</a></li><li><a href="#eml-seq-change">Changing a running sequence</a></li></ol></li>
+  <li><a href="#eml-lead">7. On each lead</a></li>
+  <li><a href="#eml-routine">8. A sales executive's routine</a></li>
+  <li><a href="#eml-fix">9. Problems and fixes</a></li>
+  <li><a href="#eml-admin">10. For owners and IT</a></li>
+  {% if show_phixtra_appendix %}<li><a href="#eml-phx">Appendix: PhiXtra outreach</a></li>{% endif %}
+</ol></details></nav>
+
+<main>
+
+<!-- ═════ 1 ═════ -->
+<section class="part" id="eml-intro">
+  <h2><span class="num">1</span>The big picture</h2>
+  <p class="where">Side menu › Email Campaigns</p>
+  <p>Email in PhiXtra works in three layers. You <b>write</b> an email once and keep it in <b>Saved Emails</b>. You then <b>send</b> it, either to a group in one go (a <b>campaign</b>) or as part of a planned run of emails a few days apart (a <b>sequence</b>). Every email sent is recorded on the lead, so the whole team can see who opened, clicked and replied.</p>
+  <div class="flow" role="img" aria-label="Write, save, send by campaign or sequence, then follow up on the lead">
+    <div class="n hi"><b>1 · Write</b>New Email, by hand or with ✨ AI</div><i>→</i>
+    <div class="n"><b>2 · Save</b>It goes into Saved Emails</div><i>→</i>
+    <div class="n"><b>3 · Send</b>In a campaign (once) or a sequence (a run of emails)</div><i>→</i>
+    <div class="n"><b>4 · Follow up</b>Opens, clicks and replies show on each lead</div>
+  </div>
+
+  <h3 id="eml-intro-map">Where everything is</h3>
+  {{ shot('e01_menu', 'The Email Campaigns menu', 'The Email Campaigns menu. You only see the items your role allows.') }}
+  <div class="map">
+    <div><b>All Campaigns</b>One-off emails to a group, now or at a set time, and their reports.</div>
+    <div><b>New Email</b>Write a new email and save it. Nothing is sent from here.</div>
+    <div><b>Saved Emails</b>Your library of written emails: preview, reuse, copy, share.</div>
+    <div><b>Email Segment</b>Saved groups of contacts to send to.</div>
+    <div><b>Sequences</b>A set of emails sent days apart, which stops when someone replies.</div>
+  </div>
+
+  <h3 id="eml-intro-which">Campaign, sequence or saved email?</h3>
+  <div class="tbl"><table>
+    <tr><th>You want to…</th><th>Use</th><th>Why</th></tr>
+    <tr><td>Write an email you'll use again</td><td>New Email → Saved Emails</td><td class="wrapok">Write once, reuse in any campaign or sequence.</td></tr>
+    <tr><td>Tell everyone about one thing (news, an offer, an event)</td><td>Campaign</td><td>One email, one send, one report.</td></tr>
+    <tr><td>Reach new leads and follow up until they answer</td><td>Sequence</td><td>Email 1 now, Email 2 a few days later, and so on. Each person stops getting emails as soon as they reply, unsubscribe or their lead is closed.</td></tr>
+    <tr><td>Follow up one lead you're working on</td><td>The lead's ✉️ Emails tab</td><td>Add them to a sequence, send their next email now, or mark that they replied.</td></tr>
+  </table></div>
+  <div class="box know"><b class="t">Good to know</b><p>Your logo, colours, business address and an <b>Unsubscribe</b> link are added to every email automatically. Anyone who unsubscribes is never emailed again by your business, from any campaign or sequence.</p></div>
+  <a class="g-top" href="#eml-top">↑ Back to contents</a>
+</section>
+
+<!-- ═════ 2 ═════ -->
+<section class="part" id="eml-new">
+  <h2><span class="num">2</span>Writing an email</h2>
+  <p class="where">Email Campaigns › New Email (or <span class="ui">+ New email</span> on Saved Emails)</p>
+  <p>The New Email page has the editor on the left and the real email on the right. It updates as you type. The bar at the top stays in view, so <span class="ui">Save email</span> is always one click away.</p>
+  {{ shot('e02_new', 'The New Email page', 'New Email: the guide, the editor sections on the left, the live preview on the right.') }}
+  <ol class="steps">
+    <li><b>Read the guide once.</b> The <span class="ui">📘 How to use this page</span> panel is open the first time. Hide it when you know the page. The button in the top bar brings it back.</li>
+    <li><b>Write it, or let AI write it.</b> See <a href="#eml-ai">Write with AI</a>.</li>
+    <li><b>Fill in Email details, Message, Button and Sign-off</b>, as described below.</li>
+    <li><b>Check the preview</b> and send yourself a test.</li>
+    <li>Press <span class="ui">Save email</span>. You land on Saved Emails with your email in the list.</li>
+  </ol>
+  <div class="box careful"><b class="t">Careful</b><p>Nothing on this page is sent to customers. They only get the email when you use it in a campaign or a sequence. The only email that leaves this page is a test, and it goes to the address you type.</p></div>
+
+  <h3 id="eml-new-details">Email details</h3>
+  {{ shot('e04_details', 'Email details', 'Email name, subject line and preview text, with character counters.') }}
+  <div class="tbl"><table>
+    <tr><th>Field</th><th>What it's for</th></tr>
+    <tr><td>Email name</td><td class="wrapok">How you'll find it in Saved Emails. Only your team sees it. Pick something you'll recognise, such as "Retail 2 · follow-up". Each name can only be used once in your business.</td></tr>
+    <tr><td>Subject line</td><td class="wrapok">Up to 120 characters. Phones show about the first 60, so put the important words first. Use <span class="ui">Insert name ▾</span> next to it to add the person's name.</td></tr>
+    <tr><td>Preview text</td><td class="wrapok">Up to 120 characters. Inboxes show it after the subject, so use it to say why the email is worth opening.</td></tr>
+  </table></div>
+
+  <h3 id="eml-new-names">Names that fill in</h3>
+  <p><span class="ui">Insert name ▾</span> puts a name field where your cursor is. When the email is sent, each person sees their own details from your Leads and Contacts.</p>
+  <div class="tbl"><table>
+    <tr><th>You type</th><th>They see</th><th>If it's missing</th></tr>
+    <tr><td><span class="tok">{{ '{{' }}First Name}}</span></td><td>Hauwa</td><td>there ("Hi there,")</td></tr>
+    <tr><td><span class="tok">{{ '{{' }}Last Name}}</span></td><td>Eze</td><td>(left empty)</td></tr>
+    <tr><td><span class="tok">{{ '{{' }}Full Name}}</span></td><td>Hauwa Eze</td><td>there</td></tr>
+    <tr><td><span class="tok">{{ '{{' }}Business Name}}</span></td><td>Ike Bakery</td><td>your business</td></tr>
+    <tr><td><span class="tok">{{ '{{' }}Email}}</span></td><td>their email address</td><td>(left empty)</td></tr>
+  </table></div>
+  <div class="box tip"><b class="t">Tip</b><p>Choose your own fallback with a bar: <span class="tok">{{ '{{' }}First Name|friend}}</span> shows "friend" when there's no first name. Titles such as Mr, Mrs, Dr, Chief, Engr and Alhaji are skipped, so "Chief Ade Bello" becomes "Ade".</p></div>
+
+  <h3 id="eml-new-message">The message</h3>
+  {{ shot('e05_message', 'The message editor', 'Heading (optional) and the message editor with its toolbar.') }}
+  <ul>
+    <li><b>Heading</b> is optional. Leave it empty for an email that looks personal, like one you'd write from your own mailbox. Sales emails usually work better that way.</li>
+    <li><b>Toolbar:</b> text style, font, size, bold, italic, underline, colour, alignment, numbered and bulleted lists, <b>❝ quote</b>, link, picture and clear formatting.</li>
+    <li><b>❝ Quote</b> puts a line in a coloured box. It works well for things customers ask, such as “Is this available?”.</li>
+    <li><b>Picture in the message:</b> the picture button uploads a JPG or PNG where your cursor is.</li>
+    <li>Blank lines are tidied up automatically, so the email has even spacing.</li>
+  </ul>
+
+  <h3 id="eml-new-button">Button, picture and video</h3>
+  {{ shot('e06_button', 'Button and Picture and video', 'One button with text and a link. Picture and video stay folded away until you open them.') }}
+  <ul>
+    <li><b>Button:</b> give it both text that says what happens ("Book a demo") and a link starting with https://. Use one button per email so the next step is clear.</li>
+    <li><b>Picture above the message:</b> optional. It sits at the top of the email.</li>
+    <li><b>Video link:</b> email can't play video, so PhiXtra shows a picture with a ▶ play button that opens your link. YouTube links use the video's own picture; for other links you can upload one with <span class="ui">Picture for the video</span>. To place the video inside the message, type <span class="tok">{{ '{{' }}Video}}</span> on its own line. Otherwise it goes under the message.</li>
+    <li><b>Sign-off:</b> the first line is your name, the lines under it are smaller. It starts as your business's default sign-off.</li>
+  </ul>
+
+  <h3 id="eml-new-preview">Preview</h3>
+  <figure class="half"><img src="{{ url_for('static', filename='portal/tutorial/email/e07_preview.jpg') }}" alt="The preview panel" loading="lazy"><figcaption>The real email, as one of your leads will see it.</figcaption></figure>
+  <ul>
+    <li><b>Preview as:</b> pick a lead to see their names filled in, or "Someone with no name saved" to check the fallbacks.</li>
+    <li><b>Desktop / Phone:</b> most people read email on a phone, so check both.</li>
+    <li>The line above the email shows what the inbox shows: your business name, the subject and the preview text.</li>
+  </ul>
+
+  <h3 id="eml-new-test">Send a test</h3>
+  {{ shot('e09_test', 'Before you save checklist', 'The Before you save checklist turns green as you complete each item.') }}
+  <ol class="steps">
+    <li>Under the preview, <b>Send a test to</b> starts with your own email address. Change it if you want the test somewhere else.</li>
+    <li>Press <span class="ui">Send test</span>. The result appears right there, for example "✓ Test sent to you@… at 17:42 from sales@…".</li>
+    <li>Open it on your phone and computer. Check the spam folder too.</li>
+  </ol>
+  <div class="box know"><b class="t">Good to know</b><ul><li>The test uses the names of the lead picked in Preview as, and the subject starts with <b>[TEST]</b>.</li><li>You can send up to 20 tests an hour.</li><li>Sending a test needs the "Send an Email Campaign (incl. test sends)" tick on your role. Without it you'll see a note instead of the button.</li></ul></div>
+
+  <h3 id="eml-new-save">Save, and edit later</h3>
+  <ul>
+    <li><span class="ui">Save email</span> needs a name, a subject and a message. If something is missing, a message at the top says what.</li>
+    <li>The label next to the name shows where you are: <b>Draft · not saved</b>, <b>Saved</b>, or <b>Unsaved changes</b>. If you try to leave with unsaved changes, the browser asks first.</li>
+    <li>To change an email later, open <b>Saved Emails › Use ▾ › Edit</b>. Staff can edit only the emails they saved. To change someone else's, use <b>Make a copy</b>.</li>
+    <li>Changing an email that a sequence uses changes it for everyone who hasn't received it yet.</li>
+  </ul>
+  <a class="g-top" href="#eml-top">↑ Back to contents</a>
+</section>
+
+<!-- ═════ 3 ═════ -->
+<section class="part" id="eml-ai">
+  <h2><span class="num">3</span>Write with AI</h2>
+  <p class="where">New Email › ✨ Write with AI (top of the editor)</p>
+  {{ shot('e03_ai', 'Write with AI', 'Type what the email is for, pick the type and tone, and press Write it.') }}
+  <ol class="steps">
+    <li><b>What is this email for?</b> Write a sentence or two: who it's for, what to mention, and what you want them to do. For example: "Follow-up for retail shops that didn't reply. Mention customers can send a photo on WhatsApp. Invite them to book a demo."</li>
+    <li><b>Type of email:</b> First contact, Follow-up, Offer, Newsletter, or Event / demo.</li>
+    <li><b>Tone:</b> Friendly, Professional, or Short.</li>
+    <li>Press <span class="ui">✨ Write it</span>. In about 5 to 20 seconds the AI fills in the subject, preview text, message and button words.</li>
+    <li>Not quite right? Press <span class="ui">↻ Try again</span>, <span class="ui">Shorter</span>, <span class="ui">More formal</span> or <span class="ui">Friendlier</span>. You can also just change the words yourself.</li>
+    <li>Check the preview, add the button link if it's empty, and press <span class="ui">Save email</span>.</li>
+  </ol>
+  <div class="tbl"><table>
+    <tr><th>Question</th><th>Answer</th></tr>
+    <tr><td>What does it cost?</td><td class="wrapok">Each new email uses <b>1 AI design</b> from your plan's AI designs, the same allowance as the Social Media designer. Try again, Shorter, More formal and Friendlier are <b>free, up to 5 per email</b>. If it fails, nothing is counted.</td></tr>
+    <tr><td>What does the AI read?</td><td class="wrapok">Your brief, your business name, your own website pages already in PhiXtra, and up to two of your saved emails as a style guide.</td></tr>
+    <tr><td>Can it make things up?</td><td class="wrapok">It's told never to invent prices, discounts, dates, stock or results. As a safety net, any sentence with a number that isn't in your brief or your own information is removed automatically.</td></tr>
+    <tr><td>Will it send anything?</td><td class="wrapok">No. It only fills in the editor. You decide what's saved and sent.</td></tr>
+    <tr><td>Where does the button link come from?</td><td class="wrapok">It uses the link your saved emails use most often. If there isn't one, add it yourself; the box reminds you.</td></tr>
+    <tr><td>I can't see the AI box</td><td class="wrapok">Your role needs the "Write emails with AI" tick, and your plan needs AI designs. When none are left, the box says how to get more.</td></tr>
+  </table></div>
+  <a class="g-top" href="#eml-top">↑ Back to contents</a>
+</section>
+
+<!-- ═════ 4 ═════ -->
+<section class="part" id="eml-saved">
+  <h2><span class="num">4</span>Saved Emails</h2>
+  <p class="where">Email Campaigns › Saved Emails</p>
+  {{ shot('e10_saved', 'The Saved Emails list', 'Saved Emails grouped by week, with who saved each one, when it last changed and where it is used.') }}
+  <p>Each row is one email: its name, subject and first line; who saved it; when it was last changed; and where it's used. <b>Where it's used</b> shows labels such as <b>Retail outreach · Email 1</b> (used in a sequence), <b>Shared with 2</b>, <b>Video</b> or <b>Not used yet</b>. The figures at the top count all the emails you can see.</p>
+
+  <h3 id="eml-saved-find">Finding an email</h3>
+  {{ shot('e11_filters', 'Filters', 'The filter bar stays at the top while you scroll.') }}
+  <div class="tbl"><table>
+    <tr><th>Filter</th><th>What it does</th></tr>
+    <tr><td>Search</td><td class="wrapok">Finds words in the name, the subject or the email itself. It applies as you type.</td></tr>
+    <tr><td>When</td><td class="wrapok">Today, Last 7 days, This month (where the page opens), Last month, a named month, or Pick dates.</td></tr>
+    <tr><td>Saved by</td><td class="wrapok">Owner and IT only: Everyone, Me, or one team member.</td></tr>
+    <tr><td>Show</td><td class="wrapok">All emails, Used in a sequence, Not used in a sequence, Shared with others, With a video.</td></tr>
+    <tr><td>Group by</td><td class="wrapok">Day, Week or Month headings, by when each email last changed.</td></tr>
+    <tr><td>Sort</td><td class="wrapok">At the right of the "Showing" line: newest changed first, oldest first, or name A–Z.</td></tr>
+  </table></div>
+  <p>The "Showing" line lists your filters. Press ✕ on one to remove it. The list shows 25 emails a page, with <span class="ui">Next ›</span> at the bottom.</p>
+
+  <h3 id="eml-saved-use">Preview and Use ▾</h3>
+  <p><span class="ui">Preview</span> opens the email in a panel on the right, with a real lead's names filled in. Press <span class="ui">Close ✕</span> or Escape to go back. <span class="ui">Use ▾</span> holds everything else you can do with the email:</p>
+  {{ shot('e12_use', 'The Use menu', 'The Use ▾ menu on one email.') }}
+  <div class="tbl"><table>
+    <tr><th>Choice</th><th>What happens</th></tr>
+    <tr><td>Use in a campaign</td><td class="wrapok">Opens a new campaign with this email already filled in. You choose who gets it and when.</td></tr>
+    <tr><td>Add to a sequence</td><td class="wrapok">Adds it as the last email of the sequence you pick, sent 3 days after the one before. You can change that on the sequence.</td></tr>
+    <tr><td>Edit</td><td class="wrapok">Opens it on the New Email page. Shown only on emails you can change.</td></tr>
+    <tr><td>Make a copy</td><td class="wrapok">Makes your own copy, called "Copy of …", and opens it for editing. Use it to start from someone else's email.</td></tr>
+    <tr><td>Share…</td><td class="wrapok">Owner and IT only. Choose which team members can see and use it.</td></tr>
+    <tr><td>Delete…</td><td class="wrapok">Asks first. Not possible while a sequence uses the email; take it out of the sequence first. Campaigns already sent aren't affected.</td></tr>
+  </table></div>
+  {{ shot('e13_panel', 'The preview panel', 'Preview opens on the right, with the same actions as buttons.') }}
+
+  <h3 id="eml-saved-staff">What staff see</h3>
+  <p>Team members see <b>only the emails they saved, plus emails shared with them</b>, labelled <b>Shared with you</b>. They can use and copy shared emails, but only edit or delete their own. The owner, anyone whose role can manage the Team (such as IT), and roles with the "See all saved emails" tick see everything.</p>
+  {{ shot('e15_staff', 'A staff member’s view', 'A sales executive’s view: their own emails, plus ones shared with them.') }}
+  <a class="g-top" href="#eml-top">↑ Back to contents</a>
+</section>
+
+<!-- ═════ 5 ═════ -->
+<section class="part" id="eml-camp">
+  <h2><span class="num">5</span>One-off campaigns</h2>
+  <p class="where">Email Campaigns › All Campaigns</p>
+  {{ shot('e16_campaigns', 'All Campaigns', 'All Campaigns: totals at the top, then every campaign with its status.') }}
+  <p>A campaign sends one email to a group, now or at a time you set. The list shows each campaign's status, such as draft, scheduled, sending or sent. Any campaign that isn't sending right now can be <b>edited</b> or <b>duplicated</b>; drafts and scheduled ones can be <b>deleted</b>; sent ones have a <b>report</b>.</p>
+
+  <h3 id="eml-camp-new">New Campaign, step by step</h3>
+  <p>Press <span class="ui">+ New Campaign</span>, or <b>Use in a campaign</b> on a saved email. The window has three steps.</p>
+  <h4>Step 1 · Message</h4>
+  {{ shot('e17_compose1', 'Campaign step 1', 'Step 1: pick a saved email or write one, and give the campaign a name.') }}
+  <ul>
+    <li><b>Start from a saved template:</b> fills in the subject and message from one of your saved emails.</li>
+    <li><b>Campaign name:</b> for your team only.</li>
+    <li><b>Template Builder</b> is the normal editor. <b>Custom HTML</b> is for people who already have a finished email design; it's sent exactly as written, with an unsubscribe line added.</li>
+    <li><b>Replies go to:</b> the address that gets replies, which is yours by default.</li>
+    <li><span class="ui">💾 Save as template</span> saves what you've written into Saved Emails.</li>
+  </ul>
+  <h4>Step 2 · Recipients</h4>
+  {{ shot('e18_compose2', 'Campaign step 2', 'Step 2: who gets it.') }}
+  <ul>
+    <li><b>Sales Pipeline contacts:</b> every lead you can see that has an email address.</li>
+    <li><b>Email Segment:</b> one of your saved groups.</li>
+    <li><b>Paste email addresses:</b> one per line.</li>
+    <li><b>Exclude label:</b> tick labels to leave those people out.</li>
+    <li>People who unsubscribed are always skipped.</li>
+  </ul>
+  <h4>Step 3 · Schedule &amp; Launch</h4>
+  {{ shot('e19_compose3', 'Campaign step 3', 'Step 3: send now or schedule, check the summary and preview, then launch.') }}
+  <p>Choose <b>Send Now</b> or <b>Schedule</b> with a date and time. Check the review and preview, then press <span class="ui">🚀 Launch Campaign</span>. Before launching, use <span class="ui">✉️ Send Test</span> to send one to yourself.</p>
+
+  <h3 id="eml-camp-report">Campaign reports</h3>
+  {{ shot('e25_report', 'A campaign report', 'A report: sent, failed, opened, clicked and replied, then each person.') }}
+  <ul>
+    <li><b>Opened</b> is a guide only: some mail apps load pictures automatically, others block them.</li>
+    <li><b>Clicked</b> counts a person pressing a link. Clicks in the first 90 seconds after sending are ignored, because company mail filters check links automatically.</li>
+    <li><b>Replied</b> comes from the <span class="ui">They replied</span> button on a lead (see <a href="#eml-lead">On each lead</a>).</li>
+  </ul>
+  <a class="g-top" href="#eml-top">↑ Back to contents</a>
+</section>
+
+<!-- ═════ 6 ═════ -->
+<section class="part" id="eml-seq">
+  <h2><span class="num">6</span>Sequences</h2>
+  <p class="where">Email Campaigns › Sequences</p>
+  <p>A sequence is a set of emails sent a few days apart, such as a first email, then a follow-up three days later, then a final note a week after that. Each person moves through it on their own timetable, and <b>stops getting emails as soon as they reply, unsubscribe, or their lead is closed</b>.</p>
+  {{ shot('e20_sequences', 'The Sequences list', 'Sequences: each one with its emails, whether it is running, and how many people are at each stage.') }}
+
+  <h3 id="eml-seq-build">Build a sequence</h3>
+  <ol class="steps">
+    <li>On Sequences, type a name such as "Retail outreach" and press <span class="ui">+ New sequence</span>. New sequences start <b>paused</b>, so nothing goes out until you start them.</li>
+    <li>Under <b>The emails</b>, pick each email from your saved emails, then set:
+      <ul><li><b>Days to wait:</b> Email 1 counts from when the person is added (0 = straight away); later emails count from the email before.</li>
+          <li><b>How it's sent:</b> <b>Send automatically</b> goes out by itself when it's due. <b>I'll send it myself</b> waits in "Ready to send" for you to press Send, which suits emails you want to check or personalise first.</li></ul></li>
+    <li>Use <span class="ui">+ Add an email</span> for more and ✕ to remove one. Check <b>Replies go to</b>, then press <span class="ui">Save</span>.</li>
+  </ol>
+  {{ shot('e21_seq_emails', 'The emails of a sequence', 'Four emails: three automatic, one sent by hand. Under each, its results so far.') }}
+  <p>Once emails have gone out, each one shows <b>Sent · Opened · Clicked · Replied</b> and a <b>See who</b> link to its report.</p>
+
+  <h3 id="eml-seq-add">Add people</h3>
+  {{ shot('e22_seq_add', 'Add people', 'Add people from your leads, an Email Segment, or typed addresses.') }}
+  <div class="tbl"><table>
+    <tr><th>Tab</th><th>How it works</th></tr>
+    <tr><td>From your leads</td><td class="wrapok">Choose a <b>Stage</b> (for example New Lead) and/or a <b>Business category</b> (for example Retail), then press <span class="ui">Add these leads</span>. Only leads you can see are added, up to 5,000 at a time.</td></tr>
+    <tr><td>From an Email Segment</td><td class="wrapok">Adds everyone in the segment who has an email address.</td></tr>
+    <tr><td>Type email addresses</td><td class="wrapok">One per line or separated by commas. If the address belongs to a lead, it's linked to that lead.</td></tr>
+    <tr><td>From a lead's page</td><td class="wrapok">On any lead, ✉️ Emails › <b>add to a sequence</b>. Best for one lead at a time.</td></tr>
+  </table></div>
+  <div class="box know"><b class="t">Skipped automatically</b><p>People who unsubscribed, people already in this sequence, and closed leads (Won, Lost, Dropped or Not a fit). The message after adding says how many were added and how many were skipped and why.</p></div>
+
+  <h3 id="eml-seq-start">Start and pause</h3>
+  {{ shot('e23b_seq_top', 'Sequence top bar', 'Running shows in green. Pause and Delete sit at the top right.') }}
+  <ul>
+    <li><span class="ui">▶ Start sequence</span>: automatic emails go out as they fall due. PhiXtra checks every minute, so an Email 1 with 0 days goes out within a minute or two.</li>
+    <li><span class="ui">❚❚ Pause</span>: nothing goes out automatically. You can still send anyone's next email yourself. When you start again, anything that fell due while paused goes out.</li>
+    <li>Delete removes the sequence and its people list. Emails already sent stay on each lead's history and in reports.</li>
+  </ul>
+
+  <h3 id="eml-seq-people">The people list</h3>
+  {{ shot('e23_seq_people', 'The people list', 'Ready to send rows are highlighted at the top. Each row shows emails sent, what is next and its status.') }}
+  <div class="life" role="img" aria-label="The four states a person can be in">
+    <div class="s-wait"><b>Waiting</b>Their next email goes out automatically on the date shown.</div>
+    <div class="s-ready"><b>Ready to send</b>Their next email is an "I'll send it myself" email. It waits for you.</div>
+    <div class="s-done"><b>Finished</b>They've had every email in the sequence.</div>
+    <div class="s-stop"><b>Stopped</b>No more emails. The reason is shown under the label.</div>
+  </div>
+  <ul>
+    <li>Filter with <b>All, Waiting, Ready to send, Finished, Stopped</b>, or search by name or email.</li>
+    <li>On a row: <span class="ui">Send email 2 now</span> sends their next email straight away, even if it isn't due yet. <span class="ui">Stop</span> ends it for them, and <span class="ui">Resume</span> restarts it.</li>
+    <li>Tick several rows to <b>Send next email now</b>, <b>Stop</b>, <b>Resume</b> or <b>Remove</b> them together.</li>
+    <li><span class="ui">✉️ Send to everyone ready (N)</span> sends all the "Ready to send" emails in one go.</li>
+    <li>Team members see the people whose leads are theirs, plus people added by email address.</li>
+  </ul>
+
+  <h3 id="eml-seq-stop">Why someone stopped</h3>
+  <div class="tbl"><table>
+    <tr><th>Shown as</th><th>What happened</th><th>Can you resume?</th></tr>
+    <tr><td>Replied</td><td class="wrapok">Someone pressed <b>They replied</b> on the lead.</td><td>Yes, if you want to carry on.</td></tr>
+    <tr><td>Unsubscribed</td><td class="wrapok">They pressed Unsubscribe in one of your emails.</td><td>No.</td></tr>
+    <tr><td>Lead marked Won / Lost / Dropped / Not a fit</td><td class="wrapok">The lead was closed in Leads or the pipeline.</td><td>Not while the lead is closed.</td></tr>
+    <tr><td>Email couldn't be delivered</td><td class="wrapok">The address bounced or the email was refused.</td><td>Yes, after fixing the address.</td></tr>
+    <tr><td>Stopped by (name)</td><td class="wrapok">A team member pressed Stop.</td><td>Yes.</td></tr>
+  </table></div>
+
+  <h3 id="eml-seq-change">Changing a running sequence</h3>
+  <ul>
+    <li>You can change any email, its wait or how it's sent at any time. People who are part-way through carry on from the email number they reached.</li>
+    <li>Editing a saved email changes it for everyone who hasn't received it yet.</li>
+    <li>If you add an email to the end, people who already finished stay finished.</li>
+  </ul>
+  <a class="g-top" href="#eml-top">↑ Back to contents</a>
+</section>
+
+<!-- ═════ 7 ═════ -->
+<section class="part" id="eml-lead">
+  <h2><span class="num">7</span>On each lead</h2>
+  <p class="where">Leads › open a lead › Activity › ✉️ Emails</p>
+  {{ shot('e24_lead', 'A lead’s Emails tab', 'The lead’s Emails tab: its sequences, the They replied button, and every email sent, opened and clicked.') }}
+  <ul>
+    <li><b>They replied to our email:</b> replies arrive in your own mailbox, not in PhiXtra. When someone replies, press this button so the whole team can see it. It moves a New lead to <b>Contacted</b> and stops their sequences straight away.</li>
+    <li><b>Email sequences:</b> which sequences the lead is in and where they are. From here you can <span class="ui">Send email N now</span>, <span class="ui">Stop</span>, or add them to another sequence.</li>
+    <li><b>History:</b> every email sent, opened and clicked, plus replies and unsubscribes, with dates.</li>
+    <li>When a lead <b>clicks a link</b> in an email, a New lead moves to <b>Contacted</b> automatically, and the stage history says why.</li>
+  </ul>
+  <a class="g-top" href="#eml-top">↑ Back to contents</a>
+</section>
+
+<!-- ═════ 8 ═════ -->
+<section class="part" id="eml-routine">
+  <h2><span class="num">8</span>A sales executive's routine</h2>
+  <h4>Every morning</h4>
+  <ul class="check">
+    <li>Check your mailbox for replies. For each one, open the lead and press <b>They replied</b>, then answer them.</li>
+    <li>Open each running sequence and press the <b>Ready to send</b> filter. Read and send those emails, one at a time or with <b>Send to everyone ready</b>.</li>
+    <li>Look at <b>Stopped</b>: anyone stopped with "Email couldn't be delivered" needs a corrected address.</li>
+  </ul>
+  <h4>When new leads arrive</h4>
+  <ul class="check">
+    <li>Add them to the right sequence, by business category or from the lead's page.</li>
+    <li>Check the "added / skipped" message. Skipped people are already in it, unsubscribed, or closed.</li>
+  </ul>
+  <h4>Every week</h4>
+  <ul class="check">
+    <li>On each sequence, compare Opened, Clicked and Replied for each email. An email with far fewer replies than the others is the one to improve.</li>
+    <li>Improve it: Saved Emails › Use ▾ › Edit (your own) or Make a copy (someone else's), and try a new subject.</li>
+    <li>Follow up by phone or WhatsApp with leads that clicked but didn't reply. Their history shows the link they pressed.</li>
+  </ul>
+  <a class="g-top" href="#eml-top">↑ Back to contents</a>
+</section>
+
+<!-- ═════ 9 ═════ -->
+<section class="part" id="eml-fix">
+  <h2><span class="num">9</span>Problems and fixes</h2>
+  <div class="tbl"><table>
+    <tr><th>You see</th><th>Why</th><th>What to do</th></tr>
+    <tr><td>"No sending address is set up for this business yet"</td><td class="wrapok">Your business's sending address isn't ready.</td><td class="wrapok">Ask PhiXtra support. You can still write, save and build sequences meanwhile.</td></tr>
+    <tr><td>Test didn't arrive</td><td class="wrapok">Usually it's in spam, or the address in "Send a test to" was mistyped.</td><td class="wrapok">Check spam and the address shown in the green message. The message also shows the time it was sent.</td></tr>
+    <tr><td>"Your role can't send test emails"</td><td class="wrapok">Your role lacks the test-send tick.</td><td class="wrapok">Ask your manager or IT.</td></tr>
+    <tr><td>"A saved email already has that name"</td><td class="wrapok">Names are unique in your business.</td><td class="wrapok">Choose a different name.</td></tr>
+    <tr><td>"This email is used in the sequence …"</td><td class="wrapok">You tried to delete an email a sequence needs.</td><td class="wrapok">Remove it from that sequence first, or keep it.</td></tr>
+    <tr><td>"Choose the sequence's emails first"</td><td class="wrapok">You tried to add people to a sequence with no emails.</td><td class="wrapok">Pick at least one saved email and Save.</td></tr>
+    <tr><td>Nobody is getting sequence emails</td><td class="wrapok">The sequence is paused, or the first email waits some days.</td><td class="wrapok">Press Start sequence. Check "Next" on the people list.</td></tr>
+    <tr><td>"Not sent: unsubscribed / lead marked Lost…"</td><td class="wrapok">PhiXtra protected that person.</td><td class="wrapok">Nothing. That's by design.</td></tr>
+    <tr><td>An email I need isn't in Saved Emails</td><td class="wrapok">It's someone else's and not shared with you.</td><td class="wrapok">Ask the owner or IT to Share it with you.</td></tr>
+    <tr><td>No ✨ Write with AI box</td><td class="wrapok">Your role or plan doesn't include it.</td><td class="wrapok">Ask your manager.</td></tr>
+  </table></div>
+  <a class="g-top" href="#eml-top">↑ Back to contents</a>
+</section>
+
+<!-- ═════ 10 ═════ -->
+<section class="part" id="eml-admin">
+  <h2><span class="num">10</span>For owners and IT</h2>
+  <h3>Email design</h3>
+  <p>All Campaigns › <span class="ui">🎨 Email design</span> sets how every email from your business looks.</p>
+  {{ shot('e27_design', 'Email design', 'Logo, brand colour, default sign-off, business address, and the line that says why people are getting your emails.') }}
+  <h3>Sharing saved emails</h3>
+  <p>Saved Emails › Use ▾ › <b>Share…</b> and tick the team members who should see and use an email. Untick to stop sharing. To open every saved email to a whole role instead, tick "See all saved emails" for that role.</p>
+  {{ shot('e14_share', 'Share dialog', 'Share an email with chosen team members.') }}
+  <h3>Roles ticks</h3>
+  <p>Team › Roles › edit a role › <b>Email Campaigns</b>.</p>
+  {{ shot('e26_roles', 'Email Campaigns ticks in Roles', 'The Email Campaigns ticks on a role.') }}
+  <div class="tbl"><table>
+    <tr><th>Row</th><th>Ticks</th><th>Allows</th></tr>
+    <tr><td>Campaign</td><td>View, Create, Edit, Delete, Send</td><td class="wrapok">All Campaigns, New Email and Saved Emails (View and Create), and sending campaigns <b>and test emails</b> (Send).</td></tr>
+    <tr><td>Segment</td><td>View, Create, Edit, Delete</td><td class="wrapok">Email Segments.</td></tr>
+    <tr><td>Reports</td><td>View</td><td class="wrapok">Campaign reports.</td></tr>
+    <tr><td>Saved Emails</td><td>See all saved emails · Write emails with AI</td><td class="wrapok">See everyone's saved emails, not just their own and shared ones; use ✨ Write with AI.</td></tr>
+    <tr><td>Sequence</td><td>View, Create, Edit, Delete, Send by hand</td><td class="wrapok">Sequences. Edit covers the emails, people, Start and Pause.</td></tr>
+  </table></div>
+  <div class="box know"><b class="t">Who sees all</b><p>The owner, and anyone whose role can manage the Team, always see every saved email and can share them. Other staff see their own emails and ones shared with them, and only the leads assigned to them unless their role has "See all leads".</p></div>
+  <h3>Plans</h3>
+  <p>Your plan decides whether Email Campaigns, opens and clicks on leads, Sequences and Write with AI are included. AI emails use the plan's AI designs; extra AI designs can be bought on the Billing page.</p>
+  <a class="g-top" href="#eml-top">↑ Back to contents</a>
+</section>
+
+{% if show_phixtra_appendix %}
+<!-- ═════ Appendix (PhiXtra's own account only) ═════ -->
+<section class="part appendix" id="eml-phx">
+  <span class="badge">PhiXtra team only</span>
+  <h2>Appendix: PhiXtra outreach</h2>
+  <p>How PhiXtra's own sales team uses all of this to reach new businesses. Other businesses don't see this part.</p>
+  <h3>What's ready</h3>
+  <ul>
+    <li><b>16 outreach emails</b> in Saved Emails: four industries, four emails each. They're shared with the outreach team.</li>
+    <li>Every email uses the agreed words, ends with the <b>Book a demo</b> button (our Bookings page), and is signed <b>Chinaza · PhiXtra · outreach@phixtra.com</b>.</li>
+    <li>Email 4 of each industry includes the short demo video (it opens <b>phixtra.com/demo</b>).</li>
+    <li>Replies go to <b>outreach@phixtra.com</b>.</li>
+  </ul>
+  <div class="tbl"><table>
+    <tr><th>Industry</th><th>Email 1</th><th>Email 2</th><th>Email 3</th><th>Email 4</th></tr>
+    <tr><td>Retail / Fashion / Beauty</td><td>Retail 1</td><td>Retail 2</td><td>Retail 3</td><td>Retail 4 (video)</td></tr>
+    <tr><td>Restaurants / Hospitality</td><td>Restaurants 1</td><td>Restaurants 2</td><td>Restaurants 3</td><td>Restaurants 4 (video)</td></tr>
+    <tr><td>Consultancy / Professional</td><td>Consultancy 1</td><td>Consultancy 2</td><td>Consultancy 3</td><td>Consultancy 4 (video)</td></tr>
+    <tr><td>B2B Wholesale</td><td>B2B 1</td><td>B2B 2</td><td>B2B 3</td><td>B2B 4 (video)</td></tr>
+  </table></div>
+  <h3>Set up the four sequences (once)</h3>
+  <ol class="steps">
+    <li>Sequences › name it, for example <b>Retail outreach</b> › <span class="ui">+ New sequence</span>.</li>
+    <li>Pick Retail 1, 2, 3 and 4 as Emails 1 to 4. A starting rhythm to try is 0, 3, 4 and 7 days. Set any email you want to read before it goes, such as Email 3, to <b>I'll send it myself</b>.</li>
+    <li>Replies go to <b>outreach@phixtra.com</b>. Press Save.</li>
+    <li>Repeat for Restaurants, Consultancy and B2B.</li>
+  </ol>
+  <h3>Add leads and start</h3>
+  <ol class="steps">
+    <li>On the sequence, <b>From your leads</b> › Business category (for example Retail) › <span class="ui">Add these leads</span>. Imported lead lists bring the category with them.</li>
+    <li>Read the added / skipped message.</li>
+    <li>Press <span class="ui">▶ Start sequence</span>.</li>
+  </ol>
+  <div class="flow" role="img" aria-label="PhiXtra outreach flow">
+    <div class="n hi"><b>Lagos list import</b>Leads with Business category</div><i>→</i>
+    <div class="n"><b>Industry sequence</b>Email 1 → 2 → 3 → 4 (video)</div><i>→</i>
+    <div class="n"><b>Reply in outreach@</b>Press They replied on the lead</div><i>→</i>
+    <div class="n"><b>Book a demo</b>Lead moves on in the pipeline</div>
+  </div>
+  <h3>Day to day</h3>
+  <ul class="check">
+    <li>Mornings: check outreach@phixtra.com for replies → They replied on each lead → answer them.</li>
+    <li>Send any "Ready to send" emails.</li>
+    <li>Leads who clicked "Book a demo" but didn't book: follow up on WhatsApp the same day.</li>
+    <li>Weekly: compare replies per email per industry and improve the weakest one, using Make a copy so the original stays.</li>
+  </ul>
+  <div class="box careful"><b class="t">Careful</b><p>The 16 emails belong to the business. Staff can use and copy them but not edit them. If an agreed email needs changing, ask the owner.</p></div>
+  <a class="g-top" href="#eml-top">↑ Back to contents</a>
+</section>
+{% endif %}
+
+</main>
+</div>

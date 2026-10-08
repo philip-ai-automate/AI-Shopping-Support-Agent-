@@ -25,14 +25,19 @@ API_URL = "https://api.zeptomail.eu/v1.1/email"
 
 
 def send_email(send_mail_token: str, from_email: str, from_name: str,
-                to_email: str, to_name: str, subject: str, html_body: str):
-    """Sends a single email via ZeptoMail's HTTP API. Returns (ok, error)."""
+                to_email: str, to_name: str, subject: str, html_body: str,
+                reply_to: str = None):
+    """Sends a single email via ZeptoMail's HTTP API. Returns (ok, error).
+    reply_to: where the recipient's reply goes (e.g. the sending staff
+    member's own mailbox), when it isn't the From address."""
     payload = {
         "from": {"address": from_email, "name": from_name or ""},
         "to": [{"email_address": {"address": to_email, "name": to_name or ""}}],
         "subject": subject,
         "htmlbody": html_body,
     }
+    if reply_to:
+        payload["reply_to"] = [{"address": reply_to}]
     try:
         r = requests.post(
             API_URL,

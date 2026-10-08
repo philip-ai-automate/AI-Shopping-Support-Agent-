@@ -5,7 +5,7 @@
 <div class="page-header">
   <div>
     <h1 class="section-title" style="margin:0">API Keys</h1>
-    <p class="muted">Your API key authenticates the AI assistant <em>and</em> the PhiXtra Export plugin.</p>
+    <p class="muted">Your API key connects the PhiXtra AI Sales Agent plugin, which runs your chat box and sends your products.</p>
   </div>
 </div>
 
@@ -21,8 +21,7 @@
   <div class="code-box" id="plain-key-box">{{ new_plain_key }}</div>
   <button type="button" onclick="copyKey()" class="btn btn-sm" style="margin-top:10px">📋 Copy to clipboard</button>
   <p class="muted" style="margin-top:10px;font-size:12px">
-    Paste this key into: <strong>WooCommerce → PhiXtra AI → API Key</strong> field
-    AND into <strong>WooCommerce → PhiXtra Export → PhiXtra Sync → Bearer Token</strong>
+    Paste this key into: <strong>WordPress → PhiXtra AI → PhiXtra AI Sales Agent → API Key</strong>. Your products then sync by themselves.
   </p>
 </div>
 <script>
@@ -100,8 +99,7 @@ function copyKey(){
   <p style="font-size:13px;color:var(--muted)">
     <strong>ℹ️ Your API key</strong> authenticates all PhiXtra services:
     the <strong>WhatsApp AI assistant</strong> (paste it on the WhatsApp Connect page),
-    the <strong>PhiXtra AI Assistant plugin</strong> (web chat widget),
-    and the <strong>PhiXtra Export plugin</strong> (product sync).
+    and the <strong>PhiXtra AI Sales Agent plugin</strong> (website chat box and product sync).
     You only need one key for all of these.
   </p>
 </div>
