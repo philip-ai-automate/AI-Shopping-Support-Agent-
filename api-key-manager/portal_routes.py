@@ -361,6 +361,7 @@ PLAN_FEATURE_CATALOG = {
         ("inbox.resolve",        "Resolve conversations (hand back to AI)"),
         ("inbox.takeover",       "Take over from AI"),
         ("inbox.manage_contact", "Edit contact details from Inbox"),
+        ("inbox.see_all",        "See all chats, not just their own customers' (off = only chats with their own contacts, and new people nobody has claimed)"),
     ],
     "WhatsApp Campaigns": [
         ("legacy:feat_broadcasts",           "Broadcast Messaging & Reports (plan unlock)"),
@@ -382,6 +383,7 @@ PLAN_FEATURE_CATALOG = {
         ("crm.contacts_edit",          "Edit a Contact (notes, consent, tags, status, segment, move to pipeline)"),
         ("crm.contacts_delete",        "Delete a Contact"),
         ("crm.contacts_export",        "Export Contacts (download CSV)"),
+        ("crm.contacts_see_all",       "See all contacts and companies, not just their own (off = only their leads' contacts and the ones they added)"),
         ("crm.import",                 "Import leads and contacts (CSV or Excel)"),
         ("crm.companies_view",         "Companies — view"),
         ("crm.companies_create",       "Create a Company"),
@@ -409,7 +411,7 @@ PLAN_FEATURE_CATALOG = {
         ("leads.create", "Create a Lead (manually or from a Hot Conversation)"),
         ("leads.qualify", "Qualify a Lead into an Opportunity / mark it Not a Fit"),
         ("leads.assign",  "Assign Leads and Opportunities to team members"),
-        ("leads.see_all", "See all leads and contacts, not just their own (off = only leads assigned to them, and their contacts)"),
+        ("leads.see_all", "See all leads, not just their own (off = only leads assigned to them)"),
     ],
     "Voice Calls": [
         ("voice.calls", "Voice Calls (PressOne)"),
@@ -606,7 +608,7 @@ ROLE_FORM_GRID = {
     ],
     "Inbox": [
         {"label": "Inbox", "view": "inbox.page", "edit": "inbox.manage_contact",
-         "other": ["inbox.reply", "inbox.claim_release", "inbox.resolve", "inbox.takeover"]},
+         "other": ["inbox.reply", "inbox.claim_release", "inbox.resolve", "inbox.takeover", "inbox.see_all"]},
     ],
     "WhatsApp Campaigns": [
         {"label": "Broadcast Messaging & Reports (plan unlock)", "other": ["legacy:feat_broadcasts"]},
@@ -619,7 +621,7 @@ ROLE_FORM_GRID = {
     ],
     "CRM": [
         {"label": "Contact",        "view": "crm.contacts_view",        "create": "crm.contacts_create",  "edit": "crm.contacts_edit",  "delete": "crm.contacts_delete",
-         "other": ["crm.contacts_export"]},
+         "other": ["crm.contacts_export", "crm.contacts_see_all"]},
         {"label": "Import (leads and contacts)", "create": "crm.import"},
         {"label": "Company",        "view": "crm.companies_view",       "create": "crm.companies_create", "edit": "crm.companies_edit", "delete": "crm.companies_delete"},
         {"label": "Pipeline Board", "view": "crm.pipeline_board_view",  "edit": "crm.pipeline_board_edit",
@@ -755,9 +757,9 @@ PLAN_ONLY_FEATURE_KEYS = {
     "woo.chat_archive_30days", "woo.chat_archive_unlimited",
     "help.tutorials", "help.videos",
     "store.website_connect", "store.website_schedule",
-    # Not a page: a Roles tick read in code (_leads_see_all) that limits which
-    # leads every Leads / Pipeline / Reports page shows (2026-10-06).
-    "leads.see_all",
+    # Not pages: Roles ticks read in code that limit which leads (2026-10-06),
+    # contacts/companies and Inbox chats (2026-10-08) a team member sees.
+    "leads.see_all", "crm.contacts_see_all", "inbox.see_all",
 }
 
 # Modules every team member can open whatever their role, so the Roles screen
@@ -983,7 +985,7 @@ def _staff_only_their_own_contacts():
     va = request.view_args or {}
     if not session.get("team_member_id") or not ({"contact_id", "company_id"} & va.keys()):
         return None
-    if _leads_see_all():
+    if _contacts_see_all():
         return None
     cid = _customer_id()
     customer = _get_customer(cid) if cid else None
@@ -1276,6 +1278,7 @@ _DEFAULT_ROLE_NAME = "Support Agent"
 _DEFAULT_ROLE_PERMS = {
     "inbox.page": True, "inbox.reply": True, "inbox.claim_release": True,
     "inbox.resolve": True, "inbox.takeover": True, "inbox.manage_contact": True,
+    "inbox.see_all": True,
 }
 
 
@@ -30246,13 +30249,29 @@ def _leads_see_all() -> bool:
     team member whose role can manage the Team (e.g. IT Admin), always see
     every lead — same rule as Segments (_segments_see_all). Background jobs
     (no request, e.g. a scheduled campaign) are never limited here."""
+    return _role_sees_all("leads.see_all")
+
+
+def _role_sees_all(key: str) -> bool:
+    """True unless a team member's role lacks this "See all …" tick. The
+    owner and anyone who can manage the Team always see all; background jobs
+    are never limited. One tick per area (2026-10-08): leads.see_all,
+    crm.contacts_see_all (Contacts + Companies), inbox.see_all (Inbox)."""
     from flask import has_request_context
     if not has_request_context() or not session.get("team_member_id"):
         return True
     perms = session.get("team_member_permissions") or {}
-    if perms.get("leads.see_all"):
+    if perms.get(key):
         return True
     return any(v for k, v in perms.items() if k.startswith("team."))
+
+
+def _contacts_see_all() -> bool:
+    return _role_sees_all("crm.contacts_see_all")
+
+
+def _inbox_see_all() -> bool:
+    return _role_sees_all("inbox.see_all")
 
 
 def _lead_scope(alias: str = "mpl"):
@@ -30312,18 +30331,22 @@ def _own_record_preds() -> dict:
 
 
 def _scope_leads_sql(sql: str) -> str:
-    """Staff without "See all leads and contacts": every FROM/JOIN of
-    merchant_pipeline_leads, wa_contacts or crm_companies in this SQL reads
-    only their own records (_own_record_preds). Used by the dashboard /
-    reports / contacts / companies / segment and label pickers, which build
-    their SQL by hand. DELETE FROM is left alone. Unchanged for anyone who
-    can see all."""
-    if _leads_see_all():
+    """Every FROM/JOIN of merchant_pipeline_leads (staff without "See all
+    leads") or wa_contacts / crm_companies (staff without "See all contacts
+    and companies") in this SQL reads only their own records
+    (_own_record_preds). Used by the dashboard / reports / contacts /
+    companies / segment and label pickers, which build their SQL by hand.
+    DELETE FROM is left alone. Unchanged for anyone who can see all."""
+    all_leads, all_contacts = _leads_see_all(), _contacts_see_all()
+    if all_leads and all_contacts:
         return sql
     preds = _own_record_preds()
-    return _MPL_FROM_RE.sub(
-        lambda m: f"{m.group(1)} (SELECT * FROM {m.group(2)} WHERE {preds[m.group(2)]}) {m.group(3) or m.group(2)}",
-        sql)
+
+    def _sub(m):
+        if (all_leads if m.group(2) == "merchant_pipeline_leads" else all_contacts):
+            return m.group(0)
+        return f"{m.group(1)} (SELECT * FROM {m.group(2)} WHERE {preds[m.group(2)]}) {m.group(3) or m.group(2)}"
+    return _MPL_FROM_RE.sub(_sub, sql)
 
 
 def _ls_exec(cur, sql, params=None):
@@ -30343,7 +30366,7 @@ def _record_visible(table: str, tenant_id: int, record_id: int) -> bool:
 
 def _visible_contact_ids(tenant_id: int, contact_ids: list) -> list:
     """Drop contact ids the viewer can't see (bulk actions on ticked contacts)."""
-    if _leads_see_all() or not contact_ids:
+    if _contacts_see_all() or not contact_ids:
         return contact_ids
     conn = get_db_connection(); cur = conn.cursor()
     _ls_exec(cur, "SELECT id FROM wa_contacts WHERE tenant_id=%s AND id = ANY(%s)",
@@ -30354,10 +30377,10 @@ def _visible_contact_ids(tenant_id: int, contact_ids: list) -> list:
 
 
 def _inbox_limited() -> bool:
-    """A staff member without "See all leads and contacts" (Inbox rule,
-    user 2026-10-08). Never limited outside a request."""
+    """A staff member without "See all chats" (Inbox rule, user 2026-10-08).
+    Never limited outside a request."""
     from flask import has_request_context
-    return has_request_context() and bool(session.get("team_member_id")) and not _leads_see_all()
+    return has_request_context() and bool(session.get("team_member_id")) and not _inbox_see_all()
 
 
 def _chat_digits(n) -> str:
@@ -30382,9 +30405,11 @@ def _inbox_ownership(tenant_id: int) -> dict:
            "other_d": set(), "other_e": set(), "claims": {}}
     conn = get_db_connection(); cur = conn.cursor()
     try:
-        _ls_exec(cur, "SELECT whatsapp_number, phone, email FROM wa_contacts WHERE tenant_id=%s "
-                      "UNION ALL SELECT whatsapp_number, phone, email FROM merchant_pipeline_leads WHERE tenant_id=%s",
-                 (tenant_id, tenant_id))
+        # Their OWN customers (not everything their other ticks let them see).
+        preds = _own_record_preds()
+        cur.execute(f"SELECT whatsapp_number, phone, email FROM wa_contacts WHERE tenant_id=%s AND {preds['wa_contacts']} "
+                    f"UNION ALL SELECT whatsapp_number, phone, email FROM merchant_pipeline_leads "
+                    f"WHERE tenant_id=%s AND {preds['merchant_pipeline_leads']}", (tenant_id, tenant_id))
         rows_mine = cur.fetchall()
         cur.execute("""SELECT c.whatsapp_number, c.phone, c.email FROM wa_contacts c
                         WHERE c.tenant_id=%s AND (c.added_by_key IS NOT NULL OR EXISTS (
@@ -33579,7 +33604,7 @@ def _crm_import_plan(tenant_id, staged):
     recs = _ci.build_records(headers, rows, origin, staged["mapping"], opts.get("country") or None,
                              _addr.match_country, _addr.match_state)
     plan = _ci.plan(recs, _crm_import_existing(tenant_id, opts["create"]), phone_problem)
-    if not _leads_see_all():
+    if not (_leads_see_all() if opts["create"] == "both" else _contacts_see_all()):
         # Staff who only see their own (2026-10-08): rows matching someone
         # else's lead/contact are skipped, never merged into it.
         ex_ids = [r["existing_id"] for r in plan["items"] if r["status"] == "existing"]

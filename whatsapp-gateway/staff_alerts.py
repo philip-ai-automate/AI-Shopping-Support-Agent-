@@ -122,8 +122,8 @@ def _recipients(cur, tenant_id: int, phone_number_id: str) -> list:
 
 def _member_sees_chat(cur, tenant_id: int, member_id: int, numbers=(), emails=(), claim_key: str = "") -> bool:
     """Same rule as the portal Inbox (_inbox_can_see, user 2026-10-08): a
-    member whose role lacks "See all leads and contacts" (leads.see_all, or
-    any Team-management tick) is only alerted about chats with their own
+    member whose role lacks "See all chats" (inbox.see_all, or any
+    Team-management tick) is only alerted about chats with their own
     contacts, chats they claimed, or people who belong to nobody yet."""
     cur.execute("""SELECT r.permissions FROM team_members tm
                      LEFT JOIN tenant_roles r ON r.id = tm.role_id AND r.tenant_id = tm.tenant_id
@@ -132,7 +132,7 @@ def _member_sees_chat(cur, tenant_id: int, member_id: int, numbers=(), emails=()
     if isinstance(perms, str):
         import json as _json
         perms = _json.loads(perms or "{}")
-    if perms.get("leads.see_all") or any(v for k, v in perms.items() if k.startswith("team.")):
+    if perms.get("inbox.see_all") or any(v for k, v in perms.items() if k.startswith("team.")):
         return True
     me = f"team:{int(member_id)}"
     ds = [d for d in (_digits(n) for n in numbers) if len(d) >= 7]

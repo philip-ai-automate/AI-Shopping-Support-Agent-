@@ -2182,7 +2182,11 @@ def ensure_portal_tables():
         # nobody loses leads overnight), "Import" starts ON wherever a role could
         # already import contacts. New roles start with both off.
         cur.execute("CREATE TABLE IF NOT EXISTS role_key_backfill_seen (feature_key TEXT PRIMARY KEY)")
-        for _new, _from in (("leads.see_all", "leads.page"), ("crm.import", "crm.contacts_create")):
+        # 2026-10-08: one tick per area. Contacts/Companies start as Leads was
+        # set (they shared it until now); "See all chats" starts ON wherever a
+        # role could open the Inbox (how the Inbox worked before today).
+        for _new, _from in (("leads.see_all", "leads.page"), ("crm.import", "crm.contacts_create"),
+                            ("crm.contacts_see_all", "leads.see_all"), ("inbox.see_all", "inbox.page")):
             cur.execute("SELECT 1 FROM role_key_backfill_seen WHERE feature_key=%s", (_new,))
             if cur.fetchone():
                 continue
