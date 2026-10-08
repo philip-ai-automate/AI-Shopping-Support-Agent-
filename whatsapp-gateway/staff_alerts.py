@@ -120,6 +120,72 @@ def _recipients(cur, tenant_id: int, phone_number_id: str) -> list:
     return [dict(r, kind="member") for r in cur.fetchall() or []]
 
 
+def _member_sees_chat(cur, tenant_id: int, member_id: int, numbers=(), emails=(), claim_key: str = "") -> bool:
+    """Same rule as the portal Inbox (_inbox_can_see, user 2026-10-08): a
+    member whose role lacks "See all leads and contacts" (leads.see_all, or
+    any Team-management tick) is only alerted about chats with their own
+    contacts, chats they claimed, or people who belong to nobody yet."""
+    cur.execute("""SELECT r.permissions FROM team_members tm
+                     LEFT JOIN tenant_roles r ON r.id = tm.role_id AND r.tenant_id = tm.tenant_id
+                    WHERE tm.id = %s""", (member_id,))
+    perms = ((cur.fetchone() or {}).get("permissions")) or {}
+    if isinstance(perms, str):
+        import json as _json
+        perms = _json.loads(perms or "{}")
+    if perms.get("leads.see_all") or any(v for k, v in perms.items() if k.startswith("team.")):
+        return True
+    me = f"team:{int(member_id)}"
+    ds = [d for d in (_digits(n) for n in numbers) if len(d) >= 7]
+    es = [e.strip().lower() for e in emails if e and e.strip()]
+    owners = []
+    if ds or es:
+        cur.execute("""
+            SELECT c.added_by_key AS k FROM wa_contacts c
+             WHERE c.tenant_id = %(t)s AND c.added_by_key IS NOT NULL
+               AND (regexp_replace(COALESCE(c.whatsapp_number,''), '\\D', '', 'g') = ANY(%(d)s)
+                    OR regexp_replace(COALESCE(c.phone,''), '\\D', '', 'g') = ANY(%(d)s)
+                    OR lower(c.email) = ANY(%(e)s))
+            UNION ALL
+            SELECT l.assigned_key FROM merchant_pipeline_leads l
+              LEFT JOIN wa_contacts c ON c.id = l.wa_contact_id
+             WHERE l.tenant_id = %(t)s AND l.assigned_key IS NOT NULL
+               AND (regexp_replace(COALESCE(l.whatsapp_number,''), '\\D', '', 'g') = ANY(%(d)s)
+                    OR regexp_replace(COALESCE(l.phone,''), '\\D', '', 'g') = ANY(%(d)s)
+                    OR lower(l.email) = ANY(%(e)s)
+                    OR regexp_replace(COALESCE(c.whatsapp_number,''), '\\D', '', 'g') = ANY(%(d)s)
+                    OR regexp_replace(COALESCE(c.phone,''), '\\D', '', 'g') = ANY(%(d)s)
+                    OR lower(c.email) = ANY(%(e)s))
+        """, {"t": tenant_id, "d": ds, "e": es})
+        owners = [r["k"] for r in cur.fetchall() or []]
+    if me in owners:
+        return True
+    if claim_key:
+        if claim_key.startswith("web:"):
+            cur.execute("SELECT assigned_to_key FROM wa_conversation_assignments WHERE tenant_id=%s AND customer_phone=%s",
+                        (tenant_id, claim_key))
+        else:
+            cur.execute("""SELECT assigned_to_key FROM wa_conversation_assignments
+                            WHERE tenant_id=%s AND regexp_replace(customer_phone, '\\D', '', 'g') = %s""",
+                        (tenant_id, _digits(claim_key)))
+        r = cur.fetchone()
+        if r and r.get("assigned_to_key"):
+            return r["assigned_to_key"] == me
+    return not owners
+
+
+def _only_who_may_see(cur, tenant_id: int, recips: list, numbers=(), emails=(), claim_key: str = "") -> list:
+    return [r for r in recips if r.get("kind") != "member" or not r.get("id")
+            or _member_sees_chat(cur, tenant_id, r["id"], numbers, emails, claim_key)]
+
+
+def _web_identity(cur, tenant_id: int, session_id: str):
+    cur.execute("""SELECT (ARRAY_AGG(whatsapp_number ORDER BY created_at DESC) FILTER (WHERE whatsapp_number IS NOT NULL))[1] AS wa,
+                          (ARRAY_AGG(visitor_email ORDER BY created_at DESC) FILTER (WHERE visitor_email IS NOT NULL))[1] AS em
+                     FROM handoff_requests WHERE tenant_id=%s AND session_id=%s""", (tenant_id, session_id))
+    r = cur.fetchone() or {}
+    return [r["wa"]] if r.get("wa") else [], [r["em"]] if r.get("em") else []
+
+
 def _owner_fallback(cur, tenant_id: int) -> list:
     cur.execute("""
         SELECT COALESCE(c.handoff_notify_email, c.email) AS email,
@@ -272,7 +338,8 @@ async def alert_chat_needs_reply(tenant_id: int, phone_number_id: str, customer_
         if cur.fetchone():
             conn.commit()
             return True
-        recips = _recipients(cur, tenant_id, phone_number_id)
+        recips = _only_who_may_see(cur, tenant_id, _recipients(cur, tenant_id, phone_number_id),
+                                   [customer_phone], [], customer_phone)
         if not recips and allow_owner_fallback:
             recips = _owner_fallback(cur, tenant_id)
         if not recips:
@@ -337,6 +404,14 @@ async def run_alert_reminders() -> int:
                 cur.execute("UPDATE chat_alerts SET replied_at=NOW() WHERE id=%s", (a["id"],))
             else:
                 cur.execute("UPDATE chat_alerts SET reminder_sent_at=NOW() WHERE id=%s", (a["id"],))
+                # Re-check who may see it now — a claim since the first alert
+                # makes the chat the claimer's (2026-10-08).
+                if a["channel"] == "web":
+                    _wn, _we = _web_identity(cur, a["tenant_id"], a["chat_key"])
+                    _ck = "web:" + a["chat_key"]
+                else:
+                    _wn, _we, _ck = [a["chat_key"]], [], a["chat_key"]
+                a["recipients"] = _only_who_may_see(cur, a["tenant_id"], list(a["recipients"] or []), _wn, _we, _ck)
                 due.append(a)
         conn.commit()
     except Exception as e:
@@ -397,7 +472,9 @@ async def process_web_chat_alerts() -> int:
                         (q["tenant_id"], q["session_id"], NEW_CHAT_WINDOW))
             if cur.fetchone():
                 continue
-            recips = _web_recipients(cur, q["tenant_id"])
+            _wn, _we = _web_identity(cur, q["tenant_id"], q["session_id"])
+            recips = _only_who_may_see(cur, q["tenant_id"], _web_recipients(cur, q["tenant_id"]),
+                                       _wn, _we, "web:" + q["session_id"])
             if not recips and q["allow_owner"]:
                 recips = _owner_fallback(cur, q["tenant_id"])
             if not recips:

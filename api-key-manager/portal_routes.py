@@ -1864,13 +1864,14 @@ def _team_can_access_phone(tenant_id: int, actor: dict, phone: str) -> bool:
     if not actor["is_team"]:
         return True
     if phone.startswith("fb:"):
-        return _team_member_has_messenger_access(actor["team_member_id"])
-    if phone.startswith("web:"):
-        return _team_member_has_webchat_access(actor["team_member_id"])
-    allowed = _get_team_member_number_ids(actor["team_member_id"])
-    if not allowed:
-        return False
-    return _resolve_phone_number_id(tenant_id, phone) in allowed
+        ok = _team_member_has_messenger_access(actor["team_member_id"])
+    elif phone.startswith("web:"):
+        ok = _team_member_has_webchat_access(actor["team_member_id"])
+    else:
+        allowed = _get_team_member_number_ids(actor["team_member_id"])
+        ok = bool(allowed) and _resolve_phone_number_id(tenant_id, phone) in allowed
+    # Plus the "own contacts" rule (2026-10-08), see _inbox_can_see.
+    return ok and _inbox_key_visible(tenant_id, phone)
 
 
 def _get_tenant_balance_tokens(tenant_id: int) -> int:
@@ -8994,6 +8995,8 @@ def _get_dashboard_recent_activity(tenant_id: int, limit: int = 8) -> list:
         """, (tenant_id, limit))
         for r in cur.fetchall() or []:
             phone = r["customer_phone"] or ""
+            if not _inbox_can_see(tenant_id, phone, [phone]):
+                continue
             # Prefix '+' only if not already present -- some stored numbers already
             # carry it (Meta's display_phone_number format), same fix as the
             # 'with_plus' template filter (portal_app.py) exists for.
@@ -14965,6 +14968,14 @@ def inbox_resolve(session_id: str):
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
+        # Only chats this person may open (number ticks + own contacts), 2026-10-08.
+        cur.execute("SELECT customer_phone FROM wa_handoff_state WHERE session_id=%s AND tenant_id=%s",
+                    (session_id, tenant_id))
+        _hs = cur.fetchone()
+        if _hs and not _team_can_access_phone(tenant_id, _current_actor(customer), _hs[0]):
+            cur.close(); conn.close()
+            flash("You don't have access to this conversation.", "danger")
+            return redirect(url_for("portal.my_inbox"))
         cur.execute("""
             UPDATE wa_handoff_state
             SET resolved_at = NOW()
@@ -15002,6 +15013,9 @@ def inbox_takeover():
     customer_phone = (request.form.get("customer_phone") or "").strip().lstrip("+")
     if not customer_phone:
         flash("Invalid customer phone.", "danger")
+        return redirect(url_for("portal.my_inbox"))
+    if not _team_can_access_phone(tenant_id, _current_actor(customer), customer_phone):
+        flash("You don't have access to this conversation.", "danger")
         return redirect(url_for("portal.my_inbox"))
 
     try:
@@ -24450,9 +24464,15 @@ def _get_customers_list(tenant_id: int, q: str = "", page: int = 1, per_page: in
             GROUP BY wml.customer_phone, ord.order_count, ord.total_spent, hs.handoff_count
             ORDER BY last_seen DESC
             LIMIT %s OFFSET %s
-        """, [tenant_id, tenant_id, tenant_id] + ([f"%{q}%"] if q else []) + [per_page, offset])
+        """, [tenant_id, tenant_id, tenant_id] + ([f"%{q}%"] if q else [])
+             + ([None, 0] if _inbox_limited() else [per_page, offset]))
         rows = cur.fetchall() or []
         cur.close(); conn.close()
+        if _inbox_limited():
+            # Staff who only see their own (2026-10-08): same rule as the Inbox.
+            rows = [r for r in rows if _inbox_can_see(tenant_id, r["customer_phone"], [r["customer_phone"]])]
+            total = len(rows)
+            rows = rows[offset:offset + per_page]
         return rows, total
     except Exception as e:
         print("⚠️ _get_customers_list error:", e)
@@ -24591,6 +24611,9 @@ def customer_detail(phone: str):
 
     # Normalise: strip leading + so URL and DB value match
     phone_clean = phone.lstrip("+")
+    if not _inbox_can_see(tenant_id, phone_clean, [phone_clean]):
+        flash("This customer belongs to someone else. Ask your manager if you need them.", "warning")
+        return redirect(url_for("portal.customers"))
 
     detail = _get_customer_detail(tenant_id, phone_clean)
     if not detail:
@@ -27366,7 +27389,7 @@ def _get_open_wa_handoffs(tenant_id: int) -> list:
         cur.close(); conn.close()
         for r in rows:
             r["waiting_minutes"] = int(r["waiting_minutes"]) if r.get("waiting_minutes") is not None else None
-        return rows
+        return [r for r in rows if _inbox_can_see(tenant_id, r["customer_phone"], [r["customer_phone"]])]
     except Exception as e:
         print("⚠️ _get_open_wa_handoffs error:", e)
         return []
@@ -27577,7 +27600,8 @@ def _get_inbox_conversations(tenant_id: int, allowed_number_ids=None) -> list:
             d["lead_score"] = lead["score"]
             d["lead_tier"]  = lead["tier"]
             d["lead_signals"] = lead["signals"]
-            result.append(d)
+            if _inbox_can_see(tenant_id, d["customer_phone"], [d["customer_phone"]]):
+                result.append(d)
         return result
     except Exception as e:
         print("⚠️ _get_inbox_conversations error:", e)
@@ -28112,7 +28136,8 @@ def my_inbox():
     # _team_can_access_phone for reply/claim/release. Urgent fix, 2026-09-11.
     messenger_team_access = (not actor["is_team"]) or _team_member_has_messenger_access(actor["team_member_id"])
     if messenger_pages and messenger_team_access:
-        messenger_conversations = _get_messenger_conversations(tenant_id)
+        messenger_conversations = [c for c in _get_messenger_conversations(tenant_id)
+                                   if _inbox_can_see(tenant_id, c["key"])]
         if is_messenger_active:
             if not any(c["key"] == active_phone for c in messenger_conversations):
                 # Stale/foreign key — same not-trusting-the-query-string
@@ -28131,7 +28156,9 @@ def my_inbox():
     webchat_messages = []
     webchat_team_access = (not actor["is_team"]) or _team_member_has_webchat_access(actor["team_member_id"])
     if webchat_team_access:
-        webchat_conversations = _get_webchat_conversations(tenant_id)
+        webchat_conversations = [c for c in _get_webchat_conversations(tenant_id)
+                                 if _inbox_can_see(tenant_id, c["key"], [c.get("whatsapp_number")],
+                                                   [c.get("visitor_email")])]
         if is_webchat_active:
             if not any(c["key"] == active_phone for c in webchat_conversations):
                 active_phone = webchat_conversations[0]["key"] if webchat_conversations else None
@@ -28314,6 +28341,7 @@ def inbox_claim(phone: str):
         """, (tenant_id, phone, actor["key"], actor["label"]))
         conn.commit()
         cur.close(); conn.close()
+        _claimed_chat_becomes_contact(tenant_id, phone, actor)
         flash("Conversation claimed. ✅", "success")
     except Exception as e:
         print("⚠️ inbox_claim error:", e)
@@ -30323,6 +30351,141 @@ def _visible_contact_ids(tenant_id: int, contact_ids: list) -> list:
     ids = [r[0] for r in cur.fetchall()]
     cur.close(); conn.close()
     return ids
+
+
+def _inbox_limited() -> bool:
+    """A staff member without "See all leads and contacts" (Inbox rule,
+    user 2026-10-08). Never limited outside a request."""
+    from flask import has_request_context
+    return has_request_context() and bool(session.get("team_member_id")) and not _leads_see_all()
+
+
+def _chat_digits(n) -> str:
+    d = _re_mpl.sub(r"\D", "", n or "")
+    return d if len(d) >= 7 else ""
+
+
+def _inbox_claim_key(key: str) -> str:
+    """Claims are stored by the chat key; WhatsApp ones compared by digits."""
+    return key if key.startswith(("web:", "fb:")) else _chat_digits(key)
+
+
+def _inbox_ownership(tenant_id: int) -> dict:
+    """Who owns which customers, for the Inbox rule (cached per request):
+    numbers/emails of the viewer's own contacts and leads, of everyone
+    else's, and every claimed chat."""
+    from flask import g
+    ck = f"_inbox_own_{tenant_id}"
+    if getattr(g, ck, None) is not None:
+        return getattr(g, ck)
+    own = {"me": f"team:{int(session['team_member_id'])}", "mine_d": set(), "mine_e": set(),
+           "other_d": set(), "other_e": set(), "claims": {}}
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        _ls_exec(cur, "SELECT whatsapp_number, phone, email FROM wa_contacts WHERE tenant_id=%s "
+                      "UNION ALL SELECT whatsapp_number, phone, email FROM merchant_pipeline_leads WHERE tenant_id=%s",
+                 (tenant_id, tenant_id))
+        rows_mine = cur.fetchall()
+        cur.execute("""SELECT c.whatsapp_number, c.phone, c.email FROM wa_contacts c
+                        WHERE c.tenant_id=%s AND (c.added_by_key IS NOT NULL OR EXISTS (
+                              SELECT 1 FROM merchant_pipeline_leads l
+                               WHERE l.wa_contact_id = c.id AND l.assigned_key IS NOT NULL))
+                       UNION ALL
+                       SELECT whatsapp_number, phone, email FROM merchant_pipeline_leads
+                        WHERE tenant_id=%s AND assigned_key IS NOT NULL""", (tenant_id, tenant_id))
+        rows_other = cur.fetchall()
+        cur.execute("SELECT customer_phone, assigned_to_key FROM wa_conversation_assignments WHERE tenant_id=%s",
+                    (tenant_id,))
+        own["claims"] = {_inbox_claim_key(k): v for k, v in cur.fetchall() if k}
+    finally:
+        cur.close(); conn.close()
+    for rows, dk, ek in ((rows_mine, "mine_d", "mine_e"), (rows_other, "other_d", "other_e")):
+        for wa, ph, em in rows:
+            for n in (wa, ph):
+                if _chat_digits(n):
+                    own[dk].add(_chat_digits(n))
+            if em and em.strip():
+                own[ek].add(em.strip().lower())
+    setattr(g, ck, own)
+    return own
+
+
+def _inbox_can_see(tenant_id: int, key: str, numbers=(), emails=()) -> bool:
+    """Inbox rule (user 2026-10-08) for staff without "See all leads and
+    contacts": chats with their own contacts always; a claimed chat only by
+    whoever claimed it; a colleague's contact never; anyone who belongs to
+    nobody yet is open to all until claimed."""
+    if not _inbox_limited():
+        return True
+    own = _inbox_ownership(tenant_id)
+    ds = {d for d in (_chat_digits(n) for n in numbers) if d}
+    es = {e.strip().lower() for e in emails if e and e.strip()}
+    if ds & own["mine_d"] or es & own["mine_e"]:
+        return True
+    claim = own["claims"].get(_inbox_claim_key(key))
+    if claim:
+        return claim == own["me"]
+    return not (ds & own["other_d"] or es & own["other_e"])
+
+
+def _inbox_chat_identity(tenant_id: int, key: str):
+    """(numbers, emails, name) known for a chat key."""
+    if key.startswith("fb:"):
+        return [], [], None
+    if key.startswith("web:"):
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("""SELECT (ARRAY_AGG(whatsapp_number ORDER BY created_at DESC) FILTER (WHERE whatsapp_number IS NOT NULL))[1],
+                              (ARRAY_AGG(visitor_email ORDER BY created_at DESC) FILTER (WHERE visitor_email IS NOT NULL))[1],
+                              (ARRAY_AGG(visitor_name ORDER BY created_at DESC) FILTER (WHERE visitor_name IS NOT NULL))[1]
+                         FROM handoff_requests WHERE tenant_id=%s AND session_id=%s""", (tenant_id, key[4:]))
+        wa, em, name = cur.fetchone() or (None, None, None)
+        cur.close(); conn.close()
+        return [wa] if wa else [], [em] if em else [], name
+    return [key], [], None
+
+
+def _inbox_key_visible(tenant_id: int, key: str) -> bool:
+    if not _inbox_limited():
+        return True
+    numbers, emails, _ = _inbox_chat_identity(tenant_id, key)
+    return _inbox_can_see(tenant_id, key, numbers, emails)
+
+
+def _claimed_chat_becomes_contact(tenant_id: int, key: str, actor: dict):
+    """Claiming a chat makes the customer the claimer's contact (user
+    2026-10-08): a contact nobody owns is given to them, a brand-new person
+    is saved as their contact. Someone else's contact is never changed.
+    Never blocks the claim."""
+    if not actor.get("is_team"):
+        return
+    try:
+        numbers, emails, name = _inbox_chat_identity(tenant_id, key)
+        ds = [d for d in (_chat_digits(n) for n in numbers) if d]
+        es = [e.strip().lower() for e in emails if e and e.strip()]
+        if not ds and not es:
+            return
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("""SELECT c.id FROM wa_contacts c
+                        WHERE c.tenant_id=%s
+                          AND (regexp_replace(COALESCE(c.whatsapp_number,''), '\\D', '', 'g') = ANY(%s)
+                               OR regexp_replace(COALESCE(c.phone,''), '\\D', '', 'g') = ANY(%s)
+                               OR lower(c.email) = ANY(%s))""", (tenant_id, ds, ds, es))
+        found = [r[0] for r in cur.fetchall()]
+        if found:
+            cur.execute("""UPDATE wa_contacts c SET added_by_key=%s, updated_at=NOW()
+                            WHERE c.id = ANY(%s) AND c.tenant_id=%s AND c.added_by_key IS NULL
+                              AND NOT EXISTS (SELECT 1 FROM merchant_pipeline_leads l
+                                               WHERE l.wa_contact_id = c.id AND l.assigned_key IS NOT NULL)""",
+                        (actor["key"], found, tenant_id))
+        else:
+            cur.execute("""INSERT INTO wa_contacts (tenant_id, whatsapp_number, email, display_name, source, added_by_key)
+                           VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING""",
+                        (tenant_id, _normalise_contact_phone("+" + ds[0]) if ds else None, es[0] if es else None,
+                         (name or "").strip()[:200] or None, "web" if key.startswith("web:") else "whatsapp",
+                         actor["key"]))
+        conn.commit(); cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _claimed_chat_becomes_contact error:", e)
 
 
 def _added_by_key() -> str:
