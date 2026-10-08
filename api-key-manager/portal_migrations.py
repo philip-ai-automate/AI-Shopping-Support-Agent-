@@ -2169,6 +2169,14 @@ def ensure_portal_tables():
             )""")
         cur.execute("CREATE INDEX IF NOT EXISTS crm_imports_t_idx ON crm_imports (tenant_id, created_at DESC)")
 
+        # Who added a contact / company ("team:<id>"), 2026-10-08: staff
+        # without "See all leads and contacts" see the contacts of their own
+        # leads plus the ones they added (_scope_leads_sql in portal_routes).
+        cur.execute("ALTER TABLE wa_contacts ADD COLUMN IF NOT EXISTS added_by_key VARCHAR(40)")
+        cur.execute("ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS added_by_key VARCHAR(40)")
+        cur.execute("CREATE INDEX IF NOT EXISTS wa_contacts_added_by_idx ON wa_contacts (tenant_id, added_by_key)")
+        cur.execute("CREATE INDEX IF NOT EXISTS mpl_assigned_contact_idx ON merchant_pipeline_leads (assigned_key, wa_contact_id)")
+
         # New role ticks, set ONCE on roles that already exist (user 2026-10-06):
         # "See all leads" starts ON wherever a role could already open Leads (so
         # nobody loses leads overnight), "Import" starts ON wherever a role could
