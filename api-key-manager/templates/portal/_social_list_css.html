@@ -8,7 +8,7 @@
   .sl-auto{font-size:10.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#6941C6;background:#F4F3FF;border-radius:6px;padding:1px 6px}
   .sl-card{background:#fff;border:1px solid var(--line);border-radius:14px;overflow-x:auto}
   .sl-table{border-collapse:collapse;width:100%;font-size:13px;min-width:760px}
-  .sl-table th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .sl-table th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;padding:10px 12px;border-bottom:1px solid var(--line);white-space:normal;line-height:1.3}
   .sl-table td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
   .sl-table tr:last-child td{border-bottom:0}
   .sl-post{display:flex;gap:10px;align-items:center;min-width:220px}
@@ -18,8 +18,10 @@
   .sl-sub{font-size:11.5px;color:var(--muted);margin-top:2px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
   .sl-late{color:#B42318;font-weight:700}
   .sl-note{font-size:12px;color:#B42318;margin-top:4px;line-height:1.4;max-width:46ch}
-  .sl-acts{display:flex;gap:6px;flex-wrap:nowrap;justify-content:flex-end}
+  /* Buttons stacked so the list fits its box on laptops (side by side pushed Edit/Delete off the edge). */
+  .sl-acts{display:flex;flex-direction:column;gap:6px;align-items:stretch;min-width:72px}
   .sl-acts form{margin:0}
+  .sl-acts .btn{width:100%;justify-content:center;text-align:center;white-space:nowrap}
   .sl-nw{white-space:nowrap;font-variant-numeric:tabular-nums}
   .sl-accts{display:flex;gap:4px;flex-wrap:wrap}
   .sl-acct{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:2px 8px;white-space:nowrap;color:var(--txt);text-decoration:none}
