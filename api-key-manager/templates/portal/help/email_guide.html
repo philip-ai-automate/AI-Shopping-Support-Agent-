@@ -1,4 +1,4 @@
-{# Email Campaigns How-To Guide (2026-10-08). Ids are prefixed eml-, pictures live in
+{# Email Campaigns How-To Guide (2026-10-08; Replies from Outlook added 2026-10-09). Ids are prefixed eml-, pictures live in
    static/portal/tutorial/email/ (taken on the training account). Shown to every team member;
    the PhiXtra outreach appendix only shows for PhiXtra's own account (show_phixtra_appendix). #}
 {% macro shot(name, alt, caption) -%}
@@ -42,6 +42,7 @@
 .emlg figure{margin:16px 0 24px}
 .emlg figure img{display:block;width:100%;max-width:100%;height:auto;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card)}
 .emlg figure.half img{max-width:560px}
+.emlg figure.small img{max-width:340px}
 .emlg figcaption{font-size:13px;color:var(--g-muted);margin-top:8px}
 .emlg .box{border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px;border:1px solid var(--g-line);background:var(--g-card)}
 .emlg .box > :first-child{margin-top:0}.emlg .box > :last-child{margin-bottom:0}
@@ -83,7 +84,7 @@
 </style>
 <div class="emlg" id="eml-top">
 <div class="g-head">
-  <p class="g-lede">Everything under <b>Email Campaigns</b> in the side menu, screen by screen and button by button: writing an email (by hand or with AI), keeping a library of saved emails, sending one-off campaigns, running sequences that follow up for you, and seeing who opened, clicked and replied on each lead. Every picture is from the live portal.</p>
+  <p class="g-lede">Everything under <b>Email Campaigns</b> in the side menu, screen by screen and button by button: writing an email (by hand or with AI), keeping a library of saved emails, sending one-off campaigns, running sequences that follow up for you, and seeing who opened, clicked and replied on each lead (replies arrive by themselves once your Outlook is connected). Every picture is from the live portal.</p>
   <p class="g-meta">Written for sales and marketing staff. Parts marked "For owners and IT" cover settings only they can change.</p>
 </div>
 
@@ -96,9 +97,10 @@
   <li><a href="#eml-camp">5. One-off campaigns</a><ol><li><a href="#eml-camp-new">New Campaign, step by step</a></li><li><a href="#eml-camp-report">Campaign reports</a></li></ol></li>
   <li><a href="#eml-seq">6. Sequences</a><ol><li><a href="#eml-seq-build">Build a sequence</a></li><li><a href="#eml-seq-add">Add people</a></li><li><a href="#eml-seq-start">Start and pause</a></li><li><a href="#eml-seq-people">The people list</a></li><li><a href="#eml-seq-stop">Why someone stopped</a></li><li><a href="#eml-seq-change">Changing a running sequence</a></li></ol></li>
   <li><a href="#eml-lead">7. On each lead</a></li>
-  <li><a href="#eml-routine">8. A sales executive's routine</a></li>
-  <li><a href="#eml-fix">9. Problems and fixes</a></li>
-  <li><a href="#eml-admin">10. For owners and IT</a></li>
+  <li><a href="#eml-outlook">8. Replies from Outlook</a><ol><li><a href="#eml-outlook-connect">Connect your mailbox</a></li><li><a href="#eml-outlook-reply">What happens to a reply</a></li><li><a href="#eml-outlook-which">Which mailbox to connect</a></li><li><a href="#eml-outlook-status">Needs reconnecting, IT approval, disconnect</a></li></ol></li>
+  <li><a href="#eml-routine">9. A sales executive's routine</a></li>
+  <li><a href="#eml-fix">10. Problems and fixes</a></li>
+  <li><a href="#eml-admin">11. For owners and IT</a></li>
   {% if show_phixtra_appendix %}<li><a href="#eml-phx">Appendix: PhiXtra outreach</a></li>{% endif %}
 </ol></details></nav>
 
@@ -132,7 +134,7 @@
     <tr><td>Write an email you'll use again</td><td>New Email → Saved Emails</td><td class="wrapok">Write once, reuse in any campaign or sequence.</td></tr>
     <tr><td>Tell everyone about one thing (news, an offer, an event)</td><td>Campaign</td><td>One email, one send, one report.</td></tr>
     <tr><td>Reach new leads and follow up until they answer</td><td>Sequence</td><td>Email 1 now, Email 2 a few days later, and so on. Each person stops getting emails as soon as they reply, unsubscribe or their lead is closed.</td></tr>
-    <tr><td>Follow up one lead you're working on</td><td>The lead's ✉️ Emails tab</td><td>Add them to a sequence, send their next email now, or mark that they replied.</td></tr>
+    <tr><td>Follow up one lead you're working on</td><td>The lead's ✉️ Emails tab</td><td>Add them to a sequence, send their next email now, and read their replies.</td></tr>
   </table></div>
   <div class="box know"><b class="t">Good to know</b><p>Your logo, colours, business address and an <b>Unsubscribe</b> link are added to every email automatically. Anyone who unsubscribes is never emailed again by your business, from any campaign or sequence.</p></div>
   <a class="g-top" href="#eml-top">↑ Back to contents</a>
@@ -321,7 +323,8 @@
   <ul>
     <li><b>Opened</b> is a guide only: some mail apps load pictures automatically, others block them.</li>
     <li><b>Clicked</b> counts a person pressing a link. Clicks in the first 90 seconds after sending are ignored, because company mail filters check links automatically.</li>
-    <li><b>Replied</b> comes from the <span class="ui">They replied</span> button on a lead (see <a href="#eml-lead">On each lead</a>).</li>
+    <li><b>Replied</b> counts replies found in a connected Outlook mailbox (see <a href="#eml-outlook">Replies from Outlook</a>) and the <span class="ui">They replied</span> button on a lead.</li>
+    <li>Each address in the list links to that person's ✉️ Emails tab, where you can read their reply.</li>
   </ul>
   <a class="g-top" href="#eml-top">↑ Back to contents</a>
 </section>
@@ -382,7 +385,7 @@
   <h3 id="eml-seq-stop">Why someone stopped</h3>
   <div class="tbl"><table>
     <tr><th>Shown as</th><th>What happened</th><th>Can you resume?</th></tr>
-    <tr><td>Replied</td><td class="wrapok">Someone pressed <b>They replied</b> on the lead.</td><td>Yes, if you want to carry on.</td></tr>
+    <tr><td>Replied</td><td class="wrapok">Their reply was found in a connected Outlook mailbox, or someone pressed <b>They replied</b> on the lead.</td><td>Yes, if you want to carry on.</td></tr>
     <tr><td>Unsubscribed</td><td class="wrapok">They pressed Unsubscribe in one of your emails.</td><td>No.</td></tr>
     <tr><td>Lead marked Won / Lost / Dropped / Not a fit</td><td class="wrapok">The lead was closed in Leads or the pipeline.</td><td>Not while the lead is closed.</td></tr>
     <tr><td>Email couldn't be delivered</td><td class="wrapok">The address bounced or the email was refused.</td><td>Yes, after fixing the address.</td></tr>
@@ -401,10 +404,11 @@
 <!-- ═════ 7 ═════ -->
 <section class="part" id="eml-lead">
   <h2><span class="num">7</span>On each lead</h2>
-  <p class="where">Leads › open a lead › Activity › ✉️ Emails</p>
+  <p class="where">Leads (or the Pipeline board) › click the business name › Activity › ✉️ Emails</p>
   {{ shot('e24_lead', 'A lead’s Emails tab', 'The lead’s Emails tab: its sequences, the They replied button, and every email sent, opened and clicked.') }}
   <ul>
-    <li><b>They replied to our email:</b> replies arrive in your own mailbox, not in PhiXtra. When someone replies, press this button so the whole team can see it. It moves a New lead to <b>Contacted</b> and stops their sequences straight away.</li>
+    <li><b>Replies:</b> when your Outlook is connected, each reply shows here by itself with its first few lines and an <b>Open in Outlook</b> link. See <a href="#eml-outlook">Replies from Outlook</a>.</li>
+    <li><b>They replied to our email:</b> for replies that came another way (by phone, WhatsApp, or to a mailbox that isn't connected). Press it so the whole team can see it. Like a reply found in Outlook, it moves a New lead to <b>Contacted</b> and stops their sequences straight away.</li>
     <li><b>Email sequences:</b> which sequences the lead is in and where they are. From here you can <span class="ui">Send email N now</span>, <span class="ui">Stop</span>, or add them to another sequence.</li>
     <li><b>History:</b> every email sent, opened and clicked, plus replies and unsubscribes, with dates.</li>
     <li>When a lead <b>clicks a link</b> in an email, a New lead moves to <b>Contacted</b> automatically, and the stage history says why.</li>
@@ -413,11 +417,71 @@
 </section>
 
 <!-- ═════ 8 ═════ -->
+<section class="part" id="eml-outlook">
+  <h2><span class="num">8</span>Replies from Outlook</h2>
+  <p class="where">Side menu › Integration › Microsoft 365 (Outlook)</p>
+  <p>People reply to your emails in your own mailbox, not in PhiXtra. Connect your Outlook once, and every reply from someone your business emailed shows on their lead by itself, usually within two minutes. You no longer need to press "They replied".</p>
+  <div class="flow" role="img" aria-label="Email sent, they reply in Outlook, PhiXtra finds it, it shows on the lead">
+    <div class="n"><b>1 · Email goes out</b>From a campaign or a sequence</div><i>→</i>
+    <div class="n"><b>2 · They reply</b>The reply lands in your Outlook as normal</div><i>→</i>
+    <div class="n hi"><b>3 · PhiXtra finds it</b>Checks every 2 minutes, reads only</div><i>→</i>
+    <div class="n"><b>4 · On the lead</b>Reply lines, Contacted, sequence stopped</div>
+  </div>
+
+  <h3 id="eml-outlook-connect">Connect your mailbox</h3>
+  <figure class="small"><img src="{{ url_for('static', filename='portal/tutorial/email/e28_integration_card.jpg') }}" alt="The Microsoft 365 card on the Integration page" loading="lazy"><figcaption>The Microsoft 365 (Outlook) card on the Integration page, once connected.</figcaption></figure>
+  <ol class="steps">
+    <li>Open <b>Integration</b> in the side menu and press <span class="ui">Connect my mailbox</span> on the <b>Microsoft 365 (Outlook)</b> card.</li>
+    <li>Press <span class="ui">Connect my Outlook mailbox</span>. Microsoft's own sign-in page opens.</li>
+    <li>Sign in with <b>the mailbox your campaign replies go to</b> (see <a href="#eml-outlook-which">Which mailbox</a>) and press <b>Accept</b>.</li>
+    <li>You come back to PhiXtra and see <b>Connected</b>. Replies from the last 14 days are picked up straight away.</li>
+  </ol>
+  {{ shot('e30_ms_connect', 'Connect my Outlook mailbox', 'Before connecting: one button.') }}
+  {{ shot('e29_ms_page', 'Connected mailbox', 'Connected: when it last checked, how many replies it has found, and the buttons to check now, switch mailbox or disconnect.') }}
+  <div class="box know"><b class="t">Good to know</b><ul>
+    <li>PhiXtra can only <b>read</b> your mail. It never sends, moves or deletes anything.</li>
+    <li>It only keeps replies from people your business emailed in the last 60 days. Everything else in your mailbox is skipped and never stored.</li>
+    <li>Out-of-office replies and bounced emails are ignored.</li>
+    <li>It works with Microsoft 365 work accounts. Gmail is coming later.</li>
+    <li>Don't see Integration in your menu? Your role needs the "Outlook mailbox (replies)" tick. Ask your manager or IT.</li>
+  </ul></div>
+
+  <h3 id="eml-outlook-reply">What happens to a reply</h3>
+  {{ shot('e32_lead_reply', 'A reply on a lead', 'A reply on the lead’s ✉️ Emails tab: who found it, the campaign, the first lines of the reply, and Open in Outlook.') }}
+  <ul>
+    <li>It shows on the lead's <b>✉️ Emails</b> tab with the <b>first few lines</b> of what they wrote (the quoted email underneath is left out) and <span class="ui">Open in Outlook ↗</span> to read the whole thing. That link opens it in the mailbox that received it.</li>
+    <li>A <b>New</b> lead moves to <b>Contacted</b>. You'll see it move on the Pipeline board too.</li>
+    <li>Any <b>sequence</b> they're in stops straight away, so they don't get another automatic email.</li>
+    <li>The campaign report's <b>Replied</b> count goes up.</li>
+    <li>Answer them from Outlook as you normally would.</li>
+  </ul>
+  <div class="box tip"><b class="t">Tip</b><p>In a hurry? <span class="ui">Check for replies now</span> on the Microsoft 365 page checks straight away instead of waiting up to two minutes.</p></div>
+
+  <h3 id="eml-outlook-which">Which mailbox to connect</h3>
+  <p>Connect the mailbox your replies go to. Every campaign and sequence has a <b>Replies go to</b> address, which starts as your own email. If you connect a different mailbox, the page warns you: "Your campaign emails ask people to reply to …".</p>
+  <div class="tbl"><table>
+    <tr><th>Situation</th><th>Connect</th></tr>
+    <tr><td>Replies go to your own address</td><td class="wrapok">Your own mailbox.</td></tr>
+    <tr><td>Replies go to a shared address (for example outreach@ or sales@)</td><td class="wrapok">The person who reads that mailbox signs in with it.</td></tr>
+    <tr><td>Several people send campaigns</td><td class="wrapok">Each person connects their own. Owners and IT see them all under <b>Team mailboxes</b>.</td></tr>
+  </table></div>
+
+  <h3 id="eml-outlook-status">Needs reconnecting, IT approval, disconnect</h3>
+  <ul>
+    <li><b>Needs reconnecting:</b> Microsoft stopped accepting the sign-in, for example after a password change. Press <span class="ui">Reconnect</span> and sign in again. Nothing is lost, and replies that arrived meanwhile are picked up.</li>
+    <li><b>"Your organisation's IT admin needs to approve PhiXtra first":</b> some companies only let IT approve new apps. The page shows a link. Copy it and send it to your IT admin. After they approve once, press Connect again.</li>
+    <li><b>Paused:</b> your role lost its tick, or the plan doesn't include it. Nothing is deleted; it carries on when that's fixed.</li>
+    <li><b>Disconnect:</b> PhiXtra stops reading your mailbox at once. Replies already on leads stay there.</li>
+  </ul>
+  <a class="g-top" href="#eml-top">↑ Back to contents</a>
+</section>
+
+<!-- ═════ 9 ═════ -->
 <section class="part" id="eml-routine">
-  <h2><span class="num">8</span>A sales executive's routine</h2>
+  <h2><span class="num">9</span>A sales executive's routine</h2>
   <h4>Every morning</h4>
   <ul class="check">
-    <li>Check your mailbox for replies. For each one, open the lead and press <b>They replied</b>, then answer them.</li>
+    <li>Check that Integration › Microsoft 365 shows your mailbox as <b>Connected</b>. Replies then appear on leads by themselves: answer them in Outlook. Press <b>They replied</b> only for replies that came another way.</li>
     <li>Open each running sequence and press the <b>Ready to send</b> filter. Read and send those emails, one at a time or with <b>Send to everyone ready</b>.</li>
     <li>Look at <b>Stopped</b>: anyone stopped with "Email couldn't be delivered" needs a corrected address.</li>
   </ul>
@@ -435,9 +499,9 @@
   <a class="g-top" href="#eml-top">↑ Back to contents</a>
 </section>
 
-<!-- ═════ 9 ═════ -->
+<!-- ═════ 10 ═════ -->
 <section class="part" id="eml-fix">
-  <h2><span class="num">9</span>Problems and fixes</h2>
+  <h2><span class="num">10</span>Problems and fixes</h2>
   <div class="tbl"><table>
     <tr><th>You see</th><th>Why</th><th>What to do</th></tr>
     <tr><td>"No sending address is set up for this business yet"</td><td class="wrapok">Your business's sending address isn't ready.</td><td class="wrapok">Ask PhiXtra support. You can still write, save and build sequences meanwhile.</td></tr>
@@ -450,13 +514,17 @@
     <tr><td>"Not sent: unsubscribed / lead marked Lost…"</td><td class="wrapok">PhiXtra protected that person.</td><td class="wrapok">Nothing. That's by design.</td></tr>
     <tr><td>An email I need isn't in Saved Emails</td><td class="wrapok">It's someone else's and not shared with you.</td><td class="wrapok">Ask the owner or IT to Share it with you.</td></tr>
     <tr><td>No ✨ Write with AI box</td><td class="wrapok">Your role or plan doesn't include it.</td><td class="wrapok">Ask your manager.</td></tr>
+    <tr><td>A reply didn't show on the lead</td><td class="wrapok">It went to a mailbox that isn't connected; they wrote from a different address than the one you emailed; the email wasn't sent through PhiXtra; or it came more than 60 days after your email.</td><td class="wrapok">Check the Replies go to address and which mailbox is connected. Press <b>They replied</b> on the lead for that one.</td></tr>
+    <tr><td>"Needs reconnecting" on Microsoft 365</td><td class="wrapok">Microsoft stopped accepting the sign-in (often after a password change).</td><td class="wrapok">Press Reconnect and sign in again.</td></tr>
+    <tr><td>"Your organisation's IT admin needs to approve PhiXtra first"</td><td class="wrapok">Your company only lets IT approve new apps.</td><td class="wrapok">Send IT the link shown on the page, then Connect again.</td></tr>
+    <tr><td>No Integration in my menu</td><td class="wrapok">Your role lacks the "Outlook mailbox (replies)" tick.</td><td class="wrapok">Ask your manager or IT.</td></tr>
   </table></div>
   <a class="g-top" href="#eml-top">↑ Back to contents</a>
 </section>
 
-<!-- ═════ 10 ═════ -->
+<!-- ═════ 11 ═════ -->
 <section class="part" id="eml-admin">
-  <h2><span class="num">10</span>For owners and IT</h2>
+  <h2><span class="num">11</span>For owners and IT</h2>
   <h3>Email design</h3>
   <p>All Campaigns › <span class="ui">🎨 Email design</span> sets how every email from your business looks.</p>
   {{ shot('e27_design', 'Email design', 'Logo, brand colour, default sign-off, business address, and the line that says why people are getting your emails.') }}
@@ -473,10 +541,14 @@
     <tr><td>Reports</td><td>View</td><td class="wrapok">Campaign reports.</td></tr>
     <tr><td>Saved Emails</td><td>See all saved emails · Write emails with AI</td><td class="wrapok">See everyone's saved emails, not just their own and shared ones; use ✨ Write with AI.</td></tr>
     <tr><td>Sequence</td><td>View, Create, Edit, Delete, Send by hand</td><td class="wrapok">Sequences. Edit covers the emails, people, Start and Pause.</td></tr>
+    <tr><td>Outlook mailbox (replies)</td><td>One tick</td><td class="wrapok">Connect their own Outlook so replies land on leads. Staff with only this tick see Integration with just the Microsoft 365 card.</td></tr>
   </table></div>
   <div class="box know"><b class="t">Who sees all</b><p>The owner, and anyone whose role can manage the Team, always see every saved email and can share them. Other staff see their own emails and ones shared with them, and only the leads assigned to them unless their role has "See all leads".</p></div>
+  <h3>Team mailboxes</h3>
+  <p>On Integration › Microsoft 365, owners and anyone who manages the Team also see every connected mailbox: who, which address, whether it's connected, when it last checked and how many replies it found. <span class="ui">Disconnect</span> stops PhiXtra reading that mailbox, for example when someone leaves. A team member who is removed is disconnected automatically.</p>
+  {{ shot('e31_ms_team', 'Team mailboxes', 'Team mailboxes: one connected, one that needs its owner to reconnect.') }}
   <h3>Plans</h3>
-  <p>Your plan decides whether Email Campaigns, opens and clicks on leads, Sequences and Write with AI are included. AI emails use the plan's AI designs; extra AI designs can be bought on the Billing page.</p>
+  <p>Your plan decides whether Email Campaigns, opens and clicks on leads, Sequences, Write with AI and Outlook reply tracking are included. AI emails use the plan's AI designs; extra AI designs can be bought on the Billing page.</p>
   <a class="g-top" href="#eml-top">↑ Back to contents</a>
 </section>
 
@@ -491,7 +563,7 @@
     <li><b>16 outreach emails</b> in Saved Emails: four industries, four emails each. They're shared with the outreach team.</li>
     <li>Every email uses the agreed words, ends with the <b>Book a demo</b> button (our Bookings page), and is signed <b>Chinaza · PhiXtra · outreach@phixtra.com</b>.</li>
     <li>Email 4 of each industry includes the short demo video (it opens <b>phixtra.com/demo</b>).</li>
-    <li>Replies go to <b>outreach@phixtra.com</b>.</li>
+    <li>Replies go to <b>outreach@phixtra.com</b>. Chinaza connects outreach@phixtra.com once at Integration › Microsoft 365, so every reply lands on its lead by itself.</li>
   </ul>
   <div class="tbl"><table>
     <tr><th>Industry</th><th>Email 1</th><th>Email 2</th><th>Email 3</th><th>Email 4</th></tr>
@@ -516,12 +588,12 @@
   <div class="flow" role="img" aria-label="PhiXtra outreach flow">
     <div class="n hi"><b>Lagos list import</b>Leads with Business category</div><i>→</i>
     <div class="n"><b>Industry sequence</b>Email 1 → 2 → 3 → 4 (video)</div><i>→</i>
-    <div class="n"><b>Reply in outreach@</b>Press They replied on the lead</div><i>→</i>
+    <div class="n"><b>Reply in outreach@</b>Shows on the lead by itself</div><i>→</i>
     <div class="n"><b>Book a demo</b>Lead moves on in the pipeline</div>
   </div>
   <h3>Day to day</h3>
   <ul class="check">
-    <li>Mornings: check outreach@phixtra.com for replies → They replied on each lead → answer them.</li>
+    <li>Mornings: check Integration › Microsoft 365 shows outreach@phixtra.com as Connected. Answer the replies in Outlook; they're already on each lead.</li>
     <li>Send any "Ready to send" emails.</li>
     <li>Leads who clicked "Book a demo" but didn't book: follow up on WhatsApp the same day.</li>
     <li>Weekly: compare replies per email per industry and improve the weakest one, using Make a copy so the original stays.</li>
