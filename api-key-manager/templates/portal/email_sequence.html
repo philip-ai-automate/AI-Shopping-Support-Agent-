@@ -56,6 +56,8 @@
 .ptable a { color:var(--ink); }
 .muted { color:var(--muted); }
 .bulk { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:12px 22px; border-bottom:1px solid rgba(3,12,24,.07); background:#f8fafc; }
+.bulk-msg { font-size:12.5px; font-weight:600; color:#b42318; }
+.bulk-msg[hidden] { display:none; }
 .empty { padding:36px 20px; text-align:center; color:var(--muted); font-size:13px; }
 @media (max-width: 900px) {
   .step-top { grid-template-columns:1fr 1fr; }
@@ -276,25 +278,26 @@
     {% if can_edit or can_send %}
     <div class="bulk" style="background:#fff">
       <span class="muted" style="font-size:12.5px">With ticked people:</span>
-      {% if can_send %}<button class="sq-btn small" type="submit" name="action" value="send">Send next email now</button>{% endif %}
+      {% if can_send %}<button class="sq-btn small" type="submit" name="action" value="send" onclick="return sqNeedTicks()">Send next email now</button>{% endif %}
       {% if can_edit %}
-      <button class="sq-btn small light" type="submit" name="action" value="stop">Stop</button>
-      <button class="sq-btn small light" type="submit" name="action" value="resume">Resume</button>
-      <button class="sq-btn small danger" type="submit" name="action" value="remove" data-confirm="Click again to remove" onclick="return sqConfirm(this)">Remove</button>
+      <button class="sq-btn small light" type="submit" name="action" value="stop" onclick="return sqNeedTicks()">Stop</button>
+      <button class="sq-btn small light" type="submit" name="action" value="resume" onclick="return sqNeedTicks()">Resume</button>
+      <button class="sq-btn small danger" type="submit" name="action" value="remove" id="sqRemoveBtn" onclick="return sqRemove(this)">Remove</button>
       {% endif %}
+      <span id="sqBulkMsg" class="bulk-msg" hidden>Tick at least one person first.</span>
     </div>
     {% endif %}
     <div class="ptable-wrap">
     <table class="ptable">
       <thead><tr>
-        <th style="width:30px">{% if can_edit or can_send %}<input type="checkbox" onclick="document.querySelectorAll('.pchk').forEach(c => c.checked = this.checked)">{% endif %}</th>
+        <th style="width:30px">{% if can_edit or can_send %}<input type="checkbox" onclick="document.querySelectorAll('.pchk').forEach(c => c.checked = this.checked); sqTicksChanged()">{% endif %}</th>
         <th>Person</th><th>Emails sent</th><th>Next</th><th>Status</th><th></th>
       </tr></thead>
       <tbody>
       {% for p in people %}
         {% set nxt = steps[p.steps_sent] if p.steps_sent < steps|length else none %}
         <tr class="{% if p.status == 'ready' %}is-ready{% endif %}">
-          <td>{% if can_edit or can_send %}<input type="checkbox" class="pchk" name="person_id" value="{{ p.id }}">{% endif %}</td>
+          <td>{% if can_edit or can_send %}<input type="checkbox" class="pchk" name="person_id" value="{{ p.id }}" onchange="sqTicksChanged()">{% endif %}</td>
           <td>
             {% if p.lead_id %}<a href="{{ url_for('portal.lead_detail', lead_id=p.lead_id) }}#emails" style="font-weight:600;text-decoration:none">{{ p.contact_person or p.customer_name or p.email }}</a>{% else %}<strong>{{ p.email }}</strong>{% endif %}
             <div class="muted" style="font-size:12px">{% if p.lead_id %}{% if p.customer_name and p.contact_person %}{{ p.customer_name }} · {% endif %}{{ p.email }}{% else %}Added by email address{% endif %}</div>
@@ -344,6 +347,33 @@ function sqConfirm(el) {
   btn.dataset.armed = '1'; btn.dataset.label = btn.textContent; btn.textContent = btn.dataset.confirm;
   setTimeout(() => { delete btn.dataset.armed; btn.textContent = btn.dataset.label; }, 4000);
   return false;
+}
+// Bulk buttons: say so straight away when nobody is ticked, instead of
+// reloading the page with "Nobody selected".
+function sqTicked() { return document.querySelectorAll('.pchk:checked').length; }
+function sqNeedTicks() {
+  const msg = document.getElementById('sqBulkMsg');
+  if (sqTicked()) { msg.hidden = true; return true; }
+  msg.hidden = false;
+  return false;
+}
+// Remove: first click names how many will go, second click removes.
+// Stays armed until the ticks change — no time limit.
+function sqRemove(btn) {
+  if (!sqNeedTicks()) { sqDisarmRemove(); return false; }
+  if (btn.dataset.armed) return true;
+  const n = sqTicked();
+  btn.dataset.armed = '1';
+  btn.textContent = `Remove ${n} ${n === 1 ? 'person' : 'people'}? Click again`;
+  return false;
+}
+function sqDisarmRemove() {
+  const btn = document.getElementById('sqRemoveBtn');
+  if (btn && btn.dataset.armed) { delete btn.dataset.armed; btn.textContent = 'Remove'; }
+}
+function sqTicksChanged() {
+  sqDisarmRemove();
+  if (sqTicked()) document.getElementById('sqBulkMsg').hidden = true;
 }
 function sqOne(action, id) {
   const f = document.getElementById('oneForm');
