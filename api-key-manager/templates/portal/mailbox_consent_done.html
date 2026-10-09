@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhiXtra — Microsoft approval</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Poppins:wght@700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#F5F7FA; font-family:Inter, system-ui, sans-serif; color:#1D2939; display:flex; min-height:100vh; align-items:center; justify-content:center; padding:16px; box-sizing:border-box }
+  .box { background:#fff; border:1px solid #E4E7EC; border-radius:16px; padding:28px; max-width:460px; width:100% }
+  h1 { font-family:Poppins, Inter, sans-serif; font-size:20px; color:#0B1D40; margin:0 0 10px }
+  p { font-size:14px; line-height:1.6; margin:0 0 10px }
+  .muted { color:#667085; font-size:13px }
+</style>
+</head>
+<body>
+  <div class="box">
+    {% if ok %}
+    <h1>PhiXtra is approved</h1>
+    <p>Thank you. Staff in your organisation can now connect their own Outlook mailbox in PhiXtra (Integration › Microsoft 365).</p>
+    <p class="muted">PhiXtra can only read mail, and only keeps replies from people the business emailed. You can remove the approval any time in Microsoft Entra › Enterprise applications.</p>
+    {% else %}
+    <h1>PhiXtra wasn't approved</h1>
+    <p>The approval didn't go through, so staff can't connect their mailbox yet.</p>
+    {% if error %}<p class="muted">Microsoft said: {{ error }}</p>{% endif %}
+    <p class="muted">The approval needs a Global Administrator or Cloud Application Administrator account.</p>
+    {% endif %}
+  </div>
+</body>
+</html>

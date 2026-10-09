@@ -1,0 +1,140 @@
+{% extends "portal/base.html" %}
+{% block title %}Microsoft 365 (Outlook) — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .mb-row { display:flex; align-items:center; gap:12px; padding:4px 0 14px; border-bottom:1px solid var(--line); margin-bottom:16px }
+  .mb-logo { width:44px; height:44px; border-radius:12px; background:#0F6CBD; display:flex; align-items:center; justify-content:center; flex-shrink:0 }
+  .mb-logo svg { width:24px; height:24px }
+  .mb-title { font-weight:800; color:var(--ink) }
+  .mb-sub { font-size:12.5px; color:var(--muted); margin-top:2px }
+  .mb-ok { color:#027A48; font-weight:700 }
+  .mb-warn { color:#B54708; font-weight:700 }
+  .mb-note { font-size:13px; line-height:1.55; border-radius:12px; padding:12px 14px; margin-bottom:14px }
+  .mb-note.warn { background:#FFFAEB; border:1px solid #FEDF89; color:#7A2E0E }
+  .mb-note.info { background:#F5F8FF; border:1px solid #D1E0FF; color:#1D2939 }
+  .mb-acts { display:flex; gap:10px; flex-wrap:wrap; align-items:center }
+  .mb-acts form { margin:0 }
+  .mb-how { margin:0; padding-left:18px; font-size:13px; line-height:1.7; color:var(--txt) }
+  .mb-table { width:100%; border-collapse:collapse; font-size:13px }
+  .mb-table th { text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); font-weight:700; padding:8px 10px; border-bottom:1px solid var(--line) }
+  .mb-table td { padding:10px; border-bottom:1px solid var(--line); vertical-align:middle }
+  .mb-table tr:last-child td { border-bottom:0 }
+  .mb-wrap { overflow-x:auto }
+  .mb-copy { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px }
+  .mb-copy input { flex:1; min-width:220px; padding:9px 12px; border:1.5px solid var(--line); border-radius:9px; font-size:12px; font-family:inherit }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="wizard-header">
+  <div>
+    <div class="wizard-title">Microsoft 365 (Outlook)</div>
+    <div class="wizard-sub">Connect your own Outlook mailbox, and replies to your campaign and sequence emails show on the lead by themselves. No more ticking "They replied".</div>
+  </div>
+</div>
+
+{% if not configured %}
+<div class="mb-note warn">The Microsoft connection is being set up by PhiXtra. You'll be able to connect your mailbox here shortly.</div>
+{% elif expired %}
+<div class="mb-note warn">Reply tracking is paused while PhiXtra renews its Microsoft connection. Nothing is lost, and you don't need to do anything.</div>
+{% endif %}
+
+<div class="card" style="margin-bottom:20px">
+  <div class="mb-row">
+    <div class="mb-logo"><svg viewBox="0 0 24 24" fill="#fff"><path d="M2 5.5 13 3v18L2 18.5v-13Zm5.5 3.2c-1.9 0-3 1.5-3 3.4s1.1 3.3 3 3.3 3-1.5 3-3.4-1.1-3.3-3-3.3Zm0 1.3c1 0 1.5.9 1.5 2s-.5 2.1-1.5 2.1S6 13.2 6 12.1 6.5 10 7.5 10ZM14 6h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-7v-4.2l2.3 1.6a.5.5 0 0 0 .6 0L21 12.6V9.4l-4.4 3.1L14 10.7V6Z"/></svg></div>
+    <div>
+      <div class="mb-title">Your mailbox</div>
+      {% if mine and mine.status == 'active' %}
+      <div class="mb-sub"><span class="mb-ok">Connected: {{ mine.email }}</span>
+        · last checked {{ mine.last_checked_at.strftime('%d %b, %H:%M') if mine.last_checked_at else 'in a moment' }}
+        · {{ mine.replies_found }} repl{{ 'y' if mine.replies_found == 1 else 'ies' }} found so far</div>
+      {% elif mine %}
+      <div class="mb-sub"><span class="mb-warn">Needs reconnecting: {{ mine.email }}</span></div>
+      {% else %}
+      <div class="mb-sub">Not connected</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if mine and mine.last_error %}
+  <div class="mb-note warn">{{ mine.last_error }}</div>
+  {% endif %}
+
+  {% if mismatch %}
+  <div class="mb-note warn">Your campaign emails ask people to reply to <b>{{ reply_to }}</b>, but the mailbox connected here is <b>{{ mine.email }}</b>. Replies sent to {{ reply_to }} won't be seen. Connect that mailbox instead, or set "Replies go to" to {{ mine.email }} when you send.</div>
+  {% endif %}
+
+  {% if session.get('ms_needs_consent') or (mine and mine.last_error and 'IT admin' in mine.last_error) %}
+  <div class="mb-note info">
+    <b>Your organisation's IT admin needs to approve PhiXtra once.</b> Send them this link. After they approve, press Connect again.
+    <div class="mb-copy"><input type="text" readonly value="{{ consent_url }}" id="mbConsent" onclick="this.select()">
+      <button type="button" class="btn btn-sm" onclick="var i=document.getElementById('mbConsent');i.select();navigator.clipboard&&navigator.clipboard.writeText(i.value);this.textContent='Copied'">Copy link</button></div>
+  </div>
+  {% endif %}
+
+  <div class="mb-acts">
+    {% if configured and not expired %}
+      {% if not mine %}
+      <a href="{{ url_for('mailbox.connect') }}" class="btn btn-primary">Connect my Outlook mailbox →</a>
+      {% elif mine.status != 'active' %}
+      <a href="{{ url_for('mailbox.connect') }}" class="btn btn-primary">Reconnect →</a>
+      {% else %}
+      <form method="POST" action="{{ url_for('mailbox.check_now') }}"><button type="submit" class="btn">Check for replies now</button></form>
+      <a href="{{ url_for('mailbox.connect') }}" class="btn">Connect a different mailbox</a>
+      {% endif %}
+    {% endif %}
+    {% if mine %}
+    <form method="POST" action="{{ url_for('mailbox.disconnect_mine') }}" onsubmit="return confirm('Disconnect your mailbox? PhiXtra stops reading it. Replies already on leads stay there.');">
+      <button type="submit" class="btn btn-danger">Disconnect</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <div class="mb-title" style="margin-bottom:8px">How it works</div>
+  <ul class="mb-how">
+    <li>You sign in with Microsoft once. PhiXtra can only <b>read</b> your mail. It never sends, moves or deletes anything.</li>
+    <li>Every 2 minutes it looks for replies from people your business emailed in the last 60 days.</li>
+    <li>A reply shows on that person's lead with its first few lines and an "Open in Outlook" link, moves a New lead to Contacted, and stops any email sequence they're in.</li>
+    <li>All other mail is skipped and never stored. Out-of-office replies and bounced emails are ignored.</li>
+    <li>When you first connect, replies from the last 14 days are picked up too.</li>
+    <li>Works with Microsoft 365 work accounts. "They replied" on the lead still works for replies that come another way.</li>
+  </ul>
+</div>
+
+{% if is_manager %}
+<div class="card">
+  <div class="mb-title" style="margin-bottom:4px">Team mailboxes</div>
+  <div class="mb-sub" style="margin-bottom:12px">Everyone in your business who has connected their Outlook. Each person connects their own from this page (their role needs the "Outlook mailbox (replies)" tick in Team › Roles).</div>
+  {% if team %}
+  <div class="mb-wrap">
+  <table class="mb-table">
+    <thead><tr><th>Person</th><th>Mailbox</th><th>Status</th><th>Last checked</th><th>Replies</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+    {% for m in team %}
+    <tr>
+      <td>{{ m.owner_label or '—' }}{% if m.owner_key == me_key %} (you){% endif %}</td>
+      <td>{{ m.email }}</td>
+      <td>{% if m.status == 'active' %}<span class="mb-ok">{{ 'Paused' if m.last_error and m.last_error.startswith('Paused') else 'Connected' }}</span>{% else %}<span class="mb-warn">Needs reconnecting</span>{% endif %}</td>
+      <td>{{ m.last_checked_at.strftime('%d %b, %H:%M') if m.last_checked_at else '—' }}</td>
+      <td>{{ m.replies_found }}</td>
+      <td style="text-align:right">
+        <form method="POST" action="{{ url_for('mailbox.disconnect_other', mb_id=m.id) }}" onsubmit="return confirm('Disconnect {{ m.email }}? PhiXtra stops reading it.');" style="margin:0">
+          <button type="submit" class="btn btn-sm">Disconnect</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="mb-sub">Nobody has connected a mailbox yet.</div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

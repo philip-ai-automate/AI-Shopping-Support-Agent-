@@ -4243,6 +4243,61 @@ def ensure_portal_tables():
                            WHERE (permissions->>'campaigns_email.all_create') = 'true'""")
             cur.execute("INSERT INTO role_key_backfill_seen (feature_key) VALUES ('campaigns_email.ai_write')")
 
+        # ── Outlook reply tracking (2026-10-09): each staff member connects
+        # their OWN Microsoft 365 mailbox (Integration page); every 2 minutes
+        # replies from people the business emailed land on the lead. Only
+        # matching replies are stored (email_replies); other mail never is.
+        # Plans: the email plans (same as tracking). No role auto-ticked. ──
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS mailbox_connections (
+                id                BIGSERIAL PRIMARY KEY,
+                tenant_id         INTEGER      NOT NULL,
+                owner_key         VARCHAR(40)  NOT NULL,
+                owner_label       VARCHAR(160),
+                provider          VARCHAR(20)  NOT NULL DEFAULT 'microsoft',
+                email             VARCHAR(255),
+                display_name      VARCHAR(160),
+                provider_user_id  VARCHAR(80),
+                refresh_token_enc TEXT,
+                access_token_enc  TEXT,
+                access_expires_at TIMESTAMPTZ,
+                watermark         TIMESTAMPTZ,
+                status            VARCHAR(20)  NOT NULL DEFAULT 'active',
+                last_error        TEXT,
+                last_checked_at   TIMESTAMPTZ,
+                next_check_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                replies_found     INTEGER      NOT NULL DEFAULT 0,
+                connected_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                UNIQUE (tenant_id, owner_key, provider)
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS mailbox_connections_due_idx ON mailbox_connections (next_check_at) WHERE status='active'")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS email_replies (
+                id           BIGSERIAL PRIMARY KEY,
+                tenant_id    INTEGER      NOT NULL,
+                mailbox_id   BIGINT       NOT NULL,
+                message_id   VARCHAR(255) NOT NULL,
+                event_id     BIGINT,
+                campaign_id  BIGINT,
+                recipient_id BIGINT,
+                lead_id      BIGINT,
+                contact_id   BIGINT,
+                from_email   VARCHAR(255),
+                subject      TEXT,
+                snippet      TEXT,
+                web_link     TEXT,
+                received_at  TIMESTAMPTZ,
+                created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                UNIQUE (mailbox_id, message_id)
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS email_replies_event_idx ON email_replies (event_id)")
+        cur.execute("CREATE TABLE IF NOT EXISTS system_notices_sent (notice_key TEXT PRIMARY KEY, sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+        cur.execute("SELECT id FROM plans WHERE COALESCE(feat_email_campaigns, FALSE)")
+        for (pid,) in cur.fetchall():
+            cur.execute(_GRANT_ONCE_SQL, (pid, "campaigns_email.mailbox_connect"))
+        cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('campaigns_email.mailbox_connect') ON CONFLICT DO NOTHING")
+
         # Anything a backfill above granted this run is now "seen" — never
         # re-granted on a later start (see _GRANT_ONCE_SQL).
         cur.execute("""

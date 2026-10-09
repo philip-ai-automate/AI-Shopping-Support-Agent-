@@ -328,7 +328,7 @@
       {% if lead.email %}
       <form method="POST" action="{{ url_for('portal.lead_email_replied', lead_id=lead.id) }}" style="margin:0 0 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <button type="submit" class="lc-tab" style="cursor:pointer">↩️ They replied to our email</button>
-        <span style="font-size:12px;color:var(--muted)">Replies arrive in your own mailbox. Tick this so the team can see it here.</span>
+        <span style="font-size:12px;color:var(--muted)">{% if 'campaigns_email.mailbox_connect' in granted_features %}Replies show here by themselves when your Outlook is connected (Integration › Microsoft 365). Use this for replies that came another way.{% else %}Replies arrive in your own mailbox. Tick this so the team can see it here.{% endif %}</span>
       </form>
       {% endif %}
       {% if 'campaigns_email.sequences_view' in granted_features and staff_can('campaigns_email.sequences_view') and lead.email %}
@@ -380,8 +380,10 @@
       {% for e in email_history %}
       <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:8px">
         <strong>{{ _email_words.get(e.kind, e.kind) }}</strong>
-        <span style="color:var(--muted)"> — {{ e.created_at.strftime('%d %b %Y, %H:%M') if e.created_at else '' }}{% if e.actor %}, marked by {{ e.actor }}{% endif %}</span>
+        <span style="color:var(--muted)"> — {{ e.created_at.strftime('%d %b %Y, %H:%M') if e.created_at else '' }}{% if e.reply_mailbox %}, found in {{ e.reply_mailbox_owner or e.reply_mailbox }}'s Outlook{% elif e.actor %}, marked by {{ e.actor }}{% endif %}</span>
         {% if e.campaign_name %}<div style="color:var(--muted);margin-top:3px">Campaign: {{ e.campaign_name }}{% if e.kind == 'sent' and e.detail %} · “{{ e.detail }}”{% endif %}</div>{% endif %}
+        {% if e.reply_snippet %}<div style="margin-top:8px;padding:8px 12px;border-left:3px solid #0B1D40;background:#fff;border-radius:0 8px 8px 0;white-space:pre-line;line-height:1.5">{{ e.reply_snippet }}</div>{% endif %}
+        {% if e.reply_link %}<div style="margin-top:6px"><a href="{{ e.reply_link }}" target="_blank" rel="noopener" style="font-weight:600;color:#0B1D40">Open in Outlook ↗</a>{% if e.reply_mailbox %} <span style="color:var(--muted)">({{ e.reply_mailbox }}'s mailbox)</span>{% endif %}</div>{% endif %}
         {% if e.kind == 'clicked' and e.detail %}<div style="color:var(--muted);margin-top:3px;word-break:break-all">Link: {{ e.detail }}</div>{% endif %}
       </div>
       {% else %}

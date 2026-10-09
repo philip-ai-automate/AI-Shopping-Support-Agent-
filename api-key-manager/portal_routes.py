@@ -439,6 +439,7 @@ PLAN_FEATURE_CATALOG = {
         ("campaigns_email.sequences_send",   "Send a sequence email by hand"),
         ("campaigns_email.sequences_delete", "Delete an Email Sequence"),
         ("campaigns_email.tracking",     "Opens, clicks and replies on each lead's history (plan unlock)"),
+        ("campaigns_email.mailbox_connect", "Connect their own Outlook mailbox so replies land on leads automatically"),
     ],
     "Social Media": [
         ("social.posts_view",   "Social Media — view"),
@@ -660,6 +661,7 @@ ROLE_FORM_GRID = {
          "edit": "campaigns_email.sequences_edit", "delete": "campaigns_email.sequences_delete",
          "other": ["campaigns_email.sequences_send"]},
         {"label": "Email tracking on leads (plan unlock)", "other": ["campaigns_email.tracking"]},
+        {"label": "Outlook mailbox (replies)", "other": ["campaigns_email.mailbox_connect"]},
     ],
     "Social Media": [
         {"label": "Social Post", "view": "social.posts_view", "create": "social.posts_create",
@@ -22773,8 +22775,12 @@ def _lead_email_history(tenant_id: int, lead_id: int) -> list:
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("""SELECT e.kind, e.detail, e.actor, e.created_at, c.name AS campaign_name, c.subject
+        cur.execute("""SELECT e.kind, e.detail, e.actor, e.created_at, c.name AS campaign_name, c.subject,
+                              rp.snippet AS reply_snippet, rp.web_link AS reply_link, rp.subject AS reply_subject,
+                              mb.owner_label AS reply_mailbox_owner, mb.email AS reply_mailbox
                        FROM email_events e LEFT JOIN email_campaigns c ON c.id = e.campaign_id
+                       LEFT JOIN email_replies rp ON rp.event_id = e.id
+                       LEFT JOIN mailbox_connections mb ON mb.id = rp.mailbox_id
                        WHERE e.tenant_id=%s AND e.lead_id=%s ORDER BY e.created_at DESC LIMIT 50""",
                     (tenant_id, lead_id))
         rows = cur.fetchall()
@@ -29391,20 +29397,40 @@ def _get_inbox_messages(tenant_id: int, phone: str, limit: int = 100) -> list:
 
 
 @portal_bp.route("/channels")
-@team_feature("channels.page")
+@team_feature("channels.page", "campaigns_email.mailbox_connect")
 def channels_page():
     """Unified hub — every connected (or connectable) social channel in
     one place, each with its real brand logo, not scattered across separate
     settings pages. Added 2026-09-11 — the Messenger connect link used to
-    live only inside the Inbox's locked panel, which wasn't good enough."""
+    live only inside the Inbox's locked panel, which wasn't good enough.
+    2026-10-09: staff whose role only has "Outlook mailbox (replies)" see
+    the page with just the Microsoft 365 card (each connects their own)."""
     r = _require_login()
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "channels.page", "Channels")
-    if r2: return r2
-    r3 = _require_team_permission("channels.page")
-    if r3: return r3
+    can_full = _team_member_has_permission("channels.page")
+    can_mailbox = _team_member_has_permission("campaigns_email.mailbox_connect")
+    if not can_full and not can_mailbox:
+        return _require_team_permission("channels.page")
+    mailbox_only = not can_full
+    if not mailbox_only:
+        r2 = _require_plan_sub_feature(customer, "channels.page", "Channels")
+        if r2:
+            if not (can_mailbox and _plan_grants_feature(_get_tenant_plan(tenant_id), "campaigns_email.mailbox_connect")):
+                return r2
+            mailbox_only = True
+
+    mailbox_card = None
+    if can_mailbox:
+        try:
+            from mailbox_routes import card_summary as _mailbox_card
+            mailbox_card = _mailbox_card(customer)
+        except Exception as e:
+            print("⚠️ channels_page mailbox lookup error:", e)
+    if mailbox_only:
+        return render_template("portal/channels.html", customer=customer, mailbox_only=True,
+                               mailbox_card=mailbox_card)
 
     wa_connection = _get_wa_connection(tenant_id)
 
@@ -29447,6 +29473,8 @@ def channels_page():
         pressone_account=pressone_account,
         buffer_account=buffer_account,
         buffer_channel_count=buffer_channel_count,
+        mailbox_only=False,
+        mailbox_card=mailbox_card,
     )
 
 
