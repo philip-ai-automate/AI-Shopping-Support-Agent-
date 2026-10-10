@@ -3,6 +3,12 @@
 
 {% block head %}
 <style>
+  .ac-hero { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:22px }
+  .ac-hero-left { display:flex; align-items:center; gap:14px; min-width:0 }
+  .ac-hero-icon { width:48px; height:48px; border-radius:14px; flex-shrink:0; background:linear-gradient(135deg, #0B1D40, #1D4A9E);
+                  display:flex; align-items:center; justify-content:center; font-size:22px; box-shadow:0 6px 16px rgba(11,29,64,.25) }
+  .ac-hero h1 { font-size:22px; font-weight:800; letter-spacing:-.4px; margin:0; color:var(--ink) }
+  .ac-hero p { margin:3px 0 0; font-size:13.5px; color:var(--muted) }
   .ad-grid { display:grid; grid-template-columns:1.1fr 1fr; gap:18px }
   @media (max-width:900px){ .ad-grid { grid-template-columns:1fr } }
   .ad-card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px; min-width:0 }
@@ -38,13 +44,14 @@
 {% set has_cc = a.phone_number and (a.phone_number.strip().startswith('+') or (digits|length >= 11 and not digits.startswith('0'))) %}
 
 <div style="margin-bottom:10px"><a href="{{ url_for('accounts.accounts_list') }}" class="ad-muted">← All accounts</a></div>
-<div class="wizard-header">
-  <div>
-    <div class="wizard-title">🏪 {{ a.business or '—' }}</div>
-    <div class="wizard-sub">
-      Signed up {{ a.signed_up.strftime('%-d %b %Y') if a.signed_up else '—' }} · {{ a.setup.type }} · {{ a.plan_name }}
+<div class="ac-hero">
+  <div class="ac-hero-left">
+    <div class="ac-hero-icon">🏪</div>
+    <div>
+      <h1>{{ a.business or '—' }}</h1>
+      <p>Signed up {{ a.signed_up.strftime('%-d %b %Y') if a.signed_up else '—' }} · {{ a.setup.type }} · {{ a.plan_name }}
       · last login {{ a.last_login_at.strftime('%-d %b') if a.last_login_at else 'not recorded yet' }}
-      · assigned to {{ a.staff_name or '—' }}{% if a.onboarded %} · <b style="color:#15803D">Onboarded</b>{% endif %}
+      · assigned to {{ a.staff_name or '—' }}{% if a.onboarded %} · <b style="color:#15803D">Onboarded</b>{% endif %}</p>
     </div>
   </div>
 </div>

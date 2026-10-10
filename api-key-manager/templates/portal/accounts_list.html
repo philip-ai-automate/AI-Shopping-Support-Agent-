@@ -3,6 +3,12 @@
 
 {% block head %}
 <style>
+  .ac-hero { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:22px }
+  .ac-hero-left { display:flex; align-items:center; gap:14px; min-width:0 }
+  .ac-hero-icon { width:48px; height:48px; border-radius:14px; flex-shrink:0; background:linear-gradient(135deg, #0B1D40, #1D4A9E);
+                  display:flex; align-items:center; justify-content:center; font-size:22px; box-shadow:0 6px 16px rgba(11,29,64,.25) }
+  .ac-hero h1 { font-size:22px; font-weight:800; letter-spacing:-.4px; margin:0; color:var(--ink) }
+  .ac-hero p { margin:3px 0 0; font-size:13.5px; color:var(--muted) }
   .ac-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-bottom:16px }
   .ac-kpi { background:#fff; border:1px solid var(--line); border-radius:14px; padding:14px 16px }
   .ac-kpi b { display:block; font-size:24px; color:var(--ink); font-variant-numeric:tabular-nums }
@@ -27,10 +33,13 @@
 {% endblock %}
 
 {% block content %}
-<div class="wizard-header">
-  <div>
-    <div class="wizard-title">🚀 Accounts</div>
-    <div class="wizard-sub">Businesses that signed up but haven't finished setting up. Call them and help each one over the step where they stopped.</div>
+<div class="ac-hero">
+  <div class="ac-hero-left">
+    <div class="ac-hero-icon">🚀</div>
+    <div>
+      <h1>Accounts</h1>
+      <p>Businesses that signed up but haven't finished setting up. Call them and help each one over the step where they stopped.</p>
+    </div>
   </div>
 </div>
 
