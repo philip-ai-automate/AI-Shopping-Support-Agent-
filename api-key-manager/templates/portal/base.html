@@ -790,6 +790,17 @@
       </div>
     </div>
 
+    <!-- Accounts (2026-10-10) — platform business only: signed-up businesses an
+         admin assigned to this staff member to help finish setting up.
+         accounts_menu_count is None for every other business / without the tick. -->
+    {% if accounts_menu_count is not none %}
+    <a class="sb-link {% if request.endpoint in ('accounts.accounts_list', 'accounts.account_detail') %}active{% endif %}"
+       href="{{ url_for('accounts.accounts_list') }}">
+      <span class="sb-icon">🚀</span> Accounts
+      {% if accounts_menu_count %}<span class="sb-count">{{ accounts_menu_count }}</span>{% endif %}
+    </a>
+    {% endif %}
+
     <!-- Voice Calls (PressOne, 2026-09-12) — its own top-level item, not
          buried in the CRM submenu — the user specifically asked for this
          to be its own dedicated, visible page rather than nested. -->

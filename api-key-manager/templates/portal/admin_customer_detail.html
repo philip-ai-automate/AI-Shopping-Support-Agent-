@@ -46,19 +46,18 @@
 
     <!-- ── Sales Manager assignment ── -->
     <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
-      <div class="card-title" style="margin-bottom:8px">🧑‍💼 Assigned Sales Manager</div>
+      <div class="card-title" style="margin-bottom:8px">🧑‍💼 Assigned to</div>
       <p class="muted" style="margin:0 0 8px;font-size:12px">
-        For businesses that signed up on their own (not via an ambassador) but still
-        need someone to follow up on onboarding. Shows up in that manager's Team Pipeline.
+        A PhiXtra staff member who helps this business finish setting up. It shows on their
+        Accounts page in their normal portal login.
+        {% if customer.setup %}<br><b>Setup {{ customer.setup.done }} of {{ customer.setup.total }}</b>{% if customer.setup.stuck %} · stuck at {{ customer.setup.stuck }}{% else %} · done{% endif %}{% endif %}
       </p>
       <form method="POST" action="{{ url_for('portal_admin.customer_assign_manager', customer_id=customer.id) }}"
             style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <select name="sales_manager_id" class="modal-input" style="max-width:260px">
+        <select name="staff_id" class="modal-input" style="max-width:260px">
           <option value="">— Unassigned —</option>
-          {% for m in sales_managers %}
-          <option value="{{ m.id }}" {% if customer.assigned_manager_id==m.id %}selected{% endif %}>
-            {{ m.first_name }} {{ m.last_name }}
-          </option>
+          {% for m in platform_staff %}
+          <option value="{{ m.id }}" {% if customer.assigned_manager_id==m.id %}selected{% endif %}>{{ m.name }}</option>
           {% endfor %}
         </select>
         <button type="submit" class="btn btn-sm btn-primary">Save</button>

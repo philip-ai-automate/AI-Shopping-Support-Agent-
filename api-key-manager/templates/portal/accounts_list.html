@@ -1,0 +1,84 @@
+{% extends "portal/base.html" %}
+{% block title %}Accounts — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .ac-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-bottom:16px }
+  .ac-kpi { background:#fff; border:1px solid var(--line); border-radius:14px; padding:14px 16px }
+  .ac-kpi b { display:block; font-size:24px; color:var(--ink); font-variant-numeric:tabular-nums }
+  .ac-kpi span { color:var(--muted); font-size:12.5px }
+  .ac-tabs { display:flex; gap:8px; flex-wrap:wrap; margin:4px 0 14px }
+  .ac-tab { border:1px solid var(--line); border-radius:99px; padding:7px 15px; font-weight:700; font-size:13px; background:#fff; color:var(--ink); text-decoration:none }
+  .ac-tab.on { background:#030C18; color:#fff; border-color:#030C18 }
+  .ac-wrap { overflow-x:auto; background:#fff; border:1px solid var(--line); border-radius:14px }
+  .ac-table { width:100%; border-collapse:collapse; font-size:13px; min-width:900px }
+  .ac-table th { text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); font-weight:700; padding:10px; border-bottom:1px solid var(--line); background:#F8FAFC }
+  .ac-table td { padding:11px 10px; border-bottom:1px solid var(--line); vertical-align:top }
+  .ac-table tr:last-child td { border-bottom:0 }
+  .ac-muted { color:var(--muted); font-size:12px }
+  .ac-type { display:inline-block; font-size:11.5px; font-weight:700; border-radius:6px; padding:2px 7px; background:#EAF0FB; color:#0B1D40; margin-top:4px }
+  .ac-chip { display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:600; border-radius:99px; padding:2px 8px; margin:0 4px 4px 0; white-space:nowrap }
+  .ac-chip.ok { background:#E8F6EC; color:#15803D }
+  .ac-chip.todo { background:#F1F4F9; color:#5A6B85 }
+  .ac-chip.stuck { background:#FDECEC; color:#B91C1C; box-shadow:inset 0 0 0 1.5px #f3b4b4 }
+  .ac-empty { text-align:center; padding:40px 20px; color:var(--muted) }
+  .ac-call { color:var(--ink); font-weight:700; text-decoration:none; white-space:nowrap }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="wizard-header">
+  <div>
+    <div class="wizard-title">🚀 Accounts</div>
+    <div class="wizard-sub">Businesses that signed up but haven't finished setting up. Call them and help each one over the step where they stopped.</div>
+  </div>
+</div>
+
+<div class="ac-kpis">
+  <div class="ac-kpi"><b>{{ n_todo }}</b><span>To onboard</span></div>
+  <div class="ac-kpi"><b>{{ stuck_long }}</b><span>Signed up more than 5 days ago</span></div>
+  <div class="ac-kpi"><b>{{ done_month }}</b><span>Onboarded this month</span></div>
+</div>
+
+<div class="ac-tabs">
+  <a class="ac-tab {% if tab=='todo' %}on{% endif %}" href="{{ url_for('accounts.accounts_list') }}">To onboard ({{ n_todo }})</a>
+  <a class="ac-tab {% if tab=='onboarded' %}on{% endif %}" href="{{ url_for('accounts.accounts_list', tab='onboarded') }}">Onboarded ({{ n_done }})</a>
+</div>
+
+{% if not rows %}
+<div class="ac-wrap"><div class="ac-empty">
+  {% if tab=='todo' %}No accounts to onboard right now. When an admin assigns a business to you, it appears here.{% else %}No onboarded accounts yet.{% endif %}
+</div></div>
+{% else %}
+<div class="ac-wrap">
+<table class="ac-table">
+  <thead><tr>
+    <th>Business</th><th>Signed up</th><th>Plan</th><th>Setup progress</th><th>Last login</th><th>Last note</th>{% if show_staff %}<th>Assigned to</th>{% endif %}<th></th>
+  </tr></thead>
+  <tbody>
+  {% for a in rows %}
+  <tr>
+    <td><b>{{ a.business or '—' }}</b>
+      <div class="ac-muted">{{ a.contact or '—' }}{% if a.phone_number %} · <a class="ac-call" href="tel:{{ a.phone_number }}">{{ a.phone_number }}</a>{% endif %}</div>
+      {% if a.email %}<div class="ac-muted">{{ a.email }}</div>{% endif %}
+      <span class="ac-type">{{ a.setup.type }}{% if a.website_platform and a.setup.type != 'WhatsApp' %} · {{ a.website_platform|capitalize }}{% endif %}</span></td>
+    <td>{{ a.signed_up.strftime('%-d %b') if a.signed_up else '—' }}
+      {% if a.signed_up %}<div class="ac-muted">{{ (now - (a.signed_up.replace(tzinfo=now.tzinfo) if not a.signed_up.tzinfo else a.signed_up)).days }} days ago</div>{% endif %}</td>
+    <td>{% if a.trial_granted_at and a.plan_slug not in ('connect','web_free') %}AI trial{% if a.trial_ends_at %}<div class="ac-muted">ends {{ a.trial_ends_at.strftime('%-d %b') }}</div>{% endif %}{% else %}{{ a.plan_name }}{% endif %}</td>
+    <td>{% for s in a.setup.steps %}
+        {% if s.done %}<span class="ac-chip ok">✓ {{ s.title }}</span>
+        {% elif s.title == a.setup.stuck %}<span class="ac-chip stuck">✕ {{ s.title }}</span>
+        {% else %}<span class="ac-chip todo">○ {{ s.title }}</span>{% endif %}
+      {% endfor %}</td>
+    <td>{{ a.last_login_at.strftime('%-d %b') if a.last_login_at else '' }}{% if not a.last_login_at %}<span class="ac-muted">Not recorded yet</span>{% endif %}</td>
+    <td class="ac-muted">{% if a.last_note %}"{{ a.last_note.note|truncate(60) }}" · {{ a.last_note.created_at.strftime('%-d %b') }}{% else %}—{% endif %}</td>
+    {% if show_staff %}<td>{{ a.staff_name or '—' }}</td>{% endif %}
+    <td><a class="btn btn-sm" style="background:#030C18;color:#fff;border-color:#030C18" href="{{ url_for('accounts.account_detail', tenant_id=a.tenant_id) }}">Open</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="ac-muted" style="margin-top:10px">✓ done · ✕ where they stopped · ○ still to come. The ticks update by themselves from the business's real setup.</p>
+{% endif %}
+{% endblock %}

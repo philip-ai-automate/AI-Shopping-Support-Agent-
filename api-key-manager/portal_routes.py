@@ -416,6 +416,15 @@ PLAN_FEATURE_CATALOG = {
         ("leads.assign",  "Assign Leads and Opportunities to team members"),
         ("leads.see_all", "See all leads, not just their own (off = only leads assigned to them)"),
     ],
+    # Platform business only (PLATFORM_TENANT_ID): signed-up businesses an
+    # admin hands to PhiXtra's own staff to help finish setting up
+    # (2026-10-10). Never shown to other businesses or in the Plan editor —
+    # see PLATFORM_ONLY_MODULES.
+    "Accounts": [
+        ("accounts.view",    "Accounts — view the signed-up businesses assigned to them"),
+        ("accounts.notes",   "Add notes and log calls on an account"),
+        ("accounts.see_all", "See every assigned account, not just their own"),
+    ],
     "Voice Calls": [
         ("voice.calls", "Voice Calls (PressOne)"),
     ],
@@ -646,6 +655,9 @@ ROLE_FORM_GRID = {
     "Leads": [
         {"label": "Leads", "view": "leads.page", "create": "leads.create", "other": ["leads.qualify", "leads.assign", "leads.see_all"]},
     ],
+    "Accounts": [
+        {"label": "Accounts", "view": "accounts.view", "other": ["accounts.notes", "accounts.see_all"]},
+    ],
     "Voice Calls": [
         {"label": "Voice Calls (PressOne)", "view": "voice.calls"},
     ],
@@ -782,7 +794,16 @@ PLAN_ONLY_FEATURE_KEYS = {
     "campaigns_email.saved_see_all",
     # Read when an email campaign sends (2026-10-08), not a page of its own.
     "campaigns_email.tracking",
+    # Which assigned Accounts a staff member sees (2026-10-10).
+    "accounts.see_all",
 }
+
+# Modules only the PLATFORM business (PLATFORM_TENANT_ID in .env) ever sees:
+# left out of every other business's Roles screen and out of the Plan editor
+# (not sold, not plan-gated). 2026-10-10.
+PLATFORM_ONLY_MODULES = {"Accounts"}
+PLAN_EDITOR_CATALOG = {m: f for m, f in PLAN_FEATURE_CATALOG.items() if m not in PLATFORM_ONLY_MODULES}
+PLATFORM_ONLY_FEATURE_KEYS = {k for m in PLATFORM_ONLY_MODULES for k, _ in PLAN_FEATURE_CATALOG.get(m, [])}
 
 # Modules every team member can open whatever their role, so the Roles screen
 # doesn't offer tick-boxes for them (they would control nothing).
@@ -1595,7 +1616,16 @@ def _cap_delegated_role_permissions(permissions: dict, acting_is_owner: bool) ->
     return capped
 
 
-def _feature_catalog_for_actor(acting_is_owner: bool) -> dict:
+def _feature_catalog_for_actor(acting_is_owner: bool, tenant_id=None) -> dict:
+    """Wrapper: PLATFORM_ONLY_MODULES appear only for the platform business."""
+    import accounts_core
+    fc = _feature_catalog_for_actor_all(acting_is_owner)
+    if not accounts_core.is_platform_tenant(tenant_id):
+        fc = {m: f for m, f in fc.items() if m not in PLATFORM_ONLY_MODULES}
+    return fc
+
+
+def _feature_catalog_for_actor_all(acting_is_owner: bool) -> dict:
     """What a Roles-editor screen should even show as tickable. The owner
     sees everything (the cap above still applies server-side if the shape
     ends up delegated). A delegated (non-owner) actor never sees Billing or
@@ -4235,6 +4265,8 @@ def login():
     session.clear()
     session["portal_logged_in"] = True
     session["customer_id"]      = int(c["id"])
+    import accounts_core
+    accounts_core.record_owner_login(int(c["id"]))
 
     if pending_key:
         session["new_plain_key"] = pending_key
@@ -4821,7 +4853,7 @@ def team_role_new():
     acting_is_owner = not session.get("team_member_id")
 
     if request.method == "GET":
-        fc = _feature_catalog_for_actor(acting_is_owner)
+        fc = _feature_catalog_for_actor(acting_is_owner, tenant_id)
         return render_template("portal/team_role_form.html", customer=customer,
                                 role=None, feature_catalog=fc, grid=_build_role_form_grid(fc),
                                 destructive_keys=DESTRUCTIVE_FEATURE_KEYS)
@@ -4873,7 +4905,7 @@ def team_role_edit(role_id: int):
         return redirect(url_for("portal.team_roles_page"))
 
     if request.method == "GET":
-        fc = _feature_catalog_for_actor(acting_is_owner)
+        fc = _feature_catalog_for_actor(acting_is_owner, tenant_id)
         return render_template("portal/team_role_form.html", customer=customer,
                                 role=role, feature_catalog=fc, grid=_build_role_form_grid(fc),
                                 destructive_keys=DESTRUCTIVE_FEATURE_KEYS)
@@ -28910,6 +28942,8 @@ def wa_login_verify():
     session.clear()
     session["portal_logged_in"] = True
     session["customer_id"]      = int(c["id"])
+    import accounts_core
+    accounts_core.record_owner_login(int(c["id"]))
 
     return redirect(url_for("portal.dashboard"))
 

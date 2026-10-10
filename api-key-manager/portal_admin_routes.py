@@ -27,6 +27,8 @@ from lead_pipeline import (STAGE_ORDER, STAGE_LABELS, STAGE_DESCRIPTIONS,
                             sales_manager_month_progress, upsert_sales_manager_target)
 from portal_utils import (money_fmt, tokens_to_credits, credits_to_tokens,
                           send_email_with_attachment, TUTORIAL_VIDEOS)
+import accounts_core
+from portal_routes import (PLAN_EDITOR_CATALOG, PLATFORM_ONLY_FEATURE_KEYS)
 from portal_routes import (_COMEBACK_VARIANTS, _render_comeback_email_html, PLAN_FEATURE_CATALOG,
                            ROLE_FORM_GRID, PLAN_ONLY_FEATURE_KEYS,
                            PLUGIN_FEATURE_PLAN_KEYS, _plugin_features_for_tenant)
@@ -669,11 +671,16 @@ def customers():
         """, params)
         pc_rows = cur.fetchall() or []
 
-        assignments = _amb_manager_assignments([row["tenant_id"] for row in pc_rows], "portal")
+        # Portal/Connect businesses are assigned to the platform business's own
+        # staff (Accounts page, 2026-10-10), not to ambassador Sales Managers.
+        pc_ids = [row["tenant_id"] for row in pc_rows]
+        acct = accounts_core.assignments_for(pc_ids)
+        setup = accounts_core.setup_steps_many(pc_ids)
         for row in pc_rows:
             fn = (row.get("first_name") or "").strip()
             ln = (row.get("last_name")  or "").strip()
-            assignment = assignments.get(row["tenant_id"])
+            a_ = acct.get(row["tenant_id"])
+            assignment = {"manager_id": a_["team_member_id"], "manager_name": a_["staff_name"]} if a_ else None
             rows.append({
                 "product": row["signup_product"], "ref_id": row["tenant_id"], "customer_id": row["id"],
                 "full_name": f"{fn} {ln}".strip() or "—", "business_name": row["tenant_name"] or "—",
@@ -683,6 +690,7 @@ def customers():
                 "balance_credits": tokens_to_credits(int(row.get("token_balance") or 0)),
                 "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
                 "assigned_manager_name": assignment["manager_name"] if assignment else None,
+                "setup": setup.get(row["tenant_id"]),
             })
 
     # ── School (school_profiles — its own table, no "customers" split) ─────
@@ -850,6 +858,7 @@ def customers():
     return render_template(
         "portal/admin_customers.html", customers=rows, q=q,
         sales_managers=sales_managers_by_product["portal"],
+        platform_staff=accounts_core.platform_staff(),
         sales_managers_by_product=sales_managers_by_product,
         filter_groups=filter_groups, plan_group=plan_group,
         industry_options=CUSTOMER_INDUSTRY_OPTIONS, PRODUCT_LABELS=CUSTOMER_PRODUCT_LABELS,
@@ -1014,9 +1023,10 @@ def customer_detail(customer_id: int):
     customer["hear_about_us_label"] = dict(HEAR_ABOUT_US_OPTIONS).get(
         customer.get("hear_about_us"), customer.get("hear_about_us")) or "—"
 
-    assignment = _amb_manager_assignments([tenant_id]).get(tenant_id)
-    customer["assigned_manager_id"]   = assignment["manager_id"]   if assignment else None
-    customer["assigned_manager_name"] = assignment["manager_name"] if assignment else None
+    a_ = accounts_core.assignments_for([tenant_id]).get(tenant_id)
+    customer["assigned_manager_id"]   = a_["team_member_id"] if a_ else None
+    customer["assigned_manager_name"] = a_["staff_name"]     if a_ else None
+    customer["setup"] = accounts_core.setup_steps_many([tenant_id]).get(tenant_id)
 
     for inv in invs:
         inv["total_fmt"] = money_fmt(
@@ -1066,6 +1076,7 @@ def customer_detail(customer_id: int):
                            tenant_system_prompt=tenant_system_prompt,
                            email_sender=email_sender,
                            sales_managers=_portal_sales_managers(),
+                           platform_staff=accounts_core.platform_staff(),
                            wa_connected=wa_connected,
                            wa_numbers=wa_numbers,
                            meta_wizard_step=meta_wizard_step,
@@ -1074,6 +1085,9 @@ def customer_detail(customer_id: int):
 
 @portal_admin_bp.route("/customers/<int:customer_id>/assign-manager", methods=["POST"])
 def customer_assign_manager(customer_id: int):
+    """Assign a Portal/Connect business to a staff member of the platform
+    business (their Accounts page). 2026-10-10: replaces the old ambassador
+    Sales Manager hand-off for these businesses; School/Estate below unchanged."""
     r = _require_admin("customers", "modify")
     if r: return r
 
@@ -1082,89 +1096,39 @@ def customer_assign_manager(customer_id: int):
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
-        SELECT c.id, c.tenant_id, c.first_name, c.last_name, c.email, c.phone_number,
-               t.name AS tenant_name
+        SELECT c.id, c.tenant_id, t.name AS tenant_name
         FROM customers c JOIN tenants t ON t.id=c.tenant_id
         WHERE c.id=%s
     """, (customer_id,))
     customer = cur.fetchone()
+    cur.close(); conn.close()
     if not customer:
-        cur.close(); conn.close()
         flash("Customer not found.", "danger")
         return redirect(fallback)
 
-    tenant_id  = customer["tenant_id"]
-    mgr_id_raw = (request.form.get("sales_manager_id") or "").strip()
+    tenant_id = int(customer["tenant_id"])
+    if accounts_core.is_platform_tenant(tenant_id):
+        flash("That's PhiXtra's own business account.", "warning")
+        return redirect(fallback)
+    raw = (request.form.get("staff_id") or "").strip()
+    if raw and not raw.isdigit():
+        flash("Choose a staff member from the list.", "danger")
+        return redirect(fallback)
+    try:
+        name = accounts_core.assign(tenant_id, int(raw) if raw else None, f"{_admin_user()} (Admin)")
+    except ValueError as e:
+        flash(str(e), "danger")
+        return redirect(fallback)
 
-    new_manager = None
-    if mgr_id_raw:
-        if not mgr_id_raw.isdigit():
-            cur.close(); conn.close()
-            flash("Invalid Sales Manager.", "danger")
-            return redirect(fallback)
-        cur.execute("""
-            SELECT id, first_name, last_name FROM ambassadors
-            WHERE id=%s AND role='sales_manager' AND status='active' AND managed_product='portal'
-        """, (int(mgr_id_raw),))
-        new_manager = cur.fetchone()
-        if not new_manager:
-            cur.close(); conn.close()
-            flash("That Sales Manager is not available for Portal customers.", "danger")
-            return redirect(fallback)
-
-    # Reuse an existing (non-dropped) Portal lead row for this tenant if one
-    # already exists — e.g. this business actually did come in through an
-    # ambassador and already has a pipeline record — otherwise create a fresh
-    # "company campaign" one (ambassador_id left NULL on purpose).
-    cur.execute("""
-        SELECT id FROM ambassador_leads
-        WHERE tenant_id=%s AND product='portal' AND dropped_at IS NULL
-        ORDER BY created_at DESC LIMIT 1
-    """, (tenant_id,))
-    existing = cur.fetchone()
-
-    if new_manager:
-        if existing:
-            cur.execute("UPDATE ambassador_leads SET sales_manager_id=%s WHERE id=%s",
-                        (new_manager["id"], existing["id"]))
-            conn.commit()
-        else:
-            fn = (customer.get("first_name") or "").strip()
-            ln = (customer.get("last_name")  or "").strip()
-            contact_name  = f"{fn} {ln}".strip() or None
-            business_name = customer.get("tenant_name") or contact_name or "—"
-            cur.execute("""
-                INSERT INTO ambassador_leads
-                  (ambassador_id, sales_manager_id, business_name, contact_name, phone, email,
-                   notes, stage, product, tenant_id, onboarding_date, onboarding_notes)
-                VALUES (NULL, %s, %s, %s, %s, %s, %s, 'onboarding', 'portal', %s, CURRENT_DATE, %s)
-                RETURNING id
-            """, (new_manager["id"], business_name, contact_name, customer.get("phone_number"),
-                  customer.get("email"),
-                  "Signed up directly (not via ambassador referral).",
-                  tenant_id, "Assigned by admin for onboarding follow-up."))
-            new_id = cur.fetchone()["id"]
-            conn.commit()
-            record_stage_change(new_id, None, "onboarding", f"{_admin_user()} (Admin)",
-                                 "Directly assigned to Sales Manager — no ambassador referral.")
-
-        insert_audit_log(admin_username=_admin_user(), action="customer_assign_manager",
-            tenant_id=tenant_id, details={
-            "customer_id": customer_id, "tenant_id": tenant_id,
-            "sales_manager_id": new_manager["id"],
-            "sales_manager_name": f"{new_manager['first_name']} {new_manager['last_name']}"})
-        flash(f"{customer['tenant_name'] or 'Customer'} assigned to "
-              f"{new_manager['first_name']} {new_manager['last_name']} for follow-up.", "success")
+    insert_audit_log(admin_username=_admin_user(),
+                     action="customer_assign_staff" if name else "customer_unassign_staff",
+                     tenant_id=tenant_id,
+                     details={"customer_id": customer_id, "tenant_id": tenant_id,
+                              "team_member_id": int(raw) if raw else None, "staff_name": name})
+    if name:
+        flash(f"{customer['tenant_name'] or 'Customer'} assigned to {name}. It's now on their Accounts page.", "success")
     else:
-        if existing:
-            cur.execute("UPDATE ambassador_leads SET sales_manager_id=NULL WHERE id=%s", (existing["id"],))
-            conn.commit()
-            insert_audit_log(admin_username=_admin_user(), action="customer_unassign_manager",
-                              tenant_id=tenant_id,
-                              details={"customer_id": customer_id, "tenant_id": tenant_id})
-        flash("Sales Manager assignment removed.", "success")
-
-    cur.close(); conn.close()
+        flash("Assignment removed.", "success")
     return redirect(fallback)
 
 
@@ -4978,6 +4942,8 @@ def admin_modules_catalog():
         cur.close(); conn.close()
     except Exception as e:
         print("⚠️ admin_modules_catalog plan grants error:", e)
+    if granted_keys is not None:
+        granted_keys |= PLATFORM_ONLY_FEATURE_KEYS   # never sold through plans (Accounts)
     access_problems = check_feature_access(
         current_app, PLAN_FEATURE_CATALOG, ROLE_FORM_GRID, PLAN_ONLY_FEATURE_KEYS, granted_keys,
         code_paths=PLAN_LOCK_CODE_PATHS,
@@ -5053,7 +5019,8 @@ def admin_plans():
 
 # Flattened (feature_key, label) pairs across every group in the catalog —
 # used to walk form fields without caring which group a key belongs to.
-_ALL_CATALOG_ITEMS = [item for _group, items in PLAN_FEATURE_CATALOG.items() for item in items]
+# Platform-only modules (Accounts) are never sold, so the Plan editor leaves them out.
+_ALL_CATALOG_ITEMS = [item for _group, items in PLAN_EDITOR_CATALOG.items() for item in items]
 
 
 def _plan_form_to_dict(form) -> dict:
@@ -5140,7 +5107,7 @@ def admin_plans_new():
             cur.close(); conn.close()
             return render_template("portal/admin_plan_form.html", plan=data,
                                     parent_candidates=parent_candidates,
-                                    feature_catalog=PLAN_FEATURE_CATALOG,
+                                    feature_catalog=PLAN_EDITOR_CATALOG,
                                     granted_keys=_granted_feature_keys(request.form), is_new=True)
         try:
             cols = list(data.keys())
@@ -5164,7 +5131,7 @@ def admin_plans_new():
             flash(f"A plan with slug \"{data['slug']}\" already exists — choose a different slug.", "danger")
             return render_template("portal/admin_plan_form.html", plan=data,
                                     parent_candidates=parent_candidates,
-                                    feature_catalog=PLAN_FEATURE_CATALOG,
+                                    feature_catalog=PLAN_EDITOR_CATALOG,
                                     granted_keys=_granted_feature_keys(request.form), is_new=True)
 
     cur.close(); conn.close()
@@ -5181,7 +5148,7 @@ def admin_plans_new():
             blank[feature_key.split(":", 1)[1]] = False
     return render_template("portal/admin_plan_form.html", plan=blank,
                             parent_candidates=parent_candidates,
-                            feature_catalog=PLAN_FEATURE_CATALOG,
+                            feature_catalog=PLAN_EDITOR_CATALOG,
                             granted_keys=set(), is_new=True)
 
 
@@ -5202,7 +5169,7 @@ def admin_plans_edit(plan_id: int):
             cur.close(); conn.close()
             return render_template("portal/admin_plan_form.html", plan=dict(data, id=plan_id),
                                     parent_candidates=parent_candidates,
-                                    feature_catalog=PLAN_FEATURE_CATALOG,
+                                    feature_catalog=PLAN_EDITOR_CATALOG,
                                     granted_keys=_granted_feature_keys(request.form), is_new=False)
         try:
             cur2 = conn.cursor()
@@ -5225,7 +5192,7 @@ def admin_plans_edit(plan_id: int):
             flash(f"A plan with slug \"{data['slug']}\" already exists — choose a different slug.", "danger")
             return render_template("portal/admin_plan_form.html", plan=dict(data, id=plan_id),
                                     parent_candidates=parent_candidates,
-                                    feature_catalog=PLAN_FEATURE_CATALOG,
+                                    feature_catalog=PLAN_EDITOR_CATALOG,
                                     granted_keys=_granted_feature_keys(request.form), is_new=False)
 
     cur.execute("SELECT * FROM plans WHERE id=%s", (plan_id,))
@@ -5238,7 +5205,7 @@ def admin_plans_edit(plan_id: int):
         return redirect(url_for("portal_admin.admin_plans"))
     return render_template("portal/admin_plan_form.html", plan=plan,
                             parent_candidates=parent_candidates,
-                            feature_catalog=PLAN_FEATURE_CATALOG,
+                            feature_catalog=PLAN_EDITOR_CATALOG,
                             granted_keys=granted_keys, is_new=False,
                             can_delete_plan=plan["slug"] not in SYSTEM_PLAN_SLUGS and (_is_owner() or bool(
                                 session.get("portal_admin_permissions", {}).get("plans", {}).get("delete"))))
@@ -5401,7 +5368,7 @@ def admin_plan_preview(plan_id: int):
 
     return render_template("portal/admin_plan_preview.html",
                             plan=plan, granted_features=granted,
-                            feature_catalog=PLAN_FEATURE_CATALOG)
+                            feature_catalog=PLAN_EDITOR_CATALOG)
 
 
 @portal_admin_bp.route("/plans/assign/<int:tenant_id>", methods=["POST"])

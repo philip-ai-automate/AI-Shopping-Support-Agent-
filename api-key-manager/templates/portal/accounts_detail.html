@@ -1,0 +1,92 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ a.business or 'Account' }} — Accounts — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .ad-grid { display:grid; grid-template-columns:1.1fr 1fr; gap:18px }
+  @media (max-width:900px){ .ad-grid { grid-template-columns:1fr } }
+  .ad-card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px; min-width:0 }
+  .ad-card h3 { margin:0 0 12px; font-size:15px; color:var(--ink) }
+  .ad-step { display:flex; gap:12px; align-items:flex-start; padding:10px 0; border-bottom:1px dashed var(--line) }
+  .ad-step:last-child { border-bottom:0 }
+  .ad-dot { width:26px; height:26px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px }
+  .ad-dot.ok { background:#E8F6EC; color:#15803D }
+  .ad-dot.todo { background:#F1F4F9; color:#5A6B85 }
+  .ad-dot.stuck { background:#FDECEC; color:#B91C1C }
+  .ad-muted { color:var(--muted); font-size:12.5px }
+  .ad-btns { display:flex; gap:8px; flex-wrap:wrap; margin:12px 0 18px }
+  .ad-btn { display:inline-flex; align-items:center; gap:6px; border-radius:9px; padding:9px 14px; font-weight:700; font-size:13px; border:1px solid var(--line); background:#fff; color:var(--ink); text-decoration:none }
+  .ad-btn.dark { background:#030C18; color:#fff; border-color:#030C18 }
+  .ad-btn.off { opacity:.45; pointer-events:none }
+  .ad-note { width:100%; font:inherit; border:1.5px solid var(--line); border-radius:9px; padding:10px; min-height:74px; resize:vertical }
+  .ad-log { border-left:2px solid var(--line); padding-left:14px; margin:14px 0 0 4px }
+  .ad-log div { margin-bottom:12px }
+  .ad-log b { color:var(--ink) }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set help = {
+  'Account': 'Signed up and logged in.',
+  'Connect WhatsApp': "Help them open Meta's sign-up window from WhatsApp › Connect. They keep their number.",
+  'Connect website': 'From Store Information › Connect Website, then Sync now so the AI reads their pages.',
+  'Add chat box': 'WordPress: install the free PhiXtra plugin and paste the API key. Other sites: paste one line of code (Store Information › Add Chat Box).',
+  'Products': 'Upload a product or service list (Excel, CSV or Google Sheets) from Ecommerce › Product Import. WooCommerce shops sync through the plugin.',
+  'AI trial': 'One click on their Dashboard starts the 2-week AI trial. No card needed.'
+} %}
+{% set digits = a.wa_number %}
+{% set has_cc = a.phone_number and (a.phone_number.strip().startswith('+') or (digits|length >= 11 and not digits.startswith('0'))) %}
+
+<div style="margin-bottom:10px"><a href="{{ url_for('accounts.accounts_list') }}" class="ad-muted">← All accounts</a></div>
+<div class="wizard-header">
+  <div>
+    <div class="wizard-title">🏪 {{ a.business or '—' }}</div>
+    <div class="wizard-sub">
+      Signed up {{ a.signed_up.strftime('%-d %b %Y') if a.signed_up else '—' }} · {{ a.setup.type }} · {{ a.plan_name }}
+      · last login {{ a.last_login_at.strftime('%-d %b') if a.last_login_at else 'not recorded yet' }}
+      · assigned to {{ a.staff_name or '—' }}{% if a.onboarded %} · <b style="color:#15803D">Onboarded</b>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="ad-grid">
+  <div class="ad-card">
+    <h3>Setup steps ({{ a.setup.done }} of {{ a.setup.total }})</h3>
+    {% for s in a.setup.steps %}
+    <div class="ad-step">
+      {% if s.done %}<span class="ad-dot ok">✓</span>{% elif s.title == a.setup.stuck %}<span class="ad-dot stuck">!</span>{% else %}<span class="ad-dot todo">{{ loop.index }}</span>{% endif %}
+      <div><b>{{ s.title }}</b>
+        <div class="ad-muted">{% if s.done %}Done.{% elif s.title == a.setup.stuck %}They stopped here. {{ help.get(s.title, '') }}{% else %}{{ help.get(s.title, '') }}{% endif %}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="ad-card">
+    <h3>Contact</h3>
+    <div>{{ a.contact or '—' }}</div>
+    <div class="ad-muted">{{ a.phone_number or 'No phone number' }}{% if a.email %} · {{ a.email }}{% endif %}</div>
+    <div class="ad-btns">
+      {% if a.phone_number %}<a class="ad-btn dark" href="tel:{{ a.phone_number }}">📞 Call</a>{% endif %}
+      {% if has_cc %}<a class="ad-btn" href="https://wa.me/{{ digits }}" target="_blank" rel="noopener">💬 WhatsApp</a>
+      {% elif a.phone_number %}<span class="ad-btn off" title="This number has no country code, so WhatsApp can't open it">💬 WhatsApp</span>{% endif %}
+      {% if a.email %}<a class="ad-btn" href="mailto:{{ a.email }}">✉️ Email</a>{% endif %}
+    </div>
+    {% if a.phone_number and not has_cc %}<div class="ad-muted" style="margin:-8px 0 14px">This number has no country code, so the WhatsApp button is off. Call them instead.</div>{% endif %}
+
+    <h3>Notes and calls</h3>
+    {% if can_note %}
+    <form method="POST" action="{{ url_for('accounts.account_note', tenant_id=a.tenant_id) }}">
+      <textarea class="ad-note" name="note" id="ad-note" maxlength="2000" placeholder="What happened? e.g. Called, will connect their number tomorrow at 10am"></textarea>
+      <div style="margin-top:8px"><button class="btn btn-sm" style="background:#030C18;color:#fff;border-color:#030C18">Save note</button></div>
+    </form>
+    {% endif %}
+    <div class="ad-log">
+      {% for n in notes %}
+      <div><b>{{ n.note }}</b><div class="ad-muted">{% if n.author_key %}{{ n.author_label|who }} · {% elif n.author_label %}by {{ n.author_label }} · {% endif %}{{ n.created_at.strftime('%-d %b %Y, %H:%M') }}</div></div>
+      {% endfor %}
+      <div><b>Signed up</b><div class="ad-muted">{{ a.signed_up.strftime('%-d %b %Y, %H:%M') if a.signed_up else '—' }}</div></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -236,13 +236,14 @@
     <div class="cc-assign">
       {% if c.customer_id %}
       <form method="POST" action="{{ url_for('portal_admin.customer_assign_manager', customer_id=c.customer_id) }}">
-        <select name="sales_manager_id" onchange="this.form.submit()">
+        <select name="staff_id" onchange="this.form.submit()" title="Assign to a PhiXtra staff member (their Accounts page)">
           <option value="">— Unassigned —</option>
-          {% for m in sales_managers %}
-          <option value="{{ m.id }}" {% if c.assigned_manager_id==m.id %}selected{% endif %}>{{ m.first_name }} {{ m.last_name }}</option>
+          {% for m in platform_staff %}
+          <option value="{{ m.id }}" {% if c.assigned_manager_id==m.id %}selected{% endif %}>{{ m.name }}</option>
           {% endfor %}
         </select>
       </form>
+      {% if c.setup %}<div class="muted" style="font-size:12px;margin-top:4px">Setup {{ c.setup.done }} of {{ c.setup.total }}{% if c.setup.stuck %} · stuck at {{ c.setup.stuck }}{% else %} · done{% endif %}</div>{% endif %}
       {% else %}
       <form method="POST" action="{{ url_for('portal_admin.customer_assign_manager_x', product=c.product, ref_id=c.ref_id) }}">
         <select name="sales_manager_id" onchange="this.form.submit()">
@@ -285,6 +286,7 @@
           <th>Verified</th>
           <th>Active</th>
           <th>Signed up</th>
+          <th>Setup</th>
           <th>Assigned To</th>
           <th>Actions</th>
         </tr>
@@ -307,13 +309,14 @@
             {% else %}<span class="pill pill-red">Disabled</span>{% endif %}
           </td>
           <td class="muted">{{ c.created_at.strftime('%Y-%m-%d') if c.created_at else '—' }}</td>
+          <td>{% if c.setup %}{% if c.setup.complete %}<span class="pill pill-green">{{ c.setup.done }} of {{ c.setup.total }} · done</span>{% else %}<span class="pill pill-red" title="Stopped at: {{ c.setup.stuck }}">{{ c.setup.done }} of {{ c.setup.total }} · {{ c.setup.stuck }}</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
           <td>
             {% if c.customer_id %}
             <form method="POST" action="{{ url_for('portal_admin.customer_assign_manager', customer_id=c.customer_id) }}">
-              <select name="sales_manager_id" class="modal-input" style="padding:4px 8px;font-size:12px" onchange="this.form.submit()">
+              <select name="staff_id" class="modal-input" style="padding:4px 8px;font-size:12px" onchange="this.form.submit()" title="Assign to a PhiXtra staff member (their Accounts page)">
                 <option value="">— Unassigned —</option>
-                {% for m in sales_managers %}
-                <option value="{{ m.id }}" {% if c.assigned_manager_id==m.id %}selected{% endif %}>{{ m.first_name }} {{ m.last_name }}</option>
+                {% for m in platform_staff %}
+                <option value="{{ m.id }}" {% if c.assigned_manager_id==m.id %}selected{% endif %}>{{ m.name }}</option>
                 {% endfor %}
               </select>
             </form>

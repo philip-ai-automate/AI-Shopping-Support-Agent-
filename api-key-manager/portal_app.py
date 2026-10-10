@@ -47,6 +47,8 @@ def create_app():
     flask_app.register_blueprint(upload_bp)
     flask_app.register_blueprint(socialcal_bp)
     flask_app.register_blueprint(mailbox_bp)
+    from accounts_routes import accounts_bp
+    flask_app.register_blueprint(accounts_bp)
     flask_app.register_blueprint(ambassador_bp)
     flask_app.register_blueprint(school_bp, url_prefix="/school")
     flask_app.register_blueprint(estate_bp)
@@ -58,8 +60,8 @@ def create_app():
         from db import get_db_connection
         from feature_access import (check_feature_access, sync_new_feature_keys_to_plans,
                                     PLAN_LOCK_CODE_PATHS)
-        from portal_routes import PLAN_FEATURE_CATALOG, ROLE_FORM_GRID, PLAN_ONLY_FEATURE_KEYS
-        added = sync_new_feature_keys_to_plans(PLAN_FEATURE_CATALOG, get_db_connection)
+        from portal_routes import PLAN_FEATURE_CATALOG, PLAN_EDITOR_CATALOG, ROLE_FORM_GRID, PLAN_ONLY_FEATURE_KEYS
+        added = sync_new_feature_keys_to_plans(PLAN_EDITOR_CATALOG, get_db_connection)  # Accounts is never sold
         if added:
             print(f"✅ New features granted to every plan: {', '.join(added)}")
         problems = check_feature_access(flask_app, PLAN_FEATURE_CATALOG, ROLE_FORM_GRID,
