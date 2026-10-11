@@ -48,7 +48,7 @@
     <!-- Price + Stock row -->
     <div class="form-row">
       <div class="form-group" style="margin-bottom:0">
-        <label for="price">Price ({{ cur_sign() }}) *</label>
+        <label for="price">Price ({{ cur_sign(product.currency if product else None) }}) *</label>
         <input type="text" id="price" name="price" required
                inputmode="numeric"
                value="{{ '{:,.0f}'.format(product.price|float) if product and product.price else '' }}"

@@ -13557,6 +13557,8 @@ def settings_business():
                 if not key.startswith("own_rate_"):
                     continue
                 code = key[len("own_rate_"):].upper()
+                if not _re.fullmatch(r"[A-Z]{3}", code):
+                    continue
                 raw = (raw or "").strip().replace(",", "")
                 if not raw:
                     continue
@@ -13606,6 +13608,7 @@ def settings_business():
                 if _res["rates_cleared"]:
                     flash("Your own exchange rates were cleared because they were set for "
                           f"{_res['old']}. Please enter them again for {sell_code}.", "warning")
+                _flash_ai_currency_reminder(_tid)
         insert_audit_log(
             action  = "settings_business_updated",
             details = {"customer_id": cid,
@@ -15418,6 +15421,27 @@ def selling_currency_question() -> dict | None:
         return None
 
 
+def _flash_ai_currency_reminder(tenant_id) -> None:
+    """After a currency change: if the business's own AI wording mentions
+    another currency, tell the owner where to check it (2026-10-11). Their
+    wording is never changed for them."""
+    found = _selling_currency.instructions_mentioning_other_currency(tenant_id)
+    if not found:
+        return
+    from markupsafe import escape as _esc
+    cur = _selling_currency.currency_label(_selling_currency.tenant_currency(tenant_id))
+    words = sorted({w for f in found for w in f["currencies"]})
+    links = []
+    for f in found:
+        url = (url_for("portal.ai_instruction") if f["kind"] == "main"
+               else url_for("portal.ai_agents_edit", agent_id=f["id"]))
+        links.append(f'<a href="{url}" style="text-decoration:underline">{_esc(f["name"])}</a>')
+    flash(f"Your AI instructions mention {' and '.join(words)}. Please check them so the AI "
+          f"quotes prices in {_esc(_selling_currency.currency_plural(cur['code']))} ({_esc(cur['prefix'].strip())}): "
+          + ", ".join(links) + ".",
+          "warning")
+
+
 def _biz_currency(tenant_id=None) -> str:
     """The logged-in business's selling currency (or tenant_id's). Looked up
     once per request — list pages format hundreds of amounts."""
@@ -15523,6 +15547,7 @@ def selling_currency_settings() -> dict | None:
             return None
         tid = int(c["tenant_id"])
         sc = _selling_currency
+        sc.clear_cache(tid)          # fresh: another portal worker may have just saved
         selling = sc.tenant_currency(tid)
         own = sc.tenant_own_rates(tid)
         foreign = []
@@ -15560,11 +15585,13 @@ def selling_currency_choose():
         return redirect(url_for("portal.dashboard"))
     c = _get_customer(_customer_id())
     tid = int(c["tenant_id"])
-    _selling_currency.save_settings(tid, code)
+    _res = _selling_currency.save_settings(tid, code)
     insert_audit_log(action="selling_currency_set", tenant_id=tid,
                      details={"selling_currency": code, "by": c.get("email"), "from": "dashboard"})
     cinfo = next(x for x in _selling_currency.currencies() if x["code"] == code)
     flash(f"Saved. Your selling currency is {cinfo['name']} ({cinfo['prefix'].strip()}).", "success")
+    if _res["changed"]:
+        _flash_ai_currency_reminder(tid)
     return redirect(url_for("portal.dashboard"))
 
 

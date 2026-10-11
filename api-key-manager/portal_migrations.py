@@ -4357,6 +4357,23 @@ def ensure_portal_tables():
                       FROM tenants t WHERE t.id = tid)
               END
             $fx$""")
+        # A deal value or product price typed after a currency change is in the
+        # business's current currency: clear the old stamp when the amount
+        # changes (unless the same update sets a currency itself).
+        cur.execute("""
+            CREATE OR REPLACE FUNCTION clear_stamped_currency() RETURNS trigger
+            LANGUAGE plpgsql AS $t$
+            BEGIN
+              IF NEW.currency IS NOT DISTINCT FROM OLD.currency AND OLD.currency IS NOT NULL
+                 AND to_jsonb(NEW) -> TG_ARGV[0] IS DISTINCT FROM to_jsonb(OLD) -> TG_ARGV[0] THEN
+                NEW.currency := NULL;
+              END IF;
+              RETURN NEW;
+            END $t$""")
+        for _tbl, _col in (("merchant_pipeline_leads", "deal_value"), ("products", "price")):
+            cur.execute(f"DROP TRIGGER IF EXISTS {_tbl}_clear_currency ON {_tbl}")
+            cur.execute(f"""CREATE TRIGGER {_tbl}_clear_currency BEFORE UPDATE OF {_col} ON {_tbl}
+                            FOR EACH ROW EXECUTE FUNCTION clear_stamped_currency('{_col}')""")
         # Market rates, as units of each currency per 1 US dollar (fx_rates_job.py).
         cur.execute("""
             CREATE TABLE IF NOT EXISTS fx_rates (

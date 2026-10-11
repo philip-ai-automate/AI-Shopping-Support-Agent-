@@ -403,6 +403,24 @@ def get_manual_product_in_stock(tenant_id: int, product_id) -> bool | None:
         conn.close()
 
 
+def _product_in_selling_currency(tenant_id: int, row) -> dict:
+    """A products-table row with price (and a flat discount) in the business's
+    selling currency. Products saved before a currency change keep their old
+    currency (products.currency) and are converted; NULL = already current."""
+    out = {**dict(row), "price": float(row["price"]), "discount_value": float(row["discount_value"] or 0)}
+    code = row.get("currency")
+    if code:
+        import selling_currency as _sc
+        p = _sc.amount_for_tenant(tenant_id, row["price"], code)
+        if p is not None:
+            out["price"] = float(p)
+        if row.get("discount_type") == "flat" and out["discount_value"]:
+            d = _sc.amount_for_tenant(tenant_id, row["discount_value"], code)
+            if d is not None:
+                out["discount_value"] = float(d)
+    return out
+
+
 def get_product_by_id(tenant_id: int, product_id) -> dict | None:
     """Return full product row from the products table by id."""
     conn = get_db_connection()
@@ -412,7 +430,7 @@ def get_product_by_id(tenant_id: int, product_id) -> dict | None:
     try:
         cur.execute(
             """
-            SELECT id, name, price, stock_quantity, discount_type, discount_value
+            SELECT id, name, price, stock_quantity, discount_type, discount_value, currency
             FROM products
             WHERE tenant_id = %s AND id = %s AND is_active = TRUE
             """,
@@ -421,7 +439,7 @@ def get_product_by_id(tenant_id: int, product_id) -> dict | None:
         row = cur.fetchone()
         if not row:
             return None
-        return {**dict(row), "price": float(row["price"]), "discount_value": float(row["discount_value"] or 0)}
+        return _product_in_selling_currency(tenant_id, row)
     except Exception as e:
         print("⚠️ get_product_by_id error:", e)
         return None
@@ -1076,7 +1094,7 @@ def search_tenant_products(tenant_id: int, query: str) -> list[dict]:
     try:
         cur.execute(
             """
-            SELECT id, name, price, stock_quantity, discount_type, discount_value, description
+            SELECT id, name, price, stock_quantity, discount_type, discount_value, description, currency
             FROM products
             WHERE tenant_id = %s AND is_active = TRUE
               AND stock_quantity > reserved_quantity
@@ -1087,10 +1105,7 @@ def search_tenant_products(tenant_id: int, query: str) -> list[dict]:
             (tenant_id, f"%{query}%"),
         )
         rows = cur.fetchall() or []
-        return [
-            {**dict(r), "price": float(r["price"]), "discount_value": float(r["discount_value"] or 0)}
-            for r in rows
-        ]
+        return [_product_in_selling_currency(tenant_id, r) for r in rows]
     except Exception as e:
         print("⚠️ search_tenant_products error:", e)
         return []

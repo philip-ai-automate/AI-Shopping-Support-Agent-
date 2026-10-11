@@ -1,9 +1,9 @@
 """Selling currency — what a business's customers see (2026-10-11).
 
-Each business has one selling currency (tenants.selling_currency: AED, GBP,
-USD or NGN — the list lives in the selling_currencies table). Product prices
+Each business has one selling currency (tenants.selling_currency: GBP, USD
+or NGN — the list lives in the selling_currencies table). Product prices
 saved in another currency (e.g. a website that keeps prices in £ and lets
-buyers switch to AED) are converted to it:
+buyers switch to $) are converted to it:
   - fx_rate_mode 'daily' → market rate, fetched once a day (fx_rates_job.py)
   - fx_rate_mode 'own'   → the rate the business typed (tenant_fx_rates);
                            a currency it gave no rate for uses the daily rate.
@@ -76,7 +76,10 @@ def currencies() -> list[dict]:
             print("⚠️ selling_currency.currencies error:", e)
             rows = []
         return [{"code": r[0], "name": r[1], "prefix": r[2], "country": r[3]} for r in rows]
-    return _cached("currencies", load)
+    found = _cached("currencies", load)
+    if not found:
+        _cache.pop("currencies", None)   # never keep an empty list (database hiccup)
+    return found
 
 
 def currency_codes() -> list[str]:
@@ -213,7 +216,7 @@ def format_money(amount, code) -> str:
     if amount is None:
         return ""
     code = (code or DEFAULT_CURRENCY).upper()
-    prefix = next((c["prefix"] for c in currencies() if c["code"] == code), code + " ")
+    prefix = currency_label(code)["prefix"]
     d = Decimal(str(amount))
     num = f"{d:,.0f}" if d == d.to_integral_value() else f"{d:,.2f}"
     return f"{prefix}{num}"
@@ -259,6 +262,9 @@ _OTHER_CURRENCIES = {
 # Records that carry their own currency once the business changes its
 # selling currency. NULL = the business's current selling currency.
 STAMPED_TABLES = ("merchant_pipeline_leads", "orders", "products")
+# Product prices from the website sync / uploads saved with no currency are
+# also stamped (only rows that have a price), or a ₦180,000 price would start
+# showing as $180,000 after a change to dollars.
 
 
 def currency_label(code) -> dict:
@@ -269,6 +275,12 @@ def currency_label(code) -> dict:
             return {"code": code, "name": c["name"], "prefix": c["prefix"]}
     name, prefix = _OTHER_CURRENCIES.get(code, (code, code + " "))
     return {"code": code, "name": name, "prefix": prefix}
+
+
+def currency_plural(code) -> str:
+    """'British pounds' · 'US dollars' · 'Nigerian naira' (naira has no plural s)."""
+    name = currency_label(code)["name"]
+    return name if name.lower().endswith("naira") else name + "s"
 
 
 def format_rate(from_code, rate, to_code) -> str:
@@ -320,6 +332,9 @@ def save_settings(tenant_id, new_code, rate_mode=None, own_rates=None, by=None) 
             for tbl in STAMPED_TABLES:
                 cur.execute(f"UPDATE {tbl} SET currency=%s WHERE tenant_id=%s AND currency IS NULL",
                             (old, tid))
+            cur.execute("""UPDATE documents SET currency=%s
+                            WHERE tenant_id=%s AND currency IS NULL
+                              AND (price_min IS NOT NULL OR price_max IS NOT NULL)""", (old, tid))
             cur.execute("DELETE FROM tenant_fx_rates WHERE tenant_id=%s", (tid,))
             rates_cleared = cur.rowcount > 0
             # The AI's standard pricing instruction follows the new currency
@@ -417,8 +432,8 @@ def pricing_block(code) -> str:
     sign = c["prefix"].strip()
     return (
         "PRICING:\n"
-        f"- Always quote prices in {c['name']}s ({sign}).\n"
-        f"- Prices in the store data are already in {c['name']}s. Quote them exactly as given; "
+        f"- Always quote prices in {currency_plural(code)} ({sign}).\n"
+        f"- Prices in the store data are already in {currency_plural(code)}. Quote them exactly as given; "
         "never convert them yourself.\n"
         f"- Never quote prices in naira (₦) or any other currency — always use {sign}.\n\n"
     )
@@ -450,7 +465,7 @@ def pricing_override(tenant_id) -> str:
     sign = c["prefix"].strip()
     return (
         f"\n\nPRICING (this rule replaces any earlier pricing rule): this business sells in "
-        f"{c['name']}s ({sign}). Every product price in the store data is already in {c['name']}s — "
+        f"{currency_plural(code)} ({sign}). Every product price in the store data is already in {currency_plural(code)} — "
         "quote it exactly as given and never convert it yourself. Never quote prices in naira (₦) "
         "unless the store data itself shows that price in naira."
     )
@@ -474,3 +489,48 @@ def current_is_naira() -> bool:
     """True when no business is set (today's behaviour) or it sells in naira."""
     tid = _current_tenant.get()
     return not tid or is_naira(tid)
+
+
+# ── Reminder after a currency change (2026-10-11) ────────────────────────────
+# A business's own AI wording is never overwritten. When it mentions another
+# currency, the owner is told to check it (Settings / dashboard alert).
+_CURRENCY_WORDS = {
+    "NGN": (r"₦|\bnaira\b|\bNGN\b", "naira"),
+    "GBP": (r"£|\bpounds?\b|\bsterling\b|\bGBP\b", "pounds"),
+    "USD": (r"\$\s?\d|\bdollars?\b|\bUSD\b", "dollars"),
+    "EUR": (r"€|\beuros?\b|\bEUR\b", "euros"),
+    "AED": (r"\bAED\b|\bdirhams?\b|د\.إ", "dirhams"),
+}
+
+
+def _other_currency_words(text, code) -> list[str]:
+    """Names of currencies other than `code` that `text` mentions, ignoring
+    the standard pricing paragraph the system itself manages."""
+    if not text:
+        return []
+    for c in currency_codes() + ["NGN"]:
+        text = text.replace(pricing_block(c), "")
+    return [name for cur, (pat, name) in _CURRENCY_WORDS.items()
+            if cur != code and re.search(pat, text, re.I)]
+
+
+def instructions_mentioning_other_currency(tenant_id) -> list[dict]:
+    """The business's AI instructions that mention a currency other than its
+    selling currency: [{'kind': 'main'|'agent', 'id', 'name', 'currencies'}]."""
+    tid = int(tenant_id)
+    clear_cache(tid)
+    code = tenant_currency(tid)
+    found = []
+    try:
+        for (prompt,) in _query("SELECT system_prompt FROM tenants WHERE id=%s", (tid,)):
+            words = _other_currency_words(prompt, code)
+            if words:
+                found.append({"kind": "main", "id": None, "name": "AI instructions", "currencies": words})
+        for aid, name, prompt in _query(
+                "SELECT id, name, system_prompt FROM tenant_agents WHERE tenant_id=%s ORDER BY id", (tid,)):
+            words = _other_currency_words(prompt, code)
+            if words:
+                found.append({"kind": "agent", "id": aid, "name": name or f"Agent {aid}", "currencies": words})
+    except Exception as e:
+        print("⚠️ instructions_mentioning_other_currency error:", e)
+    return found

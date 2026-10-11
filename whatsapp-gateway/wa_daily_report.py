@@ -36,6 +36,7 @@ import psycopg2
 import psycopg2.extras
 
 from wa_db import get_db_connection, log_proactive
+import selling_currency as _sc
 from meta_sender import send_text
 
 router = APIRouter()
@@ -134,7 +135,7 @@ def _get_daily_stats(tenant_id: int, report_date: date) -> dict:
                     THEN 1 ELSE 0 END) AS paid_orders,
                 COALESCE(SUM(CASE WHEN status IN
                     ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
-                    THEN total_amount ELSE 0 END), 0) AS revenue
+                    THEN fx_to_selling(total_amount, currency, tenant_id) ELSE 0 END), 0) AS revenue
             FROM orders
             WHERE tenant_id = %s AND DATE(created_at) = %s
         """, (tenant_id, dt))
@@ -216,11 +217,13 @@ def _get_daily_stats(tenant_id: int, report_date: date) -> dict:
     return stats
 
 
-def _format_report(tenant_name: str, report_date: date, stats: dict) -> str:
+def _format_report(tenant_name: str, report_date: date, stats: dict, tenant_id: int = None) -> str:
     """Format the plain-text WhatsApp daily report message."""
     date_str  = report_date.strftime("%-d %B %Y")   # e.g. "23 May 2026"
     revenue   = stats.get("revenue", 0)
-    rev_str   = f"₦{revenue:,.0f}"
+    # The business's selling currency (₦ unless it sells in £/$, 2026-10-11)
+    _code     = _sc.tenant_currency(tenant_id) if tenant_id else "NGN"
+    rev_str   = f"{_sc.currency_label(_code)['prefix']}{revenue:,.0f}"
 
     lines = [
         f"📊 *Daily Report — {tenant_name}*",
@@ -579,6 +582,11 @@ async def send_daily_report_for_tenant(
     # ── Try template first, fall back to plain text ───────────────────────
     tpl = _get_wa_template_for_report(tenant_id)
     ok  = False
+    # The approved phixtra_daily_report template has "₦" written into it, so
+    # businesses selling in £/$ get the plain-text report (in their own
+    # currency) until a template without the sign is approved (2026-10-11).
+    if tpl and tpl.get("template_name") == _DAILY_REPORT_TEMPLATE_NAME and not _sc.is_naira(tenant_id):
+        tpl = None
 
     if tpl:
         ok = await _send_via_template(
@@ -594,7 +602,7 @@ async def send_daily_report_for_tenant(
 
     if not ok:
         # Plain text (works within the 24-hour customer-service window)
-        msg  = _format_report(tenant_name, report_date, stats)
+        msg  = _format_report(tenant_name, report_date, stats, tenant_id)
         to_e164 = to_phone.lstrip("+")   # Meta expects E.164 without leading +
         ok = await send_text(phone_number_id, access_token, to_e164, msg)
 
