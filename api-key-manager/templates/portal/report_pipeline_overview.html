@@ -102,11 +102,11 @@
   </div>
   <div class="card card-sm">
     <div class="card-title">Open Pipeline Value</div>
-    <div class="kpi">₦{{ "{:,.0f}".format(open_value) }}</div>
+    <div class="kpi">{{ (open_value)|money_total }}</div>
   </div>
   <div class="card card-sm">
     <div class="card-title">Won</div>
-    <div class="kpi">₦{{ "{:,.0f}".format(won_value) }}</div>
+    <div class="kpi">{{ (won_value)|money_total }}</div>
     <div class="muted" style="margin-top:4px">{{ won_count }} deal{{ 's' if won_count != 1 }}</div>
   </div>
   <div class="card card-sm">
@@ -147,7 +147,7 @@
         </div>
       </div>
       <div class="fmeta">
-        {% if s and s.total_value %}<b>₦{{ "{:,.0f}".format(s.total_value) }}</b> open{% else %}—{% endif %}
+        {% if s and s.total_value %}<b>{{ (s.total_value)|money_total }}</b> open{% else %}—{% endif %}
       </div>
     </div>
   {% endfor %}
@@ -161,7 +161,7 @@
       </div>
     </div>
     <div class="fmeta">
-      {% if won_value %}<b>₦{{ "{:,.0f}".format(won_value) }}</b> closed{% else %}—{% endif %}
+      {% if won_value %}<b>{{ (won_value)|money_total }}</b> closed{% else %}—{% endif %}
     </div>
   </div>
 </div>
@@ -183,15 +183,15 @@
               <tr>
                 <td><span class="stage-dot" style="background:{{ _stage_colors[stage] }}"></span>{{ stage_labels.get(stage, stage) }}</td>
                 <td>{{ s.count if s else 0 }}</td>
-                <td>{% if s and s.total_value %}₦{{ "{:,.0f}".format(s.total_value) }}{% else %}—{% endif %}</td>
-                <td>{% if s and s.total_value %}₦{{ "{:,.0f}".format(s.avg_value) }}{% else %}—{% endif %}</td>
+                <td>{% if s and s.total_value %}{{ (s.total_value)|money_total }}{% else %}—{% endif %}</td>
+                <td>{% if s and s.total_value %}{{ (s.avg_value)|money_total }}{% else %}—{% endif %}</td>
               </tr>
             {% endfor %}
             <tr>
               <td><span class="stage-dot" style="background:{{ _stage_colors['won'] }}"></span>{{ stage_labels.get('won', 'Won') }}</td>
               <td>{{ won_count }}</td>
-              <td>{% if won_value %}₦{{ "{:,.0f}".format(won_value) }}{% else %}—{% endif %}</td>
-              <td>{% if won_value %}₦{{ "{:,.0f}".format(avg_deal_size) }}{% else %}—{% endif %}</td>
+              <td>{% if won_value %}{{ (won_value)|money_total }}{% else %}—{% endif %}</td>
+              <td>{% if won_value %}{{ (avg_deal_size)|money_total }}{% else %}—{% endif %}</td>
             </tr>
           </tbody>
         </table>

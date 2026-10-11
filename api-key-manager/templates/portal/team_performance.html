@@ -113,7 +113,7 @@
   <div class="tp-tile"><div class="l">Leads worked</div><div class="v">{{ '{:,}'.format(t.leads_worked) }}</div>{{ delta(t.leads_worked, t.prev_leads_worked) }}</div>
   <div class="tp-tile"><div class="l">Calls logged</div><div class="v">{{ '{:,}'.format(t.calls) }}</div>{{ delta(t.calls, t.prev_calls) }}</div>
   <div class="tp-tile"><div class="l">New opportunities</div><div class="v">{{ '{:,}'.format(t.opps) }}</div>{{ delta(t.opps, t.prev_opps) }}</div>
-  <div class="tp-tile"><div class="l">Won</div><div class="v">₦{{ '{:,.0f}'.format(t.won_value) }}</div>{{ delta(t.won_value, t.prev_won_value) }}</div>
+  <div class="tp-tile"><div class="l">Won</div><div class="v">{{ (t.won_value)|money_total }}</div>{{ delta(t.won_value, t.prev_won_value) }}</div>
 </div>
 
 <div class="tp-attn">
@@ -160,13 +160,13 @@
         <td class="num">{{ p.replies }}</td>
         <td class="num sepL"><b>{{ p.opps }}</b></td>
         <td class="num">{{ p.proposals }}</td>
-        <td class="num"><b>₦{{ '{:,.0f}'.format(p.won_value) }}</b>{% if p.won_count %}<span class="tp-s">{{ p.won_count }} deal{{ 's' if p.won_count != 1 }}</span>{% endif %}</td>
+        <td class="num"><b>{{ (p.won_value)|money_total }}</b>{% if p.won_count %}<span class="tp-s">{{ p.won_count }} deal{{ 's' if p.won_count != 1 }}</span>{% endif %}</td>
         <td class="sepL">
           {% if p.opp_target %}
           <b>{{ p.month_opps }}</b> of {{ p.opp_target }}
           <span class="tp-pill {{ 'g' if p.on_pace else 'a' }}" style="margin-left:4px">{{ 'On pace' if p.on_pace else 'Behind' }}</span>
           <div class="tp-bar"><i style="width:{{ p.opp_pct }}%;background:{{ 'var(--good)' if p.on_pace else 'var(--warn)' }}"></i><span class="pace" style="left:{{ d.pace_pct }}%"></span></div>
-          {% if p.won_target %}<span class="tp-s">₦{{ '{:,.0f}'.format(p.month_won) }} of ₦{{ '{:,.0f}'.format(p.won_target) }} won</span>{% endif %}
+          {% if p.won_target %}<span class="tp-s">{{ (p.month_won)|money_total }} of {{ (p.won_target)|money }} won</span>{% endif %}
           {% else %}
           <b>{{ p.month_opps }}</b> <span class="tp-s">{% if p.can_set_target %}<a href="#targets">Set a target</a>{% else %}No target set{% endif %}</span>
           {% endif %}
@@ -191,10 +191,10 @@
   <form method="POST" action="{{ url_for('portal.team_performance_targets') }}" class="tp-targets">
     {% for p in _settable %}
     <div class="tp-trow">
-      <div><b>{{ p.name }}</b><span class="tp-s">{{ p.month_opps }} opportunities and ₦{{ '{:,.0f}'.format(p.month_won) }} won so far</span></div>
+      <div><b>{{ p.name }}</b><span class="tp-s">{{ p.month_opps }} opportunities and {{ (p.month_won)|money_total }} won so far</span></div>
       <div><label for="opp_{{ loop.index }}">New opportunities</label>
         <input id="opp_{{ loop.index }}" name="opp__{{ p.key }}" inputmode="numeric" value="{{ p.opp_target if p.opp_target is not none else '' }}" placeholder="e.g. 25"></div>
-      <div><label for="won_{{ loop.index }}">Won (₦)</label>
+      <div><label for="won_{{ loop.index }}">Won ({{ cur_sign() }})</label>
         <input id="won_{{ loop.index }}" name="won__{{ p.key }}" inputmode="numeric" value="{{ '{:,.0f}'.format(p.won_target) if p.won_target else '' }}" placeholder="e.g. 2,500,000"></div>
     </div>
     {% endfor %}

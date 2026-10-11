@@ -95,9 +95,9 @@
             <tr>
               <td style="font-weight:600">{{ item.product_name or '(unknown)' }}</td>
               <td style="text-align:center">{{ item.quantity }}</td>
-              <td style="text-align:right">₦{{ "{:,.0f}".format((item.unit_price or 0)|float) }}</td>
+              <td style="text-align:right">{{ ((item.unit_price or 0)|float)|money(order.currency) }}</td>
               <td style="text-align:right;font-weight:700">
-                ₦{{ "{:,.0f}".format((item.subtotal or 0)|float) }}
+                {{ ((item.subtotal or 0)|float)|money(order.currency) }}
               </td>
             </tr>
             {% endfor %}
@@ -106,13 +106,13 @@
             {% if order.delivery_fee and order.delivery_fee|float > 0 %}
             <tr>
               <td colspan="3" style="text-align:right;font-weight:500;color:var(--muted)">Delivery Fee</td>
-              <td style="text-align:right">₦{{ "{:,.0f}".format(order.delivery_fee|float) }}</td>
+              <td style="text-align:right">{{ (order.delivery_fee|float)|money(order.currency) }}</td>
             </tr>
             {% endif %}
             <tr>
               <td colspan="3" style="text-align:right">Total</td>
               <td style="text-align:right;font-size:16px">
-                ₦{{ "{:,.0f}".format((order.total_amount or 0)|float) }}
+                {{ ((order.total_amount or 0)|float)|money(order.currency) }}
               </td>
             </tr>
           </tfoot>
@@ -174,13 +174,13 @@
       </div>
       <div class="info-row">
         <span class="info-label">Order Total</span>
-        <span class="info-value">₦{{ "{:,.0f}".format((order.total_amount or 0)|float) }}</span>
+        <span class="info-value">{{ ((order.total_amount or 0)|float)|money(order.currency) }}</span>
       </div>
       {% if order.amount_paid %}
       <div class="info-row">
         <span class="info-label">Amount Paid</span>
         <span class="info-value" style="color:var(--good)">
-          ₦{{ "{:,.0f}".format(order.amount_paid|float) }}
+          {{ (order.amount_paid|float)|money(order.currency) }}
         </span>
       </div>
       {% endif %}
@@ -350,7 +350,7 @@
       <div class="info-row">
         <span class="info-label">Total</span>
         <span class="info-value" style="font-size:16px">
-          ₦{{ "{:,.0f}".format((order.total_amount or 0)|float) }}
+          {{ ((order.total_amount or 0)|float)|money(order.currency) }}
         </span>
       </div>
       {% if order.notes %}

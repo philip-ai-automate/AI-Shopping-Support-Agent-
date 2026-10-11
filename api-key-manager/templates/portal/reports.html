@@ -144,7 +144,7 @@
     <div class="rpt-sub">Orders placed</div>
     {% if revenue_30d %}
     <div style="position:relative;font-size:13px;font-weight:700;color:var(--good);margin-top:6px">
-      ₦{{ "{:,.0f}".format(revenue_30d) }}
+      {{ (revenue_30d)|money_total }}
     </div>
     {% endif %}
   </div>

@@ -68,7 +68,7 @@
       {% endmacro %}
 
       {{ col_select("name",        "Product Name", required=True) }}
-      {{ col_select("price",       "Price (₦)",    required=True) }}
+      {{ col_select("price",       "Price (" ~ cur_sign() ~ ")",    required=True) }}
       {{ col_select("category",    "Category") }}
       {{ col_select("description", "Description") }}
       {{ col_select("stock",       "Stock Qty") }}
@@ -117,7 +117,7 @@
       <div class="divider"></div>
       <div style="font-size:12px;color:var(--muted)">
         <strong>Tips:</strong><br>
-        • Price column should contain numbers only (₦ signs and commas are handled automatically).<br>
+        • Price column should contain numbers only (currency signs and commas are handled automatically).<br>
         • Stock column: leave blank or set 999 for unlimited stock.<br>
         • Rows with an empty Product Name are skipped.
       </div>

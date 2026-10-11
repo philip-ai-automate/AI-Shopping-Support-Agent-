@@ -118,7 +118,7 @@
     <div class="co-stats">
       <span><b>{{ co.people_count }}</b> people</span>
       <span><b>{{ co.open_deal_count }}</b> open deal{{ 's' if co.open_deal_count != 1 else '' }}</span>
-      {% if co.open_deal_value %}<span><b>₦{{ '{:,.0f}'.format(co.open_deal_value) }}</b></span>{% endif %}
+      {% if co.open_deal_value %}<span><b>{{ (co.open_deal_value)|money_total }}</b></span>{% endif %}
     </div>
   </a>
   {% endfor %}
@@ -147,7 +147,7 @@
         <td class="{{ 'co-row-site' if co.website else 'co-row-muted' }}">{{ co.website or '—' }}</td>
         <td>{{ co.people_count }}</td>
         <td>{{ co.open_deal_count }}</td>
-        <td>{% if co.open_deal_value %}₦{{ '{:,.0f}'.format(co.open_deal_value) }}{% else %}<span class="co-row-muted">—</span>{% endif %}</td>
+        <td>{% if co.open_deal_value %}{{ (co.open_deal_value)|money_total }}{% else %}<span class="co-row-muted">—</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

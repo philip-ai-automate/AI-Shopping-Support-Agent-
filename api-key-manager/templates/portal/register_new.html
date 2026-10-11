@@ -177,9 +177,12 @@
             {% set _pop = PHONE_COUNTRIES_POPULAR | map(attribute=0) | list %}{% for iso, name, cc in PHONE_COUNTRIES %}<option value="{{ iso }}" {% if based == iso and iso not in _pop %}selected{% endif %}>{{ name }}</option>{% endfor %}
           </optgroup>
         </select>
-        <p class="rg-hint">You choose to pay in naira (₦) or pounds (£) when you pick a plan.</p>
         <p class="rg-err" id="hBased" hidden>Please choose where your business is based.</p>
       </div>
+
+      {% set sc_selected = fd.get('selling_currency', '') %}{% set sc_wrap_class = 'rg-f' %}{% set sc_err_hidden = true %}
+      {% set sc_country_ids = ['fPhoneWaCountry', 'fBased'] %}
+      {% include "portal/_selling_currency_field.html" %}
 
       <div class="rg-f" id="blkMobile" hidden>
         <label for="fPhone">Mobile phone</label>
@@ -372,6 +375,7 @@ var RULES = [
   ['fDomain', 'hDomain', function(v){ return /^[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}$/.test(v.trim().replace(/^https?:\/\//i,'').replace(/\/.*$/,'')); }],
   ['fPhoneWa', 'hPhoneWa', function(v){ return v.trim().length > 0 && el('fPhoneWaCountry').value !== ''; }],
   ['fBased', 'hBased', function(v){ return v !== ''; }],
+  ['fSellCur', 'hSellCur', function(v){ return v !== ''; }],
   ['fPhone', 'hPhone', function(v){ return v.trim().length > 0 && el('fPhoneCountry').value !== ''; }],
   ['fEmail', 'hEmail', function(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()); }],
   ['fPassword', 'hPassword', function(v){ return v.length >= 8 && /[^A-Za-z0-9\s]/.test(v); }],

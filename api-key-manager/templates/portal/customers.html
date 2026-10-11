@@ -117,7 +117,7 @@
         <!-- Spend -->
         <td style="font-weight:{% if c.total_spent and c.total_spent|float > 0 %}700{% else %}400{% endif %}">
           {% if c.total_spent and c.total_spent|float > 0 %}
-            ₦{{ "{:,.0f}".format(c.total_spent|float) }}
+            {{ (c.total_spent|float)|money_total }}
           {% else %}
             <span style="color:var(--muted)">—</span>
           {% endif %}

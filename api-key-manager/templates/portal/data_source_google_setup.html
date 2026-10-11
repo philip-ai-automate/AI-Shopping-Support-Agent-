@@ -102,7 +102,7 @@
         {% endmacro %}
 
         {{ col_sel("name",        "Product Name", req=True) }}
-        {{ col_sel("price",       "Price (₦)",    req=True) }}
+        {{ col_sel("price",       "Price (" ~ cur_sign() ~ ")",    req=True) }}
         {{ col_sel("category",    "Category") }}
         {{ col_sel("description", "Description") }}
         {{ col_sel("stock",       "Stock Qty") }}
@@ -145,7 +145,7 @@
     <ul style="font-size:13px;color:var(--muted);padding-left:18px;line-height:1.9">
       <li>First row must be <strong>column headers</strong></li>
       <li>One product per row</li>
-      <li>Price column should be numbers only (₦ signs OK)</li>
+      <li>Price column should be numbers only (currency signs OK)</li>
       <li>Stock column: 999 or blank = unlimited</li>
       <li>Make sure Phixtra's Google account can <strong>view</strong> the sheet (or make it public)</li>
     </ul>

@@ -69,9 +69,9 @@
     <div class="card-title">Total Spent</div>
     <div class="kpi" style="color:var(--good);font-size:20px">
       {% if detail.total_spent > 0 %}
-        ₦{{ "{:,.0f}".format(detail.total_spent) }}
+        {{ (detail.total_spent)|money_total }}
       {% else %}
-        ₦0
+        {{ 0|money }}
       {% endif %}
     </div>
   </div>
@@ -121,7 +121,7 @@
                 {{ o.reference or ('#' + o.id[:8]) }}
               </td>
               <td style="font-weight:700">
-                ₦{{ "{:,.0f}".format((o.total_amount or 0)|float) }}
+                {{ ((o.total_amount or 0)|float)|money(o.currency) }}
               </td>
               <td>
                 {% if o.payment_method == 'bank_transfer' %}🏦 Transfer
@@ -263,7 +263,7 @@
         <div style="display:flex;justify-content:space-between">
           <span style="color:var(--muted)">Lifetime spend</span>
           <span style="font-weight:700;color:{% if detail.total_spent > 0 %}var(--good){% else %}var(--muted){% endif %}">
-            ₦{{ "{:,.0f}".format(detail.total_spent) }}
+            {{ (detail.total_spent)|money_total }}
           </span>
         </div>
         {% if detail.handoffs | length > 0 %}

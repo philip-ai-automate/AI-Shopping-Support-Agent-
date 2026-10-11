@@ -185,7 +185,7 @@
           <label>Discount Type</label>
           <select name="default_discount_type" class="select-field">
             <option value="percent" {% if settings.default_discount_type == 'percent' %}selected{% endif %}>Percent (%)</option>
-            <option value="flat"    {% if settings.default_discount_type == 'flat'    %}selected{% endif %}>Flat Amount (₦)</option>
+            <option value="flat"    {% if settings.default_discount_type == 'flat'    %}selected{% endif %}>Flat Amount ({{ cur_sign() }})</option>
           </select>
         </div>
         <div class="field-group">
@@ -198,7 +198,7 @@
           {% if settings.default_discount_type == 'percent' and settings.default_discount_value > 0 %}
             → AI offers <strong>{{ settings.default_discount_value | int }}% off</strong>
           {% elif settings.default_discount_type == 'flat' and settings.default_discount_value > 0 %}
-            → AI offers <strong>₦{{ "{:,.0f}".format(settings.default_discount_value) }} off</strong>
+            → AI offers <strong>{{ (settings.default_discount_value)|money }} off</strong>
           {% else %}
             → No default discount (set a value above 0 to enable)
           {% endif %}
@@ -265,7 +265,7 @@
                   id="pf-{{ loop.index }}"><fieldset {% if not _can_disc %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
               <select name="discount_type" class="disc-select">
                 <option value="percent" {% if p.discount_type == 'percent' %}selected{% endif %}>% Percent</option>
-                <option value="flat"    {% if p.discount_type == 'flat'    %}selected{% endif %}>₦ Flat</option>
+                <option value="flat"    {% if p.discount_type == 'flat'    %}selected{% endif %}>{{ cur_sign() }} Flat</option>
               </select>
           </td>
           <td>

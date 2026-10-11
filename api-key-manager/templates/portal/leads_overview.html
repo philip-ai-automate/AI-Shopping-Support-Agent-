@@ -352,7 +352,7 @@
     <div class="lo-tile" data-tip="The average amount of Won deals in this period">
       <div class="lo-tile-label">Average sale amount</div>
       {% if data.avg_deal_size is not none %}
-      <div class="lo-tile-value">₦{{ '{:,.0f}'.format(data.avg_deal_size) }}</div>
+      <div class="lo-tile-value">{{ (data.avg_deal_size)|money_total }}</div>
       {% else %}
       <div class="lo-tile-empty">Not enough data yet</div>
       {% endif %}
@@ -368,7 +368,7 @@
     <div class="lo-tile" data-tip="Roughly how much money the sales team is producing per day right now">
       <div class="lo-tile-label">Revenue speed</div>
       {% if data.revenue_speed is not none %}
-      <div class="lo-tile-value">₦{{ '{:,.0f}'.format(data.revenue_speed) }}<span class="unit">/day</span></div>
+      <div class="lo-tile-value">{{ (data.revenue_speed)|money_total }}<span class="unit">/day</span></div>
       {% else %}
       <div class="lo-tile-empty">Not enough data yet</div>
       {% endif %}

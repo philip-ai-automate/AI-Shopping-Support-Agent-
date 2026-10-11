@@ -67,7 +67,7 @@
   <div class="kpi-card">
     <div class="card-title">Revenue</div>
     <div class="kpi-num" style="color:var(--good)">
-      ₦{{ "{:,.0f}".format((data.revenue.period_revenue or 0)|float) }}
+      {{ ((data.revenue.period_revenue or 0)|float)|money_total }}
     </div>
     <div class="kpi-sub">{{ days }}-day period</div>
   </div>
@@ -94,7 +94,7 @@
     <div class="card-title">Avg Order Value</div>
     <div class="kpi-num" style="font-size:22px">
       {% if data.avg_order > 0 %}
-        ₦{{ "{:,.0f}".format(data.avg_order) }}
+        {{ (data.avg_order)|money_total }}
       {% else %}
         —
       {% endif %}
@@ -109,7 +109,7 @@
 
   <!-- Revenue bar chart -->
   <div class="chart-card">
-    <div class="chart-title">Daily Revenue (₦)</div>
+    <div class="chart-title">Daily Revenue ({{ cur_sign() }})</div>
     {% if data.daily_chart %}
     <canvas id="revenueChart" height="160"></canvas>
     {% else %}
@@ -185,7 +185,7 @@
             </td>
             <td style="text-align:right;color:var(--muted)">{{ p.units_sold or 0 }}</td>
             <td style="text-align:right;font-weight:700">
-              ₦{{ "{:,.0f}".format((p.revenue or 0)|float) }}
+              {{ ((p.revenue or 0)|float)|money_total }}
             </td>
             <td>
               <div class="product-bar-wrap">
@@ -239,7 +239,7 @@
           return dt.toLocaleDateString('en-NG', {day:'numeric',month:'short'});
         }),
         datasets: [{
-          label: 'Revenue (₦)',
+          label: 'Revenue (' + {{ cur_sign()|tojson }} + ')',
           data: dailyData.map(d => d.revenue),
           backgroundColor: INK,
           borderRadius: 6,
@@ -252,7 +252,7 @@
           legend: { display: false },
           tooltip: {
             callbacks: {
-              label: ctx => '₦' + ctx.raw.toLocaleString('en-NG')
+              label: ctx => {{ cur_sign()|tojson }} + ctx.raw.toLocaleString('en-NG')
             }
           }
         },
@@ -262,7 +262,7 @@
             grid: { color: 'rgba(3,12,24,0.06)' },
             ticks: {
               color: MUTED, font: { size: 11 },
-              callback: v => '₦' + (v >= 1000 ? (v/1000).toFixed(0)+'k' : v)
+              callback: v => {{ cur_sign()|tojson }} + (v >= 1000 ? (v/1000).toFixed(0)+'k' : v)
             }
           }
         }

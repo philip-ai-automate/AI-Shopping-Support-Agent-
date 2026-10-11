@@ -1,3 +1,5 @@
+import selling_currency as _sc
+from currency import fmt_amount
 import asyncio
 from wa_format import to_whatsapp_text
 import hashlib
@@ -649,6 +651,8 @@ async def receive_webhook(
     tenant_id    = int(tenant["tenant_id"])
     api_key      = tenant["phixtra_api_key"]
     access_token = tenant["access_token"]
+    # Prices in replies to this message use this business's selling currency.
+    _sc.set_current_tenant(tenant_id)
 
     # Dedup: INSERT IGNORE returns rowcount=0 if meta_message_id already seen
     logged = log_message(
@@ -955,10 +959,7 @@ async def receive_webhook(
                 _cart = {}
         _pname = _cart.get("product_name", "your order")
         _price = _cart.get("final_price") or _cart.get("unit_price") or 0
-        try:
-            _price_str = f"₦{float(_price):,.0f}"
-        except Exception:
-            _price_str = str(_price)
+        _price_str = fmt_amount(_price)
         if _shopping_state == "PAYMENT_PENDING":
             _state_hint  = "awaiting payment proof photo"
             _reminder_ln = "reminding them to send their payment proof photo for this pending order"

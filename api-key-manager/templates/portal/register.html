@@ -287,6 +287,12 @@
         </div>
       </div>
 
+      <!-- ── Selling currency (2026-10-11) ─────────────────────── -->
+      {% set sc_selected = form_data.get('selling_currency', '') if form_data else '' %}
+      {% set sc_wrap_class = 'form-group' %}{% set sc_err_hidden = false %}{% set sc_star = true %}
+      {% set sc_country_ids = ['fPhoneWaCountry', 'fPhoneCountry'] %}
+      {% include "portal/_selling_currency_field.html" %}
+
       <!-- Honeypot -->
       <div style="display:none;visibility:hidden;position:absolute;left:-9999px">
         <input type="text" name="website" tabindex="-1" autocomplete="off"/>
@@ -414,6 +420,7 @@ addBlur('fPhoneWa', 'hPhoneWa', function(v){
   if (currentType !== 'whatsapp') return true;
   return v.trim().length > 0;
 });
+addBlur('fSellCur', 'hSellCur', function(v){ return v.length > 0; });
 
 // Block submit and surface every invalid required field immediately, instead
 // of only finding out after a full server round-trip.

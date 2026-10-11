@@ -17,6 +17,7 @@ def _validate_products(products):
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import selling_currency as _sc
 import uuid
 import os
 import json as _json
@@ -617,6 +618,10 @@ def _chat(req: ChatRequest):
     else:
         system_prompt = tenant["system_prompt"] or ""
 
+    # Businesses not on naira: their selling currency overrides any naira
+    # wording in their instruction (2026-10-11). Empty for naira businesses.
+    system_prompt += _sc.pricing_override(int(tenant_id))
+
     # Pending-order context from WA gateway — appended to whichever prompt is active
     if req.system_addon:
         system_prompt = system_prompt + "\n\n" + req.system_addon
@@ -1004,11 +1009,11 @@ def _chat(req: ChatRequest):
                         ref = mn if mn is not None else mx
                         if ref is not None:
                             if mn is not None and mx is not None and abs(mx - mn) > 0.01:
-                                return f"{_fmt_currency_val(mn, currency)} – {_fmt_currency_val(mx, currency)}"
+                                return f"{_fmt_currency_val(mn, currency, tenant_id)} – {_fmt_currency_val(mx, currency, tenant_id)}"
                             elif mn is not None:
-                                return _fmt_currency_val(mn, currency)
+                                return _fmt_currency_val(mn, currency, tenant_id)
                             elif mx is not None:
-                                return _fmt_currency_val(mx, currency)
+                                return _fmt_currency_val(mx, currency, tenant_id)
                     except Exception:
                         pass
                     return ""
@@ -1158,7 +1163,18 @@ def _chat(req: ChatRequest):
                     # product (all of which passed the customer's price filter).
                     # This prevents related products from exceeding the customer's budget.
                     _prices = []
-                    for _p in product_recommendations:
+                    if not _sc.is_naira(tenant_id):
+                        # Card prices are shown in the selling currency (maybe
+                        # converted); the cap must be in the saved prices' currency.
+                        for _p in product_recommendations:
+                            _d = doc_by_title.get((_p.get("name") or "").lower()) or {}
+                            for _k in ("price_max", "price_min"):
+                                try:
+                                    if _d.get(_k) is not None and float(_d[_k]) > 0:
+                                        _prices.append(float(_d[_k])); break
+                                except (TypeError, ValueError):
+                                    pass
+                    for _p in (product_recommendations if _sc.is_naira(tenant_id) else []):
                         _raw = (_p.get("price") or "").replace("£", "").replace("₦", "").replace(",", "")
                         try:
                             _prices.append(float(_raw.split("–")[-1].strip()))
@@ -2140,7 +2156,7 @@ def meta_connector_search_products(
         except (TypeError, ValueError):
             pmax = None
         ref_price = pmin if pmin is not None else pmax
-        price_str = _fmt_currency_val(ref_price, currency) if ref_price is not None else ""
+        price_str = _fmt_currency_val(ref_price, currency, tenant_id) if ref_price is not None else ""
 
         products.append({
             "product_id": d.get("id"),

@@ -8,6 +8,7 @@ pgvector-based hybrid retrieval replacing Azure AI Search.
 - Falls back to keyword-only search if embedding fails
 """
 
+import selling_currency as _sc
 import os
 import re
 import json
@@ -109,8 +110,17 @@ def _get_tenant_currency(tenant_id: int) -> str:
     return currency
 
 
-def _fmt_currency_val(val: float, currency: str) -> str:
-    """Format a price value with the correct symbol and decimal places."""
+def _fmt_currency_val(val: float, currency: str, tenant_id: Optional[int] = None) -> str:
+    """Format a price value with the correct symbol and decimal places.
+
+    Businesses not on naira (selling currency £/$, 2026-10-11): the price is
+    shown in their selling currency — converted and rounded to whole units
+    when saved in another currency. Naira businesses: unchanged."""
+    if tenant_id and not _sc.is_naira(tenant_id):
+        from decimal import Decimal as _D
+        # No currency saved on the price = the business's selling currency.
+        from_code = (currency or "").upper() or None
+        return _sc.display_for_tenant(tenant_id, _D(str(val)), from_code)
     _sym = {"GBP": "£", "USD": "$", "EUR": "€", "NGN": "₦"}
     cur = (currency or "").upper()
     if cur:
@@ -274,7 +284,7 @@ def _find_title_matches(tenant_id: int, query: str) -> List[Dict[str, Any]]:
         conn.close()
 
 
-def _format_doc(doc: Dict[str, Any], max_chars: int) -> str:
+def _format_doc(doc: Dict[str, Any], max_chars: int, tenant_id: Optional[int] = None) -> str:
     """One search result as the AI sees it. Products keep the short
     RAG_CHUNK_MAX_CHARS limit (their cards carry the detail); information
     items get up to RAG_INFO_MAX_CHARS, since a pricing page or uploaded
@@ -315,11 +325,11 @@ def _format_doc(doc: Dict[str, Any], max_chars: int) -> str:
             ref = pmin if pmin is not None else pmax
             if ref is not None:
                 if pmin is not None and pmax is not None and abs(pmax - pmin) > 0.01:
-                    parts.append(f"Price: {_fmt_currency_val(pmin, currency)}–{_fmt_currency_val(pmax, currency)}")
+                    parts.append(f"Price: {_fmt_currency_val(pmin, currency, tenant_id)}–{_fmt_currency_val(pmax, currency, tenant_id)}")
                 elif pmin is not None:
-                    parts.append(f"Price: {_fmt_currency_val(pmin, currency)}")
+                    parts.append(f"Price: {_fmt_currency_val(pmin, currency, tenant_id)}")
                 elif pmax is not None:
-                    parts.append(f"Price: {_fmt_currency_val(pmax, currency)}")
+                    parts.append(f"Price: {_fmt_currency_val(pmax, currency, tenant_id)}")
         except Exception:
             pass
 
@@ -335,7 +345,7 @@ def _format_doc(doc: Dict[str, Any], max_chars: int) -> str:
     return "\n".join(parts).strip()
 
 
-def _parse_filters_sql(query: str, tenant_currency: str = "") -> Tuple[List[str], List[Any]]:
+def _parse_filters_sql(query: str, tenant_currency: str = "", tenant_id: Optional[int] = None) -> Tuple[List[str], List[Any]]:
     """
     Parse natural language query into SQL WHERE clause parts + params.
     Returns (parts, params) where parts are SQL condition strings with %s placeholders.
@@ -352,6 +362,8 @@ def _parse_filters_sql(query: str, tenant_currency: str = "") -> Tuple[List[str]
 
     def _normalise_budget(val: float) -> float:
         """Convert the user's stated budget to match the currency stored in the DB."""
+        if tenant_id and not _sc.is_naira(tenant_id):
+            return _budget_for_selling_currency(val)
         stored = (tenant_currency or "").upper()
         # Detect user's stated currency from symbols in the query
         if '£' in q:
@@ -378,6 +390,37 @@ def _parse_filters_sql(query: str, tenant_currency: str = "") -> Tuple[List[str]
             print(f"   [CURRENCY] ₦{val:,.0f} → £{converted:,.2f} (NGN budget → GBP for filter)")
             return converted
         return val
+
+    def _budget_for_selling_currency(val: float) -> float:
+        """Businesses not on naira: a budget with no sign is in the selling
+        currency; it is turned into the currency the prices are saved in,
+        at the same rate the customer sees prices converted with."""
+        selling = _sc.tenant_currency(tenant_id)
+        if '£' in q:
+            user_cur = 'GBP'
+        elif '₦' in q:
+            user_cur = 'NGN'
+        elif '€' in q:
+            user_cur = 'EUR'
+        elif '$' in q:
+            user_cur = 'USD'
+        else:
+            user_cur = selling
+        stored = (tenant_currency or "").upper() or selling
+        if user_cur == stored:
+            return val
+        if user_cur == selling:
+            rate, _ = _sc.rate_for(tenant_id, stored)       # 1 stored = rate selling
+            rate = (1 / rate) if rate else None
+        elif stored == selling:
+            rate, _ = _sc.rate_for(tenant_id, user_cur)
+        else:
+            rate = _sc.market_rate(user_cur, stored)
+        if not rate:
+            return val
+        converted = float(val) * float(rate)
+        print(f"   [CURRENCY] budget {val:,.2f} {user_cur} → {converted:,.2f} {stored} (selling {selling})")
+        return converted
 
     # Price range: "between ₦100,000 and ₦300,000" | "between £10 and £50"
     _range = re.search(
@@ -604,7 +647,7 @@ def search_documents_with_meta(
     clean_query = _clean_search_query(query)
 
     tenant_currency = _get_tenant_currency(tenant_id)
-    filter_parts, filter_params = _parse_filters_sql(clean_query, tenant_currency)
+    filter_parts, filter_params = _parse_filters_sql(clean_query, tenant_currency, tenant_id)
     if filter_parts:
         print(f"   🔍 pgvector filter applied: {' AND '.join(filter_parts)}")
 
@@ -674,7 +717,7 @@ def search_documents_with_meta(
     chunks: List[str] = []
     raw_docs: List[Dict[str, Any]] = []
     for row in rows:
-        chunk = _format_doc(row, max_chars=max_chars)
+        chunk = _format_doc(row, max_chars=max_chars, tenant_id=tenant_id)
         if chunk:
             chunks.append(chunk)
             raw_docs.append(row)
@@ -725,7 +768,7 @@ def search_two_engines(
     # Product engine
     try:
         tenant_currency = _get_tenant_currency(tenant_id)
-        fp, pp = _parse_filters_sql(clean_query, tenant_currency)
+        fp, pp = _parse_filters_sql(clean_query, tenant_currency, tenant_id)
         rows = _hybrid(fp + ["type = 'product'"], pp, product_top_k)
         if not rows and any("price_min" in p or "price_max" in p for p in fp):
             removed = [p for p in fp if "price_min" in p or "price_max" in p]
@@ -733,7 +776,7 @@ def search_two_engines(
             keep = [p for p in fp if p not in removed]
             rows = _hybrid(keep + ["type = 'product'"], pp[n_removed:] if n_removed else pp, product_top_k)
         for row in rows:
-            chunk = _format_doc(row, max_chars=max_chars)
+            chunk = _format_doc(row, max_chars=max_chars, tenant_id=tenant_id)
             if chunk:
                 out["product_chunks"].append(chunk)
                 out["product_docs"].append(row)
@@ -764,7 +807,7 @@ def search_two_engines(
             rows = rows[:n_fix] + titled + rows[n_fix:]
             print(f"   🏷️ {len(titled)} page(s) added by title: {[t.get('title') for t in titled]}")
         for row in rows:
-            chunk = _format_doc(row, max_chars=max_chars)
+            chunk = _format_doc(row, max_chars=max_chars, tenant_id=tenant_id)
             if chunk:
                 out["info_chunks"].append(chunk)
                 out["info_docs"].append(row)
@@ -802,11 +845,11 @@ def search_related_products(
             ref = mn if mn is not None else mx
             if ref is not None:
                 if mn is not None and mx is not None and abs(mx - mn) > 0.01:
-                    return f"{_fmt_currency_val(mn, currency)} – {_fmt_currency_val(mx, currency)}"
+                    return f"{_fmt_currency_val(mn, currency, tenant_id)} – {_fmt_currency_val(mx, currency, tenant_id)}"
                 elif mn is not None:
-                    return _fmt_currency_val(mn, currency)
+                    return _fmt_currency_val(mn, currency, tenant_id)
                 elif mx is not None:
-                    return _fmt_currency_val(mx, currency)
+                    return _fmt_currency_val(mx, currency, tenant_id)
         except Exception:
             pass
         return ""

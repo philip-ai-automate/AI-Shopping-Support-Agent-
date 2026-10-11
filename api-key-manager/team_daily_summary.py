@@ -31,6 +31,7 @@ import psycopg2.extras
 
 from db import get_db_connection
 import team_performance as T
+import selling_currency as _sc
 
 PORTAL = "https://portal.phixtra.com"
 NAVY, INK = "#0B1D40", "#030C18"
@@ -105,7 +106,10 @@ def _esc(s):
 
 
 def _naira(v):
-    return f"₦{float(v or 0):,.0f}"
+    """An amount in the business's selling currency (₦ unless it sells in £/$)."""
+    tid = _sc.current_tenant()
+    code = _sc.tenant_currency(tid) if tid else "NGN"
+    return f"{_sc.currency_label(code)['prefix']}{float(v or 0):,.0f}"
 
 
 def email_attention(d, now):
@@ -122,6 +126,7 @@ def email_attention(d, now):
 
 
 def build_email(tenant_id, viewer, first_name, now):
+    _sc.set_current_tenant(tenant_id)   # amounts in this business's currency
     d = T.build(tenant_id, viewer, "today")
     if not d["people"]:
         return None

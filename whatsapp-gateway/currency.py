@@ -10,6 +10,7 @@ Rates are cached in memory for 1 hour to avoid hammering the API on every messag
 A hardcoded fallback is used if the API is unreachable.
 """
 
+import selling_currency as _sc
 import re
 import time
 
@@ -68,6 +69,10 @@ def _get_rate(currency: str) -> float:
 
 def to_ngn(price_str) -> float:
     """
+    Businesses not on naira (selling currency £/$, 2026-10-11): the price in
+    their selling currency instead — converted (whole units) when saved in
+    another currency. Naira businesses and no business set: unchanged.
+
     Convert a price string to NGN float.
 
     Examples:
@@ -77,6 +82,12 @@ def to_ngn(price_str) -> float:
     """
     if not price_str:
         return 0.0
+    if not _sc.current_is_naira():
+        amount, code = _sc.parse_price_text(price_str)
+        if amount is None:
+            return 0.0
+        converted = _sc.amount_for_tenant(_sc.current_tenant(), amount, code)
+        return float(converted if converted is not None else amount)
     s = str(price_str).strip()
 
     # Detect currency from leading symbol
@@ -100,9 +111,28 @@ def to_ngn(price_str) -> float:
 
 
 def fmt_ngn(price_str) -> str:
-    """Convert *price_str* to NGN and return a formatted ₦X,XXX string."""
+    """Convert *price_str* to NGN and return a formatted ₦X,XXX string.
+    Businesses not on naira: their selling currency instead."""
+    if not _sc.current_is_naira():
+        amount, code = _sc.parse_price_text(price_str)
+        if amount is None:
+            return str(price_str or "")
+        return _sc.display_for_tenant(_sc.current_tenant(), amount, code)
     amount = to_ngn(price_str)
     try:
         return f"₦{amount:,.0f}"
     except Exception:
         return f"₦{amount}"
+
+
+def fmt_amount(amount) -> str:
+    """An amount already in the business's selling currency (cart prices,
+    discounts): '₦180,000' for naira businesses (unchanged), '$1,233' or
+    '£254.50' otherwise."""
+    try:
+        if _sc.current_is_naira():
+            return f"₦{float(amount):,.0f}"
+        from decimal import Decimal
+        return _sc.format_money(Decimal(str(amount)), _sc.tenant_currency(_sc.current_tenant()))
+    except Exception:
+        return str(amount)

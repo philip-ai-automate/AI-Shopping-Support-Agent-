@@ -161,7 +161,7 @@
                          border-radius:6px;padding:3px 8px;font-size:11px;font-weight:600;cursor:pointer;
                          {% if v.stock_status == 'out_of_stock' %}opacity:.45;{% endif %}">
             {{ v_label }}{% if v.price_modifier and v.price_modifier != 0 %}
-            <span style="font-size:10px;opacity:.7">({% if v.price_modifier > 0 %}+{% endif %}₦{{ '{:,.0f}'.format(v.price_modifier) }})</span>
+            <span style="font-size:10px;opacity:.7">({% if v.price_modifier > 0 %}+{% endif %}{{ (v.price_modifier)|money }})</span>
             {% endif %}
           </button>
           {% endfor %}

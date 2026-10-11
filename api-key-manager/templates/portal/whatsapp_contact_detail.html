@@ -429,7 +429,7 @@
           <span class="stage-pill st-{{ pipeline_lead.stage }}" style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">
             {{ stage_labels.get(pipeline_lead.stage, pipeline_lead.stage) }}
           </span>
-          {% if pipeline_lead.deal_value %}<b class="pc-money">₦{{ '{:,.0f}'.format(pipeline_lead.deal_value) }}</b>{% endif %}
+          {% if pipeline_lead.deal_value %}<b class="pc-money">{{ (pipeline_lead.deal_value)|money(pipeline_lead.currency) }}</b>{% endif %}
         </div>
         <div class="pc-deal" style="margin-top:6px">
           <a href="{{ url_for('portal.lead_detail', lead_id=pipeline_lead.id) }}" class="pc-link" style="font-size:12px">Open this Sales Lead →</a>

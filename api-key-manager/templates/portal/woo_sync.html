@@ -262,9 +262,9 @@
         <td>
           {% if d.price_min is not none %}
             <div class="ws-price">
-              ₦{{ '{:,.0f}'.format(d.price_min) }}
+              {{ (d.price_min)|money(d.currency) }}
               {% if d.price_max and d.price_max != d.price_min %}
-                – ₦{{ '{:,.0f}'.format(d.price_max) }}
+                – {{ (d.price_max)|money(d.currency) }}
               {% endif %}
             </div>
           {% else %}

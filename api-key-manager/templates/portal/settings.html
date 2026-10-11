@@ -497,6 +497,76 @@
           <p class="muted" style="font-size:12px;margin-top:4px">Where your business is based. Phone numbers never take this country's code automatically: every number is typed with its own country code.</p>
         </div>
 
+        {# Selling currency + exchange rates (2026-10-11) #}
+        {% set scs = selling_currency_settings() %}
+        {% if scs %}
+        <div class="form-group" id="selling-currency">
+          <label for="fSellingCurrency">Selling currency</label>
+          <select name="selling_currency" id="fSellingCurrency">
+            {% for c in scs.currencies %}
+            <option value="{{ c.code }}" {% if c.code == scs.selling %}selected{% endif %}>{{ c.prefix | trim }} · {{ c.name }}</option>
+            {% endfor %}
+          </select>
+          <p class="muted" style="font-size:12px;margin-top:4px">What your customers see in WhatsApp and website chat replies, and the currency for deals and reports. Your PhiXtra plan is paid in naira (₦) or pounds (£).</p>
+          <p class="muted" id="scChangeNote" style="font-size:12px;margin-top:4px" hidden>Deals, orders and products you already saved keep {{ scs.selling_label.prefix | trim }}. New ones use the currency you choose.</p>
+        </div>
+
+        {% if scs.foreign %}
+        <div class="form-group" id="fx-rates" style="background:var(--bg,#F7F9FC);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0;max-width:100%;box-sizing:border-box">
+          <input type="hidden" name="fx_rates_shown" value="1">
+          <label style="margin-bottom:2px">Some of your product prices are in another currency</label>
+          <p class="muted" style="font-size:12px;margin:0 0 10px">We convert them to {{ scs.selling_label.name }} ({{ scs.selling_label.prefix | trim }}) for your customers, rounded to whole units.</p>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+            <label style="display:flex;gap:8px;align-items:flex-start;font-weight:400;cursor:pointer">
+              <input type="radio" name="fx_rate_mode" value="daily" id="fxDaily" style="width:auto;margin-top:3px" {% if scs.mode != 'own' %}checked{% endif %}>
+              <span><b>Daily market rate</b> (recommended). We update it every day, and you do nothing.</span>
+            </label>
+            <label style="display:flex;gap:8px;align-items:flex-start;font-weight:400;cursor:pointer">
+              <input type="radio" name="fx_rate_mode" value="own" id="fxOwn" style="width:auto;margin-top:3px" {% if scs.mode == 'own' %}checked{% endif %}>
+              <span><b>My own rate.</b> Use this if your website uses its own rate, so the prices match.</span>
+            </label>
+          </div>
+          <div style="overflow-x:auto;max-width:100%;min-width:0;width:100%;contain:inline-size">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums">
+              <thead><tr style="text-align:left;color:var(--muted);font-size:12px">
+                <th style="padding:6px 8px;border-bottom:1px solid var(--line)">Your prices in</th>
+                <th style="padding:6px 8px;border-bottom:1px solid var(--line)">Daily market rate</th>
+                <th style="padding:6px 8px;border-bottom:1px solid var(--line)" class="fx-own-col">Your own rate</th>
+              </tr></thead>
+              <tbody>
+              {% for f in scs.foreign %}
+              <tr>
+                <td style="padding:8px;border-bottom:1px solid var(--line)">{{ f.label.prefix | trim }} · {{ f.label.name }}</td>
+                <td style="padding:8px;border-bottom:1px solid var(--line)">{{ f.daily or 'Not available yet' }}</td>
+                <td style="padding:8px;border-bottom:1px solid var(--line)" class="fx-own-col">
+                  <span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap">{{ f.own_prefix }}
+                    <input type="text" inputmode="decimal" name="own_rate_{{ f.code }}" value="{{ f.own if f.own is not none else '' }}"
+                           placeholder="{{ f.daily_num }}" aria-label="Your own rate for {{ f.code }}"
+                           style="width:96px;padding:6px 8px">
+                  </span>
+                </td>
+              </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <p class="muted" style="font-size:12px;margin:8px 0 0">{% if scs.updated %}Daily rates last updated {{ scs.updated }}. {% endif %}With "My own rate", any currency you leave empty uses the daily rate.</p>
+        </div>
+        {% endif %}
+        <script>
+        (function(){
+          var sel = document.getElementById('fSellingCurrency'), note = document.getElementById('scChangeNote');
+          var start = sel.value;
+          sel.addEventListener('change', function(){ note.hidden = sel.value === start; });
+          function own(){ var o = document.getElementById('fxOwn'); var on = !!(o && o.checked);
+            document.querySelectorAll('.fx-own-col').forEach(function(c){ c.style.opacity = on ? '' : '.45'; });
+            document.querySelectorAll('input[name^=own_rate_]').forEach(function(i){ i.readOnly = !on; }); }
+          document.querySelectorAll('input[name=fx_rate_mode]').forEach(function(r){ r.addEventListener('change', own); });
+          own();
+        })();
+        </script>
+        {% endif %}
+
         <div style="padding-top:16px;border-top:1px solid var(--line);margin:20px 0 16px;">
           <div style="font-size:13px;font-weight:700;color:var(--muted);
                       text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px;">

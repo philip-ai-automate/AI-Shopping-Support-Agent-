@@ -73,7 +73,7 @@
   </div>
   <div class="ph-stats">
     <div class="stat-pill"><div class="v">{{ people|length }}</div><div class="l">People</div></div>
-    <div class="stat-pill"><div class="v">₦{{ '{:,.0f}'.format(deal_summary.open_deal_value or 0) }}</div><div class="l">Open Deals</div></div>
+    <div class="stat-pill"><div class="v">{{ (deal_summary.open_deal_value or 0)|money_total }}</div><div class="l">Open Deals</div></div>
     {% if staff_can_open('portal.crm_company_edit') %}<button class="btn-ghost" onclick="document.getElementById('editModal').classList.add('open')">Edit</button>{% endif %}
     {% if staff_can_open('portal.crm_company_delete') %}
     <form method="POST" action="{{ url_for('portal.crm_company_delete', company_id=company.id) }}" style="display:inline;margin:0"

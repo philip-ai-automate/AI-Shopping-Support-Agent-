@@ -324,7 +324,7 @@
     <div class="grp-row">
       <div class="grp-label">{{ g.label }}</div>
       <div class="grp-track"><div class="grp-fill" style="width:{{ ((g.count / max_count) * 100)|round(0,'floor') }}%"></div></div>
-      <div class="grp-val">{{ g.count }}{% if has_value_sum %} &middot; ₦{{ "{:,.0f}".format(g.value) }}{% endif %}</div>
+      <div class="grp-val">{{ g.count }}{% if has_value_sum %} &middot; {{ (g.value)|money_total }}{% endif %}</div>
     </div>
     {% endfor %}
     {% if not group_rows %}
@@ -332,7 +332,7 @@
     {% endif %}
     <div class="grp-totals">
       <span>Total</span>
-      <span>{{ total_count }}{% if has_value_sum %} &middot; ₦{{ "{:,.0f}".format(group_rows|sum(attribute='value')) }}{% endif %}</span>
+      <span>{{ total_count }}{% if has_value_sum %} &middot; {{ (group_rows|sum(attribute='value'))|money_total }}{% endif %}</span>
     </div>
   </div>
 {% else %}

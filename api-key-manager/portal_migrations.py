@@ -4298,6 +4298,83 @@ def ensure_portal_tables():
             cur.execute(_GRANT_ONCE_SQL, (pid, "campaigns_email.mailbox_connect"))
         cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('campaigns_email.mailbox_connect') ON CONFLICT DO NOTHING")
 
+        # ── Selling currency (2026-10-11) ────────────────────────────────────
+        # The currency a business's customers see (AI, WhatsApp, website chat)
+        # and its CRM/reports use. Separate from plan payments (₦/£ only).
+        # Adding a currency later = one new row here.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS selling_currencies (
+                code       VARCHAR(3)  PRIMARY KEY,
+                name       VARCHAR(40) NOT NULL,
+                prefix     VARCHAR(8)  NOT NULL,
+                country    VARCHAR(2),
+                sort_order INTEGER     NOT NULL DEFAULT 0
+            )""")
+        # AED (UAE dirham, prefix 'AED ', country AE, sort 1) was removed on
+        # 2026-10-11 — English-only AI for now. To bring it back, add its row.
+        cur.execute("""
+            INSERT INTO selling_currencies (code, name, prefix, country, sort_order) VALUES
+                ('GBP', 'British pound',  '£',    'GB', 2),
+                ('USD', 'US dollar',      '$',    'US', 3),
+                ('NGN', 'Nigerian naira', '₦',    'NG', 4)
+            ON CONFLICT (code) DO NOTHING""")
+        # Every existing business = naira (exactly today's behaviour).
+        if not _column_exists(cur, "tenants", "selling_currency"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN selling_currency VARCHAR(3) NOT NULL DEFAULT 'NGN'")
+        # TRUE = signed up without the sign-up form (WordPress plugin, WhatsApp
+        # chat sign-up): asked "What currency do you sell in?" once on the
+        # dashboard. Existing businesses = FALSE (they stay on naira).
+        if not _column_exists(cur, "tenants", "currency_needs_choice"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN currency_needs_choice BOOLEAN NOT NULL DEFAULT FALSE")
+        # 'daily' = market rate fetched once a day; 'own' = rates the business typed.
+        if not _column_exists(cur, "tenants", "fx_rate_mode"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN fx_rate_mode VARCHAR(5) NOT NULL DEFAULT 'daily'")
+        # Deals, orders and products keep the currency they were saved in once
+        # a business changes its selling currency (selling_currency.save_settings
+        # stamps the old one). NULL = the business's current selling currency.
+        for _tbl in ("merchant_pipeline_leads", "orders", "products"):
+            if _table_exists(cur, _tbl) and not _column_exists(cur, _tbl, "currency"):
+                cur.execute(f"ALTER TABLE {_tbl} ADD COLUMN currency VARCHAR(3)")
+        # Totals in the business's current currency (2026-10-11, option 1):
+        # a deal/order saved in another currency (before a currency change) is
+        # converted at the business's own rate if it set one, else the daily
+        # rate. No rate known → face value. NULL currency = already current.
+        cur.execute("""
+            CREATE OR REPLACE FUNCTION fx_to_selling(amount NUMERIC, from_cur TEXT, tid INTEGER)
+            RETURNS NUMERIC LANGUAGE sql STABLE AS $fx$
+              SELECT CASE
+                WHEN amount IS NULL OR from_cur IS NULL THEN amount
+                ELSE (SELECT CASE
+                        WHEN upper(from_cur) = t.selling_currency THEN amount
+                        ELSE amount * COALESCE(
+                          (SELECT r.rate FROM tenant_fx_rates r
+                            WHERE t.fx_rate_mode = 'own' AND r.tenant_id = t.id
+                              AND r.from_currency = upper(from_cur)),
+                          (SELECT s.per_usd / NULLIF(f.per_usd, 0) FROM fx_rates s, fx_rates f
+                            WHERE s.currency = t.selling_currency AND f.currency = upper(from_cur)),
+                          1)
+                      END
+                      FROM tenants t WHERE t.id = tid)
+              END
+            $fx$""")
+        # Market rates, as units of each currency per 1 US dollar (fx_rates_job.py).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS fx_rates (
+                currency   VARCHAR(3)    PRIMARY KEY,
+                per_usd    NUMERIC(20,8) NOT NULL,
+                fetched_at TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+            )""")
+        # A business's own rates: 1 unit of from_currency = rate units of its
+        # selling currency.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS tenant_fx_rates (
+                tenant_id     INTEGER       NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                from_currency VARCHAR(3)    NOT NULL,
+                rate          NUMERIC(20,8) NOT NULL CHECK (rate > 0),
+                updated_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (tenant_id, from_currency)
+            )""")
+
         # Anything a backfill above granted this run is now "seen" — never
         # re-granted on a later start (see _GRANT_ONCE_SQL).
         cur.execute("""

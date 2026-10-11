@@ -568,7 +568,7 @@
   </div>
   {# Leads here are not Opportunities yet — never show the "New Opportunity" stage name (2026-10-02) #}
   <span class="stage-pill st-{{ l.stage }}">{{ 'New Lead' if l.stage == 'new_lead' else stage_labels.get(l.stage, l.stage) }}</span>
-  <div class="board-card-value" style="margin-top:6px">{{ '₦{:,.0f}'.format(l.deal_value) if l.deal_value else '—' }}</div>
+  <div class="board-card-value" style="margin-top:6px">{{ (l.deal_value)|money(l.currency) if l.deal_value else '—' }}</div>
   <div class="board-card-contact">{{ l.contact_person or l.phone or '—' }}</div>
   <div id="score-breakdown-{{ l.id }}" class="score-breakdown">
     {% for s in l.score_breakdown %}
@@ -671,7 +671,7 @@
             {% else %}<span class="muted">—</span>{% endif %}
           </td>
           <td class="muted">{{ l.product_interest or '—' }}</td>
-          <td class="muted">{{ '₦{:,.0f}'.format(l.deal_value) if l.deal_value else '—' }}</td>
+          <td class="muted">{{ (l.deal_value)|money(l.currency) if l.deal_value else '—' }}</td>
           <td class="muted">{{ (l.assigned_to|who(l.assigned_key)) if l.assigned_to else '—' }}</td>
           <td>
             {% if l.outcome %}

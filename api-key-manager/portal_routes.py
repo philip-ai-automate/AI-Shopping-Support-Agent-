@@ -20,6 +20,7 @@ from flask import (Blueprint, render_template, request, redirect,
                    current_app, g)
 
 from db import get_db_connection, insert_audit_log
+import selling_currency as _selling_currency
 from feature_access import team_feature, any_team_member, owner_only, public_route, team_member_may_enter, route_access
 from meta_business_agent import sync_all_to_meta
 from portal_utils import (
@@ -3078,6 +3079,7 @@ def _register_whatsapp_merchant(
     business_name: str, phone_number: str = "",
     is_founder: bool = False, hear_about_us: str = "", business_country: str = None,
     signup_channel: str = None, domain: str = None, website_platform: str = None,
+    selling_currency: str = None,
 ):
     """
     Self-service registration path for WhatsApp-only merchants.
@@ -3120,6 +3122,9 @@ def _register_whatsapp_merchant(
             return redirect(url_for("portal.login"))
 
     system_prompt_text = DEFAULT_SYSTEM_PROMPT.replace("{{business_name}}", business_name)
+    if selling_currency:   # AI quotes in the business's own currency (2026-10-11)
+        system_prompt_text = (_selling_currency.rewrite_prompt_pricing(system_prompt_text, selling_currency)
+                              or system_prompt_text)
 
     free_features = _json.dumps(_build_free_features("whatsapp"))
 
@@ -3141,13 +3146,13 @@ def _register_whatsapp_merchant(
     cur2 = conn.cursor()
     cur2.execute(f"""
         INSERT INTO tenants (name, domain, status, source_type, features, system_prompt, is_demo, ai_enabled, signup_product, plan_id,
-                             signup_channel, website_platform{founder_flags})
+                             signup_channel, website_platform, selling_currency, currency_needs_choice{founder_flags})
         VALUES (%s, %s, 'pending', 'whatsapp', %s, %s, %s, FALSE, %s,
                 COALESCE((SELECT id FROM plans WHERE slug='connect' LIMIT 1), 1),
-                %s, %s{founder_vals})
+                %s, %s, %s, %s{founder_vals})
         RETURNING id
     """, (business_name, domain or None, free_features, system_prompt_text, is_demo_signup, signup_product,
-          signup_channel, website_platform))
+          signup_channel, website_platform, selling_currency or "NGN", not selling_currency))
     row = cur2.fetchone()
     tenant_id      = int(row[0])
     trial_ends_at  = None
@@ -3235,7 +3240,8 @@ def _register_whatsapp_merchant(
 
 def _register_web_merchant(first_name, last_name, email, password, phone_number,
                             tenant_domain, hear_about_us="", ref_code="", business_country=None,
-                            signup_channel=None, business_name=None, website_platform=None):
+                            signup_channel=None, business_name=None, website_platform=None,
+                            selling_currency=None):
     """
     Self-service registration path for web (WooCommerce/Shopify/custom site)
     merchants. Creates tenant (if needed) + customer + trial api_key, and
@@ -3271,18 +3277,21 @@ def _register_web_merchant(first_name, last_name, email, password, phone_number,
         tenant_name = (business_name or "").strip() or tenant_domain
         free_features = _build_free_features("web")
         system_prompt_text = DEFAULT_SYSTEM_PROMPT.replace("{{business_name}}", tenant_name)
+        if selling_currency:   # AI quotes in the business's own currency (2026-10-11)
+            system_prompt_text = (_selling_currency.rewrite_prompt_pricing(system_prompt_text, selling_currency)
+                                  or system_prompt_text)
         cur2 = conn.cursor()
         # signup_channel set = the new system: PhiXtra Connect, AI off, the
         # business starts its own 2-week trial. None = the old automatic trial.
         free_slug = _free_plan_slug("web", signup_channel)
         cur2.execute(
             "INSERT INTO tenants (name, domain, status, features, system_prompt, ref_code, is_demo,"
-            " signup_channel, ai_enabled, plan_id, website_platform)"
+            " signup_channel, ai_enabled, plan_id, website_platform, selling_currency, currency_needs_choice)"
             " VALUES (%s, %s, 'pending', %s, %s, %s, %s, %s, %s,"
-            " COALESCE((SELECT id FROM plans WHERE slug=%s LIMIT 1), 1), %s) RETURNING id",
+            " COALESCE((SELECT id FROM plans WHERE slug=%s LIMIT 1), 1), %s, %s, %s) RETURNING id",
             (tenant_name, tenant_domain, _json.dumps(free_features), system_prompt_text, ref_code or None,
              _is_presale_test_signup(email), signup_channel, signup_channel is None, free_slug,
-             website_platform)
+             website_platform, selling_currency or "NGN", not selling_currency)
         )
         new_tenant_id = cur2.fetchone()[0]
         conn.commit()
@@ -3679,7 +3688,8 @@ def _account_created_redirect(email, email_sent):
 
 def _build_register_ctx(form_data=None):
     """Build template context for register.html — used by GET and POST re-renders on error."""
-    return dict(offer="", founder_spots_left=None, hear_about_us_options=HEAR_ABOUT_US_OPTIONS)
+    return dict(offer="", founder_spots_left=None, hear_about_us_options=HEAR_ABOUT_US_OPTIONS,
+                selling_currencies=_selling_currency.currencies())
 
 
 @portal_bp.route("/register", methods=["GET", "POST"])
@@ -3733,6 +3743,11 @@ def register():
         flash("Please tell us how you heard about us.", "danger")
         return _register_page(request.form, form_data=request.form)
 
+    selling_currency = (request.form.get("selling_currency") or "").strip().upper()
+    if selling_currency not in _selling_currency.currency_codes():
+        flash("Please choose the currency you sell in.", "danger")
+        return _register_page(request.form, form_data=request.form)
+
     # ── Website and "WhatsApp and website" sign-ups (2026-10-05) ────────────
     business_name = (request.form.get("business_name") or "").strip()
     if merchant_type in ("web", "both"):
@@ -3767,6 +3782,7 @@ def register():
             phone_number=mobile, tenant_domain=site, hear_about_us=hear_about_us,
             ref_code=ref_code, business_country=based, signup_channel="website",
             business_name=business_name, website_platform=website_platform,
+            selling_currency=selling_currency,
         )
         if not result["ok"]:
             if result.get("reason") == "domain_taken":
@@ -3797,6 +3813,7 @@ def register():
             signup_channel="both" if merchant_type == "both" else None,
             domain=site if merchant_type == "both" else None,
             website_platform=website_platform if merchant_type == "both" else None,
+            selling_currency=selling_currency,
         )
 
     # ── Website stores: WooCommerce merchants sign up only through the
@@ -8638,7 +8655,7 @@ def _get_dashboard_crm_kpis(tenant_id: int, date_from, date_to, prev_from, prev_
 
         def _won_sum(d_from, d_to):
             _ls_exec(cur, """
-                SELECT COALESCE(SUM(deal_value),0) AS v FROM merchant_pipeline_leads
+                SELECT COALESCE(SUM(fx_to_selling(deal_value, currency, tenant_id)),0) AS v FROM merchant_pipeline_leads
                 WHERE tenant_id=%s AND outcome='won' AND won_date BETWEEN %s AND %s
             """, (tenant_id, d_from, d_to))
             return float((cur.fetchone() or {}).get("v") or 0)
@@ -8671,7 +8688,7 @@ def _get_dashboard_crm_kpis(tenant_id: int, date_from, date_to, prev_from, prev_
         conv_prev = _win_rate(prev_from, prev_to)
 
         _ls_exec(cur, """
-            SELECT COUNT(*) AS n, COALESCE(SUM(deal_value),0) AS v
+            SELECT COUNT(*) AS n, COALESCE(SUM(fx_to_selling(deal_value, currency, tenant_id)),0) AS v
             FROM merchant_pipeline_leads WHERE tenant_id=%s AND outcome IS NULL AND is_opportunity
         """, (tenant_id,))
         pl = cur.fetchone() or {}
@@ -8718,7 +8735,7 @@ def _get_dashboard_pipeline_snapshot(tenant_id: int) -> list:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
-            SELECT stage, COUNT(*) AS n, COALESCE(SUM(deal_value),0) AS total_value
+            SELECT stage, COUNT(*) AS n, COALESCE(SUM(fx_to_selling(deal_value, currency, tenant_id)),0) AS total_value
             FROM merchant_pipeline_leads
             WHERE tenant_id = %s AND outcome IS NULL AND is_opportunity
             GROUP BY stage
@@ -8774,7 +8791,7 @@ def _get_dashboard_lead_sources(tenant_id: int, date_from, date_to) -> list:
         raw_counts = {(r["source"] or "none"): int(r["n"]) for r in (cur.fetchall() or [])}
 
         _ls_exec(cur, """
-            SELECT source, COALESCE(SUM(deal_value),0) AS v
+            SELECT source, COALESCE(SUM(fx_to_selling(deal_value, currency, tenant_id)),0) AS v
             FROM merchant_pipeline_leads
             WHERE tenant_id = %s AND outcome = 'won' AND won_date BETWEEN %s AND %s
             GROUP BY source
@@ -8907,7 +8924,7 @@ def _get_dashboard_campaign_performance(tenant_id: int, date_from, date_to) -> d
                 COUNT(*) FILTER (WHERE status = ANY(%(opp)s))       AS opportunities,
                 COUNT(*) FILTER (WHERE status = 'converted')        AS converted,
                 (
-                    SELECT COALESCE(SUM(mpl.deal_value), 0)
+                    SELECT COALESCE(SUM(fx_to_selling(mpl.deal_value, mpl.currency, mpl.tenant_id)), 0)
                     FROM (SELECT DISTINCT pipeline_lead_id FROM scoped WHERE pipeline_lead_id IS NOT NULL) d
                     JOIN merchant_pipeline_leads mpl ON mpl.id = d.pipeline_lead_id
                     WHERE mpl.stage = 'won'
@@ -9044,7 +9061,7 @@ def _get_dashboard_recent_activity(tenant_id: int, limit: int = 8) -> list:
             })
 
         _ls_exec(cur, """
-            SELECT id, customer_name, deal_value, won_date
+            SELECT id, customer_name, deal_value, won_date, currency
             FROM merchant_pipeline_leads
             WHERE tenant_id=%s AND outcome='won' ORDER BY won_date DESC LIMIT %s
         """, (tenant_id, limit))
@@ -9054,7 +9071,7 @@ def _get_dashboard_recent_activity(tenant_id: int, limit: int = 8) -> list:
                 "at": (datetime.combine(r["won_date"], datetime.min.time(), tzinfo=timezone.utc)
                        if r["won_date"] else None),
                 "icon": "💰", "icon_bg": "#12B76A",
-                "text": f"{r['customer_name']} — Won" + (f", ₦{val:,.0f}" if val else ""),
+                "text": f"{r['customer_name']} — Won" + (f", {_money(val, r.get('currency'), tenant_id)}" if val else ""),
                 "url": url_for("portal.lead_detail", lead_id=r["id"]),
             })
 
@@ -9147,8 +9164,8 @@ def _get_pipeline_overview_data(tenant_id: int, date_from, date_to) -> dict:
 
         # ── Open pipeline snapshot (right now, not period-scoped) ───────────
         _ls_exec(cur, """
-            SELECT stage, COUNT(*) AS n, COALESCE(SUM(deal_value),0) AS total_value,
-                   COALESCE(AVG(deal_value),0) AS avg_value
+            SELECT stage, COUNT(*) AS n, COALESCE(SUM(fx_to_selling(deal_value, currency, tenant_id)),0) AS total_value,
+                   COALESCE(AVG(fx_to_selling(deal_value, currency, tenant_id)),0) AS avg_value
             FROM merchant_pipeline_leads
             WHERE tenant_id = %s AND outcome IS NULL AND is_opportunity
             GROUP BY stage
@@ -9171,7 +9188,7 @@ def _get_pipeline_overview_data(tenant_id: int, date_from, date_to) -> dict:
 
         # ── Won, this period ─────────────────────────────────────────────────
         _ls_exec(cur, """
-            SELECT COUNT(*) AS n, COALESCE(SUM(deal_value),0) AS total_value
+            SELECT COUNT(*) AS n, COALESCE(SUM(fx_to_selling(deal_value, currency, tenant_id)),0) AS total_value
             FROM merchant_pipeline_leads
             WHERE tenant_id = %s AND outcome = 'won'
               AND won_date BETWEEN %s AND %s
@@ -9349,7 +9366,7 @@ CUSTOM_REPORT_ENTITIES = {
             {"key": "phone",          "label": "Phone Number",   "expr": "l.phone"},
             {"key": "whatsapp_number", "label": "WhatsApp Number", "expr": "l.whatsapp_number"},
             {"key": "email",          "label": "Email",          "expr": "l.email"},
-            {"key": "deal_value",     "label": "Deal Value",     "expr": "l.deal_value",  "fmt": "money"},
+            {"key": "deal_value",     "label": "Deal Value",     "expr": "fx_to_selling(l.deal_value, l.currency, l.tenant_id)",  "fmt": "money"},
             {"key": "stage",          "label": "Stage",          "expr": "l.stage",       "fmt": "stage_label"},
             {"key": "outcome",        "label": "Outcome",
              "expr": "CASE WHEN l.outcome IN ('won','lost','dropped','not_a_fit') THEN l.outcome "
@@ -9397,7 +9414,7 @@ CUSTOM_REPORT_ENTITIES = {
             {"key": "open_deal_count", "label": "Open Deals",
              "expr": "(SELECT COUNT(*) FROM merchant_pipeline_leads l2 WHERE l2.company_id = co.id AND l2.outcome IS NULL)"},
             {"key": "open_deal_value", "label": "Open Deal Value",
-             "expr": "(SELECT COALESCE(SUM(deal_value),0) FROM merchant_pipeline_leads l2 WHERE l2.company_id = co.id AND l2.outcome IS NULL)",
+             "expr": "(SELECT COALESCE(SUM(fx_to_selling(deal_value, currency, tenant_id)),0) FROM merchant_pipeline_leads l2 WHERE l2.company_id = co.id AND l2.outcome IS NULL)",
              "fmt": "money"},
             {"key": "created_at",      "label": "Created Date", "expr": "co.created_at", "fmt": "date"},
         ],
@@ -9415,7 +9432,7 @@ CUSTOM_REPORT_ENTITIES = {
             {"key": "sent_at",       "label": "Sent At",      "expr": "r.sent_at",      "fmt": "date"},
             {"key": "replied_at",    "label": "Replied At",   "expr": "r.replied_at",   "fmt": "date"},
             {"key": "lead_name",     "label": "Linked Lead",  "expr": "l.customer_name"},
-            {"key": "deal_value",    "label": "Deal Value",   "expr": "l.deal_value",   "fmt": "money"},
+            {"key": "deal_value",    "label": "Deal Value",   "expr": "fx_to_selling(l.deal_value, l.currency, l.tenant_id)",   "fmt": "money"},
         ],
         "default_columns": ["campaign_name", "phone", "status", "sent_at"],
     },
@@ -9573,7 +9590,7 @@ def _format_custom_report_value(val, fmt: str, stage_labels: dict = None):
     if val is None or val == "":
         return "—"
     if fmt == "money":
-        return "₦{:,.0f}".format(val)
+        return _money_total(val)
     if fmt == "date":
         return val.strftime("%d %b %Y") if hasattr(val, "strftime") else str(val)
     if fmt == "stage_label":
@@ -9771,25 +9788,25 @@ def report_pipeline_overview_export(fmt: str):
     rows_out = [
         [
             stage_labels.get(s["stage"], s["stage"]), s["count"],
-            "₦{:,.0f}".format(s["total_value"]) if s["total_value"] else "—",
-            "₦{:,.0f}".format(s["avg_value"]) if s["total_value"] else "—",
+            _money_total(s["total_value"]) if s["total_value"] else "—",
+            _money_total(s["avg_value"]) if s["total_value"] else "—",
         ]
         for s in data["open_stages"]
     ]
     rows_out.append([
         stage_labels.get("won", "Won"), data["won_count"],
-        "₦{:,.0f}".format(data["won_value"]) if data["won_value"] else "—",
-        "₦{:,.0f}".format(data["avg_deal_size"]) if data["won_value"] else "—",
+        _money_total(data["won_value"]) if data["won_value"] else "—",
+        _money_total(data["avg_deal_size"]) if data["won_value"] else "—",
     ])
 
     summary_pairs = [
         ("Active Deals",         str(data["active_deals"])),
-        ("Open Pipeline Value",  "₦{:,.0f}".format(data["open_value"])),
-        ("Won (period)",         "{} deals · ₦{:,.0f}".format(data["won_count"], data["won_value"])),
+        ("Open Pipeline Value",  _money_total(data["open_value"])),
+        ("Won (period)",         "{} deals · {}".format(data["won_count"], _money_total(data["won_value"]))),
         ("Lost (period)",        str(data["lost_count"])),
         ("Dropped (period)",     str(data["dropped_count"])),
         ("Win Rate",             "{}%".format(data["win_rate"]) if data["win_rate"] is not None else "—"),
-        ("Avg. Deal Size (Won)", "₦{:,.0f}".format(data["avg_deal_size"]) if data["won_value"] else "—"),
+        ("Avg. Deal Size (Won)", _money_total(data["avg_deal_size"]) if data["won_value"] else "—"),
         ("Avg. Time to Close",   "{:.1f} days".format(data["avg_days_to_close"]) if data["avg_days_to_close"] is not None else "—"),
     ]
 
@@ -9913,7 +9930,7 @@ def _run_custom_report_grouped(tenant_id: int, entity: str, group_by: str, filte
 
         if entity == "leads" and group_by == "stage":
             _ls_exec(cur, f"""
-                SELECT l.stage AS grp, COUNT(*) AS n, COALESCE(SUM(l.deal_value),0) AS total_value
+                SELECT l.stage AS grp, COUNT(*) AS n, COALESCE(SUM(fx_to_selling(l.deal_value, l.currency, l.tenant_id)),0) AS total_value
                 FROM {from_clause} WHERE {where} GROUP BY l.stage
             """, params)
             by_key = {r["grp"]: r for r in (cur.fetchall() or [])}
@@ -9926,7 +9943,7 @@ def _run_custom_report_grouped(tenant_id: int, entity: str, group_by: str, filte
 
         elif entity == "leads" and group_by == "source":
             _ls_exec(cur, f"""
-                SELECT COALESCE(l.source, 'none') AS grp, COUNT(*) AS n, COALESCE(SUM(l.deal_value),0) AS total_value
+                SELECT COALESCE(l.source, 'none') AS grp, COUNT(*) AS n, COALESCE(SUM(fx_to_selling(l.deal_value, l.currency, l.tenant_id)),0) AS total_value
                 FROM {from_clause} WHERE {where} GROUP BY COALESCE(l.source, 'none')
                 ORDER BY n DESC
             """, params)
@@ -9970,8 +9987,9 @@ def _run_custom_report_grouped(tenant_id: int, entity: str, group_by: str, filte
             # recipient rows in the same campaign (checked live: none exist
             # today, but not guaranteed forever) must not be double-counted.
             _ls_exec(cur, f"""
-                SELECT grp, COALESCE(SUM(deal_value), 0) AS total_value FROM (
-                    SELECT DISTINCT ON (l.id) COALESCE(wc.name, 'Unknown campaign') AS grp, l.id, l.deal_value
+                SELECT grp, COALESCE(SUM(fx_to_selling(deal_value, currency, tenant_id)), 0) AS total_value FROM (
+                    SELECT DISTINCT ON (l.id) COALESCE(wc.name, 'Unknown campaign') AS grp, l.id, l.deal_value,
+                           l.currency, l.tenant_id
                     FROM {from_clause} WHERE {where} AND l.id IS NOT NULL
                     ORDER BY l.id
                 ) per_lead GROUP BY grp
@@ -10160,13 +10178,13 @@ def report_custom_entity_export(entity: str, fmt: str):
         group_label = next((g["label"] for g in CUSTOM_REPORT_GROUP_BY.get(entity, []) if g["key"] == group_by), "Group")
         headers  = [group_label, "Count"] + (["Total Value"] if has_value_sum else [])
         rows_out = [
-            [g["label"], g["count"]] + (["₦{:,.0f}".format(g["value"])] if has_value_sum else [])
+            [g["label"], g["count"]] + ([_money_total(g["value"])] if has_value_sum else [])
             for g in group_rows
         ]
         total_count = sum(g["count"] for g in group_rows)
         summary_pairs = [("Grouped by", group_label), ("Total " + spec["label"], str(total_count))]
         if has_value_sum:
-            summary_pairs.append(("Total Value", "₦{:,.0f}".format(sum(g["value"] for g in group_rows))))
+            summary_pairs.append(("Total Value", _money_total(sum(g["value"] for g in group_rows))))
         if fmt == "xlsx":
             return _export_xlsx(title, subtitle, summary_pairs, headers, rows_out)
         elif fmt == "csv":
@@ -13522,6 +13540,36 @@ def settings_business():
     if biz_country not in _pn.SUPPORTED_REGIONS:
         biz_country = None
 
+    # Selling currency + exchange rates (2026-10-11). Checked before anything
+    # is saved, so a mistyped rate never half-saves the form.
+    sell_code = (request.form.get("selling_currency") or "").strip().upper()
+    rate_mode = (request.form.get("fx_rate_mode") or "").strip().lower() or None
+    own_rates = None
+    if sell_code:
+        if sell_code not in _selling_currency.currency_codes():
+            flash("Please choose a selling currency from the list.", "danger")
+            return redirect(url_for("portal.settings") + "#selling-currency")
+        if rate_mode not in (None, "daily", "own"):
+            rate_mode = None
+        if "fx_rates_shown" in request.form:
+            own_rates = {}
+            for key, raw in request.form.items():
+                if not key.startswith("own_rate_"):
+                    continue
+                code = key[len("own_rate_"):].upper()
+                raw = (raw or "").strip().replace(",", "")
+                if not raw:
+                    continue
+                try:
+                    from decimal import Decimal as _D
+                    val = _D(raw)
+                    if not (val > 0 and val < 10**9):
+                        raise ValueError
+                except Exception:
+                    flash(f"Your own rate for {code} must be a number above 0, for example 1.32.", "danger")
+                    return redirect(url_for("portal.settings") + "#selling-currency")
+                own_rates[code] = val
+
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
@@ -13548,6 +13596,16 @@ def settings_business():
         _tenant_country_cache.clear()
         conn.commit()
         cur.close(); conn.close()
+        if sell_code:
+            _tid = int(_get_customer(cid)["tenant_id"])
+            _res = _selling_currency.save_settings(_tid, sell_code, rate_mode, own_rates)
+            if _res["changed"]:
+                insert_audit_log(action="selling_currency_set", tenant_id=_tid,
+                                 details={"selling_currency": sell_code, "old": _res["old"],
+                                          "from": "settings"})
+                if _res["rates_cleared"]:
+                    flash("Your own exchange rates were cleared because they were set for "
+                          f"{_res['old']}. Please enter them again for {sell_code}.", "warning")
         insert_audit_log(
             action  = "settings_business_updated",
             details = {"customer_id": cid,
@@ -15329,6 +15387,185 @@ def business_country_not_set() -> bool:
         return bool(c) and not _tenant_country(c["tenant_id"])
     except Exception:
         return False
+
+
+# ── Selling currency, asked once (2026-10-11) ───────────────────────────────
+# Businesses that signed up without the sign-up form (WordPress plugin,
+# WhatsApp chat sign-up) answer "What currency do you sell in?" once on the
+# dashboard. Owner only, like the other company settings.
+
+@portal_bp.app_template_global()
+def selling_currency_question() -> dict | None:
+    """The question's details when the logged-in owner still has to answer
+    it, else None."""
+    try:
+        cid = _customer_id()
+        if not cid or session.get("team_member_id"):
+            return None
+        c = _get_customer(cid)
+        if not c:
+            return None
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("SELECT currency_needs_choice FROM tenants WHERE id=%s", (int(c["tenant_id"]),))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        if not (row and row[0]):
+            return None
+        return {"currencies": _selling_currency.currencies(),
+                "suggested": _selling_currency.currency_for_country(_tenant_country(c["tenant_id"])) or ""}
+    except Exception as e:
+        print("⚠️ selling_currency_question error:", e)
+        return None
+
+
+def _biz_currency(tenant_id=None) -> str:
+    """The logged-in business's selling currency (or tenant_id's). Looked up
+    once per request — list pages format hundreds of amounts."""
+    from flask import g, has_request_context
+    if tenant_id is not None:
+        return _selling_currency.tenant_currency(int(tenant_id))
+    if has_request_context():
+        if "biz_currency" not in g:
+            code = "NGN"
+            try:
+                cid = _customer_id()
+                c = _get_customer(cid) if cid else None
+                if c:
+                    code = _selling_currency.tenant_currency(int(c["tenant_id"]))
+            except Exception as e:
+                print("⚠️ _biz_currency error:", e)
+            g.biz_currency = code
+        return g.biz_currency
+    return "NGN"
+
+
+def _money(val, code=None, tenant_id=None) -> str:
+    """'₦1,250' · '£1,250' · '$1,250' (whole units, as staff screens always
+    showed). code = the record's own saved currency (deals, orders and
+    products keep theirs after a currency change); none → the business's."""
+    code = (code or _biz_currency(tenant_id) or "NGN").upper()
+    prefix = _selling_currency.currency_label(code)["prefix"]
+    try:
+        return f"{prefix}{float(val or 0):,.0f}"
+    except (TypeError, ValueError):
+        return f"{prefix}{val}"
+
+
+@portal_bp.app_template_filter("money")
+def _money_filter(val, code=None):
+    return _money(val, code or None)
+
+
+def _has_other_currency_records(tenant_id=None) -> bool:
+    """True when the business has deals or orders saved in a currency other
+    than its current one (it changed currency). Their totals are then
+    converted, so they are shown with '≈'. Once per request."""
+    from flask import g, has_request_context
+    if tenant_id is None:
+        if not has_request_context():
+            return False
+        if "other_currency_records" in g:
+            return g.other_currency_records
+        try:
+            cid = _customer_id()
+            c = _get_customer(cid) if cid else None
+            tenant_id = int(c["tenant_id"]) if c else None
+        except Exception:
+            tenant_id = None
+    found = False
+    if tenant_id:
+        try:
+            conn = get_db_connection(); cur = conn.cursor()
+            cur.execute("""
+                SELECT EXISTS (SELECT 1 FROM merchant_pipeline_leads l JOIN tenants t ON t.id = l.tenant_id
+                                WHERE l.tenant_id=%s AND l.currency IS NOT NULL AND l.currency <> t.selling_currency)
+                    OR EXISTS (SELECT 1 FROM orders o JOIN tenants t ON t.id = o.tenant_id
+                                WHERE o.tenant_id=%s AND o.currency IS NOT NULL AND o.currency <> t.selling_currency)
+            """, (tenant_id, tenant_id))
+            found = bool(cur.fetchone()[0])
+            cur.close(); conn.close()
+        except Exception as e:
+            print("⚠️ _has_other_currency_records error:", e)
+    if has_request_context():
+        from flask import g as _g
+        _g.other_currency_records = found
+    return found
+
+
+def _money_total(val, tenant_id=None) -> str:
+    """A total in the business's currency; '≈ ' in front when it includes
+    deals/orders converted from an older currency (2026-10-11)."""
+    s = _money(val, None, tenant_id)
+    return ("≈ " + s) if _has_other_currency_records(tenant_id) else s
+
+
+@portal_bp.app_template_filter("money_total")
+def _money_total_filter(val):
+    return _money_total(val)
+
+
+@portal_bp.app_template_global()
+def cur_sign(code=None) -> str:
+    """The business's currency sign for labels: '₦', '£' or '$'."""
+    return _selling_currency.currency_label((code or _biz_currency()).upper())["prefix"].strip()
+
+
+@portal_bp.app_template_global()
+def selling_currency_settings() -> dict | None:
+    """Settings › Business Information: the business's selling currency and,
+    when some product prices are saved in another currency, the rate table."""
+    try:
+        cid = _customer_id()
+        if not cid:
+            return None
+        c = _get_customer(cid)
+        if not c:
+            return None
+        tid = int(c["tenant_id"])
+        sc = _selling_currency
+        selling = sc.tenant_currency(tid)
+        own = sc.tenant_own_rates(tid)
+        foreign = []
+        for code in sc.foreign_price_currencies(tid):
+            daily = sc.market_rate(code, selling)
+            foreign.append({"code": code, "label": sc.currency_label(code),
+                            "daily": sc.format_rate(code, daily, selling) if daily else "",
+                            "daily_num": (sc.format_rate(code, daily, selling).rsplit(
+                                sc.currency_label(selling)["prefix"], 1)[-1] if daily else ""),
+                            "own": own.get(code),
+                            "own_prefix": sc.format_rate(code, 1, selling).rsplit("1", 1)[0]})
+        updated = sc.market_rates_updated_at()
+        return {"currencies": sc.currencies(), "selling": selling,
+                "selling_label": sc.currency_label(selling),
+                "mode": sc.tenant_rate_mode(tid), "foreign": foreign,
+                "updated": updated.strftime("%-d %b %Y") if updated else None}
+    except Exception as e:
+        print("⚠️ selling_currency_settings error:", e)
+        return None
+
+
+@portal_bp.route("/selling-currency/choose", methods=["POST"])
+@team_feature("settings.business_edit")
+def selling_currency_choose():
+    r = _require_login()
+    if r: return r
+    if session.get("team_member_id"):
+        flash("Only the account owner can change this.", "danger")
+        return redirect(url_for("portal.dashboard"))
+    _rperm = _require_team_permission("settings.business_edit")
+    if _rperm: return _rperm
+    code = (request.form.get("selling_currency") or "").strip().upper()
+    if code not in _selling_currency.currency_codes():
+        flash("Please choose the currency you sell in.", "danger")
+        return redirect(url_for("portal.dashboard"))
+    c = _get_customer(_customer_id())
+    tid = int(c["tenant_id"])
+    _selling_currency.save_settings(tid, code)
+    insert_audit_log(action="selling_currency_set", tenant_id=tid,
+                     details={"selling_currency": code, "by": c.get("email"), "from": "dashboard"})
+    cinfo = next(x for x in _selling_currency.currencies() if x["code"] == code)
+    flash(f"Saved. Your selling currency is {cinfo['name']} ({cinfo['prefix'].strip()}).", "success")
+    return redirect(url_for("portal.dashboard"))
 
 
 def _lead_phone_international(raw: str, country: str = None):
@@ -17379,7 +17616,7 @@ def crm_companies():
             LEFT JOIN (
                 SELECT company_id,
                        COUNT(*) FILTER (WHERE dropped_at IS NULL) AS open_deal_count,
-                       COALESCE(SUM(deal_value) FILTER (WHERE dropped_at IS NULL), 0) AS open_deal_value
+                       COALESCE(SUM(fx_to_selling(deal_value, currency, tenant_id)) FILTER (WHERE dropped_at IS NULL), 0) AS open_deal_value
                 FROM merchant_pipeline_leads
                 WHERE company_id IS NOT NULL
                 GROUP BY company_id
@@ -17514,7 +17751,7 @@ def crm_company_detail(company_id: int):
 
         _ls_exec(cur, """
             SELECT COUNT(*) FILTER (WHERE pl.dropped_at IS NULL) AS open_deal_count,
-                   COALESCE(SUM(pl.deal_value) FILTER (WHERE pl.dropped_at IS NULL), 0) AS open_deal_value
+                   COALESCE(SUM(fx_to_selling(pl.deal_value, pl.currency, pl.tenant_id)) FILTER (WHERE pl.dropped_at IS NULL), 0) AS open_deal_value
             FROM merchant_pipeline_leads pl WHERE pl.company_id=%s
         """, (company_id,))
         deal_summary = cur.fetchone()
@@ -19656,7 +19893,7 @@ def whatsapp_campaign_report(campaign_id: int):
                 COUNT(*) FILTER (WHERE mpl.stage IN ('qualified','proposal_sent','negotiating','won')) AS qualified_count,
                 COUNT(*) FILTER (WHERE mpl.stage IN ('proposal_sent','negotiating','won')) AS proposal_count,
                 COUNT(*) FILTER (WHERE mpl.stage='won') AS won_count,
-                COALESCE(SUM(mpl.deal_value) FILTER (WHERE mpl.stage='won'), 0) AS won_value
+                COALESCE(SUM(fx_to_selling(mpl.deal_value, mpl.currency, mpl.tenant_id)) FILTER (WHERE mpl.stage='won'), 0) AS won_value
             FROM wa_campaign_recipients wcr
             JOIN merchant_pipeline_leads mpl ON mpl.id = wcr.pipeline_lead_id
             WHERE wcr.campaign_id=%s
@@ -24391,7 +24628,7 @@ def _get_orders_list(tenant_id: int, status_filter: str = "all", page: int = 1):
         offset = (page - 1) * _ORDERS_PER_PAGE
         cur.execute(f"""
             SELECT o.id, o.reference, o.customer_phone, o.customer_name,
-                   o.total_amount, o.status, o.payment_method, o.created_at,
+                   o.total_amount, o.status, o.payment_method, o.created_at, o.currency,
                    COUNT(oi.id) AS item_count
             FROM orders o
             LEFT JOIN order_items oi ON oi.order_id = o.id
@@ -24419,7 +24656,7 @@ def _get_order_kpis(tenant_id: int) -> dict:
               COALESCE(SUM(
                 CASE WHEN status IN
                   ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
-                THEN total_amount ELSE 0 END
+                THEN fx_to_selling(total_amount, currency, tenant_id) ELSE 0 END
               ), 0) AS revenue,
               SUM(CASE WHEN status IN
                 ('INTENT_CAPTURED','PAYMENT_PENDING','RECEIPT_RECEIVED') THEN 1 ELSE 0 END
@@ -24870,7 +25107,7 @@ def _get_products(tenant_id, q="", category="", page=1, per_page=40):
         offset = (page - 1) * per_page
         cur.execute(f"""
             SELECT id, name, description, price, stock_quantity,
-                   reserved_quantity, category, image_url, is_active, created_at
+                   reserved_quantity, category, image_url, is_active, created_at, currency
             FROM products {where}
             ORDER BY created_at DESC
             LIMIT %s OFFSET %s
@@ -26278,7 +26515,7 @@ def _get_customers_list(tenant_id: int, q: str = "", page: int = 1, per_page: in
                        COUNT(*)                                          AS order_count,
                        SUM(CASE WHEN status IN
                            ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
-                           THEN total_amount ELSE 0 END)                AS total_spent
+                           THEN fx_to_selling(total_amount, currency, tenant_id) ELSE 0 END)                AS total_spent
                 FROM orders
                 WHERE tenant_id = %s
                 GROUP BY customer_phone
@@ -26335,7 +26572,7 @@ def _get_customer_detail(tenant_id: int, phone: str):
         # Orders
         cur.execute("""
             SELECT id, reference, total_amount, status, payment_method,
-                   created_at, dispatched_at, delivered_at
+                   created_at, dispatched_at, delivered_at, currency
             FROM orders
             WHERE tenant_id = %s AND customer_phone = %s
             ORDER BY created_at DESC
@@ -26900,13 +27137,13 @@ def _analytics_data(tenant_id: int, days: int = 30) -> dict:
         cur.execute("""
             SELECT
               COALESCE(SUM(CASE WHEN DATE(created_at)=CURRENT_DATE
-                THEN total_amount END), 0)                      AS today_revenue,
+                THEN fx_to_selling(total_amount, currency, tenant_id) END), 0)                      AS today_revenue,
               COALESCE(SUM(CASE WHEN created_at >= (NOW() - INTERVAL '7 days')
                 AND status IN ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
-                THEN total_amount END), 0)                      AS week_revenue,
+                THEN fx_to_selling(total_amount, currency, tenant_id) END), 0)                      AS week_revenue,
               COALESCE(SUM(CASE WHEN created_at >= (NOW() - (INTERVAL '1 day' * %s))
                 AND status IN ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
-                THEN total_amount END), 0)                      AS period_revenue,
+                THEN fx_to_selling(total_amount, currency, tenant_id) END), 0)                      AS period_revenue,
               COUNT(CASE WHEN created_at >= (NOW() - (INTERVAL '1 day' * %s))
                 THEN 1 END)                                     AS period_orders,
               COUNT(CASE WHEN created_at >= (NOW() - (INTERVAL '1 day' * %s))
@@ -26934,7 +27171,7 @@ def _analytics_data(tenant_id: int, days: int = 30) -> dict:
             SELECT DATE(created_at) AS day,
                    COALESCE(SUM(CASE WHEN status IN
                      ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
-                     THEN total_amount ELSE 0 END), 0) AS revenue,
+                     THEN fx_to_selling(total_amount, currency, tenant_id) ELSE 0 END), 0) AS revenue,
                    COUNT(*) AS orders
             FROM orders
             WHERE tenant_id = %s AND created_at >= (NOW() - (INTERVAL '1 day' * %s))
@@ -26951,7 +27188,7 @@ def _analytics_data(tenant_id: int, days: int = 30) -> dict:
         cur.execute("""
             SELECT oi.product_name,
                    SUM(oi.quantity)   AS units_sold,
-                   SUM(oi.subtotal)   AS revenue
+                   SUM(fx_to_selling(oi.subtotal, o.currency, o.tenant_id))   AS revenue
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
             WHERE o.tenant_id = %s
@@ -27199,7 +27436,7 @@ def _import_rows(tenant_id: int, rows: list[dict], column_map: dict) -> tuple[in
             if left is not None:
                 left -= 1
         try:
-            price = float(str(raw.get(price_col, "0")).replace(",", "").replace("₦", "").strip() or 0)
+            price = float(_re.sub(r"[^\d.]", "", str(raw.get(price_col, "0"))) or 0)
         except (ValueError, TypeError):
             price = 0.0
         desc_col  = column_map.get("description", "")
@@ -28539,9 +28776,10 @@ def provision_whatsapp_merchant(wa_phone: str, business_name: str) -> dict:
     free_features = _json.dumps(_build_free_features("whatsapp"))
     cur2 = conn.cursor()
     cur2.execute("""
-        INSERT INTO tenants (name, domain, status, source_type, features, ai_enabled, plan_id)
+        INSERT INTO tenants (name, domain, status, source_type, features, ai_enabled, plan_id,
+                             currency_needs_choice)
         VALUES (%s, %s, 'active', 'whatsapp', %s, FALSE,
-                COALESCE((SELECT id FROM plans WHERE slug='connect' LIMIT 1), 1))
+                COALESCE((SELECT id FROM plans WHERE slug='connect' LIMIT 1), 1), TRUE)
         RETURNING id
     """, (business_name or f"WA Business {phone[-4:]}", synth_email, free_features))
     tenant_id = int(cur2.fetchone()[0])
@@ -31174,7 +31412,7 @@ def reports_page():
             SELECT COUNT(*) AS orders,
                    COALESCE(SUM(CASE WHEN status IN
                        ('PAYMENT_VERIFIED','PROCESSING','DISPATCHED','DELIVERED','COMPLETED')
-                       THEN total_amount ELSE 0 END), 0) AS revenue
+                       THEN fx_to_selling(total_amount, currency, tenant_id) ELSE 0 END), 0) AS revenue
             FROM orders
             WHERE tenant_id=%s AND created_at >= NOW() - INTERVAL '30 days'
         """, (tenant_id,))
@@ -31446,7 +31684,7 @@ def _get_leads_overview_data(tenant_id: int, date_from, date_to, prev_from, prev
         safe["lost_count"] = lost_count
 
         _ls_exec(cur, """
-            SELECT count(*) AS n, AVG(deal_value) AS v FROM merchant_pipeline_leads
+            SELECT count(*) AS n, AVG(fx_to_selling(deal_value, currency, tenant_id)) AS v FROM merchant_pipeline_leads
             WHERE tenant_id=%s AND outcome='won' AND won_date BETWEEN %s AND %s AND deal_value IS NOT NULL
         """, (tenant_id, date_from, date_to))
         r = cur.fetchone()
@@ -31657,7 +31895,7 @@ def team_performance_targets():
     rows = []
     for k in allowed:
         opp = (request.form.get(f"opp__{k}") or "").replace(",", "").strip()
-        won = (request.form.get(f"won__{k}") or "").replace(",", "").replace("₦", "").strip()
+        won = _re.sub(r"[^\d.]", "", request.form.get(f"won__{k}") or "")
         if f"opp__{k}" not in request.form:
             continue
         try:
@@ -33202,7 +33440,7 @@ def _build_pipeline_kanban_board(cur, tenant_id, search, tier_filter,
             SELECT mpl.*, a.first_name AS assigned_ambassador_first_name,
                    a.last_name AS assigned_ambassador_last_name,
                    count(*) OVER (PARTITION BY mpl.stage) AS stage_match_count,
-                   COALESCE(sum(mpl.deal_value) OVER (PARTITION BY mpl.stage), 0) AS stage_match_value,
+                   COALESCE(sum(fx_to_selling(mpl.deal_value, mpl.currency, mpl.tenant_id)) OVER (PARTITION BY mpl.stage), 0) AS stage_match_value,
                    row_number() OVER (PARTITION BY mpl.stage ORDER BY mpl.created_at DESC, mpl.id DESC) AS rn
               FROM {scored_from} mpl
               LEFT JOIN ambassadors a ON a.id = mpl.assigned_ambassador_id
@@ -33663,8 +33901,8 @@ def sales_pipeline():
     stage_counts = {row["stage"]: row["c"] for row in cur.fetchall()}
 
     _ls_exec(cur, 
-        "SELECT COALESCE(SUM(deal_value) FILTER (WHERE stage != 'won'), 0) AS pv, "
-        "       COALESCE(SUM(deal_value) FILTER (WHERE stage  = 'won'), 0) AS wv "
+        "SELECT COALESCE(SUM(fx_to_selling(deal_value, currency, tenant_id)) FILTER (WHERE stage != 'won'), 0) AS pv, "
+        "       COALESCE(SUM(fx_to_selling(deal_value, currency, tenant_id)) FILTER (WHERE stage  = 'won'), 0) AS wv "
         "FROM merchant_pipeline_leads WHERE tenant_id=%s AND dropped_at IS NULL AND is_opportunity",
         (tenant_id,),
     )

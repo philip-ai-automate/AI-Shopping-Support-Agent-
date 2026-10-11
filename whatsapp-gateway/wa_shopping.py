@@ -23,7 +23,7 @@ import re
 import httpx
 
 from meta_sender import send_text
-from currency import to_ngn, fmt_ngn
+from currency import to_ngn, fmt_ngn, fmt_amount
 from wa_db import (
     cancel_handoff,
     cancel_wa_order,
@@ -65,10 +65,8 @@ def _resolve_discount(tenant_id: int, product_id: str, def_type: str, def_value:
 # ── Formatting ────────────────────────────────────────────────────────────────
 
 def _fmt_price(amount) -> str:
-    try:
-        return f"₦{float(amount):,.0f}"
-    except Exception:
-        return str(amount)
+    # ₦ for naira businesses (unchanged); the selling currency otherwise.
+    return fmt_amount(amount)
 
 
 def _calc_discounted(unit_price: float, discount_type: str, discount_value: float) -> float:
@@ -464,7 +462,7 @@ async def handle_shopping_message(
                 discounted = _calc_discounted(unit_price, dt, dv)
                 new_cart["final_price"] = discounted
                 new_cart["discount_applied"] = round(unit_price - discounted, 2)
-                disc_label = f"{dv:.0f}% off → *{_fmt_price(discounted)}*" if dt == "percent" else f"₦{dv:,.0f} off → *{_fmt_price(discounted)}*"
+                disc_label = f"{dv:.0f}% off → *{_fmt_price(discounted)}*" if dt == "percent" else f"{fmt_amount(dv)} off → *{_fmt_price(discounted)}*"
                 await _reply(
                     tenant_id, phone_number_id, access_token, customer_phone,
                     f"Great news! Here's the best I can do for *{product_name}*:\n\n"
@@ -608,7 +606,7 @@ async def handle_shopping_message(
                         new_cart["final_price"]      = discounted
                         new_cart["discount_applied"] = round(unit - discounted, 2)
                         disc_label = (f"{dv:.0f}% off → *{_fmt_price(discounted)}*"
-                                      if dt == "percent" else f"₦{dv:,.0f} off → *{_fmt_price(discounted)}*")
+                                      if dt == "percent" else f"{fmt_amount(dv)} off → *{_fmt_price(discounted)}*")
                         await _reply(
                             tenant_id, phone_number_id, access_token, customer_phone,
                             f"Great news! Here's the best I can do for *{picked['name']}*:\n\n"
@@ -724,7 +722,7 @@ async def handle_shopping_message(
             offer_line = (
                 f"{dv:.0f}% off → *{_fmt_price(discounted)}*"
                 if dt == "percent"
-                else f"₦{dv:,.0f} off → *{_fmt_price(discounted)}*"
+                else f"{fmt_amount(dv)} off → *{_fmt_price(discounted)}*"
             )
             await _reply(
                 tenant_id, phone_number_id, access_token, customer_phone,

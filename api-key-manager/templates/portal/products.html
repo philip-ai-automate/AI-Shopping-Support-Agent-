@@ -164,7 +164,7 @@
           <td class="col-cat">
             {% if p.category %}<span class="prod-cat">{{ p.category }}</span>{% else %}<span class="muted">—</span>{% endif %}
           </td>
-          <td>₦{{ '{:,.0f}'.format(p.price|float) }}</td>
+          <td>{{ (p.price|float)|money(p.currency) }}</td>
           <td style="text-align:center">
             {% if p.stock_quantity and p.stock_quantity > 0 %}
             <span class="stock-badge stock-in">In stock</span>

@@ -1,0 +1,76 @@
+{# "What currency do you sell in?" — sign-up pages + the one-time dashboard
+   question (2026-10-11). Choices come from the selling_currencies table.
+   Set before including:
+     sc_selected     code already chosen ('' = none)
+     sc_wrap_class   wrapper class of the page's fields ('rg-f' / 'form-group')
+     sc_err_hidden   true = the page shows errors with the hidden attribute
+     sc_country_ids  ids of country pickers that fill the currency in
+                     (Nigeria → ₦, UK → £, US → $; any other country → empty) #}
+<style>
+  .sc-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;position:relative}
+  @media (max-width:420px){.sc-cards{grid-template-columns:1fr}}
+  .sc-opt{position:relative;margin:0}
+  .sc-opt input{position:absolute;opacity:0;width:1px;height:1px;margin:0}
+  .sc-opt span{display:flex;flex-direction:column;gap:2px;border:1.5px solid #C3CEDF;border-radius:10px;
+               padding:10px 12px;cursor:pointer;background:#fff;height:100%;box-sizing:border-box}
+  .sc-opt b{font-family:Poppins,system-ui,sans-serif;font-weight:600;font-size:17px;color:#0B1D40}
+  .sc-opt small{font-size:12px;color:#4A5B78}
+  .sc-opt input:checked+span{border-color:#0B1D40;background:#E8EEF8}
+  .sc-opt input:focus-visible+span{outline:2px solid #0B1D40;outline-offset:2px}
+  .sc-cards.sc-bad .sc-opt span{border-color:#B42318}
+  .sc-filled{font-size:13px;margin:0;color:#4A5B78}
+  .sc-hint{font-size:13px;margin:0;color:#4A5B78}
+  .sc-err{font-size:13px;margin:0;color:#B42318}
+</style>
+<div class="{{ sc_wrap_class or 'rg-f' }}" id="blkSellCur" role="radiogroup" aria-labelledby="lblSellCur">
+  <label id="lblSellCur" for="fSellCur">What currency do you sell in?{% if sc_star %} *{% endif %}</label>
+  <div class="sc-cards" id="scCards">
+    {% for c in selling_currencies %}
+    <label class="sc-opt"><input type="radio" name="selling_currency" value="{{ c.code }}" data-country="{{ c.country or '' }}"
+           {% if sc_selected == c.code %}checked{% endif %}><span><b>{{ c.prefix | trim }}</b><small>{{ c.name }}</small></span></label>
+    {% endfor %}
+    {# Carries the choice for the page's own checks (they read .value). #}
+    <input type="text" id="fSellCur" tabindex="-1" aria-hidden="true" required value="{{ sc_selected or '' }}"
+           style="position:absolute!important;left:0;top:0;opacity:0!important;width:1px!important;height:1px!important;padding:0!important;border:0!important;pointer-events:none">
+  </div>
+  <p class="sc-filled" id="scFilled" hidden>Filled in from your country. You can change it.</p>
+  <p class="sc-hint">This is the currency your customers see. Your PhiXtra plan is paid in naira (₦) or pounds (£).</p>
+  <p class="sc-err field-hint err" id="hSellCur" {% if sc_err_hidden %}hidden{% else %}style="display:none"{% endif %}>Please choose the currency you sell in.</p>
+</div>
+<script>
+(function(){
+  var proxy = document.getElementById('fSellCur');
+  var cards = document.getElementById('scCards');
+  var filled = document.getElementById('scFilled');
+  var err = document.getElementById('hSellCur');
+  var radios = cards.querySelectorAll('input[name=selling_currency]');
+  var auto = false;
+  var useHidden = {{ 'true' if sc_err_hidden else 'false' }};
+  function sync(){
+    var v = '';
+    radios.forEach(function(r){ if (r.checked) v = r.value; });
+    proxy.value = v;
+    cards.classList.toggle('sc-bad', false);
+    if (v) { if (useHidden) err.hidden = true; else err.style.display = 'none'; }
+    proxy.dispatchEvent(new Event('input', {bubbles: true}));
+  }
+  radios.forEach(function(r){ r.addEventListener('change', function(){ auto = false; filled.hidden = true; sync(); }); });
+  // The page's checks mark the proxy invalid; show it on the cards too.
+  new MutationObserver(function(){ cards.classList.toggle('sc-bad', proxy.classList.contains('f-invalid')); })
+    .observe(proxy, {attributes: true, attributeFilter: ['class']});
+  function fromCountry(iso){
+    var match = null;
+    radios.forEach(function(r){ if (iso && r.dataset.country === iso) match = r; });
+    if (match) { match.checked = true; auto = true; filled.hidden = false; sync(); }
+    else if (auto || !proxy.value) {
+      radios.forEach(function(r){ r.checked = false; }); auto = false; filled.hidden = true; sync();
+    }
+  }
+  {{ (sc_country_ids or []) | tojson }}.forEach(function(id){
+    var sel = document.getElementById(id);
+    if (!sel) return;
+    sel.addEventListener('change', function(){ if (sel.offsetParent !== null) fromCountry(sel.value); });
+    if (sel.value && !proxy.value && sel.offsetParent !== null) fromCountry(sel.value);
+  });
+})();
+</script>

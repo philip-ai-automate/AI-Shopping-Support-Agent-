@@ -65,7 +65,7 @@
   <div class="kpi-card">
     <div class="card-title">Today's Revenue</div>
     <div class="kpi" style="font-size:20px">
-      ₦{{ "{:,.0f}".format((kpis.revenue or 0)|float) }}
+      {{ ((kpis.revenue or 0)|float)|money_total }}
     </div>
   </div>
   <div class="kpi-card">
@@ -137,7 +137,7 @@
           {% endif %}
         </td>
         <td style="text-align:center">{{ o.item_count or 0 }}</td>
-        <td class="amount">₦{{ "{:,.0f}".format((o.total_amount or 0)|float) }}</td>
+        <td class="amount">{{ ((o.total_amount or 0)|float)|money(o.currency) }}</td>
         <td>
           {% if o.payment_method == 'paystack' %}
             <span title="Paystack">💳 Card</span>

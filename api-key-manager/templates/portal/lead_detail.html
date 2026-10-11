@@ -177,7 +177,7 @@
 
     <div style="grid-column: span 4">
       <div class="lc-field-label">Deal Value</div>
-      <div style="font-size:22px;font-weight:800;color:var(--ink);letter-spacing:-.5px">{{ '₦{:,.0f}'.format(lead.deal_value) if lead.deal_value else '—' }}</div>
+      <div style="font-size:22px;font-weight:800;color:var(--ink);letter-spacing:-.5px">{{ (lead.deal_value)|money(lead.currency) if lead.deal_value else '—' }}</div>
     </div>
   </div>
 

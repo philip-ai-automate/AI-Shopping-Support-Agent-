@@ -19,6 +19,8 @@ Logic:
 Each business sets its own two numbers on the Payment Gateways settings page.
 """
 
+import selling_currency as _sc
+from currency import fmt_amount
 import asyncio
 import json
 
@@ -126,11 +128,8 @@ async def _run():
         if not creds:
             continue
         pname = cart.get("product_name", "your order")
-        try:
-            final_price = float(cart.get("final_price") or cart.get("unit_price") or 0)
-            price_str = f"₦{final_price:,.0f}"
-        except Exception:
-            price_str = str(cart.get("final_price") or cart.get("unit_price") or "")
+        _sc.set_current_tenant(int(row["tenant_id"]))   # ₦ unless the business sells in £/$
+        price_str = fmt_amount(cart.get("final_price") or cart.get("unit_price") or 0)
         bank = get_merchant_bank(int(row["tenant_id"]))
         bank_block = (
             f"🏦 Bank: {bank.get('bank_name', '—')}\n"

@@ -161,7 +161,11 @@ def _activity_totals(cur, tenant_id, start, end, tzn):
                coalesce(sum(qty) FILTER (WHERE action='opportunity'), 0) AS opps,
                coalesce(sum(qty) FILTER (WHERE action='proposal'), 0) AS proposals,
                coalesce(sum(qty) FILTER (WHERE action='won'), 0) AS won_count,
-               coalesce(sum(value) FILTER (WHERE action='won'), 0) AS won_value,
+               -- won amounts in the business's current currency: a deal saved in
+               -- another currency (before a currency change) is converted (2026-10-11)
+               coalesce(sum(fx_to_selling(value, (SELECT l.currency FROM merchant_pipeline_leads l
+                                                   WHERE l.id = staff_activity.lead_id), tenant_id))
+                        FILTER (WHERE action='won'), 0) AS won_value,
                count(*) FILTER (WHERE action = ANY(%s)) AS work_rows
         FROM staff_activity
         WHERE tenant_id=%s AND (created_at AT TIME ZONE %s)::date BETWEEN %s AND %s
