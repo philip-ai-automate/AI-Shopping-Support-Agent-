@@ -293,7 +293,7 @@
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
       <button type="button" class="lc-tab active" id="lcNotesTab" onclick="lcShowTab('notes')">📝 Notes</button>
       <button type="button" class="lc-tab disabled">✅ Tasks <span class="lc-soon">NEW</span></button>
-      <button type="button" class="lc-tab disabled">📞 Calls <span class="lc-soon">NEW</span></button>
+      <button type="button" class="lc-tab" onclick="lcShowTab('calls')" id="lcCallsTab">📞 Calls{% if lead_calls %} ({{ lead_calls|length }}){% endif %}</button>
       <button type="button" class="lc-tab" onclick="lcShowTab('history')" id="lcHistoryTab">🕒 Stage History</button>
       <button type="button" class="lc-tab" onclick="lcShowTab('emails')" id="lcEmailsTab">✉️ Emails{% if email_history %} ({{ email_history|length }}){% endif %}</button>
     </div>
@@ -303,6 +303,35 @@
       {% else %}
       <div style="font-size:12.5px;color:var(--muted)">No notes yet{% if staff_can_open('portal.sales_pipeline_edit') %} — click "✏️ Edit Lead" above to add some{% endif %}.</div>
       {% endif %}
+    </div>
+    <div id="lcCallsPane" style="display:none">
+      <form method="POST" action="{{ url_for('portal.lead_log_call', lead_id=lead.id) }}" style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <label for="lcCallOutcome" style="font-size:11.5px;color:var(--muted);font-weight:600">How did it go?</label>
+          <select id="lcCallOutcome" name="outcome" required style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12.5px">
+            <option value="">— choose —</option>
+            {% for k, label in call_outcomes %}<option value="{{ k }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <label for="lcCallMinutes" style="font-size:11.5px;color:var(--muted);font-weight:600">Minutes</label>
+          <input id="lcCallMinutes" name="minutes" type="number" min="0" max="600" placeholder="e.g. 5" style="width:90px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12.5px">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:200px">
+          <label for="lcCallNote" style="font-size:11.5px;color:var(--muted);font-weight:600">What was said (optional)</label>
+          <input id="lcCallNote" name="note" maxlength="2000" placeholder="e.g. Interested, wants a demo next week" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12.5px">
+        </div>
+        <button type="submit" class="lc-tab active" style="cursor:pointer">📞 Log a call</button>
+      </form>
+      {% for c in lead_calls %}
+      <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:8px">
+        <strong>{{ c.outcome_label }}</strong>{% if c.minutes %} · {{ c.minutes }} min{% endif %}
+        <span style="color:var(--muted)"> — {{ c.actor_name or 'Unknown' }}, {{ c.local_at.strftime('%d %b %Y, %H:%M') }}</span>
+        {% if c.note %}<div style="color:var(--muted);margin-top:3px;white-space:pre-line">{{ c.note }}</div>{% endif %}
+      </div>
+      {% else %}
+      <div style="font-size:12.5px;color:var(--muted)">No calls logged yet. After you call this lead, log it here so your manager can see it.</div>
+      {% endfor %}
     </div>
     <div id="lcHistoryPane" style="display:none">
       {% if stage_history %}
@@ -394,7 +423,7 @@
   </div>
 </div>
 
-<p style="font-size:11.5px;color:var(--muted);margin:14px 4px 0;line-height:1.6;max-width:900px">Instagram/Facebook conversations and Tasks/Calls aren't built yet — shown here so you know where they'll slot in. Ambassador only applies to PhiXtra's own account.</p>
+<p style="font-size:11.5px;color:var(--muted);margin:14px 4px 0;line-height:1.6;max-width:900px">Instagram/Facebook conversations and Tasks aren't built yet — shown here so you know where they'll slot in. Ambassador only applies to PhiXtra's own account.</p>
 
 <!-- Edit Lead modal -->
 <div class="modal-over" id="editLeadModal" onclick="if(event.target===this)this.classList.remove('open')">
@@ -513,12 +542,13 @@
 
 <script>
 function lcShowTab(which) {
-  ['notes', 'history', 'emails'].forEach(function (t) {
+  ['notes', 'calls', 'history', 'emails'].forEach(function (t) {
     var cap = t.charAt(0).toUpperCase() + t.slice(1);
     document.getElementById('lc' + cap + 'Pane').style.display = which === t ? 'block' : 'none';
     document.getElementById('lc' + cap + 'Tab').classList.toggle('active', which === t);
   });
 }
 if (location.hash === '#emails') lcShowTab('emails');
+if (location.hash === '#calls') lcShowTab('calls');
 </script>
 {% endblock %}

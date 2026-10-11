@@ -3,6 +3,7 @@ portal_routes.py  — Phase 1 customer portal (portal.phixtra.com)
 Extends the existing Flask app. db.py, app.py, invoice_pdf.py, portal_utils.py are UNCHANGED.
 """
 import psycopg2
+import staff_activity
 import psycopg2.extras
 import psycopg2.errors
 import os, secrets, string, json as _json
@@ -59,6 +60,14 @@ portal_bp = Blueprint("portal", __name__)
 # exact permission itself (_require_team_permission). Labels live on each
 # route, not in hand-kept lists here — see feature_access.py for why and for
 # the update policy every new feature must follow.
+@portal_bp.before_app_request
+def _track_staff_presence():
+    """Team performance: first/last seen and active minutes per person per
+    day (staff_activity.py). Never blocks or changes the request."""
+    staff_activity.track_request(request)
+    return None
+
+
 @portal_bp.before_request
 def _restrict_team_members_to_inbox():
     if not session.get("team_member_id"):
@@ -415,6 +424,8 @@ PLAN_FEATURE_CATALOG = {
         ("leads.qualify", "Qualify a Lead into an Opportunity / mark it Not a Fit"),
         ("leads.assign",  "Assign Leads and Opportunities to team members"),
         ("leads.see_all", "See all leads, not just their own (off = only leads assigned to them)"),
+        ("leads.team_performance", "Team performance — see how each person is doing and set their targets "
+                                   "(staff see only the people who report to them)"),
     ],
     # Platform business only (PLATFORM_TENANT_ID): signed-up businesses an
     # admin hands to PhiXtra's own staff to help finish setting up
@@ -654,6 +665,7 @@ ROLE_FORM_GRID = {
     ],
     "Leads": [
         {"label": "Leads", "view": "leads.page", "create": "leads.create", "other": ["leads.qualify", "leads.assign", "leads.see_all"]},
+        {"label": "Team performance", "view": "leads.team_performance"},
     ],
     "Accounts": [
         {"label": "Accounts", "view": "accounts.view", "other": ["accounts.notes", "accounts.see_all"]},
@@ -15091,6 +15103,7 @@ def inbox_takeover():
         cur.close(); cur2.close(); conn.close()
 
         flash(f"You have taken over the conversation with +{customer_phone}. AI is paused. ✅", "success")
+        staff_activity.log("chat_claimed", tenant_id, phone=customer_phone)
         return redirect(url_for("portal.my_inbox", phone=customer_phone))
 
     except Exception as e:
@@ -15984,6 +15997,7 @@ def whatsapp_contact_move_to_pipeline(contact_id: int):
             flash(f"{label} has no phone number, WhatsApp number or email, so a Sales Lead can't be created for them.", "warning")
         else:
             flash(f"Sales Lead created for {label}.", "success")
+            staff_activity.log("lead_created", tenant_id, contact_id=contact_id)
     except Exception as e:
         print("⚠️ move_to_pipeline error:", e)
         flash("Could not create a Sales Lead. Please try again.", "danger")
@@ -16410,6 +16424,7 @@ def whatsapp_contacts_add():
             flash(f"{label} was already in your contacts, so their details were updated.", "success")
         else:
             flash(f"Contact {label} saved.", "success")
+            staff_activity.log("contact_created", tenant_id)
     except Exception as e:
         print("⚠️ whatsapp_contacts_add error:", e)
         flash("Could not save contact. Please try again.", "danger")
@@ -16498,6 +16513,7 @@ def whatsapp_contacts_edit(contact_id: int):
         conn.commit()
         cur.close(); conn.close()
         flash("Contact updated.", "success")
+        staff_activity.log("contact_edited", tenant_id, contact_id=contact_id)
     except Exception as e:
         print("⚠️ whatsapp_contacts_edit error:", e)
         flash("Could not update contact.", "danger")
@@ -17215,6 +17231,7 @@ def whatsapp_contact_add_note(contact_id: int):
             (contact_id, tenant_id, author_id, body)
         )
         conn.commit(); cur.close(); conn.close()
+        staff_activity.log("note_added", tenant_id, contact_id=contact_id)
     except Exception as e:
         print("⚠️ add_note error:", e)
         flash("Could not save note.", "danger")
@@ -17428,6 +17445,7 @@ def crm_companies_add():
             _addr.save_address_family(cur, tenant_id, address, company_id=company_id)
             conn.commit()
             flash(f"{name} added.", "success")
+            staff_activity.log("company_created", tenant_id, company_id=company_id)
         cur.close(); conn.close()
     except Exception as e:
         print("⚠️ crm_companies_add error:", e)
@@ -17607,6 +17625,7 @@ def crm_company_add_note(company_id: int):
             (company_id, tenant_id, author_id, body),
         )
         conn.commit(); cur.close(); conn.close()
+        staff_activity.log("note_added", tenant_id, company_id=company_id)
     except Exception as e:
         print("⚠️ crm_company_add_note error:", e)
         flash("Could not save note.", "danger")
@@ -22797,6 +22816,7 @@ def lead_email_replied(lead_id: int):
         cur.execute("UPDATE merchant_pipeline_leads SET updated_at=NOW() WHERE id=%s", (lead_id,))
         conn.commit(); cur.close(); conn.close()
         flash("Marked as replied — it's on this lead's history.", "success")
+        staff_activity.log("reply_logged", tenant_id, lead_id=lead_id)
     except Exception as e:
         print("⚠️ lead_email_replied error:", e)
         flash("Could not save that. Please try again.", "danger")
@@ -23169,6 +23189,14 @@ def _seq_send_next(person_id: int):
             cur.execute("""UPDATE email_sequence_people SET steps_sent=steps_sent+1, last_sent_at=NOW(),
                                status='finished', next_due_at=NULL, updated_at=NOW() WHERE id=%s""", (p["id"],))
         conn.commit()
+        if ok:
+            _a_key = _a_name = None
+            if not staff_activity.in_staff_request():
+                _a_key, _a_name = staff_activity.actor_by_name(tenant_id, p.get("added_by"))
+            if _a_key or staff_activity.in_staff_request():
+                staff_activity.log("email_sent", tenant_id, lead_id=p.get("lead_id"), contact_id=p.get("contact_id"),
+                                   actor_key=_a_key, actor_name=_a_name,
+                                   detail=f"{seq.get('name') or 'Sequence'} · email {step['position']}")
         return (True, f"Email {step['position']} sent.") if ok else (False, f"Couldn't deliver: {err or 'unknown error'}")
     except Exception as e:
         conn.rollback()
@@ -23560,6 +23588,9 @@ def email_sequence_add_people(seq_id: int):
             return back
         res = _seq_add_people(cur, tenant_id, seq_id, people, _current_actor(customer)["label"])
         conn.commit()
+        if res.get("added"):
+            staff_activity.log("seq_added", tenant_id, qty=res["added"],
+                               lead_id=(people[0][1] if len(people) == 1 else None), detail=f"sequence {seq_id}")
     except Exception as e:
         conn.rollback()
         print("⚠️ email_sequence_add_people error:", e)
@@ -23686,6 +23717,8 @@ def lead_add_to_sequence(lead_id: int):
             return back
         res = _seq_add_people(cur, tenant_id, seq["id"], [(lead["email"], lead_id)], _current_actor(customer)["label"])
         conn.commit()
+        if res.get("added"):
+            staff_activity.log("seq_added", tenant_id, lead_id=lead_id, detail=seq.get("name"))
     finally:
         cur.close(); conn.close()
     if res["added"]:
@@ -29630,6 +29663,7 @@ def _send_messenger_reply(tenant_id: int, key: str, text: str, actor: dict):
         except Exception as e:
             print("⚠️ _send_messenger_reply log error:", e)
         flash("Message sent. ✅", "success")
+        staff_activity.log("messenger_sent", tenant_id, detail=psid)
     else:
         # Most likely cause: Facebook's 24-hour messaging window has
         # closed since this contact last messaged — Meta enforces that
@@ -29800,6 +29834,7 @@ def _send_webchat_reply(tenant_id: int, key: str, text: str, actor: dict):
     """, (tenant_id, session_id))
     conn.commit()
     cur.close(); conn.close()
+    staff_activity.log("webchat_sent", tenant_id, detail=session_id)
 
     if online:
         flash("Sent. It shows in the visitor's chat box now.", "success")
@@ -30123,6 +30158,7 @@ def inbox_reply(phone: str):
         except Exception as e:
             print("⚠️ inbox_reply log error:", e)
         flash("Message sent. ✅", "success")
+        staff_activity.log("wa_sent", tenant_id, phone=phone)
     else:
         flash("Failed to send — check your WhatsApp credentials.", "danger")
 
@@ -30163,6 +30199,7 @@ def inbox_claim(phone: str):
         cur.close(); conn.close()
         _claimed_chat_becomes_contact(tenant_id, phone, actor)
         flash("Conversation claimed. ✅", "success")
+        staff_activity.log("chat_claimed", tenant_id, phone=phone)
     except Exception as e:
         print("⚠️ inbox_claim error:", e)
         flash("Couldn't claim this conversation — try again.", "danger")
@@ -31483,6 +31520,199 @@ def leads_overview():
     )
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# TEAM PERFORMANCE (2026-10-11) — daily/monthly view of each salesperson for
+# the owner and line managers. Numbers: team_performance.py; the record
+# behind them: staff_activity.py. Approved mock-up: TKYQdZHJAUqMyt2hLEPJ1Y.
+# ══════════════════════════════════════════════════════════════════════════════
+import team_performance as _tp
+import datetime as _tpdt
+
+
+def _tp_guard():
+    r = _require_login()
+    if r: return None, None, r
+    _rperm = _require_team_permission("leads.team_performance")
+    if _rperm: return None, None, _rperm
+    customer = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "leads.page", "Leads")
+    if r2: return None, None, r2
+    return customer, int(customer["tenant_id"]), None
+
+
+@portal_bp.route("/team-performance")
+@team_feature("leads.team_performance")
+def team_performance():
+    customer, tenant_id, err = _tp_guard()
+    if err: return err
+    _rperm = _require_team_permission("leads.team_performance")
+    if _rperm: return _rperm
+    viewer = _current_actor(customer)
+    data = _tp.build(tenant_id, viewer, request.args.get("period") or "today")
+    summary = None
+    if not viewer["is_team"]:
+        summary = _tp_summary_settings(tenant_id)
+    return render_template("portal/team_performance.html", customer=customer, d=data,
+                           periods=_tp.PERIODS, viewer=viewer, summary=summary)
+
+
+def _tp_summary_settings(tenant_id: int) -> dict:
+    """Owner's box for the 6 pm email: on/off and who gets it."""
+    import team_daily_summary as _tds
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        enabled, off = _tds.settings(cur, tenant_id)
+        people = [{"key": k, "name": n, "email": e, "on": k not in off, "is_owner": not v["is_team"]}
+                  for v, n, e, k in _tds.recipients(cur, tenant_id)]
+    finally:
+        conn.close()
+    return {"enabled": enabled, "people": people}
+
+
+@portal_bp.route("/team-performance/email-settings", methods=["POST"])
+@owner_only
+def team_performance_email_settings():
+    """Owner only: switch the 6 pm summary on/off, per person, or send a preview."""
+    r = _require_login()
+    if r: return r
+    if session.get("team_member_id"):
+        return _team_member_denied("Only the account owner can change the daily email.")
+    customer = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    import team_daily_summary as _tds
+    from portal_utils import send_email as _send_email
+    back = url_for("portal.team_performance") + "#daily-email"
+    if request.form.get("action") == "preview":
+        viewer = _current_actor(customer)
+        built = _tds.build_email(tenant_id, {"is_team": False, "key": viewer["key"], "team_member_id": None},
+                                 (customer.get("first_name") or "there").split()[0], _tp.now_local())
+        if not built:
+            flash("Nobody is on the Team performance page yet, so there's nothing to send.", "warning")
+        elif _send_email(customer["email"], "[Preview] " + built[0], built[1], built[2]):
+            flash(f"Preview sent to {customer['email']}.", "success")
+        else:
+            flash("The preview couldn't be sent. Please try again in a minute.", "danger")
+        return redirect(back)
+    current = _tp_summary_settings(tenant_id)
+    keys = {p["key"] for p in current["people"]}
+    ticked = set(request.form.getlist("on"))
+    off = sorted(keys - ticked)
+    enabled = request.form.get("enabled") == "1"
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("""INSERT INTO team_summary_settings (tenant_id, enabled, off_keys, updated_by, updated_at)
+                       VALUES (%s,%s,%s,%s,NOW())
+                       ON CONFLICT (tenant_id) DO UPDATE SET enabled=EXCLUDED.enabled, off_keys=EXCLUDED.off_keys,
+                           updated_by=EXCLUDED.updated_by, updated_at=NOW()""",
+                    (tenant_id, enabled, off, _current_actor(customer)["label"]))
+        conn.commit()
+    finally:
+        conn.close()
+    flash("Daily email " + ("switched on." if enabled else "switched off."), "success")
+    return redirect(back)
+
+
+@portal_bp.route("/team-performance/person/<path:actor_key>")
+@team_feature("leads.team_performance")
+def team_performance_person(actor_key: str):
+    customer, tenant_id, err = _tp_guard()
+    if err: return err
+    _rperm = _require_team_permission("leads.team_performance")
+    if _rperm: return _rperm
+    viewer = _current_actor(customer)
+    if not _tp.can_view(tenant_id, viewer, actor_key):
+        flash("You can only see the people who report to you.", "warning")
+        return redirect(url_for("portal.team_performance"))
+    try:
+        day = _tpdt.date.fromisoformat(request.args.get("day") or "")
+    except ValueError:
+        day = _tp.now_local().date()
+    data = _tp.build(tenant_id, viewer, "today")
+    names = {p["key"]: p for p in data["people"]}
+    person = names.get(actor_key)
+    if not person:
+        _keys, rows = _tp.viewer_scope(tenant_id, viewer)
+        tm = next((r for r in rows if f"team:{r['id']}" == actor_key), None)
+        person = {"key": actor_key, "name": tm["name"] if tm else actor_key,
+                  "role": (tm or {}).get("role_name") or "", "initials": _tp._initials(tm["name"] if tm else "?")}
+    return render_template("portal/team_performance_person.html", customer=customer, person=person,
+                           day=day, prev_day=day - _tpdt.timedelta(days=1),
+                           next_day=(day + _tpdt.timedelta(days=1)) if day < _tp.now_local().date() else None,
+                           dd=_tp.person_day(tenant_id, actor_key, day),
+                           recording_started=_tp.RECORDING_STARTED)
+
+
+@portal_bp.route("/team-performance/targets", methods=["POST"])
+@team_feature("leads.team_performance")
+def team_performance_targets():
+    customer, tenant_id, err = _tp_guard()
+    if err: return err
+    _rperm = _require_team_permission("leads.team_performance")
+    if _rperm: return _rperm
+    viewer = _current_actor(customer)
+    data = _tp.build(tenant_id, viewer, "month")
+    allowed = {p["key"] for p in data["people"] if p["can_set_target"]}
+    rows = []
+    for k in allowed:
+        opp = (request.form.get(f"opp__{k}") or "").replace(",", "").strip()
+        won = (request.form.get(f"won__{k}") or "").replace(",", "").replace("₦", "").strip()
+        if f"opp__{k}" not in request.form:
+            continue
+        try:
+            opp_v = int(opp) if opp else None
+            won_v = float(won) if won else None
+        except ValueError:
+            flash("Targets must be whole numbers, for example 25 or 2,500,000.", "danger")
+            return redirect(url_for("portal.team_performance", period="month") + "#targets")
+        if (opp_v is not None and opp_v < 0) or (won_v is not None and won_v < 0):
+            flash("Targets can't be below zero.", "danger")
+            return redirect(url_for("portal.team_performance", period="month") + "#targets")
+        rows.append((k, opp_v, won_v))
+    if rows:
+        _tp.save_targets(tenant_id, data["month_first"], rows, viewer["label"])
+        flash(f"Targets for {data['month_first']:%B %Y} saved.", "success")
+    return redirect(url_for("portal.team_performance", period="month") + "#targets")
+
+
+@portal_bp.route("/leads/<int:lead_id>/log-call", methods=["POST"])
+@team_feature("leads.page")
+def lead_log_call(lead_id: int):
+    """Calls tab on the lead page: who called, how it went, how long, note."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
+    back = url_for("portal.lead_detail", lead_id=lead_id) + "#calls"
+    if not lead:
+        flash("Lead not found.", "danger")
+        return redirect(url_for("portal.leads_page"))
+    outcome = (request.form.get("outcome") or "").strip()
+    if outcome not in _tp.CALL_OUTCOME_LABELS:
+        flash("Choose how the call went.", "danger")
+        return redirect(back)
+    minutes = (request.form.get("minutes") or "").strip()
+    try:
+        minutes = int(minutes) if minutes else None
+        if minutes is not None and not 0 <= minutes <= 600:
+            raise ValueError
+    except ValueError:
+        flash("Minutes must be a number between 0 and 600.", "danger")
+        return redirect(back)
+    note = (request.form.get("note") or "").strip()[:2000]
+    actor = _current_actor(customer)
+    _tp.log_call(tenant_id, lead_id, actor, outcome, minutes, note)
+    label = _tp.CALL_OUTCOME_LABELS[outcome]
+    staff_activity.log("call", tenant_id, lead_id=lead_id,
+                       detail=label + (f" · {minutes} min" if minutes else "") + (f" · {note[:200]}" if note else ""))
+    flash(f"Call logged: {label.lower()}.", "success")
+    return redirect(back)
+
+
 @portal_bp.route("/leads", methods=["GET", "POST"])
 @team_feature("leads.create", "leads.page")
 def leads_page():
@@ -32577,6 +32807,10 @@ def leads_bulk_qualify():
         return jsonify({"error": "Something went wrong — nothing was changed."}), 500
     finally:
         cur.close(); conn.close()
+    if ok_ids:
+        staff_activity.log("opportunity", tenant_id, qty=len(ok_ids), detail="bulk")
+    if assigned:
+        staff_activity.log("leads_assigned", tenant_id, qty=sum(assigned.values()), detail="bulk")
     return jsonify({"ok": True, "qualified": len(ok_ids), "skipped_no_details": skipped,
                     "assigned": sum(assigned.values())})
 
@@ -32611,6 +32845,8 @@ def leads_bulk_assign():
         return jsonify({"error": "Something went wrong — nothing was changed."}), 500
     finally:
         cur.close(); conn.close()
+    if assigned:
+        staff_activity.log("leads_assigned", tenant_id, qty=sum(assigned.values()), detail="bulk")
     return jsonify({"ok": True, "assigned": sum(assigned.values()), "selected": len(ids)})
 
 
@@ -32690,6 +32926,7 @@ def leads_bulk_not_a_fit():
         return jsonify({"error": "Something went wrong — nothing was changed."}), 500
     finally:
         cur.close(); conn.close()
+    staff_activity.log("not_a_fit", tenant_id, qty=len(ids), detail="bulk")
     return jsonify({"ok": True, "closed": len(ids)})
 
 
@@ -32725,6 +32962,7 @@ def sales_pipeline_bulk_move_to_leads():
         return jsonify({"error": "Something went wrong — nothing was changed."}), 500
     finally:
         cur.close(); conn.close()
+    staff_activity.log("stage_moved", tenant_id, qty=len(ids), detail="bulk → back to Leads")
     return jsonify({"ok": True, "moved": len(ids)})
 
 
@@ -33783,6 +34021,7 @@ def sales_pipeline_edit(lead_id: int):
             _addr.save_other_emails(cur, tenant_id, other_emails, lead_id=lead_id)
         conn.commit(); cur.close(); conn.close()
 
+    staff_activity.log("lead_edited", tenant_id, lead_id=lead_id)
     flash(f"{customer_name} updated.", "success")
     # Editing can happen from the Lead's own page or from Sales Pipeline —
     # go back to wherever the edit was submitted from, not always Pipeline.
@@ -34318,6 +34557,8 @@ def lead_detail(lead_id: int):
         assignees=_lead_assignees(tenant_id, customer),
         email_history=_lead_email_history(tenant_id, lead_id),
         lead_sequences=_lead_sequences(tenant_id, lead),
+        lead_calls=_tp.lead_calls(tenant_id, lead_id),
+        call_outcomes=_tp.CALL_OUTCOMES,
     )
 
 

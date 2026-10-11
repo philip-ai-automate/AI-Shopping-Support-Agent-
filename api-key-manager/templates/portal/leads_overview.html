@@ -294,7 +294,7 @@
 <div class="lo-section">
   <div class="lo-section-head">
     <div class="lo-section-title">4 · Team performance</div>
-    <div class="lo-section-note">Leads given, opportunities made, and deals won by each team member</div>
+    <div class="lo-section-note">Leads given, opportunities made, and deals won by each team member{% if staff_can_open('portal.team_performance') %} · <a href="{{ url_for('portal.team_performance') }}" style="font-weight:700;color:#0B1D40">See daily performance ›</a>{% endif %}</div>
   </div>
   <div class="lo-panel" style="padding:0">
     {% if data.by_rep_enough_data %}

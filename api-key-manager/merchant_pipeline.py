@@ -142,6 +142,10 @@ def get_effective_score_labels(tenant_id: int) -> dict:
 
 def record_stage_change(lead_id: int, from_stage: str | None, to_stage: str,
                          changed_by: str, notes: str | None = None) -> None:
+    # The real person behind the move (callers pass the OWNER's name even
+    # when a staff member did it), plus a Team performance record.
+    import staff_activity
+    changed_by = staff_activity.current_name(changed_by)
     conn = get_db_connection()
     cur  = conn.cursor()
     cur.execute("""
@@ -150,6 +154,7 @@ def record_stage_change(lead_id: int, from_stage: str | None, to_stage: str,
     """, (lead_id, from_stage, to_stage, changed_by, notes))
     conn.commit()
     cur.close(); conn.close()
+    staff_activity.log_stage_change(lead_id, from_stage, to_stage, notes)
 
 
 def get_stage_history(lead_id: int) -> list[dict]:

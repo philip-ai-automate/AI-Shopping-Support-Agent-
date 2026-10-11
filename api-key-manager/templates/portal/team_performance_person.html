@@ -1,0 +1,91 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ person.name }} · {{ day.strftime('%-d %b') }} — Team performance{% endblock %}
+{% block wrap_class %}page-wide{% endblock %}
+{% block content %}
+<style>
+.pd-top{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+.pd-back{font-size:12.5px;font-weight:700;color:#0B1D40;text-decoration:none}
+.pd-who{display:flex;gap:12px;align-items:center;margin-top:10px}
+.pd-av{width:42px;height:42px;border-radius:50%;background:#E8EEF8;color:#0B1D40;display:grid;place-items:center;font-weight:800;font-size:14px}
+.pd-sub{font-size:13px;color:var(--muted)}
+.pd-nav{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pd-nav a,.pd-nav span{font-size:12.5px;font-weight:600;padding:7px 12px;border-radius:9px;border:1px solid var(--line);text-decoration:none;color:var(--ink);background:#fff}
+.pd-nav span{color:var(--muted)}
+.pd-nav input{padding:6px 9px;border:1px solid var(--line);border-radius:9px;font-size:12.5px}
+.pd-grid{display:grid;grid-template-columns:300px 1fr;gap:18px;align-items:start}
+@media (max-width:900px){.pd-grid{grid-template-columns:1fr}}
+.pd-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.pd-kv{display:grid;grid-template-columns:1fr auto;gap:8px 12px;font-size:13px}
+.pd-kv>span:nth-child(even){font-weight:700;color:var(--ink);text-align:right;font-variant-numeric:tabular-nums}
+.pd-kv .hd{grid-column:1/-1;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:8px}
+.pd-tl{list-style:none;margin:0;padding:0}
+.pd-tl li{display:grid;grid-template-columns:52px 30px 1fr;gap:10px;align-items:start;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.pd-tl li:last-child{border-bottom:0}
+.pd-tl time{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600;padding-top:3px}
+.pd-ic{width:30px;height:26px;border-radius:8px;display:grid;place-items:center;font-size:10.5px;font-weight:800;background:#E8EEF8;color:#0B1D40}
+.pd-ic.won{background:rgba(18,183,106,0.12);color:#0d7a4d}
+.pd-ic.gap{background:rgba(247,144,9,0.14);color:#93540a}
+.pd-ic.in{background:rgba(3,12,24,.06);color:var(--muted)}
+.pd-tl b{color:var(--ink)}
+.pd-tl a{color:var(--ink);font-weight:600}
+.pd-tl .m{color:var(--muted);font-size:12px}
+.pd-empty{font-size:13px;color:var(--muted);padding:8px 0}
+</style>
+
+{% set c = dd.counts %}
+<div class="pd-top">
+  <div>
+    <a class="pd-back" href="{{ url_for('portal.team_performance') }}">‹ Team performance</a>
+    <div class="pd-who"><span class="pd-av">{{ person.initials }}</span>
+      <div><h1 style="margin:0">{{ person.name }}</h1>
+        <div class="pd-sub">{{ person.role }}{% if person.manager %} · reports to {{ person.manager }}{% endif %} · {{ day.strftime('%A %-d %B %Y') }}</div></div></div>
+  </div>
+  <form class="pd-nav" method="GET">
+    <a href="?day={{ prev_day.isoformat() }}">‹ {{ prev_day.strftime('%a %-d %b') }}</a>
+    {% if next_day %}<a href="?day={{ next_day.isoformat() }}">{{ next_day.strftime('%a %-d %b') }} ›</a>{% else %}<span>Today</span>{% endif %}
+    <label for="pdDay" style="font-size:12px;color:var(--muted)">Go to</label>
+    <input id="pdDay" type="date" name="day" value="{{ day.isoformat() }}" min="{{ recording_started.isoformat() }}" onchange="this.form.submit()">
+  </form>
+</div>
+
+<div class="pd-grid">
+  <div class="pd-card">
+    <div class="pd-kv">
+      <span class="hd">The day</span>
+      <span>First seen</span><span>{{ dd.first_seen.strftime('%H:%M') if dd.first_seen else '—' }}</span>
+      <span>Last seen</span><span>{{ dd.last_seen.strftime('%H:%M') if dd.last_seen else '—' }}</span>
+      <span>Active time</span><span>{% if dd.presence %}{{ (dd.presence.active_minutes // 60) }}h {{ '%02d' % (dd.presence.active_minutes % 60) }}m{% else %}—{% endif %}</span>
+      <span>Longest break</span><span>{% if dd.presence and dd.presence.longest_gap_min %}{{ (dd.presence.longest_gap_min // 60) }}h {{ '%02d' % (dd.presence.longest_gap_min % 60) }}m{% else %}—{% endif %}</span>
+      <span class="hd">Activity</span>
+      <span>Leads worked</span><span>{{ dd.leads_worked }}</span>
+      <span>Calls logged</span><span>{{ c.get('call', 0) }}</span>
+      <span>Messages sent</span><span>{{ c.get('wa_sent', 0) + c.get('messenger_sent', 0) + c.get('webchat_sent', 0) }}</span>
+      <span>Emails sent</span><span>{{ c.get('email_sent', 0) }}</span>
+      <span>Notes added</span><span>{{ c.get('note_added', 0) }}</span>
+      <span class="hd">Results</span>
+      <span>New opportunities</span><span>{{ c.get('opportunity', 0) }}</span>
+      <span>Proposals sent</span><span>{{ c.get('proposal', 0) }}</span>
+      <span>Deals won</span><span>{{ c.get('won', 0) }}</span>
+      <span class="hd">Their leads</span>
+      <span>Open leads assigned</span><span>{{ '{:,}'.format(dd.assigned) }}</span>
+    </div>
+    <div style="margin-top:14px"><a class="pd-back" href="{{ url_for('portal.leads_page', assigned=person.key) }}">See their leads ›</a></div>
+  </div>
+  <div class="pd-card">
+    {% if dd.events %}
+    <ul class="pd-tl">
+      {% for e in dd.events %}
+      <li><time>{{ e.t.strftime('%H:%M') }}</time><span class="pd-ic {{ e.kind }}">{{ e.icon }}</span>
+        <span><b>{{ e.title }}</b>
+          {% if e.who %} · {% if e.lead_id %}<a href="{{ url_for('portal.lead_detail', lead_id=e.lead_id) }}">{{ e.who }}</a>{% else %}{{ e.who }}{% endif %}{% if e.contact %} <span class="m">({{ e.contact }})</span>{% endif %}{% endif %}
+          {% if e.extra %}<br><span class="m">{{ e.extra }}</span>{% endif %}</span></li>
+      {% endfor %}
+    </ul>
+    {% elif day < recording_started %}
+    <div class="pd-empty">Nothing recorded: recording started on {{ recording_started.strftime('%A %-d %B %Y') }}.</div>
+    {% else %}
+    <div class="pd-empty">No activity recorded for {{ person.name.split()[0] }} on this day.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

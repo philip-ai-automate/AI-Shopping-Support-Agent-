@@ -1,0 +1,229 @@
+{% extends "portal/base.html" %}
+{% block title %}Team performance — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-wide{% endblock %}
+{% block content %}
+{# Team performance (2026-10-11): approved mock-up TKYQdZHJAUqMyt2hLEPJ1Y.
+   Numbers come from team_performance.build(); see staff_activity.py for
+   what gets recorded. #}
+<style>
+.tp-head{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:18px}
+.tp-eyebrow{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.tp-sub{font-size:13px;color:var(--muted);margin-top:4px}
+.tp-seg{display:inline-flex;background:rgba(3,12,24,0.05);border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
+.tp-seg a{font-size:12.5px;font-weight:600;color:var(--muted);padding:6px 12px;border-radius:8px;text-decoration:none}
+.tp-seg a.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(3,12,24,.12)}
+.tp-note{background:#E8EEF8;border:1px solid #9DB8E8;color:#0B1D40;border-radius:12px;padding:10px 14px;font-size:12.5px;margin-bottom:18px;line-height:1.55}
+.tp-tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:20px}
+.tp-tile{background:#fff;padding:15px 16px;min-width:0}
+.tp-tile .l{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:7px}
+.tp-tile .v{font-size:23px;font-weight:800;color:var(--ink);line-height:1.1;font-variant-numeric:tabular-nums}
+.tp-tile .v small{font-size:13px;color:var(--muted);font-weight:600}
+.tp-tile .d{font-size:11.5px;font-weight:700;margin-top:6px}
+.tp-up{color:#0d7a4d}.tp-down{color:#b42318}.tp-flat{color:var(--muted)}
+@media (max-width:1000px){.tp-tiles{grid-template-columns:repeat(6,1fr)}.tp-tile{grid-column:span 2}.tp-tile:nth-last-child(-n+2){grid-column:span 3}}
+@media (max-width:560px){.tp-tiles{grid-template-columns:repeat(2,1fr)}.tp-tile,.tp-tile:nth-last-child(-n+2){grid-column:auto}.tp-tile:last-child{grid-column:1/-1}}
+.tp-attn{border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:20px;background:#fff}
+.tp-attn-h{padding:11px 16px;font-size:13px;font-weight:800;color:var(--ink);background:rgba(3,12,24,0.03);border-bottom:1px solid var(--line)}
+.tp-attn-row{display:flex;gap:12px;align-items:flex-start;padding:11px 16px;border-bottom:1px solid var(--line);font-size:13px}
+.tp-attn-row:last-child{border-bottom:0}
+.tp-attn-row b{color:var(--ink)}
+.tp-sev{width:9px;height:9px;border-radius:50%;margin-top:6px;flex-shrink:0}
+.tp-sev.r{background:var(--bad)}.tp-sev.a{background:var(--warn)}
+.tp-attn-row a.act{margin-left:auto;font-size:12px;font-weight:700;color:#0B1D40;white-space:nowrap;text-decoration:none}
+.tp-tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:#fff}
+.tp-tbl{width:100%;border-collapse:collapse;font-size:12.5px;min-width:1060px}
+.tp-tbl th{text-align:left;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:11px 10px;border-bottom:1px solid var(--line);white-space:nowrap;background:rgba(3,12,24,0.02)}
+.tp-tbl th.grp{text-align:center;border-bottom:0;padding-bottom:0;color:#0B1D40}
+.tp-tbl td{padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tp-tbl tr:last-child td{border-bottom:0}
+.tp-tbl .num{text-align:right;font-variant-numeric:tabular-nums}
+.tp-tbl .sepL{border-left:1px solid var(--line)}
+.tp-who{display:flex;gap:10px;align-items:center;text-decoration:none;min-width:230px}
+.tp-av{width:32px;height:32px;border-radius:50%;background:#E8EEF8;color:#0B1D40;display:grid;place-items:center;font-weight:800;font-size:12px;flex-shrink:0}
+.tp-who .n{font-weight:700;color:var(--ink);text-decoration:underline;text-decoration-color:#9DB8E8;text-underline-offset:3px}
+.tp-who .r{display:block;font-size:11.5px;color:var(--muted)}
+.tp-pill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap}
+.tp-pill.g{background:rgba(18,183,106,0.12);color:#0d7a4d}.tp-pill.a{background:rgba(247,144,9,0.14);color:#93540a}
+.tp-pill.r{background:rgba(240,68,56,0.10);color:#b42318}.tp-pill.n{background:rgba(3,12,24,.06);color:var(--muted)}
+.tp-s{display:block;font-size:11px;color:var(--muted);margin-top:3px;white-space:nowrap}
+.tp-bar{height:7px;background:rgba(3,12,24,.07);border-radius:4px;overflow:visible;width:110px;margin-top:5px;position:relative}
+.tp-bar i{display:block;height:100%;border-radius:4px}
+.tp-bar .pace{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink)}
+.tp-legend{font-size:11.5px;color:var(--muted);margin:10px 2px 26px;line-height:1.6}
+.tp-sec{font-size:14px;font-weight:800;color:var(--ink);margin:0 0 4px}
+.tp-sec-note{font-size:12px;color:var(--muted);margin:0 0 12px}
+.tp-targets{border:1px solid var(--line);border-radius:14px;background:#fff;padding:16px 18px;margin-bottom:22px}
+.tp-trow{display:grid;grid-template-columns:minmax(160px,1fr) 170px 200px;gap:12px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.tp-trow:last-of-type{border-bottom:0}
+.tp-trow input{width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-variant-numeric:tabular-nums}
+.tp-trow label{font-size:11px;color:var(--muted);display:block;margin-bottom:3px}
+@media (max-width:640px){.tp-trow{grid-template-columns:1fr 1fr}.tp-trow>div:first-child{grid-column:1/-1}}
+.tp-empty{padding:22px;font-size:13px;color:var(--muted)}
+</style>
+
+{% macro delta(cur, prev, money=False) -%}
+  {%- if not d.prev_recorded -%}<div class="d tp-flat">No earlier data yet</div>
+  {%- elif prev == 0 and cur == 0 -%}<div class="d tp-flat">No change {{ d.vs }}</div>
+  {%- elif prev == 0 -%}<div class="d tp-up">New {{ d.vs }}</div>
+  {%- else -%}{% set pct = ((cur - prev) / prev * 100)|round|int %}
+  <div class="d {{ 'tp-up' if pct > 0 else ('tp-down' if pct < 0 else 'tp-flat') }}">{{ '▲' if pct > 0 else ('▼' if pct < 0 else '=') }} {{ pct|abs }}% <span style="color:var(--muted);font-weight:500">{{ d.vs }}</span></div>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro spark(vals) -%}
+{% set w, h, pad = 120, 30, 3 %}
+{% set mx = [vals|select('number')|max if vals|select('number')|list else 0, 5]|max %}
+{% set step = (w - pad * 2) / (vals|length - 1) %}
+<svg width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}" role="img" aria-label="Leads worked per working day, last 7 working days" style="display:block">
+  <line x1="{{ pad }}" x2="{{ w - pad }}" y1="{{ h - pad }}" y2="{{ h - pad }}" stroke="rgba(3,12,24,.12)"/>
+  {% set pts = [] %}
+  {% for v in vals %}{% if v is not none %}{% set _ = pts.append(((pad + loop.index0 * step)|round(1), (h - pad - v / mx * (h - pad * 2))|round(1))) %}{% endif %}{% endfor %}
+  {% if pts|length > 1 %}
+  <path d="M{% for p in pts %}{{ ' L' if not loop.first }}{{ p[0] }} {{ p[1] }}{% endfor %} L{{ pts[-1][0] }} {{ h - pad }} L{{ pts[0][0] }} {{ h - pad }} Z" fill="rgba(11,29,64,.10)"/>
+  <path d="M{% for p in pts %}{{ ' L' if not loop.first }}{{ p[0] }} {{ p[1] }}{% endfor %}" fill="none" stroke="#0B1D40" stroke-width="1.6"/>
+  {% endif %}
+  {% if pts %}<circle cx="{{ pts[-1][0] }}" cy="{{ pts[-1][1] }}" r="2.6" fill="#0B1D40"/>{% endif %}
+</svg>
+{%- endmacro %}
+
+<div class="tp-head">
+  <div>
+    <div class="tp-eyebrow">Leads · {{ 'My team' if viewer.is_team else 'Whole company' }}</div>
+    <h1>{{ "My team's performance" if viewer.is_team else 'Team performance' }}</h1>
+    <div class="tp-sub">{{ d.period_label }} · updated {{ d.updated_at.strftime('%H:%M') }} Lagos time</div>
+  </div>
+  <div class="tp-seg" role="group" aria-label="Period">
+    {% for k, label in periods.items() %}
+    <a href="{{ url_for('portal.team_performance', period=k) }}" class="{{ 'on' if d.period_key == k }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+{% if d.before_recording or d.partly_before %}
+<div class="tp-note">Recording of who-did-what started on <b>{{ d.recording_started.strftime('%A %-d %B %Y') }}</b>.
+  {% if d.before_recording %}This period is before that, so there's nothing to show.{% else %}Days before that show no activity, because nothing was recorded then.{% endif %}
+  Phone calls count once they're logged with the <b>Log a call</b> button on the lead's page.</div>
+{% endif %}
+
+{% set t = d.totals %}
+<div class="tp-tiles">
+  <div class="tp-tile"><div class="l">{{ 'Logged in today' if d.period_key == 'today' else 'People who logged in' }}</div>
+    <div class="v">{{ t.present }}<small> of {{ t.people }}</small></div>
+    <div class="d tp-flat">{{ t.people }} {{ 'person' if t.people == 1 else 'people' }} on this page</div></div>
+  <div class="tp-tile"><div class="l">Leads worked</div><div class="v">{{ '{:,}'.format(t.leads_worked) }}</div>{{ delta(t.leads_worked, t.prev_leads_worked) }}</div>
+  <div class="tp-tile"><div class="l">Calls logged</div><div class="v">{{ '{:,}'.format(t.calls) }}</div>{{ delta(t.calls, t.prev_calls) }}</div>
+  <div class="tp-tile"><div class="l">New opportunities</div><div class="v">{{ '{:,}'.format(t.opps) }}</div>{{ delta(t.opps, t.prev_opps) }}</div>
+  <div class="tp-tile"><div class="l">Won</div><div class="v">₦{{ '{:,.0f}'.format(t.won_value) }}</div>{{ delta(t.won_value, t.prev_won_value) }}</div>
+</div>
+
+<div class="tp-attn">
+  <div class="tp-attn-h">Needs your attention</div>
+  {% for sev, text, target, act in d.attention %}
+  <div class="tp-attn-row"><span class="tp-sev {{ sev }}"></span><span>{{ text|safe }}</span>
+    {% if target.startswith('lead:') %}<a class="act" href="{{ url_for('portal.lead_detail', lead_id=target[5:]|int) }}">{{ act }} ›</a>
+    {% elif target.startswith('leads:') %}<a class="act" href="{{ url_for('portal.leads_page', assigned=target[6:]) }}">{{ act }} ›</a>
+    {% elif act == 'See target' %}<a class="act" href="#targets">{{ act }} ›</a>
+    {% else %}<a class="act" href="{{ url_for('portal.team_performance_person', actor_key=target, day=d.end.isoformat()) }}">{{ act }} ›</a>{% endif %}
+  </div>
+  {% else %}
+  <div class="tp-attn-row" style="color:var(--muted)">Nothing needs your attention right now.</div>
+  {% endfor %}
+</div>
+
+{% if d.people %}
+<div class="tp-tbl-wrap">
+  <table class="tp-tbl">
+    <thead>
+      <tr><th></th><th></th>
+        <th class="grp sepL" colspan="5">Activity (what they did)</th>
+        <th class="grp sepL" colspan="3">Results (what came out of it)</th>
+        <th class="grp sepL" colspan="2">Month so far</th></tr>
+      <tr>
+        <th>Team member</th><th>Status</th>
+        <th class="num sepL">Leads worked</th><th class="num">Calls</th><th class="num">Messages sent</th>
+        <th class="num">Emails sent</th><th class="num">Replies got</th>
+        <th class="num sepL">New opps</th><th class="num">Proposals</th><th class="num">Won</th>
+        <th class="sepL">Opportunities vs target</th><th>Last 7 working days</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in d.people %}
+      <tr>
+        <td><a class="tp-who" href="{{ url_for('portal.team_performance_person', actor_key=p.key, day=d.end.isoformat()) }}">
+          <span class="tp-av">{{ p.initials }}</span>
+          <span><span class="n">{{ p.name }}</span><span class="r">{{ p.role }}{% if p.manager %} · reports to {{ p.manager }}{% endif %}</span></span></a></td>
+        <td><span class="tp-pill {{ p.status[1] }}">{{ p.status[0] }}</span><span class="tp-s">{{ p.status[2] }}</span></td>
+        <td class="num sepL"><b>{{ '{:,}'.format(p.leads_worked) }}</b><span class="tp-s">of {{ '{:,}'.format(p.assigned) }} assigned</span></td>
+        <td class="num">{{ p.calls }}{% if p.calls %}<span class="tp-s">{{ p.calls_answered }} answered</span>{% endif %}</td>
+        <td class="num">{{ p.messages }}</td>
+        <td class="num">{{ p.emails }}</td>
+        <td class="num">{{ p.replies }}</td>
+        <td class="num sepL"><b>{{ p.opps }}</b></td>
+        <td class="num">{{ p.proposals }}</td>
+        <td class="num"><b>₦{{ '{:,.0f}'.format(p.won_value) }}</b>{% if p.won_count %}<span class="tp-s">{{ p.won_count }} deal{{ 's' if p.won_count != 1 }}</span>{% endif %}</td>
+        <td class="sepL">
+          {% if p.opp_target %}
+          <b>{{ p.month_opps }}</b> of {{ p.opp_target }}
+          <span class="tp-pill {{ 'g' if p.on_pace else 'a' }}" style="margin-left:4px">{{ 'On pace' if p.on_pace else 'Behind' }}</span>
+          <div class="tp-bar"><i style="width:{{ p.opp_pct }}%;background:{{ 'var(--good)' if p.on_pace else 'var(--warn)' }}"></i><span class="pace" style="left:{{ d.pace_pct }}%"></span></div>
+          {% if p.won_target %}<span class="tp-s">₦{{ '{:,.0f}'.format(p.month_won) }} of ₦{{ '{:,.0f}'.format(p.won_target) }} won</span>{% endif %}
+          {% else %}
+          <b>{{ p.month_opps }}</b> <span class="tp-s">{% if p.can_set_target %}<a href="#targets">Set a target</a>{% else %}No target set{% endif %}</span>
+          {% endif %}
+        </td>
+        <td>{{ spark(p.spark) }}<span class="tp-s">leads worked per day</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="tp-legend">Click a name to see that person's full day. The thin black mark on a target bar shows where they should be by today ({{ d.pace_pct }}% of this month's working days).
+  <b>Leads worked</b> = different leads they called, messaged, emailed, added a note to or moved that day. <b>Messages sent</b> = WhatsApp, Messenger and web chat replies. AI replies don't count.</p>
+{% else %}
+<div class="tp-tbl-wrap"><div class="tp-empty">Nobody to show yet. People appear here once they have leads assigned or do sales work in the portal.{% if viewer.is_team %} You see the people who report to you.{% endif %}</div></div>
+{% endif %}
+
+{% set _settable = d.people|selectattr('can_set_target')|list %}
+{% if _settable %}
+<div id="targets" style="margin-top:26px">
+  <div class="tp-sec">Targets for {{ d.month_first.strftime('%B %Y') }}</div>
+  <p class="tp-sec-note">Monthly targets for each person. Leave a box empty for no target.</p>
+  <form method="POST" action="{{ url_for('portal.team_performance_targets') }}" class="tp-targets">
+    {% for p in _settable %}
+    <div class="tp-trow">
+      <div><b>{{ p.name }}</b><span class="tp-s">{{ p.month_opps }} opportunities and ₦{{ '{:,.0f}'.format(p.month_won) }} won so far</span></div>
+      <div><label for="opp_{{ loop.index }}">New opportunities</label>
+        <input id="opp_{{ loop.index }}" name="opp__{{ p.key }}" inputmode="numeric" value="{{ p.opp_target if p.opp_target is not none else '' }}" placeholder="e.g. 25"></div>
+      <div><label for="won_{{ loop.index }}">Won (₦)</label>
+        <input id="won_{{ loop.index }}" name="won__{{ p.key }}" inputmode="numeric" value="{{ '{:,.0f}'.format(p.won_target) if p.won_target else '' }}" placeholder="e.g. 2,500,000"></div>
+    </div>
+    {% endfor %}
+    <div style="margin-top:12px"><button type="submit" class="btn btn-primary btn-sm">Save targets</button></div>
+  </form>
+</div>
+{% endif %}
+
+{% if summary %}
+<div id="daily-email" style="margin-top:26px">
+  <div class="tp-sec">Daily summary email</div>
+  <p class="tp-sec-note">Sent Monday to Friday at 6:00 pm Lagos time. You get the whole team. Each line manager gets only the people who report to them, if their role has the <b>Team performance</b> tick.</p>
+  <div class="tp-targets">
+    <form method="POST" action="{{ url_for('portal.team_performance_email_settings') }}">
+      <label style="display:flex;gap:9px;align-items:center;font-size:13.5px;font-weight:700;color:var(--ink)">
+        <input type="checkbox" name="enabled" value="1" {{ 'checked' if summary.enabled }} style="width:16px;height:16px"> Send the daily summary email</label>
+      <div style="margin:12px 0 4px;font-size:12px;color:var(--muted);font-weight:600">Who gets it</div>
+      {% for r in summary.people %}
+      <label style="display:flex;gap:9px;align-items:center;font-size:13px;padding:5px 0">
+        <input type="checkbox" name="on" value="{{ r.key }}" {{ 'checked' if r.on }} style="width:15px;height:15px">
+        <span><b>{{ r.name }}</b> <span style="color:var(--muted)">· {{ r.email }} · {{ 'owner, whole team' if r.is_owner else 'their team' }}</span></span></label>
+      {% endfor %}
+      {% if summary.people|length < 2 %}<div style="font-size:12px;color:var(--muted);margin-top:4px">No line managers can get it yet. To add one, tick <b>Team performance</b> on their role in Team › Roles.</div>{% endif %}
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        <button type="submit" name="action" value="preview" class="btn btn-sm" formnovalidate>Send me a preview now</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
