@@ -396,7 +396,7 @@ def _status(p, key, start, end, now, wd):
     days = p["days_present"]
     avg = _hm(p["active_minutes"] / days) if days else "0m"
     if not wd:
-        return (f"{days} days" if days else "No working days yet", "g" if days else "n",
+        return (f"{days} day{'s' if days != 1 else ''}" if days else "No working days yet", "g" if days else "n",
                 f"avg {avg} active a day" if days else "recorded so far")
     colour = "g" if days >= wd else ("a" if days else "r")
     return (f"{days} of {wd} days", colour, f"avg {avg} active a day" if days else "no logins")
@@ -499,8 +499,11 @@ def person_day(tenant_id: int, actor_key: str, day) -> dict:
         last_t = t
         counts[r["action"]] = counts.get(r["action"], 0) + int(r["qty"] or 1)
         title = ACTION_WORDS.get(r["action"], r["action"])
+        note = None
         if r["action"] == "call" and r["detail"]:
-            title = f"Call · {r['detail']}"
+            # "Answered · 6 min" + newline + what was said (lead_log_call)
+            head, _, note = r["detail"].partition("\n")
+            title = f"Call · {head}"
         if (r["qty"] or 1) > 1:
             title = f"{title} × {r['qty']:,}"
         who = r["customer_name"] or r["company_name"]
@@ -512,6 +515,7 @@ def person_day(tenant_id: int, actor_key: str, day) -> dict:
         events.append({"t": t, "icon": ACTION_ICONS.get(r["action"], "··"),
                        "kind": "won" if r["action"] == "won" else "act",
                        "title": title, "who": who, "contact": r["contact_person"], "extra": extra,
+                       "note": note or None,
                        "lead_id": r["lead_id"]})
     if pres and last_t:
         lst = pres["last_seen"].astimezone(tz)

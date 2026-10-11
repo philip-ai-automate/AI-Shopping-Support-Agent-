@@ -31708,7 +31708,7 @@ def lead_log_call(lead_id: int):
     _tp.log_call(tenant_id, lead_id, actor, outcome, minutes, note)
     label = _tp.CALL_OUTCOME_LABELS[outcome]
     staff_activity.log("call", tenant_id, lead_id=lead_id,
-                       detail=label + (f" · {minutes} min" if minutes else "") + (f" · {note[:200]}" if note else ""))
+                       detail=label + (f" · {minutes} min" if minutes else "") + (f"\n{note[:300]}" if note else ""))
     flash(f"Call logged: {label.lower()}.", "success")
     return redirect(back)
 
