@@ -3,8 +3,8 @@ approved mock-up https://claude.ai/artifact/TKYQdZHJAUqMyt2hLEPJ1Y).
 
 Everything is read from staff_activity / staff_presence (staff_activity.py),
 plus a few existing tables: leads (who is assigned what), email_replies and
-wa_message_log (customer replies). Days are Lagos business days, Mon–Fri
-count as working days. Nothing here writes, except save_targets/log_call.
+wa_message_log (customer replies). Days follow each business's own time zone
+(staff_activity.tenant_tz_name); Mon–Fri count as working days. Nothing here writes, except save_targets/log_call.
 """
 import datetime as _dt
 from zoneinfo import ZoneInfo
@@ -12,9 +12,7 @@ from zoneinfo import ZoneInfo
 import psycopg2.extras
 
 from db import get_db_connection
-from staff_activity import DAY_TZ
-
-TZ = ZoneInfo(DAY_TZ)
+from staff_activity import tenant_tz_name
 RECORDING_STARTED = _dt.date(2026, 10, 11)   # staff_activity went live
 
 PERIODS = {"today": "Today", "yesterday": "Yesterday", "week": "This week", "month": "This month"}
@@ -35,8 +33,17 @@ LOGIN_BY_HOUR = 10          # "no login by 10:00"
 WORK_START, WORK_END = 9, 18
 
 
-def now_local():
-    return _dt.datetime.now(TZ)
+def tz_for(tenant_id: int):
+    return ZoneInfo(tenant_tz_name(tenant_id))
+
+
+def tz_label(tz) -> str:
+    """"London", "Lagos", "New York" — for "updated 18:00 London time"."""
+    return tz.key.split("/")[-1].replace("_", " ")
+
+
+def now_local(tz):
+    return _dt.datetime.now(tz)
 
 
 def is_workday(d) -> bool:
@@ -58,9 +65,9 @@ def _prev_workday(d):
     return d
 
 
-def resolve_period(key: str):
+def resolve_period(key: str, tz):
     """(key, start, end, prev_start, prev_end, label, vs_words)."""
-    today = now_local().date()
+    today = now_local(tz).date()
     if key not in PERIODS:
         key = "today"
     if key == "today":
@@ -142,7 +149,7 @@ def can_view(tenant_id: int, viewer: dict, actor_key: str) -> bool:
 
 # ── the numbers ─────────────────────────────────────────────────────────────
 
-def _activity_totals(cur, tenant_id, start, end):
+def _activity_totals(cur, tenant_id, start, end, tzn):
     cur.execute(f"""
         SELECT actor_key, max(actor_name) AS actor_name,
                count(DISTINCT lead_id) FILTER (WHERE action = ANY(%s)) AS leads_worked,
@@ -157,9 +164,9 @@ def _activity_totals(cur, tenant_id, start, end):
                coalesce(sum(value) FILTER (WHERE action='won'), 0) AS won_value,
                count(*) FILTER (WHERE action = ANY(%s)) AS work_rows
         FROM staff_activity
-        WHERE tenant_id=%s AND (created_at AT TIME ZONE '{DAY_TZ}')::date BETWEEN %s AND %s
+        WHERE tenant_id=%s AND (created_at AT TIME ZONE %s)::date BETWEEN %s AND %s
         GROUP BY actor_key""",
-                (list(WORK_ACTIONS), list(MESSAGE_ACTIONS), list(WORK_ACTIONS), tenant_id, start, end))
+                (list(WORK_ACTIONS), list(MESSAGE_ACTIONS), list(WORK_ACTIONS), tenant_id, tzn, start, end))
     return {r["actor_key"]: r for r in cur.fetchall()}
 
 
@@ -186,38 +193,38 @@ def _assigned(cur, tenant_id):
     return {r["assigned_key"]: r for r in cur.fetchall()}
 
 
-def _replies(cur, tenant_id, start, end):
+def _replies(cur, tenant_id, start, end, tzn):
     """Customer replies (email + WhatsApp) on each person's assigned leads."""
     out = {}
     cur.execute(f"""
         SELECT l.assigned_key, count(*) AS n FROM email_replies e
         JOIN merchant_pipeline_leads l ON l.id = e.lead_id
         WHERE e.tenant_id=%s AND l.assigned_key IS NOT NULL
-          AND (e.received_at AT TIME ZONE '{DAY_TZ}')::date BETWEEN %s AND %s
-        GROUP BY l.assigned_key""", (tenant_id, start, end))
+          AND (e.received_at AT TIME ZONE %s)::date BETWEEN %s AND %s
+        GROUP BY l.assigned_key""", (tenant_id, tzn, start, end))
     for r in cur.fetchall():
         out[r["assigned_key"]] = out.get(r["assigned_key"], 0) + int(r["n"])
     cur.execute(f"""
-        SELECT l.assigned_key, count(DISTINCT (m.customer_phone, (m.created_at AT TIME ZONE '{DAY_TZ}')::date)) AS n
+        SELECT l.assigned_key, count(DISTINCT (m.customer_phone, (m.created_at AT TIME ZONE %s)::date)) AS n
         FROM wa_message_log m
         JOIN merchant_pipeline_leads l ON l.tenant_id = m.tenant_id
              AND l.assigned_key IS NOT NULL AND l.whatsapp_number IS NOT NULL AND l.whatsapp_number <> ''
              AND regexp_replace(l.whatsapp_number, '[^0-9]', '', 'g') = regexp_replace(m.customer_phone, '[^0-9]', '', 'g')
         WHERE m.tenant_id=%s AND m.direction IN ('in', 'inbound') AND NOT coalesce(m.is_historical, false)
-          AND (m.created_at AT TIME ZONE '{DAY_TZ}')::date BETWEEN %s AND %s
-        GROUP BY l.assigned_key""", (tenant_id, start, end))
+          AND (m.created_at AT TIME ZONE %s)::date BETWEEN %s AND %s
+        GROUP BY l.assigned_key""", (tzn, tenant_id, tzn, start, end))
     for r in cur.fetchall():
         out[r["assigned_key"]] = out.get(r["assigned_key"], 0) + int(r["n"])
     return out
 
 
-def _daily_worked(cur, tenant_id, days):
-    cur.execute(f"""
-        SELECT actor_key, (created_at AT TIME ZONE '{DAY_TZ}')::date AS d, count(DISTINCT lead_id) AS n
+def _daily_worked(cur, tenant_id, days, tzn):
+    cur.execute("""
+        SELECT actor_key, (created_at AT TIME ZONE %s)::date AS d, count(DISTINCT lead_id) AS n
         FROM staff_activity
         WHERE tenant_id=%s AND action = ANY(%s)
-          AND (created_at AT TIME ZONE '{DAY_TZ}')::date = ANY(%s)
-        GROUP BY 1, 2""", (tenant_id, list(WORK_ACTIONS), days))
+          AND (created_at AT TIME ZONE %s)::date = ANY(%s)
+        GROUP BY 1, 2""", (tzn, tenant_id, list(WORK_ACTIONS), tzn, days))
     out = {}
     for r in cur.fetchall():
         out.setdefault(r["actor_key"], {})[r["d"]] = int(r["n"])
@@ -242,8 +249,10 @@ def _initials(name):
 
 
 def build(tenant_id: int, viewer: dict, period_key: str) -> dict:
-    key, start, end, pstart, pend, label, vs = resolve_period(period_key)
-    now = now_local()
+    tz = tz_for(tenant_id)
+    tzn = tz.key
+    key, start, end, pstart, pend, label, vs = resolve_period(period_key, tz)
+    now = now_local(tz)
     today = now.date()
     month_first = today.replace(day=1)
     scope, people_rows = viewer_scope(tenant_id, viewer)
@@ -252,12 +261,12 @@ def build(tenant_id: int, viewer: dict, period_key: str) -> dict:
     conn = get_db_connection()
     try:
         cur = _cur(conn)
-        act = _activity_totals(cur, tenant_id, start, end)
-        prev = _activity_totals(cur, tenant_id, pstart, pend)
+        act = _activity_totals(cur, tenant_id, start, end, tzn)
+        prev = _activity_totals(cur, tenant_id, pstart, pend, tzn)
         pres = _presence(cur, tenant_id, start, end)
         assigned = _assigned(cur, tenant_id)
-        replies = _replies(cur, tenant_id, start, end)
-        month_act = act if key == "month" else _activity_totals(cur, tenant_id, month_first, today)
+        replies = _replies(cur, tenant_id, start, end, tzn)
+        month_act = act if key == "month" else _activity_totals(cur, tenant_id, month_first, today, tzn)
         targets = get_targets(cur, tenant_id, month_first)
         owners = _owner_names(cur, tenant_id)
         spark_days, d = [], end
@@ -266,7 +275,7 @@ def build(tenant_id: int, viewer: dict, period_key: str) -> dict:
                 spark_days.append(d)
             d -= _dt.timedelta(days=1)
         spark_days.reverse()
-        daily = _daily_worked(cur, tenant_id, spark_days)
+        daily = _daily_worked(cur, tenant_id, spark_days, tzn)
         unanswered = _unanswered_replies(cur, tenant_id)
     finally:
         conn.close()
@@ -310,8 +319,8 @@ def build(tenant_id: int, viewer: dict, period_key: str) -> dict:
             "opp_target": int(t["opp_target"]) if t and t["opp_target"] else None,
             "won_target": float(t["won_target"]) if t and t["won_target"] else None,
             "spark": [daily.get(k, {}).get(dd, 0) if dd >= RECORDING_STARTED else None for dd in spark_days],
-            "first_seen": p["first_seen"].astimezone(TZ) if p else None,
-            "last_seen": p["last_seen"].astimezone(TZ) if p else None,
+            "first_seen": p["first_seen"].astimezone(tz) if p else None,
+            "last_seen": p["last_seen"].astimezone(tz) if p else None,
             "days_present": int(p["days"]) if p else 0,
             "active_minutes": int(p["active_minutes"] or 0) if p else 0,
             "longest_gap": int(p["longest_gap"] or 0) if p else 0,
@@ -345,12 +354,12 @@ def build(tenant_id: int, viewer: dict, period_key: str) -> dict:
     return {
         "period_key": key, "period_label": label, "vs": vs, "start": start, "end": end,
         "people": people, "totals": totals, "spark_days": spark_days,
-        "attention": _attention(people, key, now, pace, unanswered, keys),
+        "attention": _attention(people, key, now, pace, unanswered, keys, tz),
         "before_recording": before_recording, "partly_before": start < RECORDING_STARTED <= end,
         "prev_recorded": pend >= RECORDING_STARTED,
         "pace_pct": round(pace * 100), "month_first": month_first,
         "recording_started": RECORDING_STARTED,
-        "updated_at": now,
+        "updated_at": now, "tz_label": tz_label(tz),
     }
 
 
@@ -407,7 +416,7 @@ def _unanswered_replies(cur, tenant_id):
     return cur.fetchall()
 
 
-def _attention(people, key, now, pace, unanswered, keys):
+def _attention(people, key, now, pace, unanswered, keys, tz):
     out = []
     by_key = {p["key"]: p for p in people}
     for p in people:
@@ -431,7 +440,7 @@ def _attention(people, key, now, pace, unanswered, keys):
         if r["assigned_key"] in keys:
             who = by_key.get(r["assigned_key"], {}).get("name", "")
             out.append(("a", f"<b>{r['customer_name']}</b> replied to {who.split()[0] if who else 'us'} on "
-                             f"{r['at'].astimezone(TZ):%a %-d %b} and nobody has followed up yet.",
+                             f"{r['at'].astimezone(tz):%a %-d %b} and nobody has followed up yet.",
                         f"lead:{r['lead_id']}", "Open lead"))
     out.sort(key=lambda x: x[0] != "r")
     return out
@@ -457,6 +466,7 @@ ACTION_ICONS = {"call": "CL", "wa_sent": "WA", "messenger_sent": "FB", "webchat_
 
 
 def person_day(tenant_id: int, actor_key: str, day) -> dict:
+    tz = tz_for(tenant_id)
     conn = get_db_connection()
     try:
         cur = _cur(conn)
@@ -465,8 +475,8 @@ def person_day(tenant_id: int, actor_key: str, day) -> dict:
             FROM staff_activity a
             LEFT JOIN merchant_pipeline_leads l ON l.id = a.lead_id
             LEFT JOIN crm_companies c ON c.id = a.company_id
-            WHERE a.tenant_id=%s AND a.actor_key=%s AND (a.created_at AT TIME ZONE '{DAY_TZ}')::date = %s
-            ORDER BY a.created_at""", (tenant_id, actor_key, day))
+            WHERE a.tenant_id=%s AND a.actor_key=%s AND (a.created_at AT TIME ZONE %s)::date = %s
+            ORDER BY a.created_at""", (tenant_id, actor_key, tz.key, day))
         rows = cur.fetchall()
         cur.execute("SELECT * FROM staff_presence WHERE tenant_id=%s AND actor_key=%s AND day=%s",
                     (tenant_id, actor_key, day))
@@ -476,12 +486,12 @@ def person_day(tenant_id: int, actor_key: str, day) -> dict:
         assigned = cur.fetchone()["assigned"]
     finally:
         conn.close()
-    events, last_t = [], (pres["first_seen"].astimezone(TZ) if pres else None)
+    events, last_t = [], (pres["first_seen"].astimezone(tz) if pres else None)
     if pres:
         events.append({"t": last_t, "icon": "IN", "kind": "in", "title": "First seen in the portal", "lead_id": None})
     counts = {}
     for r in rows:
-        t = r["created_at"].astimezone(TZ)
+        t = r["created_at"].astimezone(tz)
         if last_t and (t - last_t).total_seconds() >= 3600:
             events.append({"t": last_t, "icon": "··", "kind": "gap",
                            "title": f"No recorded activity for {_hm((t - last_t).total_seconds() / 60)}",
@@ -504,7 +514,7 @@ def person_day(tenant_id: int, actor_key: str, day) -> dict:
                        "title": title, "who": who, "contact": r["contact_person"], "extra": extra,
                        "lead_id": r["lead_id"]})
     if pres and last_t:
-        lst = pres["last_seen"].astimezone(TZ)
+        lst = pres["last_seen"].astimezone(tz)
         if (lst - last_t).total_seconds() >= 3600:
             events.append({"t": last_t, "icon": "··", "kind": "gap",
                            "title": f"In the portal but no recorded activity for {_hm((lst - last_t).total_seconds() / 60)}",
@@ -512,8 +522,8 @@ def person_day(tenant_id: int, actor_key: str, day) -> dict:
         events.append({"t": lst, "icon": "OUT", "kind": "in", "title": "Last seen in the portal", "lead_id": None})
     worked = len({r["lead_id"] for r in rows if r["lead_id"] and r["action"] in WORK_ACTIONS})
     return {"events": events, "presence": pres, "counts": counts, "leads_worked": worked, "assigned": assigned,
-            "first_seen": pres["first_seen"].astimezone(TZ) if pres else None,
-            "last_seen": pres["last_seen"].astimezone(TZ) if pres else None}
+            "first_seen": pres["first_seen"].astimezone(tz) if pres else None,
+            "last_seen": pres["last_seen"].astimezone(tz) if pres else None}
 
 
 # ── writes ──────────────────────────────────────────────────────────────────
@@ -537,6 +547,7 @@ def save_targets(tenant_id: int, month_first, rows: list, set_by: str) -> int:
 
 
 def lead_calls(tenant_id: int, lead_id: int) -> list:
+    tz = tz_for(tenant_id)
     conn = get_db_connection()
     try:
         cur = _cur(conn)
@@ -547,7 +558,7 @@ def lead_calls(tenant_id: int, lead_id: int) -> list:
         conn.close()
     for r in rows:
         r["outcome_label"] = CALL_OUTCOME_LABELS.get(r["outcome"], r["outcome"])
-        r["local_at"] = r["created_at"].astimezone(TZ)
+        r["local_at"] = r["created_at"].astimezone(tz)
     return rows
 
 

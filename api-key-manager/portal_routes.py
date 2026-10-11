@@ -31567,7 +31567,7 @@ def _tp_summary_settings(tenant_id: int) -> dict:
                   for v, n, e, k in _tds.recipients(cur, tenant_id)]
     finally:
         conn.close()
-    return {"enabled": enabled, "people": people}
+    return {"enabled": enabled, "people": people, "tz_label": _tp.tz_label(_tp.tz_for(tenant_id))}
 
 
 @portal_bp.route("/team-performance/email-settings", methods=["POST"])
@@ -31586,7 +31586,7 @@ def team_performance_email_settings():
     if request.form.get("action") == "preview":
         viewer = _current_actor(customer)
         built = _tds.build_email(tenant_id, {"is_team": False, "key": viewer["key"], "team_member_id": None},
-                                 (customer.get("first_name") or "there").split()[0], _tp.now_local())
+                                 (customer.get("first_name") or "there").split()[0], _tp.now_local(_tp.tz_for(tenant_id)))
         if not built:
             flash("Nobody is on the Team performance page yet, so there's nothing to send.", "warning")
         elif _send_email(customer["email"], "[Preview] " + built[0], built[1], built[2]):
@@ -31628,7 +31628,7 @@ def team_performance_person(actor_key: str):
     try:
         day = _tpdt.date.fromisoformat(request.args.get("day") or "")
     except ValueError:
-        day = _tp.now_local().date()
+        day = _tp.now_local(_tp.tz_for(tenant_id)).date()
     data = _tp.build(tenant_id, viewer, "today")
     names = {p["key"]: p for p in data["people"]}
     person = names.get(actor_key)
@@ -31639,7 +31639,7 @@ def team_performance_person(actor_key: str):
                   "role": (tm or {}).get("role_name") or "", "initials": _tp._initials(tm["name"] if tm else "?")}
     return render_template("portal/team_performance_person.html", customer=customer, person=person,
                            day=day, prev_day=day - _tpdt.timedelta(days=1),
-                           next_day=(day + _tpdt.timedelta(days=1)) if day < _tp.now_local().date() else None,
+                           next_day=(day + _tpdt.timedelta(days=1)) if day < _tp.now_local(_tp.tz_for(tenant_id)).date() else None,
                            dd=_tp.person_day(tenant_id, actor_key, day),
                            recording_started=_tp.RECORDING_STARTED)
 

@@ -1,6 +1,8 @@
 """Team performance — the 6 pm daily summary email (user 2026-10-11, step 4).
 
-Run by phixtra-team-summary.timer at 18:00 Lagos time, Monday to Friday.
+Run every hour by phixtra-team-summary.timer; each business gets it when
+it is 18:00–18:59 on a Monday–Friday in ITS OWN time zone (Settings time
+zone, else its business country — staff_activity.tenant_tz_name).
 Each line manager gets their own team (people under them via
 line_manager_id); the owner gets everyone. A manager only gets it if their
 role has the "Team performance" tick (leads.team_performance), so the email
@@ -16,6 +18,7 @@ the same day (re-runs and a manual run are safe).
   --to EMAIL         send every email to this address instead (testing)
   --save-html DIR    write each email to DIR as an .html file
   --force            ignore the once-a-day guard (only with --to)
+  --any-time         don't wait for 6 pm on a weekday (testing / manual run)
 """
 import argparse
 import html as _html
@@ -175,7 +178,7 @@ def build_email(tenant_id, viewer, first_name, now):
             conn = get_db_connection()
             try:
                 cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-                tot = T._activity_totals(cur, tenant_id, ls, le)
+                tot = T._activity_totals(cur, tenant_id, ls, le, now.tzinfo.key)
             finally:
                 conn.close()
             keys = {p["key"] for p in people}
@@ -200,7 +203,7 @@ def build_email(tenant_id, viewer, first_name, now):
 {monday}
 <a href="{PORTAL}/team-performance" style="display:inline-block;background:{NAVY};color:#fff;font-weight:700;padding:10px 16px;border-radius:9px;text-decoration:none;font-size:13.5px">Open Team performance</a>
 <div style="font-size:12px;color:#6b7280;border-top:1px solid #e5e7eb;padding-top:12px;margin-top:18px">
-Sent Monday to Friday at 6:00 pm Lagos time. {why} Calls count once they're logged on the lead's page.
+Sent Monday to Friday at 6:00 pm {T.tz_label(now.tzinfo)} time. {why} Calls count once they're logged on the lead's page.
 The account owner can switch this email off on the Team performance page.</div>
 </div></div></div>"""
     text = (f"Sales team daily summary, {now:%A %-d %B %Y}\n\n"
@@ -217,18 +220,21 @@ def main():
     ap.add_argument("--to")
     ap.add_argument("--save-html")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--any-time", action="store_true")
     a = ap.parse_args()
     if a.force and not a.to:
         sys.exit("--force only works with --to (a test address)")
 
     from portal_utils import send_email
-    now = T.now_local()
     conn = get_db_connection()
     conn.autocommit = True
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     sent = skipped = 0
     try:
         for tid in candidate_tenants(cur, a.tenant):
+            now = T.now_local(T.tz_for(tid))
+            if not a.any_time and not (T.is_workday(now.date()) and now.hour == 18):
+                continue
             enabled, off = settings(cur, tid)
             if not enabled:
                 print(f"tenant {tid}: switched off by the owner")

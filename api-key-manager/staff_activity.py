@@ -16,13 +16,15 @@ import threading as _threading
 
 from db import get_db_connection
 
-DAY_TZ = "Africa/Lagos"          # the business day used for "Today" and presence rows
+DEFAULT_TZ = "Africa/Lagos"      # only when a business has no time zone and no country set
 ACTIVE_GAP_MIN = 15              # a gap longer than this is "away", not active time
 _PRESENCE_EVERY_S = 60           # write presence at most once a minute per person per worker
 
 _presence_last = {}              # actor key → last presence write (per worker)
 _tenant_of_customer = {}         # customer id → tenant id (per worker)
 _owner_name = {}                 # customer id → (name, fetched at)
+_tenant_tz = {}                  # tenant id → (zone name, fetched at)
+_country_zone = None             # country code → main zone (from the system zone table)
 _lock = _threading.Lock()
 
 
@@ -167,6 +169,59 @@ def actor_by_name(tenant_id: int, name: str):
     return None, None
 
 
+def _zone_for_country(cc: str):
+    global _country_zone
+    if _country_zone is None:
+        _country_zone = {}
+        try:
+            with open("/usr/share/zoneinfo/zone.tab") as f:
+                for line in f:
+                    if line.startswith("#"):
+                        continue
+                    parts = line.split("\t")
+                    if len(parts) >= 3:
+                        _country_zone.setdefault(parts[0].upper(), parts[2].strip())
+        except Exception as e:
+            print("⚠️ staff_activity zone.tab error:", e)
+    return _country_zone.get((cc or "").strip().upper())
+
+
+def tenant_tz_name(tenant_id: int) -> str:
+    """The business's own day (2026-10-11): the time zone chosen in
+    Settings, else the main zone of its business country, else Lagos.
+    "UTC" counts as not chosen — it's what the Settings list shows by default."""
+    hit = _tenant_tz.get(tenant_id)
+    if hit and _time.time() - hit[1] < 600:
+        return hit[0]
+    from zoneinfo import ZoneInfo
+    name = None
+    try:
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""SELECT timezone, business_country FROM customers
+                           WHERE tenant_id=%s ORDER BY id LIMIT 1""", (tenant_id,))
+            r = cur.fetchone()
+            cur.close()
+        finally:
+            conn.close()
+        if r:
+            tz, cc = (r[0] or "").strip(), r[1]
+            for cand in ((tz if tz and tz.upper() != "UTC" else None), _zone_for_country(cc)):
+                if cand:
+                    try:
+                        ZoneInfo(cand)
+                        name = cand
+                        break
+                    except Exception:
+                        continue
+    except Exception as e:
+        print("⚠️ staff_activity.tenant_tz_name error:", e)
+    name = name or DEFAULT_TZ
+    _tenant_tz[tenant_id] = (name, _time.time())
+    return name
+
+
 def current_name(default: str = None) -> str:
     """The real person's name for "changed by" style labels (falls back to
     `default` outside a staff request)."""
@@ -271,7 +326,7 @@ def _presence(tenant_id, actor_key, actor_name, force=False):
         cur = conn.cursor()
         cur.execute(f"""
             INSERT INTO staff_presence (tenant_id, actor_key, day, actor_name, first_seen, last_seen, active_minutes)
-            VALUES (%s, %s, (NOW() AT TIME ZONE '{DAY_TZ}')::date, %s, NOW(), NOW(), 1)
+            VALUES (%s, %s, (NOW() AT TIME ZONE %s)::date, %s, NOW(), NOW(), 1)
             ON CONFLICT (tenant_id, actor_key, day) DO UPDATE SET
                 actor_name = COALESCE(EXCLUDED.actor_name, staff_presence.actor_name),
                 active_minutes = staff_presence.active_minutes + CASE
@@ -283,7 +338,7 @@ def _presence(tenant_id, actor_key, actor_name, force=False):
                     THEN FLOOR(EXTRACT(EPOCH FROM NOW() - staff_presence.last_seen) / 60)::int
                     ELSE 0 END),
                 last_seen = NOW()
-        """, (int(tenant_id), actor_key, (actor_name or "")[:200] or None))
+        """, (int(tenant_id), actor_key, tenant_tz_name(int(tenant_id)), (actor_name or "")[:200] or None))
         cur.close()
     except Exception as e:
         print("⚠️ staff_activity presence error:", e)

@@ -90,7 +90,7 @@
   <div>
     <div class="tp-eyebrow">Leads · {{ 'My team' if viewer.is_team else 'Whole company' }}</div>
     <h1>{{ "My team's performance" if viewer.is_team else 'Team performance' }}</h1>
-    <div class="tp-sub">{{ d.period_label }} · updated {{ d.updated_at.strftime('%H:%M') }} Lagos time</div>
+    <div class="tp-sub">{{ d.period_label }} · updated {{ d.updated_at.strftime('%H:%M') }} {{ d.tz_label }} time</div>
   </div>
   <div class="tp-seg" role="group" aria-label="Period">
     {% for k, label in periods.items() %}
@@ -206,7 +206,7 @@
 {% if summary %}
 <div id="daily-email" style="margin-top:26px">
   <div class="tp-sec">Daily summary email</div>
-  <p class="tp-sec-note">Sent Monday to Friday at 6:00 pm Lagos time. You get the whole team. Each line manager gets only the people who report to them, if their role has the <b>Team performance</b> tick.</p>
+  <p class="tp-sec-note">Sent Monday to Friday at 6:00 pm {{ summary.tz_label }} time (your business's time zone in Settings, or its country). You get the whole team. Each line manager gets only the people who report to them, if their role has the <b>Team performance</b> tick.</p>
   <div class="tp-targets">
     <form method="POST" action="{{ url_for('portal.team_performance_email_settings') }}">
       <label style="display:flex;gap:9px;align-items:center;font-size:13.5px;font-weight:700;color:var(--ink)">
