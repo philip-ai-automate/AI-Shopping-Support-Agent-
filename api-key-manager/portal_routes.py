@@ -15520,7 +15520,12 @@ def _money_total(val, tenant_id=None) -> str:
     """A total in the business's currency; '≈ ' in front when it includes
     deals/orders converted from an older currency (2026-10-11)."""
     s = _money(val, None, tenant_id)
-    return ("≈ " + s) if _has_other_currency_records(tenant_id) else s
+    try:
+        is_zero = float(val or 0) == 0
+    except (TypeError, ValueError):
+        is_zero = False
+    # Nothing to convert in a zero total, so no "≈" on it.
+    return ("≈ " + s) if not is_zero and _has_other_currency_records(tenant_id) else s
 
 
 @portal_bp.app_template_filter("money_total")

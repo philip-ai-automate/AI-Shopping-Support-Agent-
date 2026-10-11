@@ -1,0 +1,261 @@
+{# Selling Currency How-To Guide (2026-10-11): choosing the currency a
+   business sells in, and how prices in other currencies are converted.
+   ids are prefixed cur-, CSS scoped .curg, pictures in
+   static/portal/tutorial/currency/ (taken from a temporary example
+   business, "Bright Gadgets", deleted afterwards). #}
+<style>
+.curg{
+  --g-ink:#030C18; --g-navy:#0E2240; --g-gold:#B8860B; --g-gold-soft:#FBF3DE;
+  --g-card:#FFFFFF; --g-txt:#1A2433; --g-muted:#5B6678; --g-line:#DDE3EB;
+  --g-chip:#EEF2F7; --g-good:#0F9F5F; --g-good-soft:#E7F7EF; --g-bad:#D92D20; --g-bad-soft:#FDECEA;
+  --g-link:#1D4ED8; --g-shadow:0 1px 2px rgba(3,12,24,.06);
+  color:var(--g-txt); font-size:15px; line-height:1.65;
+}
+.curg *{box-sizing:border-box}
+.curg a{color:var(--g-link)}
+.curg .g-head{margin:0 0 18px}
+.curg .g-lede{max-width:72ch;color:var(--g-muted);margin:0 0 6px;font-size:14px}
+.curg .g-meta{font-size:12px;color:var(--g-muted)}
+.curg nav.toc{background:var(--g-card);border:1px solid var(--g-line);border-radius:12px;padding:6px 14px;margin:0 0 26px;font-size:13.5px}
+.curg nav.toc summary{cursor:pointer;font-weight:750;color:var(--g-ink);padding:8px 0;list-style-position:inside}
+.curg nav.toc ol{list-style:none;margin:0;padding:0 0 8px;columns:2 240px;column-gap:18px}
+.curg nav.toc li{break-inside:avoid;margin:0}
+.curg nav.toc a{display:block;padding:4px 8px;border-radius:6px;color:var(--g-txt);text-decoration:none}
+.curg nav.toc a:hover{background:var(--g-chip)}
+.curg section.part{padding-top:8px;margin-bottom:48px;max-width:860px}
+.curg h2{font-size:23px;line-height:1.25;color:var(--g-ink);margin:0 0 6px;scroll-margin-top:80px;font-weight:800}
+.curg h2 .num{color:var(--g-gold);font-weight:800;margin-right:8px}
+.curg .where{font-size:13px;color:var(--g-muted);margin:0 0 16px}
+.curg h3{font-size:18px;color:var(--g-ink);margin:28px 0 8px;scroll-margin-top:80px;font-weight:750}
+.curg p,.curg li{max-width:72ch}
+.curg p{margin:0 0 12px}
+.curg ul,.curg ol{padding-left:22px;margin:0 0 12px}
+.curg li{margin:4px 0}
+.curg .ui{display:inline-block;font-size:.88em;font-weight:650;padding:1px 7px;border:1px solid var(--g-line);border-radius:5px;background:var(--g-card);color:var(--g-ink);white-space:nowrap;box-shadow:var(--g-shadow)}
+.curg .m{font-family:ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums;font-weight:650;color:var(--g-ink);white-space:nowrap}
+.curg figure{margin:16px 0 24px}
+.curg figure img{display:block;width:100%;max-width:100%;height:auto;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card)}
+.curg figure.narrow img{max-width:660px}
+.curg figcaption{font-size:13px;color:var(--g-muted);margin-top:8px;max-width:72ch}
+.curg .box{border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px;border:1px solid var(--g-line);background:var(--g-card);max-width:72ch}
+.curg .box > :first-child{margin-top:0}.curg .box > :last-child{margin-bottom:0}
+.curg .box b.t{display:block;font-size:12px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px}
+.curg .tip{background:var(--g-good-soft);border-color:transparent}.curg .tip b.t{color:var(--g-good)}
+.curg .careful{background:var(--g-bad-soft);border-color:transparent}.curg .careful b.t{color:var(--g-bad)}
+.curg .know{background:var(--g-gold-soft);border-color:transparent}.curg .know b.t{color:var(--g-gold)}
+.curg .tbl{overflow-x:auto;margin:14px 0 22px;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card);max-width:860px}
+.curg table{border-collapse:collapse;width:100%;font-size:13.5px}
+.curg th,.curg td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--g-line)}
+.curg th{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--g-muted);background:var(--g-chip);font-weight:700}
+.curg tr:last-child td{border-bottom:0}
+.curg td:first-child{font-weight:650;color:var(--g-ink)}
+.curg ol.steps{counter-reset:s;list-style:none;padding-left:0}
+.curg ol.steps > li{counter-increment:s;position:relative;padding-left:36px;margin:10px 0}
+.curg ol.steps > li::before{content:counter(s);position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:50%;background:var(--g-navy);color:#fff;font-size:12.5px;font-weight:700;display:grid;place-items:center}
+/* the three currencies */
+.curg .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px 0 20px;max-width:660px}
+@media (max-width:560px){.curg .cards{grid-template-columns:1fr}}
+.curg .cards div{background:var(--g-card);border:1px solid var(--g-line);border-radius:10px;padding:12px 14px}
+.curg .cards b{display:block;font-size:22px;color:var(--g-ink);line-height:1.2}
+.curg .cards span{font-size:13px;color:var(--g-muted)}
+/* drawn: how a price reaches a customer */
+.curg .pflow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:stretch;gap:8px;margin:18px 0 8px;max-width:860px}
+.curg .pflow .st{background:var(--g-card);border:1px solid var(--g-line);border-radius:10px;padding:12px 14px}
+.curg .pflow .st .k{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--g-muted);font-weight:700;margin:0 0 4px}
+.curg .pflow .st .v{font-size:20px;font-weight:800;color:var(--g-ink);margin:0;font-variant-numeric:tabular-nums}
+.curg .pflow .st .s{font-size:12.5px;color:var(--g-muted);margin:4px 0 0}
+.curg .pflow .st.end{border-color:var(--g-navy);box-shadow:0 0 0 1px var(--g-navy) inset}
+.curg .pflow .ar{align-self:center;color:var(--g-gold);font-size:22px;font-weight:800}
+@media (max-width:700px){.curg .pflow{grid-template-columns:1fr}.curg .pflow .ar{transform:rotate(90deg);justify-self:center}}
+/* drawn: what the customer sees */
+.curg .chat{background:#EEF1F6;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;max-width:520px;margin:16px 0 8px}
+.curg .chat .b{max-width:85%;padding:9px 12px;border-radius:12px;font-size:14px;line-height:1.45;background:#fff;color:var(--g-txt);box-shadow:var(--g-shadow)}
+.curg .chat .b.me{align-self:flex-end;background:#DDE5F3}
+.curg .chat .who{font-size:11px;color:var(--g-muted);font-weight:700;margin-bottom:2px}
+.curg .qa dt{font-weight:750;color:var(--g-ink);margin:16px 0 4px;max-width:72ch}
+.curg .qa dd{margin:0 0 8px;max-width:72ch}
+.curg .g-top{float:right;font-size:12px;font-weight:700;text-decoration:none;color:var(--g-muted)}
+</style>
+
+<div class="curg" id="cur-top">
+<div class="g-head">
+  <p class="g-lede">How to choose the currency your business sells in, how PhiXtra converts prices that are saved in another currency, and what you and your customers will see. Every picture is from the live portal, using an example business called Bright Gadgets.</p>
+  <div class="g-meta">Last checked against the live portal: 11 October 2026</div>
+</div>
+
+<nav class="toc" aria-label="Contents"><details open><summary>Contents</summary>
+  <ol>
+    <li><a href="#cur-what">1. What "selling currency" means</a></li>
+    <li><a href="#cur-signup">2. Choosing it when you sign up</a></li>
+    <li><a href="#cur-dashboard">3. The one-time question on your dashboard</a></li>
+    <li><a href="#cur-change">4. Changing your currency later</a></li>
+    <li><a href="#cur-rates">5. Prices in another currency and exchange rates</a></li>
+    <li><a href="#cur-own">6. Using your own exchange rate</a></li>
+    <li><a href="#cur-customers">7. What your customers see</a></li>
+    <li><a href="#cur-totals">8. Your deals, reports and totals</a></li>
+    <li><a href="#cur-ai">9. Your AI instructions</a></li>
+    <li><a href="#cur-faq">10. Questions and answers</a></li>
+  </ol>
+</details></nav>
+
+<!-- 1 -->
+<section class="part" id="cur-what">
+<h2><span class="num">1</span>What "selling currency" means</h2>
+<p>Your selling currency is the currency <b>your customers</b> see. The AI quotes prices in it on WhatsApp and in your website chat, and your deals, orders and reports in the portal use it. You can sell in one of three currencies:</p>
+<div class="cards">
+  <div><b>₦1,250</b><span>Nigerian naira</span></div>
+  <div><b>£1,250</b><span>British pound</span></div>
+  <div><b>$1,250</b><span>US dollar</span></div>
+</div>
+<div class="box know"><b class="t">Your PhiXtra plan is separate</b>
+<p>What you pay PhiXtra for your plan doesn't change. You still pay in naira (₦) or pounds (£), and you choose which when you pick a plan. A business that sells in dollars can still pay for its plan in pounds.</p>
+</div>
+</section>
+
+<!-- 2 -->
+<section class="part" id="cur-signup">
+<h2><span class="num">2</span>Choosing it when you sign up</h2>
+<p class="where">Sign-up page › What currency do you sell in?</p>
+<p>The sign-up page asks <b>What currency do you sell in?</b> for every kind of sign-up: WhatsApp only, Website only, or both.</p>
+<ul>
+  <li>If your business is in <b>Nigeria, the UK or the US</b>, the matching currency is picked for you when you choose your country. You can still pick a different one.</li>
+  <li>If your business is in <b>any other country</b>, nothing is picked. Choose the currency your customers pay in; you can't finish signing up without one.</li>
+</ul>
+<figure><img src="/static/portal/tutorial/currency/c01_signup.png" width="645" height="318" alt="The sign-up page with the WhatsApp number set to the United Kingdom and British pound picked automatically under What currency do you sell in." loading="lazy"><figcaption>A UK WhatsApp number fills in British pound automatically. The note underneath says "Filled in from your country. You can change it."</figcaption></figure>
+<figure class="narrow"><img src="/static/portal/tutorial/currency/c02_signup_other.png" width="645" height="177" alt="The currency question with nothing picked, because the business is in another country." loading="lazy"><figcaption>For a business in another country (here, Pakistan), nothing is picked. Choose one of the three.</figcaption></figure>
+</section>
+
+<!-- 3 -->
+<section class="part" id="cur-dashboard">
+<h2><span class="num">3</span>The one-time question on your dashboard</h2>
+<p class="where">Dashboard › One quick question before you start</p>
+<p>If you joined from the <b>PhiXtra plugin inside WordPress</b> or by <b>chatting with PhiXtra on WhatsApp</b>, you didn't see the sign-up page. The first time you log in, your dashboard asks the same question once.</p>
+<ol class="steps">
+  <li>Pick the currency your customers pay in.</li>
+  <li>Click <span class="ui">Save</span>. The box goes away and won't come back.</li>
+</ol>
+<figure class="narrow"><img src="/static/portal/tutorial/currency/c03_dashboard_question.png" width="640" height="268" alt="The One quick question before you start box on the dashboard, with three currency choices and a Save button." loading="lazy"><figcaption>Only the account owner sees this question.</figcaption></figure>
+</section>
+
+<!-- 4 -->
+<section class="part" id="cur-change">
+<h2><span class="num">4</span>Changing your currency later</h2>
+<p class="where">Settings › Business Information › Selling currency</p>
+<ol class="steps">
+  <li>Go to <b>Settings</b> and open <b>Business Information</b>.</li>
+  <li>Choose your new currency under <b>Selling currency</b>.</li>
+  <li>Click <span class="ui">Save Business Information</span>.</li>
+</ol>
+<figure><img src="/static/portal/tutorial/currency/c04_settings_currency.png" width="706" height="132" alt="The Selling currency drop-down in Settings set to US dollar, with the note that existing deals, orders and products keep naira." loading="lazy"><figcaption>When you pick a different currency, a note reminds you that what you've already saved keeps its old currency.</figcaption></figure>
+
+<h3>What happens when you change it</h3>
+<div class="tbl"><table>
+  <thead><tr><th>Thing</th><th>What happens</th></tr></thead>
+  <tbody>
+    <tr><td>New deals, orders and products</td><td>Use your new currency.</td></tr>
+    <tr><td>Deals, orders and products you already saved</td><td>Keep their old currency, so a deal saved as <span class="m">₦450,000</span> still shows <span class="m">₦450,000</span>.</td></tr>
+    <tr><td>Typing a new amount on an old deal or product</td><td>The new amount is saved in your new currency.</td></tr>
+    <tr><td>Product prices from your website or a price list</td><td>Converted for your customers (see section 5).</td></tr>
+    <tr><td>Your own exchange rates</td><td>Cleared, because they were written for the old currency. Enter them again if you use them.</td></tr>
+    <tr><td>Your AI instructions</td><td>The standard pricing wording switches automatically. If you wrote your own wording, you get a reminder to check it (section 9).</td></tr>
+    <tr><td>Your PhiXtra plan price</td><td>No change.</td></tr>
+  </tbody>
+</table></div>
+<div class="box careful"><b class="t">Only the owner can change it</b>
+<p>Team members can't change the selling currency. Business Information is the account owner's page.</p>
+</div>
+</section>
+
+<!-- 5 -->
+<section class="part" id="cur-rates">
+<h2><span class="num">5</span>Prices in another currency and exchange rates</h2>
+<p class="where">Settings › Business Information › Some of your product prices are in another currency</p>
+<p>Some product prices may be saved in a different currency from the one you sell in. A common example: your website keeps prices in pounds and has a currency switcher, but you sell to customers in dollars. PhiXtra converts those prices for your customers.</p>
+<p>When this applies to you, a box appears under Selling currency. It lists each other currency your prices are in, and the rate used today.</p>
+<figure><img src="/static/portal/tutorial/currency/c06_rates_daily.png" width="706" height="313" alt="The exchange rate box with Daily market rate selected, showing euro and British pound with their daily rates to US dollars." loading="lazy"><figcaption>Bright Gadgets sells in dollars, but some website prices are in pounds and euros. The box shows today's rate for each, for example £1 = $1.3228.</figcaption></figure>
+
+<h3>Daily market rate (recommended)</h3>
+<p>The rate updates itself every morning, so you don't have to do anything. If the update ever fails, the last good rate is kept.</p>
+
+<h3>How a price reaches your customer</h3>
+<div class="pflow" role="img" aria-label="A price saved as £254 is multiplied by the rate £1 = $1.3228 and the customer sees $336, rounded to a whole dollar.">
+  <div class="st"><p class="k">Saved price</p><p class="v">£254</p><p class="s">From your website</p></div>
+  <div class="ar" aria-hidden="true">→</div>
+  <div class="st"><p class="k">Rate</p><p class="v">£1 = $1.3228</p><p class="s">Daily, or your own</p></div>
+  <div class="ar" aria-hidden="true">→</div>
+  <div class="st end"><p class="k">Your customer sees</p><p class="v">$336</p><p class="s">Rounded to whole units</p></div>
+</div>
+<p>Converted prices are always rounded to whole units: <span class="m">$336</span>, not <span class="m">$335.99</span>. Prices that are already in your selling currency show exactly as you typed them.</p>
+</section>
+
+<!-- 6 -->
+<section class="part" id="cur-own">
+<h2><span class="num">6</span>Using your own exchange rate</h2>
+<p>If your website's currency switcher uses its own rate, use the same rate here so the prices on WhatsApp match your website exactly.</p>
+<ol class="steps">
+  <li>In the exchange rate box, choose <b>My own rate</b>.</li>
+  <li>Type your rate in <b>Your own rate</b> for each currency, for example <span class="m">1.30</span> for £1 = $1.30.</li>
+  <li>Click <span class="ui">Save Business Information</span>.</li>
+</ol>
+<figure><img src="/static/portal/tutorial/currency/c07_rates_own.png" width="706" height="313" alt="The exchange rate box with My own rate selected and 1.30 typed for British pound." loading="lazy"><figcaption>Bright Gadgets uses £1 = $1.30 for pounds. The euro box is left empty, so euros use the daily rate.</figcaption></figure>
+<div class="box tip"><b class="t">Leave a box empty to use the daily rate</b>
+<p>With My own rate, any currency you leave empty still uses the daily rate. If you switch back to Daily market rate, your own rates are kept in case you need them again.</p>
+</div>
+</section>
+
+<!-- 7 -->
+<section class="part" id="cur-customers">
+<h2><span class="num">7</span>What your customers see</h2>
+<p>Everywhere a customer sees a price, it's in your selling currency: AI replies on WhatsApp, the website chat, product lists and cards, discounts, order prices and payment reminders.</p>
+<div class="chat" role="img" aria-label="Example WhatsApp chat: a customer asks how much the Zebrafone X1 Pro is and the AI replies $336.">
+  <div class="b me"><div class="who">Customer</div>How much is the Zebrafone X1 Pro?</div>
+  <div class="b"><div class="who">Bright Gadgets AI</div>The Zebrafone X1 Pro is <b>$336</b>. Would you like to order it?</div>
+  <div class="b me"><div class="who">Customer</div>Do you have phones under 300?</div>
+  <div class="b"><div class="who">Bright Gadgets AI</div>Yes, here are our phones under <b>$300</b>…</div>
+</div>
+<p style="font-size:13px;color:var(--g-muted)">Example conversation. The saved price is £254; the customer sees dollars.</p>
+<p>When a customer gives a budget without a currency sign, like "under 300", it's read in your selling currency.</p>
+<div class="box know"><b class="t">Give it a minute</b>
+<p>After you change your currency or rates, it can take up to a minute before every reply uses the new setting.</p>
+</div>
+</section>
+
+<!-- 8 -->
+<section class="part" id="cur-totals">
+<h2><span class="num">8</span>Your deals, reports and totals</h2>
+<p>The Sales Pipeline, Leads, the Dashboard, reports and downloads, Team performance, Analytics, Orders, Customers, Companies and Products all show your selling currency.</p>
+<p>Each deal keeps the currency it was saved in. After a change, older deals still show their old currency next to new ones:</p>
+<figure><img src="/static/portal/tutorial/currency/c09_pipeline_rows.png" width="994" height="236" alt="Sales Pipeline list with a new deal of $1,250 and two older deals of ₦300,000 and ₦450,000." loading="lazy"><figcaption>Bright Gadgets changed from naira to dollars. The new deal shows $1,250; the two older deals keep ₦300,000 and ₦450,000.</figcaption></figure>
+<h3>Totals marked "≈"</h3>
+<p>Totals are always in your current currency. Older deals in another currency are converted at the daily rate (or your own rate) and added in, and the total shows <b>≈</b> to tell you it includes converted amounts.</p>
+<figure><img src="/static/portal/tutorial/currency/c08_pipeline_totals.png" width="994" height="92" alt="Sales Pipeline totals: 3 active deals, approximately $1,813 open pipeline value, and $0 won." loading="lazy"><figcaption>₦450,000 + ₦300,000 + $1,250 = ≈ $1,813. The Won total is $0, so it has no ≈.</figcaption></figure>
+</section>
+
+<!-- 9 -->
+<section class="part" id="cur-ai">
+<h2><span class="num">9</span>Your AI instructions</h2>
+<p>When you change currency, PhiXtra switches the standard pricing wording in your AI instructions for you. PhiXtra never changes words you wrote yourself.</p>
+<p>If your own wording mentions a different currency, for example "Delivery within Lagos costs ₦3,000", you'll see a reminder after saving, with a link to the page to check:</p>
+<figure><img src="/static/portal/tutorial/currency/c05_alerts.png" width="1010" height="129" alt="Alert reading: Your AI instructions mention naira. Please check them so the AI quotes prices in US dollars, with a link to AI instructions." loading="lazy"><figcaption>Click the link to open your AI instructions, or a WhatsApp number's AI agent, and update the wording.</figcaption></figure>
+</section>
+
+<!-- 10 -->
+<section class="part" id="cur-faq">
+<h2><span class="num">10</span>Questions and answers</h2>
+<dl class="qa">
+  <dt>Can I sell in euros or another currency?</dt>
+  <dd>Not yet. You can sell in naira, pounds or US dollars. Product prices saved in other currencies, such as euros, are still converted for your customers.</dd>
+  <dt>I don't see the exchange rate box. Why?</dt>
+  <dd>It only appears when some of your product prices are saved in a currency different from the one you sell in. If all your prices are in your selling currency, there's nothing to convert.</dd>
+  <dt>Why does a total show "≈"?</dt>
+  <dd>Because it includes deals or orders from before you changed currency, converted at the exchange rate. Each deal on its own still shows its exact saved amount.</dd>
+  <dt>Does changing my selling currency change what I pay PhiXtra?</dt>
+  <dd>No. Your plan is paid in naira or pounds, whatever you sell in.</dd>
+  <dt>Can my team change the currency?</dt>
+  <dd>No, only the account owner can, in Settings › Business Information.</dd>
+  <dt>I changed my currency but a reply still used the old one.</dt>
+  <dd>Changes can take up to a minute to reach every reply. Customers may also still see older replies higher up in the chat.</dd>
+</dl>
+<a class="g-top" href="#cur-top">↑ Back to top</a>
+</section>
+</div>
