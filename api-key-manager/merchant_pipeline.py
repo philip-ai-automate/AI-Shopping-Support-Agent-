@@ -77,13 +77,21 @@ LOST_REASONS = [
     "Price too high", "Customer chose a competitor", "Budget unavailable",
     "No longer interested", "Other",
 ]
+# Dropped is no longer offered (2026-10-15): staff choose Not a Fit ("we're
+# stopping") or Lost ("they said no"). Kept only so old Dropped records still
+# read correctly.
 DROPPED_REASONS = [
     "No response", "Invalid lead", "Wrong contact", "Duplicate", "Other",
 ]
+# One list for Not a Fit everywhere — Leads, lead page, call box and the
+# Sales Pipeline menu (absorbed Dropped's "Wrong contact" / "Invalid lead").
 NOT_A_FIT_REASONS = [
-    "Not our target customer", "No budget", "Wrong product or service fit",
-    "Unresponsive", "Duplicate", "Other",
+    "Not our target customer", "Too small", "Doesn't use or need this type of service",
+    "No budget", "Wrong product or service fit", "Unresponsive", "Wrong contact",
+    "Invalid lead", "Duplicate", "Other",
 ]
+# Reason picked for the user when a call is logged as "Doesn't need us" (2026-10-15).
+NOT_NEEDED_REASON = "Doesn't use or need this type of service"
 
 # ── Lead Score tier wording (scoring itself — colors, thresholds, the 0-100
 # math — is fixed; see _pipeline_scored_from_sql in portal_routes.py) ───────

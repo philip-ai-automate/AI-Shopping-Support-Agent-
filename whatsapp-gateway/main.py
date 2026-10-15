@@ -19,6 +19,7 @@ from wa_daily_report import (
 from wa_plan_reset import router as plan_reset_router, run_plan_resets
 from pressone_calls import router as pressone_router
 
+from push_notify import router as push_router
 from staff_alerts import (run_alert_reminders, init_staff_alert_tables,
                           process_web_chat_alerts, email_unseen_web_replies)
 from apscheduler.triggers.interval import IntervalTrigger
@@ -127,6 +128,7 @@ app.include_router(proactive_router)
 app.include_router(daily_report_router)
 app.include_router(plan_reset_router)
 app.include_router(pressone_router)
+app.include_router(push_router)   # phone notifications test (2026-10-11)
 
 
 @app.get("/health")

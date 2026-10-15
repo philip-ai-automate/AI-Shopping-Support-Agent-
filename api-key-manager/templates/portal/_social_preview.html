@@ -1,0 +1,133 @@
+{#- Full post preview: whole picture (never cropped) + click for full-size viewer.
+    Use: {% import "portal/_social_preview.html" as spv with context %}
+         {{ spv.media(p) }}        big preview (approval card, post page)
+         {{ spv.thumb(p, 'sl-thumb') }}  small list thumbnail that opens the viewer
+         {{ spv.viewer() }}        once per page (styles, viewer, script) -#}
+
+{% macro _attrs(p, it, g, set) -%}
+data-spv="{{ set }}-{{ p.id }}" data-kind="{{ it.kind }}" data-src="{{ it.src }}" data-poster="{{ it.poster or '' }}" data-lbl="{{ g.label or (('For ' ~ g.nets|join(', ')) if g.nets else '') }}"
+{%- endmacro %}
+
+{% macro _inner(it, playcls) -%}
+{% if it.kind == 'video' %}{% if it.poster %}<img src="{{ it.poster }}" alt="">{% else %}<video src="{{ it.src }}#t=0.5" muted preload="metadata" playsinline></video>{% endif %}<span class="spv-play {{ playcls }}" aria-hidden="true">▶</span>
+{%- else %}<img src="{{ it.src }}" alt="Post picture" loading="lazy">{% endif %}
+{%- endmacro %}
+
+{% macro media(p) -%}
+{% set groups = social_preview(p) %}
+{% if not groups %}
+  <div class="spv-empty">Text only</div>
+{% else %}
+<div class="spv">
+  {% for g in groups %}
+    {% set rest = g['items'][1:] if loop.first else g['items'] %}
+    {% if g.label or g.nets %}<div class="spv-lbl">{{ g.label or ('For ' ~ g.nets|join(', ')) }}</div>{% endif %}
+    {% if loop.first %}{% set it = g['items'][0] %}
+    <button type="button" class="spv-main" {{ _attrs(p, it, g, 'post') }} aria-label="View {{ 'video' if it.kind == 'video' else 'picture' }} full size">
+      {{ _inner(it, '') }}<span class="spv-hint">{{ '▶ Play video' if it.kind == 'video' else '⤢ View full size' }}</span>
+    </button>
+    {% endif %}
+    {% if rest %}<div class="spv-row">{% for it in rest %}
+      <button type="button" class="spv-tile" {{ _attrs(p, it, g, 'post') }} aria-label="View {{ 'video' if it.kind == 'video' else 'picture' }} full size">{{ _inner(it, 'sm') }}</button>
+    {% endfor %}</div>{% endif %}
+  {% endfor %}
+  {% set ns = namespace(n=0) %}{% for g in groups %}{% set ns.n = ns.n + g['items']|length %}{% endfor %}
+  {% if ns.n > 1 %}<div class="spv-count">{{ ns.n }} pictures/videos · click any one to see it full size</div>{% endif %}
+</div>
+{% endif %}
+{%- endmacro %}
+
+{% macro thumb(p, cls) -%}
+{% set groups = social_preview(p) %}
+{% if groups %}{% set g0 = groups[0] %}{% set it = g0['items'][0] %}
+<button type="button" class="spv-thumbbtn" {{ _attrs(p, it, g0, 'list') }} aria-label="View full size">
+  <img class="{{ cls }}" src="{{ it.poster if it.kind == 'video' and it.poster else (it.src if it.kind == 'image' else url_for('buffer.post_image', post_id=p.id)) }}" alt="" loading="lazy">{% if it.kind == 'video' %}<span class="spv-play xs" aria-hidden="true">▶</span>{% endif %}
+</button>
+{% for g in groups %}{% set gi = loop.index0 %}{% for it in g['items'] %}{% if gi or loop.index0 %}<span hidden {{ _attrs(p, it, g, 'list') }}></span>{% endif %}{% endfor %}{% endfor %}
+{% else %}<div class="{{ cls }}">Text only</div>{% endif %}
+{%- endmacro %}
+
+{% macro viewer() -%}
+<style>
+  .spv{display:flex;flex-direction:column;gap:8px}
+  .spv-lbl{font-size:11.5px;font-weight:700;color:var(--muted);margin-top:2px}
+  .spv-main{position:relative;display:flex;align-items:center;justify-content:center;width:100%;padding:0;margin:0;border:1px solid var(--line);
+    border-radius:12px;background:#0C1430;cursor:zoom-in;overflow:hidden;min-height:120px}
+  .spv-main img,.spv-main video{display:block;width:100%;height:auto;max-height:420px;object-fit:contain}
+  .spv-hint{position:absolute;right:8px;bottom:8px;background:rgba(12,20,48,.82);color:#fff;font-size:11.5px;font-weight:650;padding:4px 9px;border-radius:999px;pointer-events:none}
+  .spv-main:hover .spv-hint,.spv-main:focus-visible .spv-hint{background:#0B1D40}
+  .spv-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.92);
+    color:#0B1D40;display:flex;align-items:center;justify-content:center;font-size:22px;padding-left:4px;box-shadow:0 4px 18px rgba(0,0,0,.35);pointer-events:none}
+  .spv-play.sm{width:26px;height:26px;font-size:11px;padding-left:2px}
+  .spv-play.xs{width:20px;height:20px;font-size:9px;padding-left:2px}
+  .spv-row{display:flex;gap:6px;flex-wrap:wrap}
+  .spv-tile{position:relative;width:60px;height:60px;padding:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#0C1430;cursor:zoom-in}
+  .spv-tile img,.spv-tile video{width:100%;height:100%;object-fit:cover;display:block}
+  .spv-count{font-size:11.5px;color:var(--muted)}
+  .spv-empty{width:100%;aspect-ratio:1/1;max-width:260px;border-radius:12px;border:1px solid var(--line);background:#F2F4F7;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px}
+  .spv-thumbbtn{position:relative;padding:0;margin:0;border:0;background:none;cursor:zoom-in;flex-shrink:0;display:inline-flex;line-height:0}
+  .spv-thumbbtn .spv-play{left:50%;top:50%}
+  .spv-main:focus-visible,.spv-tile:focus-visible,.spv-thumbbtn:focus-visible{outline:3px solid #F5B301;outline-offset:2px}
+
+  .spv-ov{position:fixed;inset:0;z-index:5000;background:rgba(5,10,25,.94);display:flex;flex-direction:column;
+    padding:calc(env(safe-area-inset-top,0px) + 12px) 12px calc(env(safe-area-inset-bottom,0px) + 12px)}
+  .spv-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#fff;font-size:13px;flex-wrap:wrap}
+  .spv-bar .spv-info{display:flex;gap:10px;align-items:center;flex-wrap:wrap;min-width:0}
+  .spv-bar b{font-weight:700}
+  .spv-bar a{color:#fff;opacity:.85;font-size:12.5px}
+  .spv-x{background:rgba(255,255,255,.12);color:#fff;border:0;border-radius:999px;width:40px;height:40px;font-size:20px;cursor:pointer}
+  .spv-x:hover{background:rgba(255,255,255,.22)}
+  .spv-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative;margin-top:10px}
+  .spv-stage img,.spv-stage video{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;box-shadow:0 20px 60px rgba(0,0,0,.5);background:#000}
+  .spv-nav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:50%;width:46px;height:46px;font-size:22px;cursor:pointer}
+  .spv-nav:hover{background:rgba(255,255,255,.26)}
+  .spv-prev{left:4px}.spv-next{right:4px}
+  .spv-size{color:#fff;opacity:.7;font-size:12px}
+</style>
+<div class="spv-ov" id="spvOv" hidden role="dialog" aria-modal="true" aria-label="Full size preview">
+  <div class="spv-bar">
+    <div class="spv-info"><b id="spvLbl">Full size preview</b><span class="spv-size" id="spvSize"></span><span class="spv-size" id="spvPos"></span>
+      <a id="spvOpen" href="#" target="_blank" rel="noopener">Open in new tab ↗</a></div>
+    <button type="button" class="spv-x" id="spvX" aria-label="Close">✕</button>
+  </div>
+  <div class="spv-stage" id="spvStage">
+    <button type="button" class="spv-nav spv-prev" id="spvPrev" aria-label="Previous" hidden>‹</button>
+    <button type="button" class="spv-nav spv-next" id="spvNext" aria-label="Next" hidden>›</button>
+  </div>
+</div>
+<script>
+(function(){
+  var ov=document.getElementById('spvOv'); if(!ov||ov.dataset.ready) return; ov.dataset.ready='1';
+  document.body.appendChild(ov);
+  var stage=document.getElementById('spvStage'), lbl=document.getElementById('spvLbl'), size=document.getElementById('spvSize'),
+      pos=document.getElementById('spvPos'), open=document.getElementById('spvOpen'),
+      prev=document.getElementById('spvPrev'), next=document.getElementById('spvNext');
+  var list=[], idx=0, back=null;
+  function clear(){ var m=stage.querySelector('img,video'); if(m){ if(m.pause) m.pause(); m.remove(); } }
+  function show(i){
+    idx=(i+list.length)%list.length; var d=list[idx].dataset; clear(); size.textContent='';
+    var el;
+    if(d.kind==='video'){ el=document.createElement('video'); el.controls=true; el.autoplay=true; el.playsInline=true; el.src=d.src;
+      if(d.poster) el.poster=d.poster;
+      el.addEventListener('loadedmetadata',function(){ size.textContent=el.videoWidth+' × '+el.videoHeight+' · '+Math.round(el.duration)+'s'; });
+    } else { el=document.createElement('img'); el.alt='Post picture, full size'; el.src=d.src;
+      el.addEventListener('load',function(){ size.textContent=el.naturalWidth+' × '+el.naturalHeight; }); }
+    stage.insertBefore(el,prev);
+    lbl.textContent=d.lbl||(d.kind==='video'?'Video':'Picture');
+    pos.textContent=list.length>1?(idx+1)+' of '+list.length:'';
+    prev.hidden=next.hidden=list.length<2; open.href=d.src;
+  }
+  function close(){ clear(); ov.hidden=true; document.body.style.overflow=''; if(back) back.focus(); }
+  document.addEventListener('click',function(e){
+    var t=e.target.closest('button[data-spv]'); if(!t) return; e.preventDefault();
+    list=Array.prototype.slice.call(document.querySelectorAll('[data-spv="'+t.dataset.spv+'"]'));
+    back=t; ov.hidden=false; document.body.style.overflow='hidden'; show(list.indexOf(t)); document.getElementById('spvX').focus();
+  });
+  document.getElementById('spvX').onclick=close;
+  prev.onclick=function(){show(idx-1)}; next.onclick=function(){show(idx+1)};
+  stage.addEventListener('click',function(e){ if(e.target===stage) close(); });
+  document.addEventListener('keydown',function(e){ if(ov.hidden) return;
+    if(e.key==='Escape') close(); else if(e.key==='ArrowLeft'&&list.length>1) show(idx-1); else if(e.key==='ArrowRight'&&list.length>1) show(idx+1); });
+})();
+</script>
+{%- endmacro %}

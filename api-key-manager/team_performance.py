@@ -25,7 +25,8 @@ WORK_ACTIONS = ("call", "wa_sent", "messenger_sent", "webchat_sent", "email_sent
                 "contact_created", "contact_edited", "company_created", "leads_assigned")
 
 CALL_OUTCOMES = [("answered", "Answered"), ("no_answer", "No answer"), ("busy", "Busy / call back"),
-                 ("voicemail", "Left a voicemail"), ("wrong_number", "Wrong number")]
+                 ("voicemail", "Left a voicemail"), ("wrong_number", "Wrong number"),
+                 ("not_needed", "Doesn't need us")]
 CALL_OUTCOME_LABELS = dict(CALL_OUTCOMES)
 
 IDLE_ALERT_MIN = 180        # "no activity for 3 hours" during the working day

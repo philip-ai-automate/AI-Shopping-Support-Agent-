@@ -31,6 +31,8 @@ from email.message import EmailMessage
 
 import psycopg2.extras
 
+import push_notify
+
 from wa_db import get_db_connection, get_active_template
 from meta_sender import send_text, send_template
 
@@ -201,6 +203,22 @@ def _owner_fallback(cur, tenant_id: int) -> list:
              "alert_phone": None, "alert_reminder": True}]
 
 
+def _with_owner_devices(cur, tenant_id: int, recips: list) -> list:
+    """Add the owner's phone-notification devices as a recipient (no WhatsApp,
+    no email — those keep their own rules) when the owner turned any on."""
+    if any(r.get("kind") in ("owner", "owner_push") for r in recips):
+        return recips
+    if push_notify.has_owner_devices(cur, tenant_id):
+        return recips + [{"id": None, "kind": "owner_push", "name": "Owner", "email": None,
+                          "alert_phone": None, "alert_reminder": True}]
+    return recips
+
+
+def _real(recips) -> bool:
+    """Was anyone alerted by WhatsApp/email (not just the owner's devices)?"""
+    return any((r or {}).get("kind") in ("member", "owner") for r in (recips or []))
+
+
 def _customer_label(cur, phone_number_id: str, customer_phone: str, profile_name: str) -> str:
     if phone_number_id in _support_ids():
         tail = _digits(customer_phone)[-10:]
@@ -282,7 +300,8 @@ async def _send_whatsapp(to_phone: str, template_type: str, params: list, text: 
 
 
 async def _deliver(recipients: list, *, account: str, label: str, preview: str,
-                   when: str, reminder: bool, channel: str = "WhatsApp") -> None:
+                   when: str, reminder: bool, channel: str = "WhatsApp",
+                   tenant_id: int = None, url: str = "/inbox", tag: str = "") -> None:
     preview80 = (preview or "")[:80]
     for r in recipients:
         if reminder and not r.get("alert_reminder"):
@@ -312,6 +331,26 @@ async def _deliver(recipients: list, *, account: str, label: str, preview: str,
             await asyncio.to_thread(_send_email, r["email"], subject, heading, account,
                                     [("From", label), ("Channel", channel),
                                      ("Message", preview or "-"), ("Received", when)], footer)
+    # Phone notifications (2026-10-11): the same people's devices, plus every
+    # device the owner turned on. Each person's WhatsApp/email above is unchanged.
+    if tenant_id:
+        member_ids = [r["id"] for r in recipients if r.get("kind") == "member" and r.get("id")
+                      and (not reminder or r.get("alert_reminder"))]
+        include_owner = any(r.get("kind") in ("owner", "owner_push") for r in recipients)
+        if member_ids or include_owner:
+            if reminder:
+                title, body = f"Reminder · {label} is still waiting", f"{account} · Nobody has replied for 10 minutes."
+            elif channel == "Website chat":
+                title = f"{account} · Website chat"
+                body = f'{label}: "{preview80}"' if preview80 else "A website visitor asked to talk to a person."
+            else:
+                title = f"{account} · {label} needs a reply"
+                body = f'"{preview80}"' if preview80 else "A new chat is waiting for a reply."
+            try:
+                await push_notify.push_to(int(tenant_id), member_ids, include_owner,
+                                          title=title, body=body, url=url, tag=tag or url)
+            except Exception as e:
+                print(f"⚠️ [STAFF ALERT] phone notifications tenant={tenant_id} failed: {e}")
 
 
 # ── Entry points ─────────────────────────────────────────────────────────────
@@ -330,18 +369,23 @@ async def alert_chat_needs_reply(tenant_id: int, phone_number_id: str, customer_
     try:
         _ensure_schema(cur)
         cur.execute("""
-            SELECT 1 FROM chat_alerts
+            SELECT recipients FROM chat_alerts
              WHERE tenant_id=%s AND channel='whatsapp' AND chat_key=%s
                AND first_alert_at > NOW() - %s
              LIMIT 1
         """, (tenant_id, _digits(customer_phone), NEW_CHAT_WINDOW))
-        if cur.fetchone():
+        _prev = cur.fetchone()
+        if _prev:
             conn.commit()
-            return True
+            # Only the owner's devices were told → the caller's own owner
+            # alert still runs, exactly as before phone notifications.
+            return _real(_prev.get("recipients"))
         recips = _only_who_may_see(cur, tenant_id, _recipients(cur, tenant_id, phone_number_id),
                                    [customer_phone], [], customer_phone)
         if not recips and allow_owner_fallback:
             recips = _owner_fallback(cur, tenant_id)
+        alerted = _real(recips)
+        recips = _with_owner_devices(cur, tenant_id, recips)
         if not recips:
             conn.commit()
             return False
@@ -362,9 +406,11 @@ async def alert_chat_needs_reply(tenant_id: int, phone_number_id: str, customer_
     finally:
         cur.close(); conn.close()
     when = datetime.now(_WAT).strftime("%-d %b, %H:%M WAT")
-    await _deliver(recips, account=account, label=label, preview=text, when=when, reminder=False)
+    await _deliver(recips, account=account, label=label, preview=text, when=when, reminder=False,
+                   tenant_id=tenant_id, url=push_notify.chat_url("whatsapp", _digits(customer_phone)),
+                   tag=f"chat-{tenant_id}-{_digits(customer_phone)}")
     print(f"✅ [STAFF ALERT] tenant={tenant_id} chat={_digits(customer_phone)} → {len(recips)} recipient(s) ({reason})")
-    return True
+    return alerted
 
 
 async def run_alert_reminders() -> int:
@@ -424,7 +470,10 @@ async def run_alert_reminders() -> int:
         await _deliver(a["recipients"] or [], account=(a["account"] or "Your business"),
                        label=a["customer_label"] or f"+{a['chat_key']}", preview=a["preview"] or "",
                        when="", reminder=True,
-                       channel="Website chat" if a["channel"] == "web" else "WhatsApp")
+                       channel="Website chat" if a["channel"] == "web" else "WhatsApp",
+                       tenant_id=a["tenant_id"],
+                       url=push_notify.chat_url("web" if a["channel"] == "web" else "whatsapp", a["chat_key"]),
+                       tag=f"chat-{a['tenant_id']}-{a['chat_key']}")
     if due:
         print(f"✅ [STAFF ALERT] {len(due)} reminder(s) sent")
     return len(due)
@@ -477,6 +526,7 @@ async def process_web_chat_alerts() -> int:
                                        _wn, _we, "web:" + q["session_id"])
             if not recips and q["allow_owner"]:
                 recips = _owner_fallback(cur, q["tenant_id"])
+            recips = _with_owner_devices(cur, q["tenant_id"], recips)
             if not recips:
                 continue
             cur.execute("SELECT name FROM tenants WHERE id=%s", (q["tenant_id"],))
@@ -498,7 +548,9 @@ async def process_web_chat_alerts() -> int:
     for recips, account, q in todo:
         when = q["created_at"].astimezone(_WAT).strftime("%-d %b, %H:%M WAT")
         await _deliver(recips, account=account, label=q["label"] or "Website visitor",
-                       preview=q["preview"] or "", when=when, reminder=False, channel="Website chat")
+                       preview=q["preview"] or "", when=when, reminder=False, channel="Website chat",
+                       tenant_id=q["tenant_id"], url=push_notify.chat_url("web", q["session_id"]),
+                       tag=f"chat-{q['tenant_id']}-{q['session_id']}")
         print(f"✅ [STAFF ALERT] tenant={q['tenant_id']} web chat={q['session_id']} → {len(recips)} recipient(s) ({q['reason']})")
     return len(todo)
 

@@ -293,7 +293,7 @@ def log_stage_change(lead_id: int, from_stage, to_stage: str, notes: str = None)
     """Called from merchant_pipeline.record_stage_change for every move."""
     if from_stage is None and to_stage == "new_lead":
         action = "lead_created"
-    elif from_stage == "not_a_fit":
+    elif from_stage in ("not_a_fit", "lost", "dropped"):
         action = "reopened"
     else:
         action = STAGE_ACTIONS.get(to_stage, "stage_moved")

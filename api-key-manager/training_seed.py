@@ -85,7 +85,7 @@ def create_account(cur, source_id: int) -> tuple:
                              pipeline_stage_labels, lead_score_labels, signup_product, campaign_reply_auto_actions)
         VALUES (%s, 'active', %s, %s, %s, %s, %s, TRUE, TRUE, FALSE, FALSE, %s, %s, %s, %s, FALSE)
         RETURNING id
-    """, (f"{src['name']} – Training", src["source_type"], json.dumps(src["features"] or {}),
+    """, (f"{src['name']} – Training", src["source_type"], (src["features"] if isinstance(src["features"], str) else json.dumps(src["features"] or {})),
           src["plan_id"], src["billing_cycle"], src["plan_period_start"], src["crm_enabled"],
           json.dumps(src["pipeline_stage_labels"] or {}), json.dumps(src["lead_score_labels"] or {}),
           src["signup_product"]))

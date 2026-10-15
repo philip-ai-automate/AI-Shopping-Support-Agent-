@@ -38,6 +38,13 @@
 .step-wait input { width:70px; }
 .step-stats { font-size:12px; color:var(--muted); margin-top:9px; }
 .step-stats a { color:#0B1D40; font-weight:600; }
+.chips .chip-sep { width:1px; align-self:stretch; background:#e2e8f0; margin:0 4px; }
+.trk { display:flex; flex-direction:column; gap:3px; font-size:12px; }
+.trk span { white-space:nowrap; }
+.trk .t-open { color:#075985; font-weight:600; } .trk .t-click { color:#166534; font-weight:600; } .trk .t-reply { color:#92400e; font-weight:700; }
+.trk .t-none { color:var(--muted); }
+.pager { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:12px 22px; font-size:12.5px; color:var(--muted); }
+.pager .pg-links { display:flex; gap:6px; flex-wrap:wrap; }
 .step-x { background:none; border:none; color:#98a2b3; font-size:18px; cursor:pointer; padding-bottom:7px; }
 .step-x:hover { color:#b42318; }
 .add-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
@@ -101,6 +108,11 @@
   </div>
 </div>
 
+{% if reply_unwatched %}
+<div class="sq-warn">↩ Replies to this sequence go to <strong>{{ reply_unwatched }}</strong>, but that mailbox isn't connected to the portal, so <strong>replies won't show here</strong> and people who reply keep getting the next email.
+  {% if staff_can_open('mailbox.page') %}<a href="{{ url_for('mailbox.page') }}" style="font-weight:700;color:#9a3412">Connect it now →</a> (sign in as {{ reply_unwatched }}).{% else %}Ask your IT admin or the business owner to connect it under Integration › Microsoft 365 (Outlook).{% endif %}
+</div>
+{% endif %}
 {% if not sender %}
 <div class="sq-warn">No sending address is set up for this business yet, so sequence emails can't go out. Ask PhiXtra support to set one up.</div>
 {% elif seq.status != 'active' %}
@@ -267,6 +279,12 @@
       <a class="chip {% if show == 'ready' %}on{% endif %}" href="?show=ready">Ready to send {{ counts.get('ready', 0) }}</a>
       <a class="chip {% if show == 'finished' %}on{% endif %}" href="?show=finished">Finished {{ counts.get('finished', 0) }}</a>
       <a class="chip {% if show == 'stopped' %}on{% endif %}" href="?show=stopped">Stopped {{ counts.get('stopped', 0) }}</a>
+      {% if tracking_on or track_counts.opened or track_counts.replied %}
+      <span class="chip-sep"></span>
+      <a class="chip {% if show == 'opened' %}on{% endif %}" href="?show=opened">👁 Opened {{ track_counts.opened }}</a>
+      <a class="chip {% if show == 'clicked' %}on{% endif %}" href="?show=clicked">🔗 Clicked {{ track_counts.clicked }}</a>
+      <a class="chip {% if show == 'replied' %}on{% endif %}" href="?show=replied">↩ Replied {{ track_counts.replied }}</a>
+      {% endif %}
     </div>
     <form method="GET" style="margin:0 0 0 auto;display:flex;gap:6px">
       <input type="hidden" name="show" value="{{ show }}">
@@ -275,6 +293,7 @@
   </div>
   {% if people %}
   <form method="POST" action="{{ url_for('portal.email_sequence_people_action', seq_id=seq.id) }}" id="peopleForm">
+    <input type="hidden" name="next" value="{{ request.full_path }}">
     {% if can_edit or can_send %}
     <div class="bulk" style="background:#fff">
       <span class="muted" style="font-size:12.5px">With ticked people:</span>
@@ -291,7 +310,7 @@
     <table class="ptable">
       <thead><tr>
         <th style="width:30px">{% if can_edit or can_send %}<input type="checkbox" onclick="document.querySelectorAll('.pchk').forEach(c => c.checked = this.checked); sqTicksChanged()">{% endif %}</th>
-        <th>Person</th><th>Emails sent</th><th>Next</th><th>Status</th><th></th>
+        <th>Person</th><th>Emails sent</th>{% if tracking_on or track_counts.opened or track_counts.replied %}<th>Opened / Clicked / Replied</th>{% endif %}<th>Next</th><th>Status</th><th></th>
       </tr></thead>
       <tbody>
       {% for p in people %}
@@ -303,6 +322,16 @@
             <div class="muted" style="font-size:12px">{% if p.lead_id %}{% if p.customer_name and p.contact_person %}{{ p.customer_name }} · {% endif %}{{ p.email }}{% else %}Added by email address{% endif %}</div>
           </td>
           <td class="muted">{{ p.steps_sent }} of {{ steps|length }}{% if p.last_sent_at %}<div style="font-size:11.5px">last {{ p.last_sent_at.strftime('%d %b, %H:%M') }}</div>{% endif %}</td>
+          {% if tracking_on or track_counts.opened or track_counts.replied %}
+          <td><div class="trk">
+            {% set t = p.track %}
+            {% if t.replied %}<span class="t-reply">↩ Replied{% if t.replied.strftime is defined %} {{ t.replied.strftime('%d %b, %H:%M') }}{% endif %}</span>{% endif %}
+            {% if t.clicked %}<span class="t-click">🔗 Clicked{% if t.clicks > 1 %} {{ t.clicks }} times{% endif %} · {{ t.clicked.strftime('%d %b, %H:%M') }}</span>{% endif %}
+            {% if t.opened %}<span class="t-open">👁 Opened{% if t.opens > 1 %} {{ t.opens }} times{% endif %} · {{ t.opened.strftime('%d %b, %H:%M') }}</span>
+              {% if t.emails %}<span class="muted" style="font-size:11px">Email {{ t.emails|join(', ') }}</span>{% endif %}{% endif %}
+            {% if not t.opened and not t.clicked and not t.replied %}<span class="t-none">{{ 'Not opened yet' if p.steps_sent else '—' }}</span>{% endif %}
+          </div></td>
+          {% endif %}
           <td>
             {% if p.status in ('active', 'ready', 'sending') and nxt %}
               Email {{ p.steps_sent + 1 }}
@@ -330,7 +359,16 @@
     </table>
     </div>
   </form>
-  {% if people|length >= 300 %}<p class="muted" style="font-size:12px;padding:10px 22px">Showing the first 300. Use the search or the filters above to find someone.</p>{% endif %}
+  {% if page_count > 1 %}
+  <div class="pager">
+    <span>Showing {{ (page - 1) * page_size + 1 }}–{{ [page * page_size, shown_count]|min }} of {{ shown_count }}</span>
+    <span class="pg-links">
+      {% if page > 1 %}<a class="sq-btn small light" href="?show={{ show }}&q={{ q|urlencode }}&page={{ page - 1 }}">← Previous</a>{% endif %}
+      {% for n in range(1, page_count + 1) %}<a class="sq-btn small {% if n != page %}light{% endif %}" href="?show={{ show }}&q={{ q|urlencode }}&page={{ n }}">{{ n }}</a>{% endfor %}
+      {% if page < page_count %}<a class="sq-btn small light" href="?show={{ show }}&q={{ q|urlencode }}&page={{ page + 1 }}">Next →</a>{% endif %}
+    </span>
+  </div>
+  {% endif %}
   {% else %}
   <div class="empty">{% if q or show != 'all' %}Nobody matches.{% else %}Nobody in this sequence yet.{% endif %}</div>
   {% endif %}
@@ -338,6 +376,7 @@
 
 <form method="POST" action="{{ url_for('portal.email_sequence_people_action', seq_id=seq.id) }}" id="oneForm" hidden>
   <input type="hidden" name="action"><input type="hidden" name="person_id">
+  <input type="hidden" name="next" value="{{ request.full_path }}">
 </form>
 
 <script>

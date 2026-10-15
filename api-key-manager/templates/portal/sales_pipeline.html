@@ -6,6 +6,7 @@
 {% block content %}
 {# Role-aware buttons — same route labels the save routes enforce. #}
 {% set can_edit_deal = staff_can_open('portal.sales_pipeline_edit') %}
+{% set can_naf = staff_can_open('portal.leads_not_a_fit') %}
 {% set can_bulk_email_seg = staff_can_open('portal.email_csegments_bulk_add_members') and 'campaigns_email.segments_edit' in (granted_features or []) %}
 {% set can_bulk_wa_seg    = staff_can_open('portal.whatsapp_pipeline_segments_bulk_add_members') and 'campaigns_wa.segments_edit' in (granted_features or []) %}
 {% set can_bulk_sms_seg   = staff_can_open('portal.sms_pipeline_segments_bulk_add_members') %}
@@ -302,6 +303,136 @@
   .board-empty { font-size:12px; color:rgba(3,12,24,.35); padding:10px 4px; text-align:center }
 
   @media(max-width:600px){ .frow{grid-template-columns:1fr} }
+
+  /* ── Filter bar (redesigned 2026-10-14) ─────────────────────────────── */
+  .spf-bar { background:#fff; border:1px solid #DCE3EE; border-radius:14px; padding:14px; margin-bottom:16px;
+             display:flex; flex-direction:column; gap:12px }
+  .spf-row { display:flex; flex-wrap:wrap; align-items:center; gap:10px }
+  .spf-sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap }
+  .spf-search { position:relative; flex:1 1 200px; min-width:0 }
+  .spf-search input { width:100%; height:44px; box-sizing:border-box; padding:0 12px 0 42px; border:1px solid #DCE3EE;
+                      border-radius:10px; font:inherit; font-size:14px; color:#111E2D; background:#fff }
+  .spf-search input:focus { outline:none; border-color:#0B1D40; box-shadow:0 0 0 3px rgba(11,29,64,.12) }
+  .spf-search-go { position:absolute; left:4px; top:4px; width:36px; height:36px; border:0; background:transparent;
+                   color:#5A6B85; cursor:pointer; display:flex; align-items:center; justify-content:center; border-radius:8px }
+  .spf-search-go:hover { color:#0B1D40 }
+  .spf-btn { height:44px; padding:0 14px; border:1px solid #DCE3EE; background:#fff; border-radius:10px; display:inline-flex;
+             align-items:center; gap:8px; cursor:pointer; font:inherit; font-size:14px; font-weight:600; color:#0B1D40; white-space:nowrap }
+  .spf-btn:hover { background:#F5F7FB; border-color:#C9D8F2 }
+  .spf-btn.spf-icon { width:44px; padding:0; justify-content:center }
+  .spf-btn:focus-visible, .spf-views a:focus-visible, .spf-asg-opt:focus-visible { outline:2px solid #0B1D40; outline-offset:2px }
+  .spf-asg.on { border-color:#0B1D40; background:#E8EEF8 }
+  .spf-asg-lbl { font-weight:400; font-size:13px; color:#5A6B85 }
+  .spf-badge { min-width:20px; height:20px; padding:0 6px; box-sizing:border-box; border-radius:10px; background:#0B1D40; color:#fff;
+               font-size:11.5px; font-weight:600; display:inline-flex; align-items:center; justify-content:center }
+  .spf-right { display:flex; align-items:center; gap:8px; margin-left:auto; flex-wrap:wrap }
+  .spf-views { display:flex; border:1px solid #DCE3EE; border-radius:10px; padding:3px; background:#F5F7FB }
+  .spf-views a { height:36px; padding:0 12px; border-radius:7px; display:flex; align-items:center; gap:6px; font-size:13px;
+                 font-weight:500; color:#5A6B85; text-decoration:none }
+  .spf-views a:hover { color:#0B1D40; text-decoration:none }
+  .spf-views a.active { background:#fff; color:#0B1D40; font-weight:600; box-shadow:0 1px 2px rgba(11,29,64,.12) }
+  .spf-right .col-picker-menu { right:0; left:auto }
+
+  .spf-asg-wrap { position:relative }
+  .spf-asg-menu { display:none; position:absolute; top:52px; left:0; z-index:60; width:340px; max-width:calc(100vw - 32px);
+                  max-height:440px; overflow-y:auto; background:#fff; border:1px solid #DCE3EE; border-radius:14px;
+                  box-shadow:0 16px 40px rgba(11,29,64,.18); padding:10px; box-sizing:border-box }
+  .spf-asg-menu.open { display:block }
+  .spf-asg-find { width:100%; height:40px; box-sizing:border-box; padding:0 10px; border:1px solid #DCE3EE; border-radius:8px;
+                  font:inherit; font-size:13px; margin-bottom:4px }
+  .spf-asg-group { font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#5A6B85; padding:8px 8px 4px }
+  .spf-asg-team { border-top:1px solid #EEF2F8; margin-top:6px; padding-top:10px }
+  .spf-asg-opt { display:flex; align-items:center; gap:10px; min-height:48px; padding:6px 8px; border-radius:8px; color:#111E2D;
+                 text-decoration:none }
+  .spf-asg-opt:hover { background:#F5F7FB; text-decoration:none; color:#111E2D }
+  .spf-asg-opt.sel { background:#E8EEF8 }
+  .spf-asg-opt svg { color:#0B1D40; flex-shrink:0 }
+  .spf-asg-txt { flex:1; min-width:0; display:flex; flex-direction:column }
+  .spf-asg-txt b { font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .spf-asg-txt small { font-size:12px; color:#5A6B85 }
+  .spf-asg-empty { display:none; padding:10px 8px; font-size:13px; color:#5A6B85 }
+  .spf-av { width:30px; height:30px; flex:0 0 30px; border-radius:50%; background:#1E3A6E; color:#fff; display:flex;
+            align-items:center; justify-content:center; font-size:11px; font-weight:600; box-sizing:border-box }
+  .spf-av.me { background:#0B1D40 }
+  .spf-av.all { background:#F5F7FB; color:#5A6B85; border:1px solid #DCE3EE; font-size:9.5px }
+  .spf-av.none { background:#fff; color:#5A6B85; border:1.5px dashed #9DB8E8 }
+  .spf-av.big { width:44px; height:44px; flex-basis:44px; font-size:14px; background:#0B1D40 }
+
+  .spf-chips { display:flex; flex-wrap:wrap; align-items:center; gap:8px; border-top:1px solid #EEF2F8; padding-top:12px }
+  .spf-count { font-size:13px; font-weight:600; color:#0B1D40; margin-right:4px }
+  .spf-chip { display:inline-flex; align-items:center; gap:4px; height:32px; padding:0 4px 0 12px; border-radius:16px;
+              background:#E8EEF8; font-size:13px; color:#0B1D40 }
+  .spf-chip .k { color:#5A6B85 }
+  .spf-chip a { width:24px; height:24px; border-radius:12px; display:flex; align-items:center; justify-content:center; color:#0B1D40 }
+  .spf-chip a:hover { background:#C9D8F2 }
+  .spf-clearall { font-size:13px; font-weight:600; color:#1E3A6E; text-decoration:underline; padding:0 6px }
+  .spf-none { font-size:13px; color:#5A6B85 }
+
+  .spf-snap { background:#fff; border:1px solid #DCE3EE; border-radius:14px; padding:16px 18px; margin-bottom:16px;
+              display:flex; flex-wrap:wrap; align-items:center; gap:16px }
+  .spf-snap-who { display:flex; align-items:center; gap:12px; flex:1 1 240px }
+  .spf-snap-title { font-size:16px; font-weight:700; color:#0B1D40 }
+  .spf-snap-sub { font-size:12px; color:#5A6B85 }
+  .spf-snap-stats { display:flex; flex-wrap:wrap }
+  .spf-snap-stats div { padding:4px 20px; border-left:1px solid #EEF2F8; display:flex; flex-direction:column }
+  .spf-snap-stats small { font-size:12px; color:#5A6B85 }
+  .spf-snap-stats b { font-size:19px; font-weight:700; color:#0B1D40; white-space:nowrap }
+
+  .spf-drawer { display:none; position:fixed; inset:0; z-index:1000 }
+  .spf-drawer.open { display:flex; justify-content:flex-end }
+  .spf-backdrop { position:absolute; inset:0; background:rgba(11,29,64,.35) }
+  .spf-panel { position:relative; width:420px; max-width:100%; height:100%; background:#fff; display:flex; flex-direction:column;
+               box-shadow:-12px 0 40px rgba(11,29,64,.2) }
+  .spf-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #DCE3EE }
+  .spf-head h2 { margin:0; font-size:20px; font-weight:700; color:#0B1D40 }
+  .spf-x { width:40px; height:40px; border:0; border-radius:10px; background:#F5F7FB; color:#0B1D40; cursor:pointer;
+           display:flex; align-items:center; justify-content:center }
+  .spf-body { flex:1; overflow-y:auto; padding:4px 20px 20px }
+  .spf-body section { padding:16px 0; border-bottom:1px solid #EEF2F8 }
+  .spf-body section:last-child { border-bottom:0 }
+  .spf-body h3 { margin:0 0 10px; font-size:14px; font-weight:700; color:#111E2D }
+  .spf-hint { margin:-6px 0 10px; font-size:12px; color:#5A6B85 }
+  .spf-radio { display:flex; align-items:center; gap:10px; min-height:40px; padding:0 8px; border-radius:8px; cursor:pointer; font-size:14px }
+  .spf-radio:hover { background:#F5F7FB }
+  .spf-radio span { flex:1 }
+  .spf-radio small { font-size:12px; color:#5A6B85 }
+  .spf-radio input, .spf-check input { width:18px; height:18px; margin:0; accent-color:#0B1D40 }
+  .spf-check { display:flex; align-items:center; gap:10px; min-height:36px; font-size:14px; cursor:pointer }
+  .spf-pills { display:flex; gap:8px; flex-wrap:wrap }
+  .spf-pill input { position:absolute; opacity:0; pointer-events:none }
+  .spf-pill span { display:inline-flex; align-items:center; height:38px; padding:0 16px; border-radius:19px; border:1.5px solid #DCE3EE;
+                   font-size:13px; font-weight:600; cursor:pointer; color:#111E2D; background:#fff }
+  .spf-pill input:focus-visible + span { outline:2px solid #0B1D40; outline-offset:2px }
+  .spf-pill.any input:checked + span { background:#0B1D40; border-color:#0B1D40; color:#fff }
+  .spf-pill.hot input:checked + span { background:#FFEDD5; border-color:#9A3412; color:#9A3412 }
+  .spf-pill.warm input:checked + span { background:#FEF3C7; border-color:#854D0E; color:#854D0E }
+  .spf-pill.cold input:checked + span { background:#EEF2F6; border-color:#475569; color:#475569 }
+  .spf-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; margin-bottom:6px }
+  .spf-span2 { grid-column:span 2 }
+  .spf-field { display:flex; flex-direction:column; gap:4px; font-size:12px; color:#5A6B85 }
+  .spf-field select, .spf-field input { height:40px; padding:0 10px; border:1px solid #DCE3EE; border-radius:8px; font:inherit;
+                                        font-size:14px; color:#111E2D; background:#fff; min-width:0 }
+  .spf-field select:disabled { opacity:.55 }
+  .spf-label-row { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:44px; font-size:14px }
+  .spf-seg { display:flex; border:1px solid #DCE3EE; border-radius:8px; padding:2px; background:#F5F7FB; flex-shrink:0 }
+  .spf-seg input { position:absolute; opacity:0; pointer-events:none }
+  .spf-seg span { display:inline-flex; align-items:center; height:30px; padding:0 12px; border-radius:6px; font-size:12px;
+                  font-weight:600; color:#5A6B85; cursor:pointer }
+  .spf-seg input:checked + span { background:#0B1D40; color:#fff }
+  .spf-seg .hide input:checked + span { background:#9A3412; color:#fff }
+  .spf-seg input:focus-visible + span { outline:2px solid #0B1D40; outline-offset:1px }
+  .spf-details { border:1px solid #EEF2F8; border-radius:10px; margin-bottom:8px }
+  .spf-details summary { padding:10px 12px; font-size:14px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:8px }
+  .spf-scroll { max-height:200px; overflow-y:auto; padding:0 12px 8px }
+  .spf-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 20px; border-top:1px solid #DCE3EE }
+  .spf-apply { height:44px; padding:0 22px; border:0; border-radius:10px; background:#0B1D40; color:#fff; font:inherit;
+               font-size:14px; font-weight:600; cursor:pointer }
+  .spf-apply:hover { background:#1E3A6E }
+  @media(max-width:700px){
+    .spf-right { margin-left:0; width:100% }
+    .spf-snap-stats { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; width:100% }
+    .spf-snap-stats div { padding:0; border-left:0 }
+  }
 </style>
 
 <div class="sp-hero">
@@ -374,17 +505,19 @@
                        'hide_segment': hide_segment_ids or none, 'hide_label': hide_label_ids or none,
                        'label': show_label_ids or none, 'hide_sms_segment': hide_sms_segment_ids or none,
                        'hide_wa_segment': hide_wa_segment_ids or none,
-                       'tier': tier_filter if tier_filter != 'all' else none} %}
+                       'tier': tier_filter if tier_filter != 'all' else none,
+                       'assigned': assigned or none} %}
 {% set _ = filter_args.update(addr_fargs or {}) %}
 
-<!-- Stage funnel summary — click a stage to filter -->
+<!-- Stage funnel summary — click a stage to filter. Counts follow the other
+     filters (2026-10-14), so picking a salesperson shows where their deals sit. -->
 <div class="stage-funnel" data-sptour="stage-funnel">
   <a href="{{ url_for('portal.sales_pipeline', view='list', stage='all', q=search, **filter_args) }}"
      class="stage-chip {{ 'active' if stage_filter == 'all' and view_mode == 'list' }}"
      style="--chip-bg:rgba(3,12,24,.05);--chip-fg:#334155">
     <span class="dot"></span>
     <div>
-      <div class="n">{{ stage_counts.values()|sum }}</div>
+      <div class="n">{{ stage_counts_filtered.values()|sum }}</div>
       <div class="lbl">All</div>
     </div>
   </a>
@@ -395,7 +528,7 @@
      style="--chip-bg:{{ sc.bg }};--chip-fg:{{ sc.fg }}">
     <span class="dot"></span>
     <div>
-      <div class="n">{{ stage_counts.get(s, 0) }}</div>
+      <div class="n">{{ stage_counts_filtered.get(s, 0) }}</div>
       <div class="lbl">{{ stage_labels[s] }}</div>
     </div>
   </a>
@@ -417,142 +550,76 @@
 {% macro cust_initials(name) %}{% set _w=name.split() %}{% if _w|length>=2 %}{{ _w[0][0]|upper }}{{ _w[1][0]|upper }}{% else %}{{ name[:2]|upper }}{% endif %}{% endmacro %}
 {% set pipeline_has_any_leads = stage_counts.values()|sum > 0 %}
 {% if pipeline_has_any_leads %}
-{# Search + stage filter toolbar — GET form, filtering/pagination happen server-side #}
-<form method="GET" action="{{ url_for('portal.sales_pipeline') }}" class="sp-toolbar">
-  <div class="sp-toolbar-row">
-    <div class="sp-search">
-      <span class="sp-search-icon">🔍</span>
-      <input type="text" name="q" value="{{ search }}" placeholder="Search by customer or contact…"/>
+{# Search + filter bar (redesigned 2026-10-14): search, Assigned to, one
+   Filters panel, and tags for the filters that are on. GET form — the
+   server does the filtering. #}
+{% set _clear_args = {'view': 'board'} if view_mode == 'board' else {} %}
+{% set clear_url = url_for('portal.sales_pipeline', **_clear_args) %}
+<form method="GET" action="{{ url_for('portal.sales_pipeline') }}" class="spf-bar" id="spFilterForm" onsubmit="spfTidySubmit(this)">
+  <div class="spf-row">
+    <div class="spf-search">
+      <button type="submit" class="spf-search-go" aria-label="Search">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      </button>
+      <label for="spfQ" class="spf-sr">Search deals</label>
+      <input type="search" id="spfQ" name="q" value="{{ search }}" placeholder="Search business, contact or email…"/>
     </div>
-    <button type="submit" class="btn btn-sm">Search</button>
-    {% if search %}
-    <a href="{{ url_for('portal.sales_pipeline', stage=stage_filter, view=view_mode, **filter_args) }}"
-       class="btn btn-sm btn-ghost" style="text-decoration:none">Clear search</a>
+
+    {% if can_filter_assigned %}
+    {% set _sel = (assignee_options | selectattr('selected') | first) %}
+    <div class="spf-asg-wrap">
+      <button type="button" class="spf-btn spf-asg {{ 'on' if assigned }}" id="spfAsgBtn"
+              aria-haspopup="true" aria-expanded="false" onclick="spfToggleAsg(event)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+        <span class="spf-asg-lbl">Assigned to</span>
+        <strong>{{ _sel.label if _sel else 'Everyone' }}</strong>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="spf-asg-menu" id="spfAsgMenu">
+        <label for="spfAsgFind" class="spf-sr">Find a team member</label>
+        <input type="search" id="spfAsgFind" class="spf-asg-find" placeholder="Find a team member…" oninput="spfFilterAsg(this.value)" autocomplete="off">
+        <div class="spf-asg-group">Quick views</div>
+        {% for o in assignee_options[:3] %}
+        <a href="{{ o.url }}" class="spf-asg-opt {{ 'sel' if o.selected }}" data-name="{{ o.label|lower }}">
+          <span class="spf-av {{ 'all' if not o.value else ('none' if o.value == 'none' else 'me') }}">{% if not o.value %}ALL{% elif o.value == 'none' %}?{% else %}ME{% endif %}</span>
+          <span class="spf-asg-txt"><b>{{ o.label }}</b><small>{{ "{:,}".format(o.n) }} deal{{ "s" if o.n != 1 }} · {{ (o.open_v)|money_total }} open</small></span>
+          {% if o.selected %}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m5 12 5 5 9-10"/></svg>{% endif %}
+        </a>
+        {% endfor %}
+        {% if assignee_options|length > 3 %}
+        <div class="spf-asg-group spf-asg-team">Sales team</div>
+        {% for o in assignee_options[3:] %}
+        <a href="{{ o.url }}" class="spf-asg-opt {{ 'sel' if o.selected }}" data-name="{{ o.label|lower }}">
+          <span class="spf-av">{{ o.initials }}</span>
+          <span class="spf-asg-txt"><b>{{ o.label }}</b><small>{{ "{:,}".format(o.n) }} deal{{ "s" if o.n != 1 }} · {{ (o.open_v)|money_total }} open</small></span>
+          {% if o.selected %}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m5 12 5 5 9-10"/></svg>{% endif %}
+        </a>
+        {% endfor %}
+        {% endif %}
+        <div class="spf-asg-empty" id="spfAsgEmpty">No one matches that name.</div>
+      </div>
+    </div>
     {% endif %}
-    <span class="sp-result-badge">{{ filtered_total }} result{{ 's' if filtered_total != 1 else '' }}</span>
-  </div>
-  <div class="sp-toolbar-row sp-toolbar-row-controls">
-    <div class="sp-toolbar-group">
-      <div class="view-switch" data-sptour="view-switch">
+
+    {% set _nf = filter_chips | rejectattr('label', 'equalto', 'Search') | list | length %}
+    <button type="button" class="spf-btn" onclick="spfOpenDrawer()" aria-haspopup="dialog">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+      Filters{% if _nf %} <span class="spf-badge">{{ _nf }}</span>{% endif %}
+    </button>
+
+    <div class="spf-right">
+      <div class="spf-views" data-sptour="view-switch">
         <a href="{{ url_for('portal.sales_pipeline', view='list', stage=stage_filter, q=search, **filter_args) }}"
-           class="{{ 'active' if view_mode == 'list' }}">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="4" height="4" rx="1"/><path d="M10 7h11"/><rect x="3" y="15" width="4" height="4" rx="1"/><path d="M10 17h11"/></svg>
-          List
-        </a>
+           class="{{ 'active' if view_mode == 'list' }}" {% if view_mode == 'list' %}aria-current="page"{% endif %}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>List</a>
         <a href="{{ url_for('portal.sales_pipeline', view='board', q=search, **filter_args) }}"
-           class="{{ 'active' if view_mode == 'board' }}">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="9.5" y="4" width="5" height="9" rx="1"/><rect x="16" y="4" width="5" height="13" rx="1"/></svg>
-          Board
-        </a>
+           class="{{ 'active' if view_mode == 'board' }}" {% if view_mode == 'board' %}aria-current="page"{% endif %}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17" y="4" width="4" height="13" rx="1"/></svg>Board</a>
       </div>
-      <div class="channel-picker-wrap">
-        <button type="button" class="col-picker-btn" onclick="toggleChannelPicker()">
-          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
-          Filter{% set channel_count = (has_phone|int) + (has_whatsapp|int) + (has_email|int) %}{% if channel_count %} ({{ channel_count }}){% endif %}
-        </button>
-        <div class="col-picker-menu" id="channelPickerMenu">
-          <label class="col-picker-item">
-            <input type="checkbox" name="has_phone" value="1" {% if has_phone %}checked{% endif %} onchange="this.form.submit()">
-            📱 Has Phone
-          </label>
-          <label class="col-picker-item">
-            <input type="checkbox" name="has_whatsapp" value="1" {% if has_whatsapp %}checked{% endif %} onchange="this.form.submit()">
-            💬 Has WhatsApp
-          </label>
-          <label class="col-picker-item">
-            <input type="checkbox" name="has_email" value="1" {% if has_email %}checked{% endif %} onchange="this.form.submit()">
-            ✉️ Has Email
-          </label>
-        </div>
-      </div>
-      {% if view_mode == 'list' %}{{ address_filters(addr_state, addr_opts) }} {{ biz_filters(biz_state, show_label=False) }}{% endif %}
-      {% if all_segments %}
-      <div class="col-picker-wrap seg-picker-wrap">
-        <button type="button" class="col-picker-btn" onclick="toggleSegPicker()">
-          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
-          Hide Email segments{% if hide_segment_ids %} ({{ hide_segment_ids|length }}){% endif %}
-        </button>
-        <div class="col-picker-menu" id="segPickerMenu">
-          {% for seg in all_segments %}
-          <label class="col-picker-item">
-            <input type="checkbox" name="hide_segment" value="{{ seg.id }}"
-                   {% if seg.id in hide_segment_ids %}checked{% endif %}
-                   onchange="this.form.submit()">
-            {{ seg.name }}
-          </label>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
-      {% if all_wa_segments %}
-      <div class="col-picker-wrap wa-seg-picker-wrap">
-        <button type="button" class="col-picker-btn" onclick="toggleWaSegPicker()">
-          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
-          Hide WhatsApp segments{% if hide_wa_segment_ids %} ({{ hide_wa_segment_ids|length }}){% endif %}
-        </button>
-        <div class="col-picker-menu" id="waSegPickerMenu">
-          {% for seg in all_wa_segments %}
-          <label class="col-picker-item">
-            <input type="checkbox" name="hide_wa_segment" value="{{ seg.id }}"
-                   {% if seg.id in hide_wa_segment_ids %}checked{% endif %}
-                   onchange="this.form.submit()">
-            {{ seg.name }}
-          </label>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
-      {% if SMS_ENABLED and customer.tenant_id == 19 and all_sms_segments %}
-      <div class="col-picker-wrap sms-seg-picker-wrap">
-        <button type="button" class="col-picker-btn" onclick="toggleSmsSegPicker()">
-          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
-          Hide SMS segments{% if hide_sms_segment_ids %} ({{ hide_sms_segment_ids|length }}){% endif %}
-        </button>
-        <div class="col-picker-menu" id="smsSegPickerMenu">
-          {% for seg in all_sms_segments %}
-          <label class="col-picker-item">
-            <input type="checkbox" name="hide_sms_segment" value="{{ seg.id }}"
-                   {% if seg.id in hide_sms_segment_ids %}checked{% endif %}
-                   onchange="this.form.submit()">
-            {{ seg.name }}
-          </label>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
-      {% if all_labels %}
-      <div class="col-picker-wrap label-picker-wrap">
-        <button type="button" class="col-picker-btn" onclick="toggleLabelPicker()">
-          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
-          Label{% set label_filter_count = (show_label_ids|length) + (hide_label_ids|length) %}{% if label_filter_count %} ({{ label_filter_count }}){% endif %}
-        </button>
-        <div class="col-picker-menu label-filter-menu" id="labelPickerMenu">
-          {% for lb in all_labels %}
-          <div class="label-filter-row">
-            <span class="label-filter-name">{{ lb.name }}</span>
-            <span class="label-filter-modes">
-              <label class="label-mode-pill {{ 'active' if lb.id in show_label_ids }}">
-                <input type="checkbox" name="label" value="{{ lb.id }}"
-                       {% if lb.id in show_label_ids %}checked{% endif %}
-                       onchange="onLabelModeChange(this)">
-                Only
-              </label>
-              <label class="label-mode-pill hide {{ 'active' if lb.id in hide_label_ids }}">
-                <input type="checkbox" name="hide_label" value="{{ lb.id }}"
-                       {% if lb.id in hide_label_ids %}checked{% endif %}
-                       onchange="onLabelModeChange(this)">
-                Hide
-              </label>
-            </span>
-          </div>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
+      {% if view_mode == 'list' %}
       <div class="col-picker-wrap">
-        <button type="button" class="col-picker-btn" onclick="toggleColPicker()">
-          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="16" rx="1"/><rect x="14" y="4" width="7" height="16" rx="1"/></svg>
-          Columns
+        <button type="button" class="spf-btn spf-icon" onclick="toggleColPicker()" aria-label="Choose columns" title="Choose columns">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16"/></svg>
         </button>
         <div class="col-picker-menu" id="colPickerMenu">
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="segment">Email Segment</label>
@@ -574,29 +641,177 @@
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="assigned" checked>Assigned To</label>
         </div>
       </div>
-      {% if view_mode == 'list' %}
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
-        Per page
-        <select name="per_page" onchange="this.form.submit()"
-                style="padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit">
-          {% for opt in per_page_options %}
-          <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ 'All' if opt == 'all' else opt }}</option>
-          {% endfor %}
-        </select>
-      </label>
+      {% endif %}
+      {% if staff_can_open('portal.sales_pipeline_export') %}
+      <a href="{{ url_for('portal.sales_pipeline_export', stage=stage_filter, q=search, **filter_args) }}" class="spf-btn" style="text-decoration:none">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+        Export
+      </a>
+      {% endif %}
+      {% if SMS_ENABLED and customer.tenant_id == 19 %}
+      <a href="{{ url_for('portal.sms_campaigns') }}" class="btn btn-primary" style="text-decoration:none">📟 SMS</a>
       {% endif %}
     </div>
-    {% if staff_can_open('portal.sales_pipeline_export') %}
-    <a href="{{ url_for('portal.sales_pipeline_export', stage=stage_filter, q=search, **filter_args) }}"
-       class="btn" style="text-decoration:none">⬇️ Export CSV</a>
-    {% endif %}
-    {% if SMS_ENABLED and customer.tenant_id == 19 %}
-    <a href="{{ url_for('portal.sms_campaigns') }}" class="btn btn-primary" style="text-decoration:none">📟 SMS</a>
-    {% endif %}
   </div>
+
+  <div class="spf-chips">
+    <span class="spf-count">{{ '{:,}'.format(filtered_total) }} deal{{ 's' if filtered_total != 1 }}</span>
+    {% for c in filter_chips %}
+    <span class="spf-chip"><span class="k">{{ c.label }}:</span> <b>{{ c.value }}</b>
+      <a href="{{ c.url }}" aria-label="Remove {{ c.label }} {{ c.value }}" title="Remove">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </a>
+    </span>
+    {% endfor %}
+    {% if filter_chips %}<a href="{{ clear_url }}" class="spf-clearall">Clear all</a>{% else %}<span class="spf-none">· No filters on</span>{% endif %}
+  </div>
+
   {% if stage_filter != 'all' and view_mode == 'list' %}<input type="hidden" name="stage" value="{{ stage_filter }}">{% endif %}
   {% if view_mode == 'board' %}<input type="hidden" name="view" value="board">{% endif %}
+  {% if biz_state.import %}<input type="hidden" name="import" value="{{ biz_state.import }}">{% endif %}
+
+  {# ── All filters side panel ── #}
+  <div class="spf-drawer" id="spfDrawer" aria-hidden="true">
+    <div class="spf-backdrop" onclick="spfCloseDrawer()"></div>
+    <aside class="spf-panel" role="dialog" aria-modal="true" aria-labelledby="spfTitle">
+      <div class="spf-head">
+        <h2 id="spfTitle">Filters</h2>
+        <button type="button" class="spf-x" aria-label="Close filters" onclick="spfCloseDrawer()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="spf-body">
+        {% if can_filter_assigned %}
+        <section>
+          <h3>Assigned to</h3>
+          {% for o in assignee_options %}
+          <label class="spf-radio">
+            <input type="radio" name="assigned" value="{{ o.value }}" {% if o.selected %}checked{% endif %}>
+            <span>{{ o.label }}</span><small>{{ "{:,}".format(o.n) }}</small>
+          </label>
+          {% endfor %}
+        </section>
+        {% endif %}
+
+        <section>
+          <h3>Lead score</h3>
+          <div class="spf-pills">
+            {% for v, t in [('', 'Any'), ('hot', 'Hot'), ('warm', 'Warm'), ('cold', 'Cold')] %}
+            <label class="spf-pill {{ v or 'any' }}"><input type="radio" name="tier" value="{{ v }}" {% if (tier_filter == v) or (not v and tier_filter == 'all') %}checked{% endif %}><span>{{ t }}</span></label>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section>
+          <h3>Contact details</h3>
+          <label class="spf-check"><input type="checkbox" name="has_phone" value="1" {% if has_phone %}checked{% endif %}> Has phone number</label>
+          <label class="spf-check"><input type="checkbox" name="has_whatsapp" value="1" {% if has_whatsapp %}checked{% endif %}> Has WhatsApp</label>
+          <label class="spf-check"><input type="checkbox" name="has_email" value="1" {% if has_email %}checked{% endif %}> Has email</label>
+        </section>
+
+        <section>
+          <h3>Location</h3>
+          <div class="spf-grid">
+            <label class="spf-field spf-span2">Country
+              <select name="country" id="spfCountry" onchange="spfFillStates(this.value, '')">
+                <option value="">All countries</option>
+                {% for iso, cname, n in addr_opts.countries %}<option value="{{ iso }}" {% if addr_state.country == iso %}selected{% endif %}>{{ cname }} ({{ '{:,}'.format(n) }})</option>{% endfor %}
+              </select>
+            </label>
+            <label class="spf-field"><span id="spfStateLbl">{{ address_state_label(addr_state.country) if addr_state.country else 'State' }}</span>
+              <select name="state" id="spfState"></select>
+            </label>
+            <label class="spf-field">City / Town
+              <input type="text" name="city" value="{{ addr_state.city }}" placeholder="Any">
+            </label>
+          </div>
+          <label class="spf-check"><input type="checkbox" name="addr_missing" value="1" {% if addr_state.addr_missing %}checked{% endif %}> Only deals with no address ({{ '{:,}'.format(addr_opts.missing) }})</label>
+        </section>
+
+        <section>
+          <h3>Business</h3>
+          {% set _bo = biz_field_options() %}
+          <div class="spf-grid">
+            <label class="spf-field">Category
+              <select name="biz_category">
+                <option value="">All</option>
+                {% for v in _bo.business_category %}<option value="{{ v }}" {% if biz_state.biz_category == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+                <option value="__none__" {% if biz_state.biz_category == '__none__' %}selected{% endif %}>No category</option>
+              </select>
+            </label>
+            <label class="spf-field">Employees
+              <select name="employees">
+                <option value="">All</option>
+                {% for v in _bo.employees %}<option value="{{ v }}" {% if biz_state.employees == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+                <option value="__none__" {% if biz_state.employees == '__none__' %}selected{% endif %}>Not set</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        {% if all_labels %}
+        <section>
+          <h3>Labels</h3>
+          <p class="spf-hint">Show only deals with a label, or hide them.</p>
+          {% for lb in all_labels %}
+          <div class="spf-label-row">
+            <span>{{ lb.name }}</span>
+            <span class="spf-seg">
+              <label><input type="checkbox" name="label" value="{{ lb.id }}" {% if lb.id in show_label_ids %}checked{% endif %} onchange="spfLabelMode(this)"><span>Only</span></label>
+              <label class="hide"><input type="checkbox" name="hide_label" value="{{ lb.id }}" {% if lb.id in hide_label_ids %}checked{% endif %} onchange="spfLabelMode(this)"><span>Hide</span></label>
+            </span>
+          </div>
+          {% endfor %}
+        </section>
+        {% endif %}
+
+        {% if all_segments or all_wa_segments or (SMS_ENABLED and customer.tenant_id == 19 and all_sms_segments) %}
+        <section>
+          <h3>Hide people already in a segment</h3>
+          <p class="spf-hint">Useful before a new campaign, so no one gets two messages.</p>
+          {% for title, key, rows, picked in [('Email segments', 'hide_segment', all_segments, hide_segment_ids),
+                                               ('WhatsApp segments', 'hide_wa_segment', all_wa_segments, hide_wa_segment_ids),
+                                               ('SMS segments', 'hide_sms_segment', all_sms_segments if (SMS_ENABLED and customer.tenant_id == 19) else [], hide_sms_segment_ids)] %}
+          {% if rows %}
+          <details class="spf-details" {% if picked %}open{% endif %}>
+            <summary>{{ title }}{% if picked %} <span class="spf-badge">{{ picked|length }}</span>{% endif %}</summary>
+            <div class="spf-scroll">
+              {% for seg in rows %}
+              <label class="spf-check"><input type="checkbox" name="{{ key }}" value="{{ seg.id }}" {% if seg.id in picked %}checked{% endif %}> {{ seg.name }}</label>
+              {% endfor %}
+            </div>
+          </details>
+          {% endif %}
+          {% endfor %}
+        </section>
+        {% endif %}
+      </div>
+      <div class="spf-foot">
+        <a href="{{ clear_url }}" class="spf-clearall">Clear all</a>
+        <button type="submit" class="spf-apply">Show results</button>
+      </div>
+    </aside>
+  </div>
 </form>
+
+{% if assignee_snapshot %}
+{% set sn = assignee_snapshot %}
+<div class="spf-snap">
+  <div class="spf-snap-who">
+    <span class="spf-av big">{{ sn.initials }}</span>
+    <div>
+      <div class="spf-snap-title">{{ sn.name }}{{ '' if sn.name == 'Your' else '’s' }} pipeline</div>
+      <div class="spf-snap-sub">{% if sn.last_move %}Last deal moved {{ sn.last_move.strftime('%-d %b %Y') }}{% else %}No deal moved yet{% endif %}</div>
+    </div>
+  </div>
+  <div class="spf-snap-stats">
+    <div><small>Open deals</small><b>{{ '{:,}'.format(sn.open_n) }}</b></div>
+    <div><small>Open value</small><b>{{ (sn.open_v)|money_total }}</b></div>
+    <div><small>Hot deals</small><b>{{ '{:,}'.format(sn.hot_n) }}</b></div>
+    <div><small>Won</small><b>{{ '{:,}'.format(sn.won_n) }} · {{ (sn.won_v)|money_total }}</b></div>
+  </div>
+</div>
+{% endif %}
 {% endif %}
 
 {% set is_phixtra_support_account = (customer.tenant_id == 19) %}
@@ -652,7 +867,7 @@
       <tbody id="pipelineTbody">
         {% if not leads %}
         <tr><td colspan="{{ empty_colspan }}" style="text-align:center;color:var(--muted);padding:40px">
-          {% if search or stage_filter != 'all' or has_phone or has_whatsapp or has_email or hide_segment_ids or hide_label_ids or show_label_ids or hide_sms_segment_ids or hide_wa_segment_ids %}
+          {% if filter_chips %}
           No deals match your search or filters.
           {% else %}
           No deals yet. Add one above to start your pipeline.
@@ -750,6 +965,11 @@
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                   Edit Deal
                 </button>{% endif %}
+              {% if staff_can('inbox.send_new') %}
+              <button type="button" class="row-action-item" onclick="closeAllRowMenus(); SendOne.open({leadId: {{ l.id }}})">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.6 7.3L3 20.5l1.7-5.2A8.5 8.5 0 1 1 21 11.5z"/></svg>
+                Send WhatsApp message
+              </button>{% endif %}
                 {% if is_phixtra_support_account and can_edit_deal %}
                 <button type="button" class="row-action-item"
                         onclick='closeAllRowMenus(); openAssignAmbassadorModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ l.assigned_ambassador_id or "null" }})'>
@@ -761,14 +981,18 @@
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
                   View History
                 </button>
-                {% if can_edit_deal %}<div class="row-action-divider"></div>
-                <button type="button" class="row-action-item danger" {% if loop.first %}data-sptour="drop-btn"{% endif %} onclick="closeAllRowMenus(); openDropModal({{ l.id }}, '{{ l.customer_name|e }}', 'lost')">
+                {# Two ways to close (2026-10-15): Not a Fit on every row ("we're stopping"),
+                   Mark as Lost only on Qualified deals ("they said no"). Dropped is gone. #}
+                {% if can_naf or (can_edit_deal and l.is_opportunity) %}<div class="row-action-divider"></div>{% endif %}
+                {% if can_naf %}
+                <button type="button" class="row-action-item danger" {% if loop.first %}data-sptour="drop-btn"{% endif %} onclick="closeAllRowMenus(); openDropModal({{ l.id }}, '{{ l.customer_name|e }}', 'not_a_fit')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>
+                  Not a Fit
+                </button>{% endif %}
+                {% if can_edit_deal and l.is_opportunity %}
+                <button type="button" class="row-action-item danger" onclick="closeAllRowMenus(); openDropModal({{ l.id }}, '{{ l.customer_name|e }}', 'lost')">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
                   Mark as Lost
-                </button>
-                <button type="button" class="row-action-item danger" onclick="closeAllRowMenus(); openDropModal({{ l.id }}, '{{ l.customer_name|e }}', 'dropped')">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
-                  Mark as Dropped
                 </button>{% endif %}
               </div>
             </div>
@@ -784,14 +1008,16 @@
     <span style="font-size:12px;color:var(--muted)">
       {% if per_page == 'all' %}Showing all {{ filtered_total }}{% else %}Showing {{ ((page-1)*per_page|int)+1 }}–{{ [page*per_page|int, filtered_total]|min }} of {{ filtered_total }}{% endif %}
     </span>
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)">Per page
+      <select name="per_page" form="spFilterForm" onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()"
+              style="height:34px;padding:0 8px;border:1px solid #DCE3EE;border-radius:8px;font:inherit;font-size:12.5px;color:#111E2D;background:#fff">
+        {% for opt in per_page_options %}
+        <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ 'All' if opt == 'all' else opt }}</option>
+        {% endfor %}
+      </select>
+    </label>
     {% if total_pages > 1 %}
-    {% set base_args = {'q': search, 'stage': stage_filter, 'per_page': per_page,
-                         'has_phone': '1' if has_phone else none, 'has_whatsapp': '1' if has_whatsapp else none,
-                         'has_email': '1' if has_email else none, 'hide_segment': hide_segment_ids or none,
-                         'hide_sms_segment': hide_sms_segment_ids or none,
-                         'hide_wa_segment': hide_wa_segment_ids or none,
-                         'hide_label': hide_label_ids or none, 'label': show_label_ids or none} %}
-    {% set _ = base_args.update(addr_fargs or {}) %}
+    {% set base_args = dict(filter_args, q=search, stage=stage_filter) %}
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
       <a href="{{ url_for('portal.sales_pipeline', page=page-1, **base_args) if page > 1 else '#' }}"
          class="btn btn-sm btn-ghost" style="text-decoration:none;
@@ -923,6 +1149,11 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                 Edit Deal
               </button>{% endif %}
+              {% if staff_can('inbox.send_new') %}
+              <button type="button" class="row-action-item" onclick="closeAllRowMenus(); SendOne.open({leadId: {{ l.id }}})">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.6 7.3L3 20.5l1.7-5.2A8.5 8.5 0 1 1 21 11.5z"/></svg>
+                Send WhatsApp message
+              </button>{% endif %}
               {% if is_phixtra_support_account and can_edit_deal %}
               <button type="button" class="row-action-item"
                       onclick='closeAllRowMenus(); openAssignAmbassadorModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ l.assigned_ambassador_id or "null" }})'>
@@ -934,14 +1165,16 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
                 View History
               </button>
-              {% if can_edit_deal %}<div class="row-action-divider"></div>
+              {% if can_naf or (can_edit_deal and l.is_opportunity) %}<div class="row-action-divider"></div>{% endif %}
+              {% if can_naf %}
+              <button type="button" class="row-action-item danger" onclick="closeAllRowMenus(); openDropModal({{ l.id }}, '{{ l.customer_name|e }}', 'not_a_fit')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>
+                Not a Fit
+              </button>{% endif %}
+              {% if can_edit_deal and l.is_opportunity %}
               <button type="button" class="row-action-item danger" onclick="closeAllRowMenus(); openDropModal({{ l.id }}, '{{ l.customer_name|e }}', 'lost')">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
                 Mark as Lost
-              </button>
-              <button type="button" class="row-action-item danger" onclick="closeAllRowMenus(); openDropModal({{ l.id }}, '{{ l.customer_name|e }}', 'dropped')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
-                Mark as Dropped
               </button>{% endif %}
             </div>
           </div>
@@ -984,21 +1217,28 @@
 
 {% if dropped_leads %}
 <div class="card" style="margin-top:20px" data-sptour="dropped-section">
-  <div class="section-title" style="margin-bottom:10px">Closed — Lost &amp; Dropped ({{ dropped_leads|length }})</div>
+  <div class="section-title" style="margin-bottom:10px">Closed: Lost &amp; Not a Fit ({{ dropped_leads|length }})</div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Customer</th><th>Outcome</th><th>Last Active Stage</th><th>Reason</th><th>Closed</th></tr></thead>
+      <thead><tr><th>Customer</th><th>Outcome</th><th>Last Active Stage</th><th>Reason</th><th>Closed</th><th></th></tr></thead>
       <tbody>
         {% for l in dropped_leads %}
         <tr>
-          <td><span class="biz-name-cell">{{ l.customer_name }}</span></td>
+          <td><a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" class="biz-name-cell lead-name-link">{{ l.customer_name }}</a></td>
           <td>
             {% set outc = l.outcome or 'dropped' %}
-            <span class="stage-pill" style="background:{{ '#fef2f2' if outc == 'lost' else '#f8fafc' }};color:{{ '#b91c1c' if outc == 'lost' else '#64748b' }}">{{ stage_labels.get(outc, outc.capitalize()) }}</span>
+            <span class="stage-pill" style="background:{{ '#fef2f2' if outc in ('lost','not_a_fit') else '#f8fafc' }};color:{{ '#b91c1c' if outc in ('lost','not_a_fit') else '#64748b' }}">{{ stage_labels.get(outc, 'Not a Fit' if outc == 'not_a_fit' else outc.capitalize()) }}</span>
           </td>
           <td><span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span></td>
           <td class="muted">{{ l.dropped_reason or '—' }}</td>
           <td class="muted">{{ l.dropped_at.strftime('%d %b %Y') if l.dropped_at else '—' }}</td>
+          <td>
+            {% if outc == 'not_a_fit' and can_naf %}
+            <form method="POST" action="{{ url_for('portal.leads_reopen', lead_id=l.id) }}" style="margin:0"><input type="hidden" name="next" value="pipeline"><button type="submit" class="btn btn-sm">↩️ Reopen</button></form>
+            {% elif outc in ('lost','dropped') and can_edit_deal %}
+            <form method="POST" action="{{ url_for('portal.sales_pipeline_reopen', lead_id=l.id) }}" style="margin:0"><button type="submit" class="btn btn-sm">↩️ Reopen</button></form>
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -1114,6 +1354,7 @@
     <p class="modal-sub" id="dropSub"></p>
     <form method="POST" id="dropForm">
       <input type="hidden" name="outcome" id="dropOutcome">
+      <input type="hidden" name="next" value="pipeline">
       <label class="flbl">Reason <span style="font-weight:400;color:#9ca3af">(required)</span></label>
       <select name="reason" id="dropReasonSelect" class="finp" required onchange="document.getElementById('dropOtherWrap').style.display = this.value==='Other' ? 'block' : 'none'">
       </select>
@@ -1617,20 +1858,83 @@ applyColumnVisibility();
 function toggleColPicker() {
   document.getElementById('colPickerMenu').classList.toggle('open');
 }
-function toggleSegPicker() {
-  document.getElementById('segPickerMenu').classList.toggle('open');
+
+/* ── Filter bar (2026-10-14): Assigned to menu + Filters side panel ── */
+function spfToggleAsg(ev) {
+  ev.stopPropagation();
+  var menu = document.getElementById('spfAsgMenu');
+  var open = !menu.classList.contains('open');
+  menu.classList.toggle('open', open);
+  document.getElementById('spfAsgBtn').setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) { var f = document.getElementById('spfAsgFind'); f.value = ''; spfFilterAsg(''); f.focus(); }
 }
-function toggleWaSegPicker() {
-  document.getElementById('waSegPickerMenu').classList.toggle('open');
+function spfCloseAsg() {
+  var menu = document.getElementById('spfAsgMenu');
+  if (!menu || !menu.classList.contains('open')) return;
+  menu.classList.remove('open');
+  document.getElementById('spfAsgBtn').setAttribute('aria-expanded', 'false');
 }
-function toggleSmsSegPicker() {
-  document.getElementById('smsSegPickerMenu').classList.toggle('open');
+function spfFilterAsg(q) {
+  q = (q || '').trim().toLowerCase();
+  var shown = 0;
+  document.querySelectorAll('#spfAsgMenu .spf-asg-opt').forEach(function(a) {
+    var ok = !q || a.dataset.name.indexOf(q) !== -1;
+    a.style.display = ok ? '' : 'none';
+    if (ok) shown++;
+  });
+  document.querySelectorAll('#spfAsgMenu .spf-asg-group').forEach(function(g) { g.style.display = q ? 'none' : ''; });
+  document.getElementById('spfAsgEmpty').style.display = shown ? 'none' : 'block';
 }
-function toggleLabelPicker() {
-  document.getElementById('labelPickerMenu').classList.toggle('open');
+function spfOpenDrawer() {
+  var d = document.getElementById('spfDrawer');
+  d.classList.add('open'); d.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  var first = d.querySelector('input, select, button');
+  if (first) first.focus();
 }
-function toggleChannelPicker() {
-  document.getElementById('channelPickerMenu').classList.toggle('open');
+function spfCloseDrawer() {
+  var d = document.getElementById('spfDrawer');
+  if (!d || !d.classList.contains('open')) return;
+  d.classList.remove('open'); d.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') { spfCloseAsg(); spfCloseDrawer(); }
+});
+/* Only / Hide on a label: one or the other, never both. */
+function spfLabelMode(cb) {
+  if (!cb.checked) return;
+  var otherName = cb.name === 'label' ? 'hide_label' : 'label';
+  var other = cb.form.querySelector('input[name="' + otherName + '"][value="' + cb.value + '"]');
+  if (other) other.checked = false;
+}
+/* State list follows the country picked in the panel. */
+var SPF_STATES = {{ addr_opts.states|tojson if addr_opts else '{}' }};
+var SPF_STATE_NOW = {{ (addr_state.state if addr_state else '')|tojson }};
+function spfFillStates(country, keep) {
+  var sel = document.getElementById('spfState');
+  if (!sel) return;
+  sel.innerHTML = '';
+  var first = document.createElement('option');
+  first.value = ''; first.textContent = country ? 'All' : 'Choose a country first';
+  sel.appendChild(first);
+  (SPF_STATES[country] || []).forEach(function(pair) {
+    var o = document.createElement('option');
+    o.value = pair[0]; o.textContent = pair[0] + ' (' + Number(pair[1]).toLocaleString() + ')';
+    if (keep && pair[0].toLowerCase() === keep.toLowerCase()) o.selected = true;
+    sel.appendChild(o);
+  });
+  sel.disabled = !country;
+}
+(function() {
+  var c = document.getElementById('spfCountry');
+  if (c) spfFillStates(c.value, SPF_STATE_NOW);
+})();
+/* Leave empty boxes out of the address bar so links stay short. */
+function spfTidySubmit(form) {
+  Array.prototype.forEach.call(form.elements, function(el) {
+    if (el.name && !el.disabled && el.value === '' && (el.type !== 'radio' || el.checked)) el.disabled = true;
+  });
 }
 
 /* ── Row / card action menus (kebab ⋮) — list rows and Board cards share
@@ -1646,7 +1950,17 @@ function toggleRowMenu(ev, key) {
   var btn  = ev.currentTarget;
   var wasOpen = menu.classList.contains('open');
   closeAllRowMenus();
-  if (!wasOpen) { menu.classList.add('open'); btn.classList.add('open'); }
+  if (!wasOpen) {
+    menu.style.left = ''; menu.style.right = '';
+    menu.classList.add('open'); btn.classList.add('open');
+    // On the Board, a card in the first column opened its menu past the
+    // board's left edge, cutting off the icons (2026-10-13): if the menu
+    // pokes out of the scrolling area on the left, open it rightwards.
+    var box = menu.closest('.board-wrap, .table-wrap, [style*="overflow"]');
+    if (box && menu.getBoundingClientRect().left < box.getBoundingClientRect().left) {
+      menu.style.right = 'auto'; menu.style.left = '0';
+    }
+  }
 }
 
 function toggleScoreBreakdown(key) {
@@ -1654,28 +1968,18 @@ function toggleScoreBreakdown(key) {
   if (panel) panel.classList.toggle('open');
 }
 
-function onLabelModeChange(cb) {
-  if (cb.checked) {
-    var otherName = cb.name === 'label' ? 'hide_label' : 'label';
-    var other = document.querySelector('input[name="' + otherName + '"][value="' + cb.value + '"]');
-    if (other) other.checked = false;
-  }
-  cb.form.submit();
-}
 document.addEventListener('click', function(e) {
-  var colWrap = document.querySelector('.col-picker-wrap:not(.seg-picker-wrap):not(.wa-seg-picker-wrap):not(.label-picker-wrap):not(.sms-seg-picker-wrap)');
+  var colWrap = document.querySelector('.col-picker-wrap');
   if (colWrap && !colWrap.contains(e.target)) document.getElementById('colPickerMenu').classList.remove('open');
-  var segWrap = document.querySelector('.seg-picker-wrap');
-  if (segWrap && !segWrap.contains(e.target)) document.getElementById('segPickerMenu').classList.remove('open');
-  var waSegWrap = document.querySelector('.wa-seg-picker-wrap');
-  if (waSegWrap && !waSegWrap.contains(e.target)) document.getElementById('waSegPickerMenu').classList.remove('open');
-  var smsSegWrap = document.querySelector('.sms-seg-picker-wrap');
-  if (smsSegWrap && !smsSegWrap.contains(e.target)) document.getElementById('smsSegPickerMenu').classList.remove('open');
-  var labelWrap = document.querySelector('.label-picker-wrap');
-  if (labelWrap && !labelWrap.contains(e.target)) document.getElementById('labelPickerMenu').classList.remove('open');
-  var channelWrap = document.querySelector('.channel-picker-wrap');
-  if (channelWrap && !channelWrap.contains(e.target)) document.getElementById('channelPickerMenu').classList.remove('open');
+  if (!e.target.closest('.spf-asg-wrap')) spfCloseAsg();
   if (!e.target.closest('.row-actions-wrap')) closeAllRowMenus();
+});
+/* Boxes left out on submit come back if the browser's Back button restores this page. */
+window.addEventListener('pageshow', function() {
+  var f = document.getElementById('spFilterForm');
+  if (f) Array.prototype.forEach.call(f.elements, function(el) { el.disabled = false; });
+  var c = document.getElementById('spfCountry');
+  if (c) spfFillStates(c.value, SPF_STATE_NOW);
 });
 
 const STAGE_LABELS = {{ stage_labels|tojson }};
@@ -1774,23 +2078,24 @@ function submitBulkAdvance(ev) {
   return false;
 }
 
-const LOST_REASONS    = {{ lost_reasons|tojson }};
-const DROPPED_REASONS = {{ dropped_reasons|tojson }};
+const LOST_REASONS      = {{ lost_reasons|tojson }};
+const NOT_A_FIT_REASONS = {{ not_a_fit_reasons|tojson }};
 
+// Two ways to close (2026-10-15): Not a Fit ("we're stopping") or Lost ("they said no").
 function openDropModal(id, name, outcome) {
-  outcome = outcome === 'lost' ? 'lost' : 'dropped';
-  const reasons = outcome === 'lost' ? LOST_REASONS : DROPPED_REASONS;
-  document.getElementById('dropForm').action = `/sales-pipeline/${id}/drop`;
+  outcome = outcome === 'lost' ? 'lost' : 'not_a_fit';
+  const reasons = outcome === 'lost' ? LOST_REASONS : NOT_A_FIT_REASONS;
+  document.getElementById('dropForm').action = outcome === 'lost' ? `/sales-pipeline/${id}/drop` : `/leads/${id}/not-a-fit`;
   document.getElementById('dropOutcome').value = outcome;
   document.getElementById('dropOtherWrap').style.display = 'none';
   if (outcome === 'lost') {
     document.getElementById('dropTitle').textContent = `Mark ${name} as Lost?`;
-    document.getElementById('dropSub').textContent = "We pursued this — the customer chose someone else. This closes the deal.";
+    document.getElementById('dropSub').textContent = "We tried, and the customer said no. This closes the deal.";
     document.getElementById('dropConfirmBtn').textContent = 'Confirm — Mark as Lost';
   } else {
-    document.getElementById('dropTitle').textContent = `Mark ${name} as Dropped?`;
-    document.getElementById('dropSub').textContent = "We're deciding not to pursue this one. This closes the deal.";
-    document.getElementById('dropConfirmBtn').textContent = 'Confirm — Mark as Dropped';
+    document.getElementById('dropTitle').textContent = `Mark ${name} as Not a Fit?`;
+    document.getElementById('dropSub').textContent = "We're stopping. This business isn't right for us, so nobody needs to call them again.";
+    document.getElementById('dropConfirmBtn').textContent = 'Confirm — Mark Not a Fit';
   }
   const sel = document.getElementById('dropReasonSelect');
   sel.innerHTML = '<option value="" disabled selected>Choose a reason…</option>' +
@@ -1877,7 +2182,7 @@ function spTourOpenFirstRowMenu() {
 
     { sel: '[data-sptour="stage-funnel"]', pos: 'bottom',
       title: '📊 The 6 Pipeline Stages',
-      body: 'Every deal moves left to right: <b>New Opportunity → Contacted → Qualified → Proposal Sent → Negotiating → Won</b>. A deal can be dropped as Lost from any stage, with a reason.<br><br>' +
+      body: 'Every deal moves left to right: <b>New Opportunity → Contacted → Qualified → Proposal Sent → Negotiating → Won</b>. Close one at any time with a reason: <b>Not a Fit</b> if the business isn't right for you, or <b>Lost</b> if a Qualified deal said no.<br><br>' +
             '<i>Example: a customer asks about a sofa set in your showroom → add them as a Lead → once you confirm it\'s a real opportunity, Qualify it on the Leads page → it appears here as a New Opportunity → call them → once they confirm budget and need, move them to Qualified.</i><br><br>' +
             'Next, let\'s open the real form for each stage.' },
 
@@ -1933,14 +2238,13 @@ function spTourOpenFirstRowMenu() {
 
     { sel: '[data-sptour="drop-btn"]', pos: 'left',
       before: function(){ spTourOpenFirstRowMenu(); },
-      title: '🗑️ Drop a Deal',
-      body: 'If a customer decides not to proceed, click Drop and optionally note why.<br><br>' +
-            '<i>Example: "Chose a cheaper competitor" or "Postponed, revisit in 6 months".</i><br><br>' +
-            'It moves to the Dropped list below — you keep the record without cluttering your active pipeline.' },
+      title: '🚫 Close a Deal',
+      body: 'Two choices, with a reason:<br><b>Not a Fit</b>: you\'re stopping, the business isn\'t right for you (too small, doesn\'t need the service, wrong contact).<br><b>Mark as Lost</b>: a Qualified deal where the customer said no (price, a competitor).<br><br>' +
+            'It moves to the Closed list below. You keep the record and can reopen it.' },
 
     { sel: '[data-sptour="dropped-section"]', pos: 'top',
-      title: '📂 Dropped Deals',
-      body: 'A running record of every deal you\'ve dropped, with the stage it reached and your reason. Nothing is ever deleted.' },
+      title: '📂 Closed: Lost & Not a Fit',
+      body: 'A running record of everything closed, with the stage it reached and the reason. Nothing is ever deleted, and Reopen puts it back.' },
 
     { sel: null, pos: 'center', last: true,
       title: '🎉 You\'re ready!',
@@ -2166,4 +2470,5 @@ function bpMoveToLeads(){
 }
 </script>
 
+{% if staff_can('inbox.send_new') %}{% include 'portal/_send_one_wa.html' %}{% endif %}
 {% endblock %}

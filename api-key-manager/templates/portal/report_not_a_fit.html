@@ -1,0 +1,175 @@
+{% extends "portal/base.html" %}
+{% block title %}Not a Fit Report — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .report-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px}
+  .report-title{font-size:22px;font-weight:800;letter-spacing:-.3px}
+  .export-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .export-bar span{font-size:13px;color:var(--muted);font-weight:600}
+  .period-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+  .period-tabs{display:flex;gap:6px;flex-wrap:wrap}
+  .period-tab{padding:7px 16px;border-radius:20px;border:1px solid var(--line);font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;color:var(--muted);background:#fff;transition:.15s}
+  .period-tab:hover{border-color:var(--ink);color:var(--ink);text-decoration:none}
+  .period-tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .custom-range-form{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .custom-range-form input[type="date"],.custom-range-form select{padding:6px 9px;font-size:12.5px;border-radius:10px;border:1px solid rgba(3,12,24,0.18);width:auto}
+  .custom-range-form span{font-size:12px;color:var(--muted)}
+  .period-note{font-size:12px;color:var(--muted);margin-bottom:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .period-reset{font-size:12px;font-weight:600;color:var(--ink);text-decoration:underline}
+  .naf-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:20px}
+  @media(max-width:900px){.naf-kpis{grid-template-columns:repeat(2,1fr)}}
+  .kpi.warn{color:#b91c1c}
+  .naf-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px 22px;box-shadow:var(--shadow);margin-bottom:16px}
+  .naf-card h3{font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:0 0 4px}
+  .naf-card .sub{font-size:12.5px;color:var(--muted);margin-bottom:12px}
+  .naf-tbl-wrap{overflow-x:auto}
+  .naf-tbl{width:100%;border-collapse:collapse;font-size:13px}
+  .naf-tbl th{font-size:11.5px;color:var(--muted);font-weight:700;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .naf-tbl td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  .naf-tbl tr:last-child td{border-bottom:0}
+  .naf-tbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .naf-tbl .small{font-size:11.5px;color:var(--muted)}
+  .naf-meter{display:inline-block;width:64px;height:7px;border-radius:4px;background:rgba(3,12,24,0.06);vertical-align:middle;margin-left:8px;overflow:hidden}
+  .naf-meter i{display:block;height:100%;background:#b91c1c}
+  .naf-empty{font-size:13px;color:var(--muted);padding:14px 0}
+  .naf-filter{display:inline-flex;align-items:center;gap:6px;background:#E8EEF8;color:#0B1D40;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:600}
+</style>
+{% endblock %}
+
+{% block content %}
+{# Keep period + filters on every link #}
+{% if is_custom %}{% set _per = {'date_from': date_from, 'date_to': date_to} %}{% else %}{% set _per = {'days': days} %}{% endif %}
+{% set _f = {} %}{% if who %}{% set _ = _f.update({'who': who}) %}{% endif %}{% if list_key %}{% set _ = _f.update({'list': list_key}) %}{% endif %}
+{% set _pf = dict(_per, **_f) %}
+{% set _pl = dict(_per, **({'list': list_key} if list_key else {})) %}
+{% set _pw = dict(_per, **({'who': who} if who else {})) %}
+
+<div class="report-header">
+  <div>
+    <div class="report-title">🚫 Not a Fit Report</div>
+    <div class="muted" style="margin-top:4px">Calls to businesses that didn't need us, and the leads closed as Not a Fit. See which callers and which import lists waste the most calls.</div>
+  </div>
+  <div class="export-bar">
+    <span>Export:</span>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_not_a_fit_export', fmt='csv', **_pf) }}">🧾 CSV</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_not_a_fit_export', fmt='xlsx', **_pf) }}">📊 Excel</a>
+    <a class="btn btn-sm" href="{{ url_for('portal.report_not_a_fit_export', fmt='pdf', **_pf) }}">📄 PDF</a>
+  </div>
+</div>
+
+<div class="period-row">
+  <div class="period-tabs">
+    <a href="{{ url_for('portal.report_not_a_fit', days=7, **_f) }}"  class="period-tab {% if days==7  and not is_custom %}active{% endif %}">Last 7 days</a>
+    <a href="{{ url_for('portal.report_not_a_fit', days=30, **_f) }}" class="period-tab {% if days==30 and not is_custom %}active{% endif %}">Last 30 days</a>
+    <a href="{{ url_for('portal.report_not_a_fit', days=90, **_f) }}" class="period-tab {% if days==90 and not is_custom %}active{% endif %}">Last 90 days</a>
+  </div>
+  <form method="get" action="{{ url_for('portal.report_not_a_fit') }}" class="custom-range-form">
+    <input type="date" name="date_from" value="{{ date_from }}" aria-label="From">
+    <span>to</span>
+    <input type="date" name="date_to" value="{{ date_to }}" aria-label="To">
+    <select name="who" aria-label="Caller">
+      <option value="">Everyone</option>
+      {% for p in d.people %}<option value="{{ p }}"{% if p == who %} selected{% endif %}>{{ p }}</option>{% endfor %}
+    </select>
+    {% if list_key %}<input type="hidden" name="list" value="{{ list_key }}">{% endif %}
+    <button type="submit" class="btn btn-sm">Apply</button>
+  </form>
+</div>
+<div class="period-note">
+  <span>{{ period_label }}</span>
+  {% if who %}<span class="naf-filter">Caller: {{ who }} <a href="{{ url_for('portal.report_not_a_fit', **_pl) }}" title="Show everyone">✕</a></span>{% endif %}
+  {% if list_key %}<span class="naf-filter">List: {{ list_name or 'this list' }} <a href="{{ url_for('portal.report_not_a_fit', **_pw) }}" title="Show all lists">✕</a></span>{% endif %}
+  {% if is_custom %}<a href="{{ url_for('portal.report_not_a_fit', days=30, **_f) }}" class="period-reset">Reset to last 30 days</a>{% endif %}
+</div>
+
+<div class="naf-kpis">
+  <div class="card card-sm"><div class="card-title">Calls logged</div><div class="kpi">{{ d.total_calls }}</div></div>
+  <div class="card card-sm"><div class="card-title">Answered</div><div class="kpi">{{ d.answered }}</div></div>
+  <div class="card card-sm"><div class="card-title">"Doesn't need us"</div><div class="kpi warn">{{ d.not_needed }}</div></div>
+  <div class="card card-sm"><div class="card-title">Of answered calls wasted</div><div class="kpi warn">{% if d.wasted_pct is not none %}{{ d.wasted_pct }}%{% else %}–{% endif %}</div></div>
+  <div class="card card-sm"><div class="card-title">Leads marked Not a Fit</div><div class="kpi">{{ d.naf_total }}</div></div>
+</div>
+
+<div class="naf-card">
+  <h3>By caller</h3>
+  <div class="sub">Click a name to see only their calls and leads.</div>
+  {% if d.callers %}
+  <div class="naf-tbl-wrap"><table class="naf-tbl">
+    <thead><tr><th>Caller</th><th class="num">Calls</th><th class="num">Answered</th><th class="num">Doesn't need us</th><th class="num">Leads marked Not a Fit</th><th class="num">Wasted %</th></tr></thead>
+    <tbody>
+    {% for c in d.callers %}
+      <tr>
+        <td><a href="{{ url_for('portal.report_not_a_fit', who=c.name, **_pl) }}">{{ c.name }}</a></td>
+        <td class="num">{{ c.calls }}</td>
+        <td class="num">{{ c.answered }}</td>
+        <td class="num">{{ c.not_needed }}</td>
+        <td class="num">{{ c.naf }}</td>
+        <td class="num">{% if c.wasted_pct is not none %}{{ c.wasted_pct }}%<span class="naf-meter"><i style="width:{{ c.wasted_pct }}%"></i></span>{% else %}–{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="naf-empty">No calls logged or leads marked Not a Fit in this period.</div>{% endif %}
+</div>
+
+<div class="naf-card">
+  <h3>By import list</h3>
+  <div class="sub">"Leads" counts everything ever imported from the list. "Called" and "Not a Fit" count this period only. Click a list to see only its leads.</div>
+  <div class="naf-tbl-wrap"><table class="naf-tbl">
+    <thead><tr><th>List</th><th>Imported</th><th class="num">Leads</th><th class="num">Called</th><th class="num">Not a Fit</th><th class="num">Not a Fit % of called</th></tr></thead>
+    <tbody>
+    {% for l in d.lists %}
+      <tr>
+        <td><a href="{{ url_for('portal.report_not_a_fit', list=l.key, **_pw) }}">{{ l.name }}</a>{% if l.file_name %}<div class="small">{{ l.file_name }}</div>{% endif %}</td>
+        <td>{{ l.imported_at.strftime('%d %b %Y') if l.imported_at else '–' }}</td>
+        <td class="num">{{ '{:,}'.format(l.leads) }}</td>
+        <td class="num">{{ l.called }}</td>
+        <td class="num">{{ l.naf }}</td>
+        <td class="num">{% if l.naf_pct is not none %}{{ l.naf_pct }}%<span class="naf-meter"><i style="width:{{ [l.naf_pct, 100]|min }}%"></i></span>{% else %}–{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="naf-empty">No leads yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <div class="sub" style="margin:10px 0 0">A list can show more than 100% when leads were closed without a logged call, for example with "Not a Fit many".</div>
+</div>
+
+<div class="naf-card">
+  <h3>By reason</h3>
+  {% if d.reasons %}
+  <div class="naf-tbl-wrap"><table class="naf-tbl">
+    <thead><tr><th>Reason</th><th class="num">Leads</th><th class="num">Share</th></tr></thead>
+    <tbody>
+    {% for r in d.reasons %}
+      <tr><td>{{ r.reason }}</td><td class="num">{{ r.count }}</td><td class="num">{{ r.pct }}%<span class="naf-meter"><i style="width:{{ r.pct }}%"></i></span></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="naf-empty">No leads marked Not a Fit in this period.</div>{% endif %}
+</div>
+
+<div class="naf-card">
+  <h3>Leads marked Not a Fit</h3>
+  <div class="sub">{% if d.naf_leads|length > 500 %}Showing the latest 500 of {{ d.naf_leads|length }}. Export to see them all.{% else %}Click a lead to open it. You can reopen it from there if it was closed by mistake.{% endif %}</div>
+  {% if d.naf_leads %}
+  <div class="naf-tbl-wrap"><table class="naf-tbl">
+    <thead><tr><th>Lead</th><th>Import list</th><th>Staff size</th><th>Category</th><th>Reason</th><th>Marked by</th><th>Date</th></tr></thead>
+    <tbody>
+    {% for n in d.naf_leads[:500] %}
+      <tr>
+        <td><a href="{{ url_for('portal.lead_detail', lead_id=n.id) }}">{{ n.customer_name }}</a></td>
+        <td>{{ n.list_name or 'Not imported' }}</td>
+        <td>{{ n.employees or '–' }}</td>
+        <td>{{ n.business_category or '–' }}</td>
+        <td>{{ n.dropped_reason or '–' }}</td>
+        <td>{{ n.changed_by or '–' }}</td>
+        <td style="white-space:nowrap">{{ n.created_at.strftime('%d %b %Y') }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="naf-empty">No leads marked Not a Fit in this period.</div>{% endif %}
+</div>
+{% endblock %}

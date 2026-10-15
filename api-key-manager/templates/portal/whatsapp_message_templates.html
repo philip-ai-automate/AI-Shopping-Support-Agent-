@@ -1,0 +1,383 @@
+{% extends "portal/base.html" %}
+{% block title %}Message Templates — WhatsApp Campaigns — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+.mt-acc[hidden],.mt-card [hidden],#mtFormCard[hidden]{display:none!important}
+.crumb{font-size:12px;color:var(--muted);margin-bottom:14px}
+.crumb a{color:var(--muted);text-decoration:none;font-weight:600}
+.crumb b{color:var(--ink)}
+.intro{background:#fff;border:1px solid rgba(3,12,24,.08);border-radius:14px;padding:18px 22px;margin-bottom:18px;
+       display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.intro h1{font-size:17px;font-weight:800;color:var(--ink);margin:0 0 6px}
+.intro p{font-size:13px;color:var(--muted);margin:0;max-width:600px;line-height:1.5}
+.mt-btn{padding:9px 16px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid #cbd5e1;background:#fff;color:#111E2D}
+.mt-btn.primary{background:#0B1D40;border-color:#0B1D40;color:#fff}
+.mt-btn.danger{color:#b91c1c;border-color:#fecaca}
+.mt-btn[disabled]{opacity:.5;cursor:not-allowed}
+.mt-card{background:#fff;border:1px solid rgba(3,12,24,.08);border-radius:14px;padding:18px 22px;margin-bottom:18px}
+.mt-acc{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;font-size:13px}
+.mt-sel,.mt-in,.mt-ta{padding:9px 11px;border:1.5px solid #e2e8f0;border-radius:9px;font-size:13.5px;background:#fff;color:#111E2D;box-sizing:border-box}
+.mt-in,.mt-ta{width:100%}
+.mt-ta{min-height:150px;resize:vertical;font-family:inherit;line-height:1.5}
+.mt-table-wrap{overflow-x:auto}
+.mt-table{width:100%;border-collapse:collapse;font-size:13px}
+.mt-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:8px 10px;border-bottom:1px solid #e5e7eb}
+.mt-table td{padding:10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
+.mt-name{font-weight:700;color:var(--ink);word-break:break-all}
+.mt-badge{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.b-APPROVED{background:#dcfce7;color:#166534}.b-PENDING{background:#fef3c7;color:#92400e}
+.b-REJECTED,.b-DISABLED{background:#fee2e2;color:#991b1b}.b-other{background:#e2e8f0;color:#334155}
+.mt-reason{font-size:12px;color:#991b1b;margin-top:4px;max-width:260px}
+.mt-link{background:none;border:0;color:#0B1D40;font-weight:700;cursor:pointer;padding:0;font-size:12.5px}
+.mt-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:22px}
+@media(max-width:900px){.mt-grid{grid-template-columns:1fr}}
+.mt-f{margin-bottom:14px}
+.mt-lbl{display:block;font-size:12px;font-weight:700;color:#475569;margin-bottom:5px}
+.mt-hint{font-size:11.5px;color:#64748b;margin-top:4px;line-height:1.45}
+.mt-row{display:flex;gap:10px;flex-wrap:wrap}
+.mt-row > *{flex:1;min-width:140px}
+.mt-btnrow{display:grid;grid-template-columns:150px 1fr 1fr;gap:8px;margin-bottom:8px}
+@media(max-width:600px){.mt-btnrow{grid-template-columns:1fr}}
+.mt-preview{background:#f1f5f9;border-radius:14px;padding:14px;position:sticky;top:16px}
+.mt-bubble{background:#fff;border-radius:10px;padding:10px 12px;white-space:pre-wrap;word-break:break-word;font-size:13px;box-shadow:0 1px 2px rgba(3,12,24,.08)}
+.mt-top{font-weight:700;margin-bottom:6px}
+.mt-foot{color:#64748b;font-size:12px;margin-top:6px}
+.mt-pbtns{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.mt-pbtns span{background:#fff;border-radius:8px;text-align:center;padding:7px;color:#0B1D40;font-weight:700;font-size:13px;box-shadow:0 1px 2px rgba(3,12,24,.08)}
+.mt-blank{background:#fde68a;border-radius:4px;padding:0 3px}
+.mt-err{background:#fee2e2;border:1px solid #fca5a5;color:#7f1d1d;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px}
+.mt-err ul{margin:4px 0 0 18px;padding:0}
+.mt-ok{background:#e0e7ff;border:1px solid #a5b4fc;color:#0B1D40;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px;font-weight:600}
+.mt-warn{background:#fef3c7;border:1px solid #fcd34d;color:#78350f;border-radius:10px;padding:10px 14px;font-size:12.5px;line-height:1.5}
+.mt-empty{color:var(--muted);text-align:center;padding:30px 10px;font-size:13px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="crumb"><a href="{{ url_for('portal.whatsapp_campaigns') }}">WhatsApp Campaigns</a> / <b>Message Templates</b></div>
+
+<div class="intro">
+  <div>
+    <h1>Message Templates</h1>
+    <p>WhatsApp only lets a business start a chat with a message Meta has approved. Create a template here and
+       submit it to Meta; once it's <b>Approved</b> it can be used in campaigns and in “Send WhatsApp message”.</p>
+  </div>
+  {% if can_create and accounts %}
+  <button type="button" class="mt-btn primary" id="mtNewBtn" onclick="MT.openForm()">New template</button>
+  {% endif %}
+</div>
+
+{% if not accounts %}
+<div class="mt-card"><div class="mt-empty">Connect a WhatsApp number first (WhatsApp › Connect) — templates belong to your WhatsApp account.</div></div>
+{% else %}
+
+<div id="mtMsg"></div>
+
+{% if can_create %}
+<div class="mt-card" id="mtFormCard" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <h2 style="font-size:15px;font-weight:800;margin:0">New template</h2>
+    <button type="button" class="mt-link" onclick="MT.closeForm()">Close</button>
+  </div>
+  <div id="mtFormErr"></div>
+  <form id="mtForm" onsubmit="event.preventDefault(); MT.submit()">
+    <div class="mt-grid">
+      <div>
+        <div class="mt-row">
+          <div class="mt-f">
+            <label class="mt-lbl" for="mtName">Name</label>
+            <input class="mt-in" id="mtName" name="name" maxlength="200" placeholder="e.g. Abuja follow up" required>
+            <div class="mt-hint">Meta name: <b id="mtSlug">—</b></div>
+          </div>
+          <div class="mt-f">
+            <label class="mt-lbl" for="mtCat">Type</label>
+            <select class="mt-sel" id="mtCat" name="category" style="width:100%">
+              <option value="MARKETING">Marketing — sales, offers, follow-ups</option>
+              <option value="UTILITY">Utility — updates about an order or account</option>
+            </select>
+          </div>
+          <div class="mt-f">
+            <label class="mt-lbl" for="mtLang">Language</label>
+            <select class="mt-sel" id="mtLang" name="language" style="width:100%">
+              {% for code, label in languages %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="mt-f">
+          <label class="mt-lbl" for="mtHead">Top of the message</label>
+          <select class="mt-sel" id="mtHead" name="header_type" style="width:100%">
+            <option value="NONE">Nothing</option>
+            <option value="TEXT">A title</option>
+            <option value="DOCUMENT">A PDF (e.g. brochure)</option>
+            <option value="IMAGE">A picture</option>
+            <option value="VIDEO">A video</option>
+          </select>
+          <div id="mtHeadText" hidden style="margin-top:8px">
+            <input class="mt-in" id="mtHeadTextIn" name="header_text" maxlength="60" placeholder="Title (max 60 characters, no emoji)">
+            <div id="mtHeadExWrap" hidden style="margin-top:6px">
+              <input class="mt-in" id="mtHeadEx" name="header_example" placeholder="Example for the title blank">
+            </div>
+          </div>
+          <div id="mtHeadFile" hidden style="margin-top:8px">
+            <input type="file" id="mtFile" name="header_file">
+            <div class="mt-hint" id="mtFileHint">This sample is only for Meta's review. When sending, you attach the real file.</div>
+          </div>
+        </div>
+
+        <div class="mt-f">
+          <div style="display:flex;justify-content:space-between;align-items:flex-end">
+            <label class="mt-lbl" for="mtBody">Message text</label>
+            <button type="button" class="mt-link" onclick="MT.addBlank()">+ Add blank</button>
+          </div>
+          <textarea class="mt-ta" id="mtBody" name="body" maxlength="1024" required
+                    placeholder="Type the message. Use “+ Add blank” for parts that change per person, e.g. their business name."></textarea>
+          <div class="mt-hint"><span id="mtCount">0</span> / 1,024 characters. A blank can't be the very first or last thing in the message.</div>
+          <div id="mtExamples"></div>
+        </div>
+
+        <div class="mt-f">
+          <label class="mt-lbl" for="mtFooter">Bottom line <span style="font-weight:400">(optional)</span></label>
+          <input class="mt-in" id="mtFooter" name="footer" maxlength="60" placeholder="e.g. PhiXtra — max 60 characters">
+        </div>
+
+        <div class="mt-f">
+          <span class="mt-lbl">Buttons <span style="font-weight:400">(optional, up to 3)</span></span>
+          {% for i in range(1, 4) %}
+          <div class="mt-btnrow">
+            <select class="mt-sel" name="btn{{ i }}_type" data-btn="{{ i }}">
+              <option value="">No button</option>
+              <option value="URL">Opens a website</option>
+              <option value="PHONE_NUMBER">Calls a phone</option>
+              <option value="QUICK_REPLY">Quick reply</option>
+            </select>
+            <input class="mt-in" name="btn{{ i }}_text" maxlength="25" placeholder="Button words (max 25)" data-btn="{{ i }}" hidden>
+            <input class="mt-in" name="btn{{ i }}_value" placeholder="" data-btn="{{ i }}" hidden>
+          </div>
+          {% endfor %}
+          <div class="mt-hint">Quick reply = a tap that sends the words back to you, e.g. “Stop messages” or “Yes, interested”.</div>
+        </div>
+
+        <div class="mt-warn">Check the wording carefully — it goes to Meta under your business name. Meta usually decides within a few minutes to a day.</div>
+        <div style="display:flex;gap:10px;margin-top:14px">
+          <button type="submit" class="mt-btn primary" id="mtSubmit">Submit to Meta</button>
+          <button type="button" class="mt-btn" onclick="MT.closeForm()">Cancel</button>
+        </div>
+      </div>
+
+      <div>
+        <span class="mt-lbl">Preview</span>
+        <div class="mt-preview"><div class="mt-bubble" id="mtPrev"></div><div class="mt-pbtns" id="mtPrevBtns"></div></div>
+      </div>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<div class="mt-card">
+  <div class="mt-acc" {% if accounts|length < 2 %}hidden{% endif %}>
+    <label for="mtAcc" style="font-weight:700">WhatsApp account</label>
+    <select class="mt-sel" id="mtAcc">
+      {% for a in accounts %}<option value="{{ a.waba_id }}">{{ a.numbers|join(', ') }}</option>{% endfor %}
+    </select>
+  </div>
+  {% if accounts|length == 1 %}
+  <div class="mt-hint" style="margin:-4px 0 12px">Templates work on every number on this account: {{ accounts[0].numbers|join(', ') }}</div>
+  {% endif %}
+  <div class="mt-table-wrap">
+    <table class="mt-table">
+      <thead><tr><th>Name</th><th>Type</th><th>Language</th><th>Status</th><th>Created by</th><th></th></tr></thead>
+      <tbody id="mtRows"><tr><td colspan="6" class="mt-empty">Loading from Meta…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<script>
+var MT = (function () {
+  var U = {
+    list:   '{{ url_for("portal.whatsapp_message_templates_list") }}',
+    create: '{{ url_for("portal.whatsapp_message_templates_create") }}',
+    del:    '{{ url_for("portal.whatsapp_message_templates_delete") }}'
+  };
+  var CAN_DELETE = {{ 'true' if can_delete else 'false' }};
+  var LANGS = {{ languages|tojson }};
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function acc() { return $('mtAcc') ? $('mtAcc').value : ''; }
+  function langName(c) { for (var i = 0; i < LANGS.length; i++) if (LANGS[i][0] === c) return LANGS[i][1]; return c; }
+  function msg(kind, text) { var m = $('mtMsg'); m.innerHTML = ''; if (text) m.appendChild(el('div', kind, text)); }
+  function slug(s) { return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, ''); }
+
+  // ── list ─────────────────────────────────────────────
+  function load() {
+    var tb = $('mtRows'); if (!tb) return;
+    tb.innerHTML = '<tr><td colspan="6" class="mt-empty">Loading from Meta…</td></tr>';
+    fetch(U.list + '?waba=' + encodeURIComponent(acc()), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        tb.innerHTML = '';
+        if (d.error) { tb.innerHTML = ''; var tr = el('tr'); var td = el('td', 'mt-empty', d.error); td.colSpan = 6; tr.appendChild(td); tb.appendChild(tr); return; }
+        if (!d.templates.length) { var tr0 = el('tr'); var td0 = el('td', 'mt-empty', 'No templates yet.'); td0.colSpan = 6; tr0.appendChild(td0); tb.appendChild(tr0); return; }
+        d.templates.forEach(function (t) { tb.appendChild(row(t)); });
+      })
+      .catch(function () { tb.innerHTML = '<tr><td colspan="6" class="mt-empty">Could not load — try again.</td></tr>'; });
+  }
+
+  function row(t) {
+    var tr = el('tr');
+    var c1 = el('td'); c1.appendChild(el('div', 'mt-name', t.name));
+    var pv = el('button', 'mt-link', 'Preview'); pv.type = 'button'; c1.appendChild(pv);
+    var box = el('div'); box.hidden = true; box.style.cssText = 'margin-top:8px;max-width:360px';
+    box.appendChild(previewFrom(t.components)); c1.appendChild(box);
+    pv.onclick = function () { box.hidden = !box.hidden; pv.textContent = box.hidden ? 'Preview' : 'Hide preview'; };
+    tr.appendChild(c1);
+    tr.appendChild(el('td', '', t.category));
+    tr.appendChild(el('td', '', langName(t.language)));
+    var c4 = el('td');
+    var known = ['APPROVED', 'PENDING', 'REJECTED', 'DISABLED'].indexOf(t.status) >= 0;
+    c4.appendChild(el('span', 'mt-badge ' + (known ? 'b-' + t.status : 'b-other'), t.status_label));
+    if (t.reason) c4.appendChild(el('div', 'mt-reason', 'Reason: ' + t.reason));
+    tr.appendChild(c4);
+    tr.appendChild(el('td', '', (t.by || '') + (t.on ? ' · ' + t.on : '')));
+    var c6 = el('td');
+    if (CAN_DELETE && t.status !== 'APPROVED') {
+      var del = el('button', 'mt-btn danger', 'Delete'); del.type = 'button'; del.style.padding = '5px 10px';
+      del.onclick = function () { confirmDelete(t, c6, del); };
+      c6.appendChild(del);
+    }
+    tr.appendChild(c6);
+    return tr;
+  }
+
+  function confirmDelete(t, cell, btn) {
+    btn.hidden = true;
+    var w = el('div'); w.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap';
+    w.appendChild(el('span', '', 'Delete for good?'));
+    var yes = el('button', 'mt-btn danger', 'Yes, delete'); yes.type = 'button'; yes.style.padding = '5px 10px';
+    var no = el('button', 'mt-btn', 'Keep'); no.type = 'button'; no.style.padding = '5px 10px';
+    no.onclick = function () { w.remove(); btn.hidden = false; };
+    yes.onclick = function () {
+      yes.disabled = true; yes.textContent = 'Deleting…';
+      var fd = new FormData(); fd.append('waba', acc()); fd.append('id', t.id);
+      fetch(U.del, { method: 'POST', body: fd, credentials: 'same-origin' }).then(function (r) { return r.json(); })
+        .then(function (d) { msg(d.ok ? 'mt-ok' : 'mt-err', d.ok ? d.message : d.error); if (d.ok) load(); else { w.remove(); btn.hidden = false; } })
+        .catch(function () { msg('mt-err', 'Could not delete — try again.'); w.remove(); btn.hidden = false; });
+    };
+    w.appendChild(yes); w.appendChild(no); cell.appendChild(w);
+  }
+
+  function previewFrom(components) {
+    var wrap = el('div', 'mt-preview'); wrap.style.position = 'static';
+    var b = el('div', 'mt-bubble'), btns = el('div', 'mt-pbtns');
+    (components || []).forEach(function (c) {
+      if (c.type === 'HEADER') b.appendChild(el('div', 'mt-top', c.format === 'TEXT' ? c.text : (c.format === 'DOCUMENT' ? '📄 PDF' : c.format === 'IMAGE' ? '📷 Picture' : c.format === 'VIDEO' ? '🎬 Video' : c.format)));
+      if (c.type === 'BODY') b.appendChild(document.createTextNode(c.text));
+      if (c.type === 'FOOTER') b.appendChild(el('div', 'mt-foot', c.text));
+      if (c.type === 'BUTTONS') (c.buttons || []).forEach(function (x) { btns.appendChild(el('span', '', x.text)); });
+    });
+    wrap.appendChild(b); wrap.appendChild(btns); return wrap;
+  }
+
+  // ── form ─────────────────────────────────────────────
+  function openForm() { $('mtFormCard').hidden = false; $('mtFormErr').innerHTML = ''; $('mtName').focus(); update(); }
+  function closeForm() { $('mtFormCard').hidden = true; }
+
+  function blanks() {
+    var m = ($('mtBody').value.match(/\{\{\s*(\d+)\s*\}\}/g) || []).map(function (x) { return +x.replace(/\D/g, ''); });
+    return m.length ? Math.max.apply(null, m) : 0;
+  }
+  function addBlank() {
+    var ta = $('mtBody'), n = blanks() + 1, tag = '{' + '{' + n + '}' + '}';
+    var s = ta.selectionStart || ta.value.length, e = ta.selectionEnd || s;
+    ta.value = ta.value.slice(0, s) + tag + ta.value.slice(e);
+    ta.focus(); ta.selectionStart = ta.selectionEnd = s + tag.length; update();
+  }
+  function syncExamples() {
+    var box = $('mtExamples'), n = blanks(), keep = {};
+    box.querySelectorAll('input').forEach(function (i) { keep[i.name] = i.value; });
+    box.innerHTML = '';
+    for (var i = 1; i <= n; i++) {
+      var w = el('div'); w.style.marginTop = '8px';
+      var l = el('label', 'mt-lbl', 'Example for blank {' + '{' + i + '}' + '}'); l.htmlFor = 'mtEx' + i;
+      var inp = el('input', 'mt-in'); inp.id = 'mtEx' + i; inp.name = 'example_' + i; inp.value = keep['example_' + i] || '';
+      inp.placeholder = i === 1 ? 'e.g. Abuja Mentoring Services' : 'Example words';
+      inp.oninput = update; w.appendChild(l); w.appendChild(inp); box.appendChild(w);
+    }
+  }
+
+  function headChange() {
+    var h = $('mtHead').value;
+    $('mtHeadText').hidden = h !== 'TEXT';
+    $('mtHeadFile').hidden = ['DOCUMENT', 'IMAGE', 'VIDEO'].indexOf(h) < 0;
+    $('mtFile').accept = h === 'DOCUMENT' ? 'application/pdf' : h === 'IMAGE' ? 'image/jpeg,image/png' : h === 'VIDEO' ? 'video/mp4' : '';
+    $('mtFileHint').textContent = (h === 'DOCUMENT' ? 'PDF, max 100MB. ' : h === 'IMAGE' ? 'JPG or PNG, max 5MB. ' : 'MP4, max 16MB. ')
+      + 'This sample is only for Meta’s review. When sending, you attach the real file.';
+    update();
+  }
+
+  function btnChange(sel) {
+    var i = sel.getAttribute('data-btn'), t = sel.value;
+    var txt = document.querySelector('input[name="btn' + i + '_text"]'), val = document.querySelector('input[name="btn' + i + '_value"]');
+    txt.hidden = !t; val.hidden = !(t === 'URL' || t === 'PHONE_NUMBER');
+    val.placeholder = t === 'URL' ? 'https://…' : t === 'PHONE_NUMBER' ? '+234 803 123 4567' : '';
+    val.type = t === 'URL' ? 'url' : 'text';
+    update();
+  }
+
+  function update() {
+    if (!$('mtForm')) return;
+    $('mtSlug').textContent = slug($('mtName').value) || '—';
+    $('mtCount').textContent = $('mtBody').value.length;
+    var ht = $('mtHeadTextIn').value; $('mtHeadExWrap').hidden = !/\{\{\s*1\s*\}\}/.test(ht);
+    if (document.activeElement !== $('mtBody') || blanks() !== $('mtExamples').querySelectorAll('input').length) syncExamples();
+    var p = $('mtPrev'), pb = $('mtPrevBtns'); p.innerHTML = ''; pb.innerHTML = '';
+    var h = $('mtHead').value, f = $('mtFile').files[0];
+    if (h === 'TEXT' && ht) p.appendChild(el('div', 'mt-top', ht.replace(/\{\{\s*1\s*\}\}/, $('mtHeadEx').value || '[blank]')));
+    if (h === 'DOCUMENT') p.appendChild(el('div', 'mt-top', '📄 ' + (f ? f.name : 'PDF')));
+    if (h === 'IMAGE') p.appendChild(el('div', 'mt-top', '📷 ' + (f ? f.name : 'Picture')));
+    if (h === 'VIDEO') p.appendChild(el('div', 'mt-top', '🎬 ' + (f ? f.name : 'Video')));
+    var body = $('mtBody').value;
+    if (!body) p.appendChild(el('span', '', 'Your message will show here.')).style.color = '#94a3b8';
+    body.split(/(\{\{\s*\d+\s*\}\})/).forEach(function (part) {
+      var m = part.match(/^\{\{\s*(\d+)\s*\}\}$/);
+      if (m) { var v = ($('mtEx' + m[1]) || {}).value; p.appendChild(el('span', v ? '' : 'mt-blank', v || '[blank ' + m[1] + ']')); }
+      else if (part) p.appendChild(document.createTextNode(part));
+    });
+    if ($('mtFooter').value) p.appendChild(el('div', 'mt-foot', $('mtFooter').value));
+    for (var i = 1; i <= 3; i++) {
+      var t = document.querySelector('select[name="btn' + i + '_type"]').value, w = document.querySelector('input[name="btn' + i + '_text"]').value;
+      if (t && w) pb.appendChild(el('span', '', w));
+    }
+  }
+
+  function submit() {
+    var btn = $('mtSubmit'); btn.disabled = true; btn.textContent = 'Submitting…'; $('mtFormErr').innerHTML = '';
+    var fd = new FormData($('mtForm')); fd.append('waba', acc());
+    fetch(U.create, { method: 'POST', body: fd, credentials: 'same-origin' }).then(function (r) { return r.json(); })
+      .then(function (d) {
+        btn.disabled = false; btn.textContent = 'Submit to Meta';
+        if (d.ok) { msg('mt-ok', d.message); $('mtForm').reset(); headChange(); document.querySelectorAll('select[data-btn]').forEach(btnChange); closeForm(); load(); window.scrollTo(0, 0); return; }
+        var box = el('div', 'mt-err', 'Please fix:'); var ul = el('ul');
+        (d.errors || ['Not submitted.']).forEach(function (e) { ul.appendChild(el('li', '', e)); });
+        box.appendChild(ul); $('mtFormErr').appendChild(box); $('mtFormErr').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      })
+      .catch(function () { btn.disabled = false; btn.textContent = 'Submit to Meta'; $('mtFormErr').appendChild(el('div', 'mt-err', 'Could not reach the portal — nothing was submitted. Try again.')); });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    if ($('mtAcc')) $('mtAcc').addEventListener('change', load);
+    if ($('mtForm')) {
+      $('mtForm').addEventListener('input', update);
+      $('mtHead').addEventListener('change', headChange);
+      $('mtFile').addEventListener('change', update);
+      $('mtBody').addEventListener('blur', function () { syncExamples(); update(); });
+      document.querySelectorAll('select[data-btn]').forEach(function (s) { s.addEventListener('change', function () { btnChange(s); }); });
+    }
+    load();
+  });
+  return { openForm: openForm, closeForm: closeForm, addBlank: addBlank, submit: submit };
+})();
+</script>
+{% endblock %}

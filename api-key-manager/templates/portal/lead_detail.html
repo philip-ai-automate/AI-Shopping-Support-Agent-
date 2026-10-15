@@ -74,17 +74,175 @@
       {% if outc == 'not_a_fit' and staff_can_open('portal.leads_reopen') %}
       {# Undo Not a Fit (2026-10-02) #}
       <form method="POST" action="{{ url_for('portal.leads_reopen', lead_id=lead.id) }}" style="margin:0"
-            onsubmit="return confirm('Reopen this lead? It goes back on your Leads list, waiting for a decision again.')">
-        <button type="submit" class="lc-edit-btn" style="background:#0B1D40;color:#fff;border-color:#0B1D40">↩️ Reopen as Lead</button>
+            onsubmit="return confirm({{ ('Reopen this deal? It goes back on your Sales Pipeline at the step it had reached.' if lead.is_opportunity else 'Reopen this lead? It goes back on your Leads list, waiting for a decision again.')|tojson|forceescape }})">
+        <button type="submit" class="lc-edit-btn" style="background:#0B1D40;color:#fff;border-color:#0B1D40">↩️ {{ 'Reopen on Sales Pipeline' if lead.is_opportunity else 'Reopen as Lead' }}</button>
       </form>
       {% endif %}
       {% if not outc and not lead.is_opportunity and staff_can_open('portal.leads_qualify') %}
       <button type="button" class="lc-edit-btn" style="background:#15803d;color:#fff;border-color:#15803d" onclick="document.getElementById('qualifyModal').classList.add('open')">✅ Qualify</button>
+      {% endif %}
+      {# Not a Fit works on Qualified deals too since 2026-10-15 (it replaced Dropped) #}
+      {% if not outc and staff_can_open('portal.leads_not_a_fit') %}
       <button type="button" class="lc-edit-btn" style="background:#b91c1c;color:#fff;border-color:#b91c1c" onclick="document.getElementById('notAFitModal').classList.add('open')">🚫 Not a Fit</button>
       {% endif %}
       {% if staff_can_open('portal.sales_pipeline_edit') %}
       <button type="button" class="lc-edit-btn" onclick="document.getElementById('editLeadModal').classList.add('open')">✏️ Edit Lead</button>
       {% endif %}
+    </div>
+  </div>
+
+  <!-- Activity — moved to the top, under the header (2026-10-15), so the team sees calls and notes first -->
+  <div class="lc-sec-head">Activity</div>
+  <div style="padding:16px 24px 22px;border-bottom:1px solid var(--line)">
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <button type="button" class="lc-tab active" id="lcNotesTab" onclick="lcShowTab('notes')">📝 Notes</button>
+      <button type="button" class="lc-tab disabled">✅ Tasks <span class="lc-soon">NEW</span></button>
+      <button type="button" class="lc-tab" onclick="lcShowTab('calls')" id="lcCallsTab">📞 Calls{% if lead_calls %} ({{ lead_calls|length }}){% endif %}</button>
+      <button type="button" class="lc-tab" onclick="lcShowTab('history')" id="lcHistoryTab">🕒 Stage History</button>
+      <button type="button" class="lc-tab" onclick="lcShowTab('emails')" id="lcEmailsTab">✉️ Emails{% if email_history %} ({{ email_history|length }}){% endif %}</button>
+    </div>
+    <div id="lcNotesPane">
+      {% if lead.notes %}
+      <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;white-space:pre-line">{{ lead.notes }}</div>
+      {% else %}
+      <div style="font-size:12.5px;color:var(--muted)">No notes yet{% if staff_can_open('portal.sales_pipeline_edit') %} — click "✏️ Edit Lead" above to add some{% endif %}.</div>
+      {% endif %}
+    </div>
+    <div id="lcCallsPane" style="display:none">
+      <form method="POST" action="{{ url_for('portal.lead_log_call', lead_id=lead.id) }}" style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <label for="lcCallOutcome" style="font-size:11.5px;color:var(--muted);font-weight:600">How did it go?</label>
+          <select id="lcCallOutcome" name="outcome" required style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12.5px">
+            <option value="">— choose —</option>
+            {% for k, label in call_outcomes %}<option value="{{ k }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <label for="lcCallMinutes" style="font-size:11.5px;color:var(--muted);font-weight:600">Minutes</label>
+          <input id="lcCallMinutes" name="minutes" type="number" min="0" max="600" placeholder="e.g. 5" style="width:90px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12.5px">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:200px">
+          <label for="lcCallNote" style="font-size:11.5px;color:var(--muted);font-weight:600">What was said (optional)</label>
+          <input id="lcCallNote" name="note" maxlength="2000" placeholder="e.g. Interested, wants a demo next week" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12.5px">
+        </div>
+        {# "Doesn't need us" (2026-10-15): close the Lead as Not a Fit in the same step #}
+        <div id="lcNafBox" style="display:none;flex-basis:100%;border:1.5px solid #b91c1c;background:#fdecec;border-radius:10px;padding:10px 12px">
+          <div style="font-size:12.5px;font-weight:700;color:#b91c1c;margin-bottom:6px">🚫 This business doesn't need us</div>
+          {% if lead.outcome or lead.dropped_at %}
+          <div style="font-size:12.5px;color:var(--ink)">This lead is already closed, so the call will just be logged.</div>
+          {% elif not staff_can_open('portal.leads_not_a_fit') %}
+          <div style="font-size:12.5px;color:var(--ink)">The call will be logged. Your manager will see it in the Not a Fit report.</div>
+          {% else %}
+          <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--ink);cursor:pointer">
+            <input type="checkbox" id="lcNafTick" name="also_not_a_fit" value="1" checked style="margin-top:3px">
+            <span>Also mark <strong>{{ lead.customer_name }}</strong> as Not a Fit, so nobody calls them again</span>
+          </label>
+          <div id="lcNafReasonWrap" style="display:flex;flex-direction:column;gap:3px;margin-top:8px">
+            <label for="lcNafReason" style="font-size:11.5px;color:var(--muted);font-weight:600">Reason</label>
+            <select id="lcNafReason" name="naf_reason" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12.5px;max-width:360px">
+              {% for reason in not_a_fit_reasons if reason != 'Other' %}<option value="{{ reason }}"{% if reason == not_needed_reason %} selected{% endif %}>{{ reason }}</option>{% endfor %}
+            </select>
+          </div>
+          {% endif %}
+        </div>
+        <button type="submit" id="lcCallSubmit" class="lc-tab active" style="cursor:pointer">📞 Log a call</button>
+      </form>
+      {% for c in lead_calls %}
+      <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:8px">
+        <strong>{{ c.outcome_label }}</strong>{% if c.minutes %} · {{ c.minutes }} min{% endif %}
+        <span style="color:var(--muted)"> — {{ c.actor_name or 'Unknown' }}, {{ c.local_at.strftime('%d %b %Y, %H:%M') }}</span>
+        {% if c.note %}<div style="color:var(--muted);margin-top:3px;white-space:pre-line">{{ c.note }}</div>{% endif %}
+      </div>
+      {% else %}
+      <div style="font-size:12.5px;color:var(--muted)">No calls logged yet. After you call this lead, log it here so your manager can see it.</div>
+      {% endfor %}
+    </div>
+    <div id="lcHistoryPane" style="display:none">
+      {% if stage_history %}
+      {% for h in stage_history %}
+      <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:8px">
+        {# Before Qualify the first stage is the Lead itself, so it reads "New Lead",
+           not "New Opportunity": when a lead is made / moved back / reopened, and as
+           the "from" of Qualify or Not a Fit (2026-10-02). Pipeline moves keep the
+           business's own stage names. #}
+        {% set _to_lead = h.to_stage == 'new_lead' and (not h.from_stage or h.from_stage == 'not_a_fit' or (h.notes or '').startswith(('Moved back to Leads', 'Reopened'))) %}
+        {% set _from_lead = h.from_stage == 'new_lead' and h.to_stage in ('opportunity', 'not_a_fit') %}
+        <strong>{{ 'New Lead' if _to_lead else stage_labels.get(h.to_stage, h.to_stage) }}</strong>
+        {% if h.from_stage %}<span style="color:var(--muted)"> (from {{ 'New Lead' if _from_lead else stage_labels.get(h.from_stage, h.from_stage) }})</span>{% endif %}
+        <span style="color:var(--muted)"> — {{ h.changed_by or 'Unknown' }}, {{ h.created_at.strftime('%d %b %Y') if h.created_at else '' }}</span>
+        {% if h.notes %}<div style="color:var(--muted);margin-top:3px">{{ h.notes }}</div>{% endif %}
+      </div>
+      {% endfor %}
+      {% else %}
+      <div style="font-size:12.5px;color:var(--muted)">No stage moves recorded yet.</div>
+      {% endif %}
+    </div>
+    <div id="lcEmailsPane" style="display:none">
+      {% if lead.email %}
+      <form method="POST" action="{{ url_for('portal.lead_email_replied', lead_id=lead.id) }}" style="margin:0 0 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button type="submit" class="lc-tab" style="cursor:pointer">↩️ They replied to our email</button>
+        <span style="font-size:12px;color:var(--muted)">{% if 'campaigns_email.mailbox_connect' in granted_features %}Replies show here by themselves when your Outlook is connected (Integration › Microsoft 365). Use this for replies that came another way.{% else %}Replies arrive in your own mailbox. Tick this so the team can see it here.{% endif %}</span>
+      </form>
+      {% endif %}
+      {% if 'campaigns_email.sequences_view' in granted_features and staff_can('campaigns_email.sequences_view') and lead.email %}
+      {% set _seq_can_edit = staff_can('campaigns_email.sequences_edit') %}
+      <div style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 14px">
+        <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:8px">📨 Email sequences</div>
+        {% for p in lead_sequences['in'] %}
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12.5px;padding:6px 0;border-top:1px dashed var(--line)">
+          <a href="{{ url_for('portal.email_sequence_detail', seq_id=p.sequence_id) }}" style="font-weight:600;color:var(--ink)">{{ p.seq_name }}</a>
+          <span style="color:var(--muted)">{{ p.steps_sent }} of {{ p.n_steps }} sent ·
+            {% if p.status == 'ready' %}email {{ p.steps_sent + 1 }} ready for you to send
+            {% elif p.status in ('active', 'sending') %}email {{ p.steps_sent + 1 }} due {{ p.next_due_at.strftime('%d %b') if p.next_due_at else '—' }}{% if p.seq_status != 'active' %} (sequence paused){% endif %}
+            {% elif p.status == 'finished' %}finished
+            {% else %}stopped{% if p.stop_reason %}: {{ p.stop_reason }}{% endif %}{% endif %}</span>
+          {% if p.status in ('active', 'ready') %}
+          <span style="margin-left:auto;display:flex;gap:6px">
+            {% if staff_can('campaigns_email.sequences_send') %}
+            <form method="POST" action="{{ url_for('portal.email_sequence_people_action', seq_id=p.sequence_id) }}" style="margin:0">
+              <input type="hidden" name="action" value="send"><input type="hidden" name="person_id" value="{{ p.id }}">
+              <input type="hidden" name="next" value="{{ url_for('portal.lead_detail', lead_id=lead.id) }}#emails">
+              <button type="submit" class="lc-tab" style="cursor:pointer">Send email {{ p.steps_sent + 1 }} now</button>
+            </form>
+            {% endif %}
+            {% if _seq_can_edit %}
+            <form method="POST" action="{{ url_for('portal.email_sequence_people_action', seq_id=p.sequence_id) }}" style="margin:0">
+              <input type="hidden" name="action" value="stop"><input type="hidden" name="person_id" value="{{ p.id }}">
+              <input type="hidden" name="next" value="{{ url_for('portal.lead_detail', lead_id=lead.id) }}#emails">
+              <button type="submit" class="lc-tab" style="cursor:pointer">Stop</button>
+            </form>
+            {% endif %}
+          </span>
+          {% endif %}
+        </div>
+        {% else %}
+        <div style="font-size:12.5px;color:var(--muted)">Not in any sequence.</div>
+        {% endfor %}
+        {% if _seq_can_edit and lead_sequences['choices'] %}
+        <form method="POST" action="{{ url_for('portal.lead_add_to_sequence', lead_id=lead.id) }}" style="margin:10px 0 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <select name="sequence_id" required style="max-width:320px;padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12.5px">
+            <option value="">— add to a sequence —</option>
+            {% for s in lead_sequences['choices'] %}<option value="{{ s.id }}">{{ s.name }}{% if s.status != 'active' %} (paused){% endif %}</option>{% endfor %}
+          </select>
+          <button type="submit" class="lc-tab" style="cursor:pointer">Add</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% set _email_words = {'sent': 'Email sent', 'opened': 'Opened the email', 'clicked': 'Clicked a link', 'replied': 'Replied', 'unsubscribed': 'Unsubscribed from emails'} %}
+      {% for e in email_history %}
+      <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:8px">
+        <strong>{{ _email_words.get(e.kind, e.kind) }}</strong>
+        <span style="color:var(--muted)"> — {{ e.created_at.strftime('%d %b %Y, %H:%M') if e.created_at else '' }}{% if e.reply_mailbox %}, found in {{ e.reply_mailbox_owner or e.reply_mailbox }}'s Outlook{% elif e.actor %}, marked by {{ e.actor }}{% endif %}</span>
+        {% if e.campaign_name %}<div style="color:var(--muted);margin-top:3px">Campaign: {{ e.campaign_name }}{% if e.kind == 'sent' and e.detail %} · “{{ e.detail }}”{% endif %}</div>{% endif %}
+        {% if e.reply_snippet %}<div style="margin-top:8px;padding:8px 12px;border-left:3px solid #0B1D40;background:#fff;border-radius:0 8px 8px 0;white-space:pre-line;line-height:1.5">{{ e.reply_snippet }}</div>{% endif %}
+        {% if e.reply_link %}<div style="margin-top:6px"><a href="{{ e.reply_link }}" target="_blank" rel="noopener" style="font-weight:600;color:#0B1D40">Open in Outlook ↗</a>{% if e.reply_mailbox %} <span style="color:var(--muted)">({{ e.reply_mailbox }}'s mailbox)</span>{% endif %}</div>{% endif %}
+        {% if e.kind == 'clicked' and e.detail %}<div style="color:var(--muted);margin-top:3px;word-break:break-all">Link: {{ e.detail }}</div>{% endif %}
+      </div>
+      {% else %}
+      <div style="font-size:12.5px;color:var(--muted)">No campaign emails to this lead yet.</div>
+      {% endfor %}
+      {% if email_history %}<div style="font-size:11.5px;color:var(--muted);margin-top:6px">"Opened" is a guide only: some mail apps load pictures automatically, others block them.</div>{% endif %}
     </div>
   </div>
 
@@ -287,140 +445,7 @@
     {% endif %}
   </div>
 
-  <!-- Activity -->
-  <div class="lc-sec-head">Activity</div>
-  <div style="padding:16px 24px 22px">
-    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-      <button type="button" class="lc-tab active" id="lcNotesTab" onclick="lcShowTab('notes')">📝 Notes</button>
-      <button type="button" class="lc-tab disabled">✅ Tasks <span class="lc-soon">NEW</span></button>
-      <button type="button" class="lc-tab" onclick="lcShowTab('calls')" id="lcCallsTab">📞 Calls{% if lead_calls %} ({{ lead_calls|length }}){% endif %}</button>
-      <button type="button" class="lc-tab" onclick="lcShowTab('history')" id="lcHistoryTab">🕒 Stage History</button>
-      <button type="button" class="lc-tab" onclick="lcShowTab('emails')" id="lcEmailsTab">✉️ Emails{% if email_history %} ({{ email_history|length }}){% endif %}</button>
-    </div>
-    <div id="lcNotesPane">
-      {% if lead.notes %}
-      <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;white-space:pre-line">{{ lead.notes }}</div>
-      {% else %}
-      <div style="font-size:12.5px;color:var(--muted)">No notes yet{% if staff_can_open('portal.sales_pipeline_edit') %} — click "✏️ Edit Lead" above to add some{% endif %}.</div>
-      {% endif %}
-    </div>
-    <div id="lcCallsPane" style="display:none">
-      <form method="POST" action="{{ url_for('portal.lead_log_call', lead_id=lead.id) }}" style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-        <div style="display:flex;flex-direction:column;gap:3px">
-          <label for="lcCallOutcome" style="font-size:11.5px;color:var(--muted);font-weight:600">How did it go?</label>
-          <select id="lcCallOutcome" name="outcome" required style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12.5px">
-            <option value="">— choose —</option>
-            {% for k, label in call_outcomes %}<option value="{{ k }}">{{ label }}</option>{% endfor %}
-          </select>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:3px">
-          <label for="lcCallMinutes" style="font-size:11.5px;color:var(--muted);font-weight:600">Minutes</label>
-          <input id="lcCallMinutes" name="minutes" type="number" min="0" max="600" placeholder="e.g. 5" style="width:90px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12.5px">
-        </div>
-        <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:200px">
-          <label for="lcCallNote" style="font-size:11.5px;color:var(--muted);font-weight:600">What was said (optional)</label>
-          <input id="lcCallNote" name="note" maxlength="2000" placeholder="e.g. Interested, wants a demo next week" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12.5px">
-        </div>
-        <button type="submit" class="lc-tab active" style="cursor:pointer">📞 Log a call</button>
-      </form>
-      {% for c in lead_calls %}
-      <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:8px">
-        <strong>{{ c.outcome_label }}</strong>{% if c.minutes %} · {{ c.minutes }} min{% endif %}
-        <span style="color:var(--muted)"> — {{ c.actor_name or 'Unknown' }}, {{ c.local_at.strftime('%d %b %Y, %H:%M') }}</span>
-        {% if c.note %}<div style="color:var(--muted);margin-top:3px;white-space:pre-line">{{ c.note }}</div>{% endif %}
-      </div>
-      {% else %}
-      <div style="font-size:12.5px;color:var(--muted)">No calls logged yet. After you call this lead, log it here so your manager can see it.</div>
-      {% endfor %}
-    </div>
-    <div id="lcHistoryPane" style="display:none">
-      {% if stage_history %}
-      {% for h in stage_history %}
-      <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:8px">
-        {# Before Qualify the first stage is the Lead itself, so it reads "New Lead",
-           not "New Opportunity": when a lead is made / moved back / reopened, and as
-           the "from" of Qualify or Not a Fit (2026-10-02). Pipeline moves keep the
-           business's own stage names. #}
-        {% set _to_lead = h.to_stage == 'new_lead' and (not h.from_stage or h.from_stage == 'not_a_fit' or (h.notes or '').startswith(('Moved back to Leads', 'Reopened'))) %}
-        {% set _from_lead = h.from_stage == 'new_lead' and h.to_stage in ('opportunity', 'not_a_fit') %}
-        <strong>{{ 'New Lead' if _to_lead else stage_labels.get(h.to_stage, h.to_stage) }}</strong>
-        {% if h.from_stage %}<span style="color:var(--muted)"> (from {{ 'New Lead' if _from_lead else stage_labels.get(h.from_stage, h.from_stage) }})</span>{% endif %}
-        <span style="color:var(--muted)"> — {{ h.changed_by or 'Unknown' }}, {{ h.created_at.strftime('%d %b %Y') if h.created_at else '' }}</span>
-        {% if h.notes %}<div style="color:var(--muted);margin-top:3px">{{ h.notes }}</div>{% endif %}
-      </div>
-      {% endfor %}
-      {% else %}
-      <div style="font-size:12.5px;color:var(--muted)">No stage moves recorded yet.</div>
-      {% endif %}
-    </div>
-    <div id="lcEmailsPane" style="display:none">
-      {% if lead.email %}
-      <form method="POST" action="{{ url_for('portal.lead_email_replied', lead_id=lead.id) }}" style="margin:0 0 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <button type="submit" class="lc-tab" style="cursor:pointer">↩️ They replied to our email</button>
-        <span style="font-size:12px;color:var(--muted)">{% if 'campaigns_email.mailbox_connect' in granted_features %}Replies show here by themselves when your Outlook is connected (Integration › Microsoft 365). Use this for replies that came another way.{% else %}Replies arrive in your own mailbox. Tick this so the team can see it here.{% endif %}</span>
-      </form>
-      {% endif %}
-      {% if 'campaigns_email.sequences_view' in granted_features and staff_can('campaigns_email.sequences_view') and lead.email %}
-      {% set _seq_can_edit = staff_can('campaigns_email.sequences_edit') %}
-      <div style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 14px">
-        <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:8px">📨 Email sequences</div>
-        {% for p in lead_sequences['in'] %}
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12.5px;padding:6px 0;border-top:1px dashed var(--line)">
-          <a href="{{ url_for('portal.email_sequence_detail', seq_id=p.sequence_id) }}" style="font-weight:600;color:var(--ink)">{{ p.seq_name }}</a>
-          <span style="color:var(--muted)">{{ p.steps_sent }} of {{ p.n_steps }} sent ·
-            {% if p.status == 'ready' %}email {{ p.steps_sent + 1 }} ready for you to send
-            {% elif p.status in ('active', 'sending') %}email {{ p.steps_sent + 1 }} due {{ p.next_due_at.strftime('%d %b') if p.next_due_at else '—' }}{% if p.seq_status != 'active' %} (sequence paused){% endif %}
-            {% elif p.status == 'finished' %}finished
-            {% else %}stopped{% if p.stop_reason %}: {{ p.stop_reason }}{% endif %}{% endif %}</span>
-          {% if p.status in ('active', 'ready') %}
-          <span style="margin-left:auto;display:flex;gap:6px">
-            {% if staff_can('campaigns_email.sequences_send') %}
-            <form method="POST" action="{{ url_for('portal.email_sequence_people_action', seq_id=p.sequence_id) }}" style="margin:0">
-              <input type="hidden" name="action" value="send"><input type="hidden" name="person_id" value="{{ p.id }}">
-              <input type="hidden" name="next" value="{{ url_for('portal.lead_detail', lead_id=lead.id) }}#emails">
-              <button type="submit" class="lc-tab" style="cursor:pointer">Send email {{ p.steps_sent + 1 }} now</button>
-            </form>
-            {% endif %}
-            {% if _seq_can_edit %}
-            <form method="POST" action="{{ url_for('portal.email_sequence_people_action', seq_id=p.sequence_id) }}" style="margin:0">
-              <input type="hidden" name="action" value="stop"><input type="hidden" name="person_id" value="{{ p.id }}">
-              <input type="hidden" name="next" value="{{ url_for('portal.lead_detail', lead_id=lead.id) }}#emails">
-              <button type="submit" class="lc-tab" style="cursor:pointer">Stop</button>
-            </form>
-            {% endif %}
-          </span>
-          {% endif %}
-        </div>
-        {% else %}
-        <div style="font-size:12.5px;color:var(--muted)">Not in any sequence.</div>
-        {% endfor %}
-        {% if _seq_can_edit and lead_sequences['choices'] %}
-        <form method="POST" action="{{ url_for('portal.lead_add_to_sequence', lead_id=lead.id) }}" style="margin:10px 0 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <select name="sequence_id" required style="max-width:320px;padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12.5px">
-            <option value="">— add to a sequence —</option>
-            {% for s in lead_sequences['choices'] %}<option value="{{ s.id }}">{{ s.name }}{% if s.status != 'active' %} (paused){% endif %}</option>{% endfor %}
-          </select>
-          <button type="submit" class="lc-tab" style="cursor:pointer">Add</button>
-        </form>
-        {% endif %}
-      </div>
-      {% endif %}
-      {% set _email_words = {'sent': 'Email sent', 'opened': 'Opened the email', 'clicked': 'Clicked a link', 'replied': 'Replied', 'unsubscribed': 'Unsubscribed from emails'} %}
-      {% for e in email_history %}
-      <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:8px">
-        <strong>{{ _email_words.get(e.kind, e.kind) }}</strong>
-        <span style="color:var(--muted)"> — {{ e.created_at.strftime('%d %b %Y, %H:%M') if e.created_at else '' }}{% if e.reply_mailbox %}, found in {{ e.reply_mailbox_owner or e.reply_mailbox }}'s Outlook{% elif e.actor %}, marked by {{ e.actor }}{% endif %}</span>
-        {% if e.campaign_name %}<div style="color:var(--muted);margin-top:3px">Campaign: {{ e.campaign_name }}{% if e.kind == 'sent' and e.detail %} · “{{ e.detail }}”{% endif %}</div>{% endif %}
-        {% if e.reply_snippet %}<div style="margin-top:8px;padding:8px 12px;border-left:3px solid #0B1D40;background:#fff;border-radius:0 8px 8px 0;white-space:pre-line;line-height:1.5">{{ e.reply_snippet }}</div>{% endif %}
-        {% if e.reply_link %}<div style="margin-top:6px"><a href="{{ e.reply_link }}" target="_blank" rel="noopener" style="font-weight:600;color:#0B1D40">Open in Outlook ↗</a>{% if e.reply_mailbox %} <span style="color:var(--muted)">({{ e.reply_mailbox }}'s mailbox)</span>{% endif %}</div>{% endif %}
-        {% if e.kind == 'clicked' and e.detail %}<div style="color:var(--muted);margin-top:3px;word-break:break-all">Link: {{ e.detail }}</div>{% endif %}
-      </div>
-      {% else %}
-      <div style="font-size:12.5px;color:var(--muted)">No campaign emails to this lead yet.</div>
-      {% endfor %}
-      {% if email_history %}<div style="font-size:11.5px;color:var(--muted);margin-top:6px">"Opened" is a guide only: some mail apps load pictures automatically, others block them.</div>{% endif %}
-    </div>
-  </div>
+
 </div>
 
 <p style="font-size:11.5px;color:var(--muted);margin:14px 4px 0;line-height:1.6;max-width:900px">Instagram/Facebook conversations and Tasks aren't built yet — shown here so you know where they'll slot in. Ambassador only applies to PhiXtra's own account.</p>
@@ -515,11 +540,11 @@
   </div>
 </div>
 
-<!-- Not a Fit modal — Lead-level outcome, distinct from the Sales Pipeline's own Lost/Dropped -->
+<!-- Not a Fit modal — "we're stopping" for any open lead or deal; Lost ("they said no") stays on the Sales Pipeline -->
 <div class="modal-over" id="notAFitModal" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal-card">
     <div class="modal-title">Mark Not a Fit — {{ lead.customer_name }}</div>
-    <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px">This closes the Lead out. It never enters the Sales Pipeline, but stays visible in Reports.</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px">This closes it, so nobody needs to call them again. It stays in Reports and you can reopen it.</div>
     <form method="POST" action="{{ url_for('portal.leads_not_a_fit', lead_id=lead.id) }}" id="notAFitForm">
       <div class="frow single">
         <label class="flbl">Reason</label>
@@ -550,5 +575,20 @@ function lcShowTab(which) {
 }
 if (location.hash === '#emails') lcShowTab('emails');
 if (location.hash === '#calls') lcShowTab('calls');
+(function () {
+  var sel = document.getElementById('lcCallOutcome'), box = document.getElementById('lcNafBox');
+  if (!sel || !box) return;
+  var tick = document.getElementById('lcNafTick'), wrap = document.getElementById('lcNafReasonWrap'),
+      btn = document.getElementById('lcCallSubmit');
+  function sync() {
+    var needed = sel.value === 'not_needed', closing = needed && tick && tick.checked;
+    box.style.display = needed ? 'block' : 'none';
+    if (wrap) wrap.style.display = closing ? 'flex' : 'none';
+    btn.textContent = closing ? '📞 Log call and mark Not a Fit' : '📞 Log a call';
+  }
+  sel.addEventListener('change', sync);
+  if (tick) tick.addEventListener('change', sync);
+  sync();
+})();
 </script>
 {% endblock %}

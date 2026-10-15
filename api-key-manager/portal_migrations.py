@@ -4326,6 +4326,18 @@ def ensure_portal_tables():
         # dashboard. Existing businesses = FALSE (they stay on naira).
         if not _column_exists(cur, "tenants", "currency_needs_choice"):
             cur.execute("ALTER TABLE tenants ADD COLUMN currency_needs_choice BOOLEAN NOT NULL DEFAULT FALSE")
+        # Website chat's own AI instruction (2026-10-12), edited on System
+        # Instruction › Website chat. Filled once, when the column is created,
+        # with exactly what each website chat used until now (the active
+        # agent's wording, else the business's own), so no answer changes.
+        # Empty = the standard PhiXtra instruction (ai_default_instruction.py).
+        if not _column_exists(cur, "tenants", "web_system_prompt"):
+            cur.execute("ALTER TABLE tenants ADD COLUMN web_system_prompt TEXT")
+            cur.execute("""
+                UPDATE tenants t SET web_system_prompt = NULLIF(COALESCE(
+                    (SELECT ta.system_prompt FROM tenant_agents ta
+                      WHERE ta.tenant_id = t.id AND ta.is_active ORDER BY ta.id LIMIT 1),
+                    t.system_prompt), '')""")
         # 'daily' = market rate fetched once a day; 'own' = rates the business typed.
         if not _column_exists(cur, "tenants", "fx_rate_mode"):
             cur.execute("ALTER TABLE tenants ADD COLUMN fx_rate_mode VARCHAR(5) NOT NULL DEFAULT 'daily'")
@@ -4374,6 +4386,25 @@ def ensure_portal_tables():
             cur.execute(f"DROP TRIGGER IF EXISTS {_tbl}_clear_currency ON {_tbl}")
             cur.execute(f"""CREATE TRIGGER {_tbl}_clear_currency BEFORE UPDATE OF {_col} ON {_tbl}
                             FOR EACH ROW EXECUTE FUNCTION clear_stamped_currency('{_col}')""")
+        # Phone notifications (2026-10-11): each person's devices that accept
+        # chat-alert notifications. team_member_id NULL = the account owner.
+        # Sent by the WhatsApp gateway (push_notify.py).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS push_devices (
+                id             BIGSERIAL PRIMARY KEY,
+                tenant_id      INTEGER     NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                team_member_id INTEGER,
+                customer_id    INTEGER,
+                endpoint       TEXT        NOT NULL UNIQUE,
+                p256dh         TEXT        NOT NULL,
+                auth           TEXT        NOT NULL,
+                device_label   VARCHAR(80),
+                created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_sent_at   TIMESTAMPTZ,
+                last_error     TEXT,
+                fail_count     INTEGER     NOT NULL DEFAULT 0
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS push_devices_tenant_idx ON push_devices (tenant_id, team_member_id)")
         # Market rates, as units of each currency per 1 US dollar (fx_rates_job.py).
         cur.execute("""
             CREATE TABLE IF NOT EXISTS fx_rates (
@@ -4391,6 +4422,38 @@ def ensure_portal_tables():
                 updated_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
                 PRIMARY KEY (tenant_id, from_currency)
             )""")
+
+        # Each person's "Per page" choice on list pages (Pipeline, Leads,
+        # Contacts), so it stays after a refresh or coming back — 2026-10-13.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_list_prefs (
+                tenant_id  INTEGER     NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                actor_key  VARCHAR(64) NOT NULL,
+                page_key   VARCHAR(40) NOT NULL,
+                per_page   VARCHAR(8)  NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (tenant_id, actor_key, page_key)
+            )""")
+
+        # Who created / deleted each WhatsApp message template from the portal
+        # (Meta keeps the template itself; this is the business's own record,
+        # so misuse can be traced — 2026-10-13).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS wa_template_submissions (
+                id                 SERIAL PRIMARY KEY,
+                tenant_id          INTEGER     NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                waba_id            VARCHAR(64) NOT NULL,
+                meta_template_id   VARCHAR(64),
+                name               VARCHAR(512) NOT NULL,
+                language           VARCHAR(16) NOT NULL,
+                category           VARCHAR(32),
+                submitted_by_key   VARCHAR(64),
+                submitted_by_label VARCHAR(200),
+                created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                deleted_by_label   VARCHAR(200),
+                deleted_at         TIMESTAMPTZ
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_wa_tpl_sub_tenant ON wa_template_submissions (tenant_id, waba_id)")
 
         # Anything a backfill above granted this run is now "seen" — never
         # re-granted on a later start (see _GRANT_ONCE_SQL).

@@ -1,4 +1,5 @@
 <div class="card" style="max-width:480px">
+{% if demo_wa_number %}
   <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:16px">
     There's now a live WhatsApp demo for School — scan the code below or open the chat directly to
     show a prospective school owner the parent AI bot in action. You can also log into the demo
@@ -23,6 +24,12 @@
     </div>
   </div>
 
+{% else %}
+  <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:16px">
+    There's no WhatsApp-chat demo number for School at the moment — instead, log into the
+    demo dashboard below to show a prospective school owner the attendance, fees, and staff screens.
+  </p>
+{% endif %}
   <div style="border-top:1px solid var(--line);padding-top:16px;margin-bottom:16px">
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px">Demo dashboard login</div>
     <div style="font-size:13px;margin-bottom:4px"><strong>Email:</strong> demo@school.phixtra.com</div>
@@ -31,9 +38,11 @@
        style="width:100%;text-align:center;display:block">Open School Demo Login →</a>
   </div>
 
+{% if demo_wa_number %}
   <div style="border-top:1px solid var(--line);padding-top:16px;font-size:12px;color:var(--muted);line-height:1.6">
     <strong>How to use it:</strong> Show this QR code to a prospective school proprietor and ask them to scan
     it — it opens a WhatsApp chat with the demo school's AI, which can answer fee and attendance questions
     live. For the full picture, also log into the demo dashboard to show attendance, fees, and staff screens.
   </div>
+{% endif %}
 </div>

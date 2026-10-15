@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% import "portal/_social_preview.html" as spv with context %}
 {% block title %}Published — Social Media — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -72,7 +73,7 @@
       <tr>
         <td>
           <div class="sl-post">
-            {% if p.image_filename %}<img class="sl-thumb" src="{{ url_for('buffer.post_image', post_id=p.id) }}" alt="" loading="lazy">{% else %}<div class="sl-thumb">Text only</div>{% endif %}
+            {{ spv.thumb(p, 'sl-thumb') }}
             <div style="min-width:0">
               <a class="sl-title" href="{{ url_for('socialcal.post_view', post_id=p.id) }}">{{ title_of(p) }}</a>
               <div class="sl-sub">
@@ -131,4 +132,5 @@ document.querySelectorAll('.js-local').forEach(function(el){
   if (!isNaN(d)) el.textContent = d.toLocaleString(undefined,{weekday:'short',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
 });
 </script>
+{{ spv.viewer() }}
 {% endblock %}

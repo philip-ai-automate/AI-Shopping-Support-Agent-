@@ -4,8 +4,9 @@
 {% block head %}
 <style>
   .report-title{font-size:22px;font-weight:800;letter-spacing:-.3px}
-  .entity-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:22px}
+  .entity-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-top:22px}
   @media(max-width:860px){ .entity-grid{grid-template-columns:1fr} }
+  @media(min-width:1100px){ .entity-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:14px} .entity-card{padding:20px} }
   .entity-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px;box-shadow:var(--shadow);
                text-decoration:none;color:var(--txt);display:flex;flex-direction:column;gap:10px;transition:.15s}
   .entity-card:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(3,12,24,.10);text-decoration:none}
@@ -29,5 +30,12 @@
     <div class="entity-open">Build a report →</div>
   </a>
   {% endfor %}
+  {# CRM (2026-10-15): the 5th option — its own table from 122 columns plus 8 ready-made sections. #}
+  <a class="entity-card" href="{{ url_for('portal.report_crm') }}">
+    <div class="entity-icon">📊</div>
+    <div class="entity-label">CRM</div>
+    <div class="entity-desc">Everything together — pick from 122 columns, plus 8 ready-made sections.</div>
+    <div class="entity-open">Build a report →</div>
+  </a>
 </div>
 {% endblock %}

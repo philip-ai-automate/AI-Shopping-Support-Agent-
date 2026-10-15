@@ -96,7 +96,7 @@
         <li><a href="#crm-b-stages">The stages</a></li>
         <li><a href="#crm-b-list">List view</a></li>
         <li><a href="#crm-b-move">Moving a deal</a></li>
-        <li><a href="#crm-b-close">Lost and Dropped</a></li>
+        <li><a href="#crm-b-close">Not a Fit and Lost</a></li>
         <li><a href="#crm-b-bulk">Many deals at once</a></li>
         <li><a href="#crm-b-board">Board view</a></li>
         <li><a href="#crm-b-score">Lead score</a></li>
@@ -141,7 +141,7 @@
 <p>This is the most important idea in the CRM:</p>
 <ul>
   <li>A <b>contact</b> is a <em>person or business</em>. They stay in your CRM for as long as you keep them.</li>
-  <li>A <b>deal</b> (the portal also calls it a <b>Sales Lead</b>) is <em>one chance to sell something</em> to that contact. It starts, moves through stages, and ends as Won, Lost or Dropped.</li>
+  <li>A <b>deal</b> (the portal also calls it a <b>Sales Lead</b>) is <em>one chance to sell something</em> to that contact. It starts, moves through stages, and ends as Won, Lost or Not a Fit.</li>
 </ul>
 <p>One contact can have several deals over time: a first order in March, a repeat order in August. Every deal is joined to its contact, so a contact's page shows all their deals, and a deal's page links back to the contact. Closing a deal never deletes the contact.</p>
 
@@ -519,7 +519,7 @@
 <tr><td>Negotiating</td><td class="wrapok">Price, quantity, terms or delivery are being discussed.</td><td class="wrapok">Notes only.</td></tr>
 <tr><td>Won</td><td class="wrapok">The deal is done. The contact automatically gets the <b>Customers</b> label.</td><td class="wrapok"><b>Won Date</b> (required) and Final Deal Value.</td></tr>
 </table></div>
-<p>A deal can also end as <b>Lost</b> or <b>Dropped</b> from any stage. See <a href="#crm-b-close">below</a>.</p>
+<p>A deal can also be closed as <b>Not a Fit</b> or <b>Lost</b>. See <a href="#crm-b-close">below</a>.</p>
 
 <h3 id="crm-b-list">List view</h3>
 <p>Press <span class="ui">List</span> or <span class="ui">Board</span> to switch views. List view is best for finding, filtering and bulk changes.</p>
@@ -547,8 +547,8 @@
 <tr><td>Move to [next stage]</td><td class="wrapok">Moves the deal one stage forward. See <a href="#crm-b-move">Moving a deal</a>.</td></tr>
 <tr><td>Edit Deal</td><td class="wrapok">Correct the deal's details without moving it.</td></tr>
 <tr><td>View History</td><td class="wrapok">Every stage change: from where, to where, who did it, when, and the note.</td></tr>
-<tr><td>Mark as Lost</td><td class="wrapok">Close the deal because the customer went elsewhere.</td></tr>
-<tr><td>Mark as Dropped</td><td class="wrapok">Close the deal because <i>you</i> decided to stop.</td></tr>
+<tr><td>Not a Fit</td><td class="wrapok">Close it because <i>you</i> are stopping: the business isn't right for you. Shown on every row.</td></tr>
+<tr><td>Mark as Lost</td><td class="wrapok">Close a Qualified deal because the customer said no. Only shown once a deal is Qualified.</td></tr>
 </table></div>
 
 <h3 id="crm-b-move">Moving a deal to the next stage</h3>
@@ -568,19 +568,19 @@
 <h4>History</h4>
 <figure><img src="/static/portal/tutorial/crm/c21_history.jpg" width="1100" height="818" alt="View History lists every stage change." loading="lazy"><figcaption>View History lists every stage change.</figcaption></figure>
 
-<h3 id="crm-b-close">Closing a deal as Lost or Dropped</h3>
+<h3 id="crm-b-close">Closing a deal: Not a Fit or Lost</h3>
 <ul>
-  <li><b>Lost</b>: you tried, but the customer chose someone else or said no. Reasons: Price too high, Customer chose a competitor, Budget unavailable, No longer interested, Other.</li>
-  <li><b>Dropped</b>: you decided not to pursue it. Reasons: No response, Invalid lead, Wrong contact, Duplicate, Other.</li>
+  <li><b>Not a Fit</b>: you're stopping, because this business isn't right for you. Works on any open lead or deal. Reasons: Not our target customer, Too small, Doesn't use or need this type of service, No budget, Wrong product or service fit, Unresponsive, Wrong contact, Invalid lead, Duplicate, Other.</li>
+  <li><b>Lost</b>: a Qualified deal where you tried, but the customer chose someone else or said no. Reasons: Price too high, Customer chose a competitor, Budget unavailable, No longer interested, Other.</li>
 </ul>
 <ol class="steps">
-  <li>Click ⋮ and choose <b>Mark as Lost</b> or <b>Mark as Dropped</b>.</li>
+  <li>Click ⋮ and choose <b>Not a Fit</b> or <b>Mark as Lost</b>.</li>
   <li>Pick a reason (required). If you choose <b>Other</b>, type a short explanation.</li>
   <li>Press <span class="ui">Confirm</span>.</li>
 </ol>
 <figure><img src="/static/portal/tutorial/crm/c20_lost.jpg" width="1100" height="818" alt="Marking a deal as Lost." loading="lazy"><figcaption>Marking a deal as Lost.</figcaption></figure>
-<p>The deal leaves the active list and moves to <b>Closed, Lost &amp; Dropped</b> at the bottom of Board view, showing the outcome, the stage it had reached, the reason and the date. Lost deals count against your Win Rate; Dropped deals don't.</p>
-<div class="box know"><b class="t">Good to know</b>A closed deal can't be reopened. If the customer comes back, create a new Sales Lead from their contact page. Their earlier history is kept.</div>
+<p>The deal leaves the active list and moves to <b>Closed: Lost &amp; Not a Fit</b> at the bottom of the page, showing the outcome, the stage it had reached, the reason and the date. Lost deals count against your Win Rate; Not a Fit deals don't.</p>
+<div class="box know"><b class="t">Good to know</b>Closed by mistake? Press <span class="ui">↩️ Reopen</span> in the Closed list or on the deal's page. A Qualified deal goes back on the Sales Pipeline at the step it had reached. Older deals closed as <b>Dropped</b> (before October 2026) still show as Dropped.</div>
 
 <h3 id="crm-b-bulk">Changing many deals at once</h3>
 <p>In List view, tick the boxes on the left (or the header box for the whole page). A bar appears above the table:</p>
@@ -635,7 +635,7 @@
 <figure><img src="/static/portal/tutorial/crm/n08_lead_contact.jpg" width="1100" height="818" alt="The top of a deal&#x27;s page. &quot;Contact&quot; links to the person." loading="lazy"><figcaption>The top of a deal's page. "Contact" links to the person.</figcaption></figure>
 <figure><img src="/static/portal/tutorial/crm/c29_deal_page.jpg" width="1100" height="1158" alt="The whole page for a deal at the Proposal Sent stage." loading="lazy"><figcaption>The whole page for a deal at the Proposal Sent stage.</figcaption></figure>
 <ul>
-  <li><b>Header</b>: customer name, product of interest, the current stage badge (or WON / LOST / DROPPED), and <span class="ui">✏️ Edit Lead</span>.</li>
+  <li><b>Header</b>: customer name, product of interest, the current stage badge (or WON / LOST / NOT A FIT), and <span class="ui">✏️ Edit Lead</span>.</li>
   <li><b>Contact</b>: the contact this deal belongs to. Click the name to open their profile. If the deal has no phone, WhatsApp number or email yet, it says "No contact yet: add a phone, WhatsApp or email", with an <span class="ui">Add details →</span> button; once you add one, the deal is joined to a contact.</li>
   <li><b>Details</b>: Contact Person, Phone, WhatsApp, Email, Source (WhatsApp, Facebook, Instagram or Manual), Campaign Source (the campaign that produced it, if any), Company, Created, Product / Service, Assigned Salesperson, Lead Score with its breakdown, and Deal Value.</li>
   <li><b>Pipeline</b>: a progress line showing stages done (✓), the current stage (●) and the outcome. <span class="ui">Open on Pipeline Board →</span> jumps to it on the board.</li>
@@ -785,7 +785,7 @@
 <tr><td></td><td>Export</td><td class="wrapok">Export CSV on All Contacts.</td></tr>
 <tr><td>Company</td><td>View / Create / Edit / Delete</td><td class="wrapok">See companies; add one; edit name, website and notes; delete a company (its people and deals are kept, just unlinked).</td></tr>
 <tr><td>Pipeline Board</td><td>View</td><td class="wrapok">See the board and deal pages.</td></tr>
-<tr><td></td><td>Edit</td><td class="wrapok">Move, edit, close (Lost/Dropped) deals; Move Stage in bulk.</td></tr>
+<tr><td></td><td>Edit</td><td class="wrapok">Move, edit, close (Not a Fit / Lost) deals; Move Stage in bulk.</td></tr>
 <tr><td></td><td>Export</td><td class="wrapok">Export CSV on the Pipeline Board.</td></tr>
 <tr><td>Segment (under CRM)</td><td>View / Create / Edit / Delete</td><td class="wrapok">CRM Segments only: see; create; rename and change members; delete.</td></tr>
 <tr><td>Segment (under WhatsApp Campaigns)</td><td>View / Create / Edit / Delete</td><td class="wrapok">WhatsApp Segments only, including Add to WhatsApp Segment on the Pipeline Board.</td></tr>
@@ -841,7 +841,7 @@
 <h4>I can't see a segment my colleague made.</h4>
 <p>Segments are private to whoever made them. Ask them, or the business owner, who can see all segments.</p>
 <h4>I can't delete a contact.</h4>
-<p>They still have an open Sales Lead. Close it (Won, Lost or Dropped) or delete it on the Leads page first.</p>
+<p>They still have an open Sales Lead. Close it (Won, Lost or Not a Fit) or delete it on the Leads page first.</p>
 <h4>I changed the contact's status to Customer but the deal still shows Negotiating.</h4>
 <p>Status and deal stage are separate on purpose. Move the deal on the Pipeline Board.</p>
 <h4>Why is my good deal showing as Cold?</h4>

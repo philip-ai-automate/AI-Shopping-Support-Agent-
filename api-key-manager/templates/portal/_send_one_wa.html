@@ -1,0 +1,318 @@
+{# Send WhatsApp message (2026-10-13) — ONE Meta-approved message to ONE saved
+   contact. Opened from Sales Pipeline (Board + List ⋮ menu: SendOne.open({leadId}))
+   and Inbox › New message (SendOne.open({})). Numbers can't be typed here:
+   the person must already be a contact with a WhatsApp number. #}
+<style>
+  .so-back { position:fixed; inset:0; background:rgba(3,12,24,.45); z-index:2000; display:flex;
+             align-items:flex-start; justify-content:center; padding:5vh 16px; overflow-y:auto }
+  .so-back[hidden], #soBack [hidden] { display:none !important }
+  .so-box { background:#fff; border-radius:16px; width:100%; max-width:560px; box-shadow:0 20px 60px rgba(3,12,24,.25);
+            font-size:13.5px; color:#111E2D }
+  .so-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px;
+             border-bottom:1px solid #e5e7eb }
+  .so-head h3 { margin:0; font-size:16px; font-weight:700 }
+  .so-x { background:none; border:0; font-size:22px; line-height:1; cursor:pointer; color:#64748b }
+  .so-body { padding:18px 22px; display:flex; flex-direction:column; gap:14px }
+  .so-lbl { font-size:12px; font-weight:600; color:#475569; margin-bottom:5px; display:block }
+  .so-in, .so-sel { width:100%; box-sizing:border-box; padding:9px 11px; border:1.5px solid #e2e8f0;
+                    border-radius:9px; font-size:13.5px; background:#fff; color:#111E2D }
+  .so-to { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px }
+  .so-to b { display:block }
+  .so-to span { color:#475569 }
+  .so-warn { background:#fef3c7; border:1px solid #fcd34d; color:#78350f; border-radius:10px; padding:10px 12px }
+  .so-warn a { color:#0B1D40; font-weight:600 }
+  .so-err { background:#fee2e2; border:1px solid #fca5a5; color:#7f1d1d; border-radius:10px; padding:10px 12px }
+  .so-ok { background:#e0e7ff; border:1px solid #a5b4fc; color:#0B1D40; border-radius:10px; padding:10px 12px }
+  .so-ok a { color:#0B1D40; font-weight:700 }
+  .so-hits { border:1px solid #e2e8f0; border-radius:9px; margin-top:6px; max-height:220px; overflow-y:auto }
+  .so-hit { padding:8px 11px; cursor:pointer; border-bottom:1px solid #f1f5f9 }
+  .so-hit:last-child { border-bottom:0 }
+  .so-hit:hover { background:#f1f5f9 }
+  .so-hit small { color:#64748b; display:block }
+  .so-preview { background:#f1f5f9; border-radius:12px; padding:12px }
+  .so-bubble { background:#fff; border-radius:10px; padding:10px 12px; white-space:pre-wrap; word-break:break-word;
+               box-shadow:0 1px 2px rgba(3,12,24,.08) }
+  .so-bubble .so-top { font-weight:600; margin-bottom:6px }
+  .so-bubble .so-foot { color:#64748b; font-size:12px; margin-top:6px }
+  .so-btns { display:flex; flex-direction:column; gap:4px; margin-top:6px }
+  .so-btns span { background:#fff; border-radius:8px; text-align:center; padding:7px; color:#0B1D40; font-weight:600;
+                  box-shadow:0 1px 2px rgba(3,12,24,.08) }
+  .so-blank { background:#fde68a; border-radius:4px; padding:0 3px }
+  .so-hint { font-size:11.5px; color:#64748b; margin-top:4px }
+  .so-foot-bar { display:flex; justify-content:flex-end; gap:10px; padding:14px 22px; border-top:1px solid #e5e7eb }
+  .so-btn { padding:9px 18px; border-radius:9px; font-size:13.5px; font-weight:600; cursor:pointer; border:1.5px solid #cbd5e1;
+            background:#fff; color:#111E2D }
+  .so-btn.primary { background:#0B1D40; border-color:#0B1D40; color:#fff }
+  .so-btn[disabled] { opacity:.5; cursor:not-allowed }
+</style>
+
+<div class="so-back" id="soBack" hidden onclick="if(event.target===this) SendOne.close()">
+  <div class="so-box" role="dialog" aria-modal="true" aria-labelledby="soTitle">
+    <div class="so-head">
+      <h3 id="soTitle">Send WhatsApp message</h3>
+      <button type="button" class="so-x" onclick="SendOne.close()" aria-label="Close">&times;</button>
+    </div>
+    <div class="so-body">
+      <div>
+        <span class="so-lbl">To</span>
+        <div id="soTo"></div>
+        <div id="soPick" hidden>
+          <input class="so-in" id="soSearch" placeholder="Search your contacts by name or WhatsApp number" autocomplete="off">
+          <div class="so-hint">Only contacts with a WhatsApp number are shown. To message someone new, add them to Contacts first.</div>
+          <div class="so-hits" id="soHits" hidden></div>
+        </div>
+      </div>
+      <div id="soFromWrap" hidden>
+        <label class="so-lbl" for="soFrom">Send from</label>
+        <select class="so-sel" id="soFrom"></select>
+      </div>
+      <div id="soTplWrap" hidden>
+        <label class="so-lbl" for="soTpl">Message <span style="font-weight:400;color:#64748b">(approved by Meta)</span></label>
+        <select class="so-sel" id="soTpl"></select>
+        <div class="so-hint" id="soTplHint"></div>
+      </div>
+      <div id="soAttachWrap" hidden>
+        <span class="so-lbl" id="soAttachLbl">Attachment</span>
+        <input type="file" id="soFile">
+        <div class="so-hint" id="soAttachHint"></div>
+      </div>
+      <div id="soHeadBlankWrap" hidden>
+        <label class="so-lbl" for="soHeadBlank">Fill in the title blank</label>
+        <input class="so-in" id="soHeadBlank">
+      </div>
+      <div id="soBlanks"></div>
+      <div id="soPrevWrap" hidden>
+        <span class="so-lbl">What they will receive</span>
+        <div class="so-preview"><div class="so-bubble" id="soPrev"></div><div class="so-btns" id="soPrevBtns"></div></div>
+      </div>
+      <div id="soMsg"></div>
+    </div>
+    <div class="so-foot-bar">
+      <button type="button" class="so-btn" onclick="SendOne.close()">Cancel</button>
+      <button type="button" class="so-btn primary" id="soSend" disabled onclick="SendOne.send()">Send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var SendOne = (function () {
+  var U = {
+    options:   '{{ url_for("portal.whatsapp_send_one_options") }}',
+    contacts:  '{{ url_for("portal.whatsapp_send_one_contacts") }}',
+    templates: '{{ url_for("portal.whatsapp_send_one_templates") }}',
+    upload:    '{{ url_for("portal.whatsapp_send_one_upload") }}',
+    send:      '{{ url_for("portal.whatsapp_send_one") }}'
+  };
+  var S = {};
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function msg(kind, text, link, linkText) {
+    var box = $('soMsg'); box.innerHTML = '';
+    if (!text) return;
+    var d = el('div', kind, text);
+    if (link) { d.appendChild(document.createTextNode(' ')); var a = el('a', '', linkText || 'Open'); a.href = link; d.appendChild(a); }
+    box.appendChild(d);
+  }
+  function csrf(fd) {
+    var t = document.querySelector('meta[name="csrf-token"]') || document.querySelector('input[name="csrf_token"]');
+    if (t) fd.append('csrf_token', t.content || t.value);
+  }
+
+  function reset() {
+    S = { contact: null, leadId: null, tpl: null, templates: [], headerUrl: '', headerFile: '', sending: false };
+    ['soPick', 'soFromWrap', 'soTplWrap', 'soAttachWrap', 'soHeadBlankWrap', 'soPrevWrap', 'soHits'].forEach(function (i) { $(i).hidden = true; });
+    $('soTo').innerHTML = ''; $('soBlanks').innerHTML = ''; $('soSearch').value = ''; $('soFile').value = '';
+    msg(); $('soSend').disabled = true; $('soSend').textContent = 'Send';
+  }
+
+  function open(opts) {
+    reset();
+    S.leadId = opts && opts.leadId ? opts.leadId : null;
+    $('soBack').hidden = false;
+    document.body.classList.add('sh-hide');
+    var q = S.leadId ? ('?lead_id=' + S.leadId) : (opts && opts.contactId ? '?contact_id=' + opts.contactId : '');
+    $('soTo').textContent = 'Loading…';
+    fetch(U.options + q, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.error) { $('soTo').innerHTML = ''; msg('so-err', d.error); return; }
+      if (d.contact) showContact(d.contact); else { $('soTo').innerHTML = ''; $('soPick').hidden = false; $('soSearch').focus(); }
+      if (d.contact && d.contact.problem) return;  // fix the contact first — nothing else to choose yet
+      if (d.no_numbers) { msg('so-warn', d.no_numbers); return; }
+      var sel = $('soFrom'); sel.innerHTML = '';
+      d.numbers.forEach(function (n) { var o = el('option', '', n.label); o.value = n.id; sel.appendChild(o); });
+      $('soFromWrap').hidden = d.numbers.length < 2;
+      loadTemplates();
+    }).catch(function () { msg('so-err', 'Could not open the form. Check your connection and try again.'); });
+  }
+
+  function close() { $('soBack').hidden = true; document.body.classList.remove('sh-hide'); }
+
+  function showContact(c) {
+    var to = $('soTo'); to.innerHTML = '';
+    if (c.problem) {
+      S.contact = null;
+      var w = el('div', 'so-warn');
+      if (c.name) { var b = el('b', '', c.name); b.style.display = 'block'; w.appendChild(b); }
+      w.appendChild(document.createTextNode(c.problem + ' '));
+      if (c.fix_url) { var a = el('a', '', 'Open the contact'); a.href = c.fix_url; w.appendChild(a); }
+      if (!S.leadId) {
+        w.appendChild(document.createTextNode(' · '));
+        var ch = el('a', '', 'Choose someone else'); ch.href = '#';
+        ch.onclick = function (e) { e.preventDefault(); $('soTo').innerHTML = ''; $('soPick').hidden = false; $('soSearch').focus(); };
+        w.appendChild(ch);
+      }
+      to.appendChild(w);
+    } else {
+      S.contact = c;
+      var box = el('div', 'so-to');
+      box.appendChild(el('b', '', c.name || c.whatsapp_display));
+      box.appendChild(el('span', '', 'WhatsApp ' + c.whatsapp_display));
+      if (!S.leadId) {  // Inbox: let them pick someone else
+        var ch = el('a', '', 'Change'); ch.href = '#'; ch.style.cssText = 'float:right;color:#0B1D40;font-weight:600';
+        ch.onclick = function (e) { e.preventDefault(); S.contact = null; $('soTo').innerHTML = ''; $('soPick').hidden = false; $('soSearch').focus(); update(); };
+        box.insertBefore(ch, box.firstChild);
+      }
+      to.appendChild(box);
+    }
+    update();
+  }
+
+  var searchTimer = null;
+  function search() {
+    clearTimeout(searchTimer);
+    var q = $('soSearch').value.trim(), hits = $('soHits');
+    if (q.length < 2) { hits.hidden = true; return; }
+    searchTimer = setTimeout(function () {
+      fetch(U.contacts + '?q=' + encodeURIComponent(q), { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (rows) {
+        hits.innerHTML = '';
+        if (!rows.length) { hits.appendChild(el('div', 'so-hit', 'No contact with a WhatsApp number matches. Add them to Contacts first.')); }
+        rows.forEach(function (c) {
+          var h = el('div', 'so-hit', c.name || c.whatsapp);
+          h.appendChild(el('small', '', (c.person ? c.person + ' · ' : '') + 'WhatsApp ' + c.whatsapp));
+          h.onclick = function () {
+            $('soPick').hidden = true; $('soTo').textContent = 'Checking…';
+            fetch(U.options + '?contact_id=' + c.id, { credentials: 'same-origin' }).then(function (r) { return r.json(); })
+              .then(function (d) { if (d.contact) showContact(d.contact); });
+          };
+          hits.appendChild(h);
+        });
+        hits.hidden = false;
+      });
+    }, 250);
+  }
+
+  function loadTemplates() {
+    var waId = $('soFrom').value, sel = $('soTpl');
+    $('soTplWrap').hidden = false;
+    sel.innerHTML = '<option value="">Loading approved messages…</option>';
+    fetch(U.templates + '?wa_id=' + encodeURIComponent(waId), { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.error) { sel.innerHTML = '<option value="">Could not load messages</option>'; msg('so-err', d.error); return; }
+      S.templates = d.templates || [];
+      sel.innerHTML = '';
+      sel.appendChild(el('option', '', S.templates.length ? '— choose a message —' : 'No approved messages on this number yet'));
+      sel.firstChild.value = '';
+      S.templates.forEach(function (t, i) {
+        var o = el('option', '', t.name.replace(/_/g, ' ') + (t.unsupported ? '  (can’t be sent from here)' : ''));
+        o.value = i; if (t.unsupported) o.disabled = true; sel.appendChild(o);
+      });
+      $('soTplHint').textContent = S.templates.length ? '' : 'Create a message and wait for Meta to approve it before sending.';
+      chooseTemplate();
+    }).catch(function () { sel.innerHTML = '<option value="">Could not load messages</option>'; });
+  }
+
+  function chooseTemplate() {
+    var i = $('soTpl').value;
+    S.tpl = i === '' ? null : S.templates[+i];
+    S.headerUrl = ''; S.headerFile = ''; $('soFile').value = ''; $('soBlanks').innerHTML = '';
+    $('soAttachWrap').hidden = true; $('soHeadBlankWrap').hidden = true; $('soHeadBlank').value = '';
+    var t = S.tpl;
+    if (t) {
+      var f = t.header_format;
+      if (f === 'IMAGE' || f === 'VIDEO' || f === 'DOCUMENT') {
+        $('soAttachWrap').hidden = false;
+        $('soAttachLbl').textContent = f === 'DOCUMENT' ? 'Attach the PDF' : (f === 'VIDEO' ? 'Attach the video' : 'Attach the picture');
+        $('soFile').accept = f === 'DOCUMENT' ? 'application/pdf' : (f === 'VIDEO' ? 'video/mp4' : 'image/jpeg,image/png');
+        $('soAttachHint').textContent = f === 'DOCUMENT' ? 'PDF · max 100MB · they will see the file’s own name'
+          : (f === 'VIDEO' ? 'MP4 · max 16MB' : 'JPG or PNG · max 5MB');
+      }
+      if (f === 'TEXT' && t.header_blank) $('soHeadBlankWrap').hidden = false;
+      for (var n = 1; n <= t.blanks; n++) {
+        var w = el('div'); var l = el('label', 'so-lbl', 'Blank ' + n); l.htmlFor = 'soBlank' + n;
+        var inp = el('input', 'so-in'); inp.id = 'soBlank' + n; inp.oninput = update;
+        if (n === 1 && S.contact) inp.value = S.contact.name || '';
+        w.appendChild(l); w.appendChild(inp); $('soBlanks').appendChild(w);
+      }
+    }
+    update();
+  }
+
+  function update() {
+    var t = S.tpl, prev = $('soPrev'), btns = $('soPrevBtns');
+    $('soPrevWrap').hidden = !t;
+    if (t) {
+      prev.innerHTML = ''; btns.innerHTML = '';
+      var top = '';
+      if (t.header_format === 'DOCUMENT') top = '📄 ' + (S.headerFile || 'PDF attachment');
+      else if (t.header_format === 'IMAGE') top = '📷 ' + (S.headerFile || 'Picture');
+      else if (t.header_format === 'VIDEO') top = '🎬 ' + (S.headerFile || 'Video');
+      else if (t.header_format === 'TEXT') top = t.header_text.replace(/\{\{\s*1\s*\}\}/, $('soHeadBlank').value || '[blank]');
+      if (top) prev.appendChild(el('div', 'so-top', top));
+      var parts = t.body.split(/(\{\{\s*\d+\s*\}\})/);
+      parts.forEach(function (p) {
+        var m = p.match(/^\{\{\s*(\d+)\s*\}\}$/);
+        if (m) { var v = ($('soBlank' + m[1]) || {}).value; prev.appendChild(el('span', v ? '' : 'so-blank', v || '[blank ' + m[1] + ']')); }
+        else prev.appendChild(document.createTextNode(p));
+      });
+      if (t.footer) prev.appendChild(el('div', 'so-foot', t.footer));
+      t.buttons.forEach(function (b) { btns.appendChild(el('span', '', b)); });
+    }
+    var ready = !!(S.contact && t && !S.sending);
+    if (ready && t.header_format && ['IMAGE', 'VIDEO', 'DOCUMENT'].indexOf(t.header_format) >= 0 && !S.headerUrl) ready = false;
+    if (ready && t.header_blank && !$('soHeadBlank').value.trim()) ready = false;
+    for (var n = 1; ready && t && n <= t.blanks; n++) if (!(($('soBlank' + n) || {}).value || '').trim()) ready = false;
+    $('soSend').disabled = !ready;
+  }
+
+  function upload() {
+    var file = $('soFile').files[0]; if (!file) return;
+    S.headerUrl = ''; S.headerFile = ''; update();
+    $('soAttachHint').textContent = 'Uploading ' + file.name + '…';
+    var fd = new FormData(); fd.append('file', file); csrf(fd);
+    fetch(U.upload, { method: 'POST', body: fd, credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.url) { S.headerUrl = d.url; S.headerFile = d.filename || file.name; $('soAttachHint').textContent = 'Attached: ' + S.headerFile; }
+      else { $('soAttachHint').textContent = d.error || 'Upload failed.'; $('soFile').value = ''; }
+      update();
+    }).catch(function () { $('soAttachHint').textContent = 'Upload failed. Try again.'; });
+  }
+
+  function send() {
+    var t = S.tpl; if (!t || !S.contact) return;
+    S.sending = true; update(); $('soSend').textContent = 'Sending…'; msg();
+    var fd = new FormData();
+    if (S.leadId) fd.append('lead_id', S.leadId); else fd.append('contact_id', S.contact.contact_id);
+    fd.append('wa_tenant_id', $('soFrom').value);
+    fd.append('template_name', t.name); fd.append('language_code', t.language);
+    fd.append('header_url', S.headerUrl); fd.append('header_filename', S.headerFile);
+    fd.append('header_text', $('soHeadBlank').value);
+    for (var n = 1; n <= t.blanks; n++) fd.append('blank_' + n, ($('soBlank' + n) || {}).value || '');
+    csrf(fd);
+    fetch(U.send, { method: 'POST', body: fd, credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
+      S.sending = false; $('soSend').textContent = 'Send';
+      if (d.ok) {
+        msg('so-ok', d.message + ' Their reply will come to the Inbox.', d.inbox_url, 'Open the conversation');
+        $('soSend').disabled = true;
+        S.contact = null; // one message per opening — no accidental double send
+      } else { msg('so-err', d.error || 'Not sent.', d.fix_url, 'Open the contact'); update(); }
+    }).catch(function () { S.sending = false; $('soSend').textContent = 'Send'; msg('so-err', 'Not sent — check your connection and try again.'); update(); });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    $('soSearch').addEventListener('input', search);
+    $('soFrom').addEventListener('change', loadTemplates);
+    $('soTpl').addEventListener('change', chooseTemplate);
+    $('soFile').addEventListener('change', upload);
+    $('soHeadBlank').addEventListener('input', update);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('soBack').hidden) close(); });
+  });
+  return { open: open, close: close, send: send };
+})();
+</script>

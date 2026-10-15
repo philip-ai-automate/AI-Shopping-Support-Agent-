@@ -1,4 +1,4 @@
-{# Email Campaigns How-To Guide (2026-10-08; Replies from Outlook added 2026-10-09). Ids are prefixed eml-, pictures live in
+{# Email Campaigns How-To Guide (2026-10-08; Replies from Outlook added 2026-10-09; connect-before-start, opened/clicked/replied on sequences 2026-10-12). Ids are prefixed eml-, pictures live in
    static/portal/tutorial/email/ (taken on the training account). Shown to every team member;
    the PhiXtra outreach appendix only shows for PhiXtra's own account (show_phixtra_appendix). #}
 {% macro shot(name, alt, caption) -%}
@@ -95,7 +95,7 @@
   <li><a href="#eml-ai">3. Write with AI</a></li>
   <li><a href="#eml-saved">4. Saved Emails</a><ol><li><a href="#eml-saved-find">Finding an email</a></li><li><a href="#eml-saved-use">Use ▾</a></li><li><a href="#eml-saved-staff">What staff see</a></li></ol></li>
   <li><a href="#eml-camp">5. One-off campaigns</a><ol><li><a href="#eml-camp-new">New Campaign, step by step</a></li><li><a href="#eml-camp-report">Campaign reports</a></li></ol></li>
-  <li><a href="#eml-seq">6. Sequences</a><ol><li><a href="#eml-seq-build">Build a sequence</a></li><li><a href="#eml-seq-add">Add people</a></li><li><a href="#eml-seq-start">Start and pause</a></li><li><a href="#eml-seq-people">The people list</a></li><li><a href="#eml-seq-stop">Why someone stopped</a></li><li><a href="#eml-seq-change">Changing a running sequence</a></li></ol></li>
+  <li><a href="#eml-seq">6. Sequences</a><ol><li><a href="#eml-seq-build">Build a sequence</a></li><li><a href="#eml-seq-add">Add people</a></li><li><a href="#eml-seq-before">Before you start: connect the reply mailbox</a></li><li><a href="#eml-seq-start">Start and pause</a></li><li><a href="#eml-seq-people">The people list</a></li><li><a href="#eml-seq-track">Who opened, clicked and replied</a></li><li><a href="#eml-seq-stop">Why someone stopped</a></li><li><a href="#eml-seq-change">Changing a running sequence</a></li></ol></li>
   <li><a href="#eml-lead">7. On each lead</a></li>
   <li><a href="#eml-outlook">8. Replies from Outlook</a><ol><li><a href="#eml-outlook-connect">Connect your mailbox</a></li><li><a href="#eml-outlook-reply">What happens to a reply</a></li><li><a href="#eml-outlook-which">Which mailbox to connect</a></li><li><a href="#eml-outlook-status">Needs reconnecting, IT approval, disconnect</a></li></ol></li>
   <li><a href="#eml-routine">9. A sales executive's routine</a></li>
@@ -334,7 +334,8 @@
   <h2><span class="num">6</span>Sequences</h2>
   <p class="where">Email Campaigns › Sequences</p>
   <p>A sequence is a set of emails sent a few days apart, such as a first email, then a follow-up three days later, then a final note a week after that. Each person moves through it on their own timetable, and <b>stops getting emails as soon as they reply, unsubscribe, or their lead is closed</b>.</p>
-  {{ shot('e20_sequences', 'The Sequences list', 'Sequences: each one with its emails, whether it is running, and how many people are at each stage.') }}
+  {{ shot('e20_sequences', 'The Sequences list', 'Sequences: each one with its emails, whether it is running, how many people are at each stage, and how many opened, clicked and replied.') }}
+  <p>The <b>Opened</b>, <b>Clicked</b> and <b>Replied</b> numbers on this list count people, not emails. Click a number to open that sequence showing only those people.</p>
 
   <h3 id="eml-seq-build">Build a sequence</h3>
   <ol class="steps">
@@ -342,7 +343,7 @@
     <li>Under <b>The emails</b>, pick each email from your saved emails, then set:
       <ul><li><b>Days to wait:</b> Email 1 counts from when the person is added (0 = straight away); later emails count from the email before.</li>
           <li><b>How it's sent:</b> <b>Send automatically</b> goes out by itself when it's due. <b>I'll send it myself</b> waits in "Ready to send" for you to press Send, which suits emails you want to check or personalise first.</li></ul></li>
-    <li>Use <span class="ui">+ Add an email</span> for more and ✕ to remove one. Check <b>Replies go to</b>, then press <span class="ui">Save</span>.</li>
+    <li>Use <span class="ui">+ Add an email</span> for more and ✕ to remove one. Check <b>Replies go to</b>, then press <span class="ui">Save</span>. Whoever reads that mailbox must connect it before you start (see <a href="#eml-seq-before">Before you start</a>).</li>
   </ol>
   {{ shot('e21_seq_emails', 'The emails of a sequence', 'Four emails: three automatic, one sent by hand. Under each, its results so far.') }}
   <p>Once emails have gone out, each one shows <b>Sent · Opened · Clicked · Replied</b> and a <b>See who</b> link to its report.</p>
@@ -357,6 +358,18 @@
     <tr><td>From a lead's page</td><td class="wrapok">On any lead, ✉️ Emails › <b>add to a sequence</b>. Best for one lead at a time.</td></tr>
   </table></div>
   <div class="box know"><b class="t">Skipped automatically</b><p>People who unsubscribed, people already in this sequence, and closed leads (Won, Lost, Dropped or Not a fit). The message after adding says how many were added and how many were skipped and why.</p></div>
+
+  <h3 id="eml-seq-before">Before you start: connect the reply mailbox</h3>
+  <div class="box careful"><b class="t">Do this before you press Start</b><p>PhiXtra can only see replies that land in a <b>connected</b> Outlook mailbox. If the <b>Replies go to</b> mailbox isn't connected:</p>
+    <ul><li>replies never show on the sequence or on the lead, and <b>Replied stays at 0</b>;</li>
+        <li>people who reply <b>keep getting the next automatic email</b>, because PhiXtra doesn't know they answered.</li></ul></div>
+  <ol class="steps">
+    <li>Look at the sequence's <b>Replies go to</b> address, for example outreach@yourcompany.com.</li>
+    <li>The person who reads that mailbox opens <b>Integration</b> in the side menu › <b>Microsoft 365 (Outlook)</b> › <span class="ui">Connect my mailbox</span>, and signs in <b>with that same address</b>. The steps are in <a href="#eml-outlook-connect">Connect your mailbox</a>.</li>
+    <li>Come back to the sequence. The orange box at the top is gone once it's connected. Then press <span class="ui">▶ Start sequence</span>.</li>
+  </ol>
+  <p>The orange box looks like this: <i>"Replies to this sequence go to … but that mailbox isn't connected to the portal, so replies won't show here and people who reply keep getting the next email."</i> If you can connect it, it has a <span class="ui">Connect it now →</span> link. If you can't, ask your IT admin or the business owner.</p>
+  <div class="box know"><b class="t">Already started without connecting?</b><p>Connect it now. On the first check PhiXtra looks back <b>14 days</b>, so recent replies are picked up and those people stop getting emails. For anything older, press <b>They replied</b> on the lead.</p></div>
 
   <h3 id="eml-seq-start">Start and pause</h3>
   {{ shot('e23b_seq_top', 'Sequence top bar', 'Running shows in green. Pause and Delete sit at the top right.') }}
@@ -375,11 +388,21 @@
     <div class="s-stop"><b>Stopped</b>No more emails. The reason is shown under the label.</div>
   </div>
   <ul>
-    <li>Filter with <b>All, Waiting, Ready to send, Finished, Stopped</b>, or search by name or email.</li>
+    <li>Filter with <b>All, Waiting, Ready to send, Finished, Stopped</b>, or <b>👁 Opened, 🔗 Clicked, ↩ Replied</b>, or search by name or email.</li>
+    <li>The list shows 100 people per page. Use the page links at the bottom for more ("Showing 1–100 of 444").</li>
     <li>On a row: <span class="ui">Send email 2 now</span> sends their next email straight away, even if it isn't due yet. <span class="ui">Stop</span> ends it for them, and <span class="ui">Resume</span> restarts it.</li>
     <li>Tick several rows to <b>Send next email now</b>, <b>Stop</b>, <b>Resume</b> or <b>Remove</b> them together.</li>
     <li><span class="ui">✉️ Send to everyone ready (N)</span> sends all the "Ready to send" emails in one go.</li>
     <li>Team members see the people whose leads are theirs, plus people added by email address.</li>
+  </ul>
+
+  <h3 id="eml-seq-track">Who opened, clicked and replied</h3>
+  {{ shot('e23c_seq_track', 'Opened, clicked and replied on the people list', 'The 👁 Opened, 🔗 Clicked and ↩ Replied filters, and the column that shows it for each person. Names in this picture are examples.') }}
+  <ul>
+    <li>The <b>Opened / Clicked / Replied</b> column shows, for each person, when they last opened, how many times, and which emails (for example "Email 1, 2"). If nothing has happened yet it says <b>Not opened yet</b>.</li>
+    <li>Press <span class="ui">👁 Opened</span>, <span class="ui">🔗 Clicked</span> or <span class="ui">↩ Replied</span> to see only those people. Clicked people are the warmest: follow them up by phone or WhatsApp the same day.</li>
+    <li><b>Replied</b> only counts replies found in a connected mailbox, plus anyone marked <b>They replied</b>. If it stays at 0, check the reply mailbox is connected (see <a href="#eml-seq-before">Before you start</a>).</li>
+    <li>Some email apps don't report opens, so the real number of opens can be higher than shown.</li>
   </ul>
 
   <h3 id="eml-seq-stop">Why someone stopped</h3>
@@ -492,7 +515,7 @@
   </ul>
   <h4>Every week</h4>
   <ul class="check">
-    <li>On each sequence, compare Opened, Clicked and Replied for each email. An email with far fewer replies than the others is the one to improve.</li>
+    <li>On the Sequences list, compare Opened, Clicked and Replied for each sequence. On each sequence, compare them for each email. An email with far fewer replies than the others is the one to improve.</li>
     <li>Improve it: Saved Emails › Use ▾ › Edit (your own) or Make a copy (someone else's), and try a new subject.</li>
     <li>Follow up by phone or WhatsApp with leads that clicked but didn't reply. Their history shows the link they pressed.</li>
   </ul>
@@ -515,6 +538,8 @@
     <tr><td>An email I need isn't in Saved Emails</td><td class="wrapok">It's someone else's and not shared with you.</td><td class="wrapok">Ask the owner or IT to Share it with you.</td></tr>
     <tr><td>No ✨ Write with AI box</td><td class="wrapok">Your role or plan doesn't include it.</td><td class="wrapok">Ask your manager.</td></tr>
     <tr><td>A reply didn't show on the lead</td><td class="wrapok">It went to a mailbox that isn't connected; they wrote from a different address than the one you emailed; the email wasn't sent through PhiXtra; or it came more than 60 days after your email.</td><td class="wrapok">Check the Replies go to address and which mailbox is connected. Press <b>They replied</b> on the lead for that one.</td></tr>
+    <tr><td>Orange box on a sequence: "that mailbox isn't connected to the portal"</td><td class="wrapok">Nobody has connected the sequence's Replies go to mailbox.</td><td class="wrapok">The person who reads that mailbox connects it (<a href="#eml-seq-before">Before you start</a>). Ask IT or the owner if you can't.</td></tr>
+    <tr><td>Replied stays at 0 while people are opening</td><td class="wrapok">Usually the Replies go to mailbox isn't connected, so replies can't be seen.</td><td class="wrapok">Connect it. Replies from the last 14 days are picked up on the first check.</td></tr>
     <tr><td>"Needs reconnecting" on Microsoft 365</td><td class="wrapok">Microsoft stopped accepting the sign-in (often after a password change).</td><td class="wrapok">Press Reconnect and sign in again.</td></tr>
     <tr><td>"Your organisation's IT admin needs to approve PhiXtra first"</td><td class="wrapok">Your company only lets IT approve new apps.</td><td class="wrapok">Send IT the link shown on the page, then Connect again.</td></tr>
     <tr><td>No Integration in my menu</td><td class="wrapok">Your role lacks the "Outlook mailbox (replies)" tick.</td><td class="wrapok">Ask your manager or IT.</td></tr>
@@ -574,6 +599,7 @@
   </table></div>
   <h3>Set up the four sequences (once)</h3>
   <ol class="steps">
+    <li><b>First, connect outreach@phixtra.com:</b> Integration › Microsoft 365 (Outlook) › <span class="ui">Connect my mailbox</span>, signing in as outreach@phixtra.com. Check it shows <b>Connected</b>. Without this, replies are never seen and people who reply keep getting emails.</li>
     <li>Sequences › name it, for example <b>Retail outreach</b> › <span class="ui">+ New sequence</span>.</li>
     <li>Pick Retail 1, 2, 3 and 4 as Emails 1 to 4. A starting rhythm to try is 0, 3, 4 and 7 days. Set any email you want to read before it goes, such as Email 3, to <b>I'll send it myself</b>.</li>
     <li>Replies go to <b>outreach@phixtra.com</b>. Press Save.</li>
@@ -583,7 +609,7 @@
   <ol class="steps">
     <li>On the sequence, <b>From your leads</b> › Business category (for example Retail) › <span class="ui">Add these leads</span>. Imported lead lists bring the category with them.</li>
     <li>Read the added / skipped message.</li>
-    <li>Press <span class="ui">▶ Start sequence</span>.</li>
+    <li>Check there's <b>no orange "isn't connected" box</b> at the top of the sequence, then press <span class="ui">▶ Start sequence</span>.</li>
   </ol>
   <div class="flow" role="img" aria-label="PhiXtra outreach flow">
     <div class="n hi"><b>Lagos list import</b>Leads with Business category</div><i>→</i>

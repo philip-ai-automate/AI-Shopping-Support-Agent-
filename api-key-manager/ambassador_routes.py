@@ -2218,8 +2218,10 @@ GS_TOPICS = [
 ]
 
 DEMO_WA_NUMBER        = "447778391737"  # profitbuyz.com WhatsApp demo account (Portal)
-DEMO_WA_NUMBER_SCHOOL = "447552468307"  # demo@school.phixtra.com WhatsApp demo account (School)
-DEMO_WA_NUMBERS = {"portal": DEMO_WA_NUMBER, "school": DEMO_WA_NUMBER_SCHOOL}
+# School has no WhatsApp demo number for now (like Estate): +44 7552 468307 was
+# disconnected from the School demo on 2026-10-01 and became PhiXtra's Sales
+# number on 2026-10-13 — never advertise it to prospects as a demo again.
+DEMO_WA_NUMBERS = {"portal": DEMO_WA_NUMBER}
 
 def _gs_resolve_product(amb: dict) -> tuple[str, list[str]]:
     """Resolve the active product list and selected product for an ambassador's
@@ -2339,7 +2341,9 @@ def demo_qr_image():
     import qrcode
     from flask import send_file
     product = (request.args.get("product") or "portal").strip().lower()
-    wa_number = DEMO_WA_NUMBERS.get(product, DEMO_WA_NUMBER)
+    wa_number = DEMO_WA_NUMBERS.get(product)
+    if not wa_number:  # no demo number for this product — never fall back to another product's
+        return ("", 404)
     wa_url = f"https://wa.me/{wa_number}"
     qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M,
                        box_size=10, border=4)

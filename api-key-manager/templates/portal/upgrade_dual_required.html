@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}WhatsApp needs Dual Agent — PhiXtra Portal{% endblock %}
+{% block title %}{{ 'Website chat' if missing_channel == 'web' else 'WhatsApp' }} needs Dual Agent — PhiXtra Portal{% endblock %}
 
 {% block content %}
 <style>
@@ -48,12 +48,21 @@
   <div class="upgrade-card">
 
     <div class="upgrade-icon">🔒</div>
+    {% if missing_channel == 'web' %}
+    <div class="upgrade-title">Website chat is part of the Dual Agent plan</div>
+    <div class="upgrade-sub">
+      Your plan runs the AI Sales Agent on WhatsApp.
+      Upgrade to a Dual Agent plan to add the AI chat box to your website and unlock <strong>{{ feature_label }}</strong>.
+      The same AI then answers customers on WhatsApp and on your website, from one account.
+    </div>
+    {% else %}
     <div class="upgrade-title">WhatsApp is part of the Dual Agent plan</div>
     <div class="upgrade-sub">
       Your plan runs the AI Sales Agent on your website.
       Upgrade to a Dual Agent plan to add WhatsApp{% if feature_label and feature_label != 'WhatsApp' %} and unlock <strong>{{ feature_label }}</strong>{% endif %}.
       The same AI then answers customers on your website and on WhatsApp, from one account.
     </div>
+    {% endif %}
 
     {% if dual_plan %}
     <div class="dual-price">

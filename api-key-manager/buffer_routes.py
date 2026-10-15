@@ -978,6 +978,74 @@ def post_image(post_id: int):
     return send_from_directory(UPLOAD_FOLDER, post["image_filename"])
 
 
+NET_NAMES = {"facebook": "Facebook", "instagram": "Instagram", "linkedin": "LinkedIn", "twitter": "X",
+             "tiktok": "TikTok", "pinterest": "Pinterest", "threads": "Threads", "youtube": "YouTube",
+             "googlebusiness": "Google Business", "mastodon": "Mastodon", "bluesky": "Bluesky"}
+
+
+def _preview_url(post_id, name):
+    return url_for("buffer.post_file", post_id=post_id, name=name)
+
+
+@buffer_bp.app_template_global("social_preview")
+def social_preview(post):
+    """Everything the post will show, for the full-size viewer: a list of
+    groups, each {label, items:[{kind, src, poster}]}. One group when every
+    network gets the same pictures; otherwise one per set of networks."""
+    media = post.get("media") or {}
+    groups = []
+    if media.get("_default") or any(k != "_default" for k in media):
+        sets = {}
+        for net, lst in media.items():
+            if net == "_default" or not lst:
+                continue
+            key = tuple(m["file"] for m in lst)
+            sets.setdefault(key, {"nets": [], "lst": lst})["nets"].append(NET_NAMES.get(net, net.capitalize()))
+        if not sets and media.get("_default"):
+            sets[tuple(m["file"] for m in media["_default"])] = {"nets": [], "lst": media["_default"]}
+        for g in sets.values():
+            items = [{"kind": m["kind"], "src": _preview_url(post["id"], m["file"]),
+                      "poster": _preview_url(post["id"], m["thumb"]) if m.get("thumb") else None}
+                     for m in g["lst"]]
+            groups.append({"nets": g["nets"], "items": items})
+        if len(groups) == 1:
+            groups[0]["nets"] = []
+    elif post.get("image_filename"):
+        main = {"kind": "image", "src": _preview_url(post["id"], post["image_filename"]), "poster": None}
+        if post.get("wide_image_filename"):
+            groups.append({"nets": [], "items": [main], "label": "Main picture (all other accounts)"})
+            groups.append({"nets": [], "items": [
+                {"kind": "image", "src": _preview_url(post["id"], post["wide_image_filename"]), "poster": None}],
+                "label": "Wide version (Facebook, LinkedIn, X)"})
+        else:
+            groups.append({"nets": [], "items": [main]})
+    return groups
+
+
+@buffer_bp.route("/social-posts/<int:post_id>/file/<name>", methods=["GET"])
+@team_feature("social.posts_view")
+def post_file(post_id: int, name: str):
+    """Logged-in full-size picture / video for the preview viewer. Only files
+    that belong to this business's post are served."""
+    r = _require_login() or _require_team_permission("social.posts_view")
+    if r:
+        return r
+    r, customer = _gate("social.posts_view", "Social Media")
+    if r:
+        return r
+    post = _get_post(int(customer["tenant_id"]), post_id)
+    if not post:
+        abort(404)
+    files = {post.get("image_filename"), post.get("wide_image_filename")}
+    for lst in (post.get("media") or {}).values():
+        for m in lst:
+            files.add(m.get("file")); files.add(m.get("thumb"))
+    files.discard(None)
+    if name not in files:
+        abort(404)
+    return send_from_directory(UPLOAD_FOLDER, name, conditional=True)
+
+
 @buffer_bp.route("/social-posts/public/<token>.<ext>", methods=["GET"])
 @public_route
 def public_image(token: str, ext: str):

@@ -1,0 +1,177 @@
+{# AI Instructions How-To Guide (2026-10-12): the WhatsApp and Website AI Instruction
+   pages. ids are prefixed aig-, CSS scoped .aig, pictures in static/portal/tutorial/ai/
+   (phone numbers in them are examples). #}
+<style>
+.aig{
+  --g-ink:#030C18; --g-navy:#0E2240; --g-gold:#B8860B; --g-gold-soft:#FBF3DE;
+  --g-card:#FFFFFF; --g-txt:#1A2433; --g-muted:#5B6678; --g-line:#DDE3EB;
+  --g-chip:#EEF2F7; --g-good:#0F9F5F; --g-good-soft:#E7F7EF; --g-bad:#D92D20; --g-bad-soft:#FDECEA;
+  --g-link:#1D4ED8; --g-shadow:0 1px 2px rgba(3,12,24,.06);
+  color:var(--g-txt); font-size:15px; line-height:1.65;
+}
+.aig *{box-sizing:border-box}
+.aig a{color:var(--g-link)}
+.aig .g-head{margin:0 0 18px}
+.aig .g-lede{max-width:72ch;color:var(--g-muted);margin:0 0 6px;font-size:14px}
+.aig .g-meta{font-size:12px;color:var(--g-muted)}
+.aig nav.toc{background:var(--g-card);border:1px solid var(--g-line);border-radius:12px;padding:6px 14px;margin:0 0 26px;font-size:13.5px}
+.aig nav.toc summary{cursor:pointer;font-weight:750;color:var(--g-ink);padding:8px 0;list-style-position:inside}
+.aig nav.toc ol{list-style:none;margin:0;padding:0 0 8px;columns:2 240px;column-gap:18px}
+.aig nav.toc li{break-inside:avoid;margin:0}
+.aig nav.toc a{display:block;padding:4px 8px;border-radius:6px;color:var(--g-txt);text-decoration:none}
+.aig nav.toc a:hover{background:var(--g-chip)}
+.aig section.part{padding-top:8px;margin-bottom:48px;max-width:860px}
+.aig h2{font-size:23px;line-height:1.25;color:var(--g-ink);margin:0 0 6px;scroll-margin-top:80px;font-weight:800}
+.aig h2 .num{color:var(--g-gold);font-weight:800;margin-right:8px}
+.aig .where{font-size:13px;color:var(--g-muted);margin:0 0 16px}
+.aig h3{font-size:18px;color:var(--g-ink);margin:28px 0 8px;scroll-margin-top:80px;font-weight:750}
+.aig p,.aig li{max-width:72ch}
+.aig p{margin:0 0 12px}
+.aig ul,.aig ol{padding-left:22px;margin:0 0 12px}
+.aig li{margin:4px 0}
+.aig .ui{display:inline-block;font-size:.88em;font-weight:650;padding:1px 7px;border:1px solid var(--g-line);border-radius:5px;background:var(--g-card);color:var(--g-ink);white-space:nowrap;box-shadow:var(--g-shadow)}
+.aig .m{font-family:ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums;font-weight:650;color:var(--g-ink);white-space:nowrap}
+.aig figure{margin:16px 0 24px}
+.aig figure img{display:block;width:100%;max-width:100%;height:auto;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card)}
+.aig figure.narrow img{max-width:660px}
+.aig figcaption{font-size:13px;color:var(--g-muted);margin-top:8px;max-width:72ch}
+.aig .box{border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px;border:1px solid var(--g-line);background:var(--g-card);max-width:72ch}
+.aig .box > :first-child{margin-top:0}.aig .box > :last-child{margin-bottom:0}
+.aig .box b.t{display:block;font-size:12px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px}
+.aig .tip{background:var(--g-good-soft);border-color:transparent}.aig .tip b.t{color:var(--g-good)}
+.aig .careful{background:var(--g-bad-soft);border-color:transparent}.aig .careful b.t{color:var(--g-bad)}
+.aig .know{background:var(--g-gold-soft);border-color:transparent}.aig .know b.t{color:var(--g-gold)}
+.aig .tbl{overflow-x:auto;margin:14px 0 22px;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card);max-width:860px}
+.aig table{border-collapse:collapse;width:100%;font-size:13.5px}
+.aig th,.aig td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--g-line)}
+.aig th{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--g-muted);background:var(--g-chip);font-weight:700}
+.aig tr:last-child td{border-bottom:0}
+.aig td:first-child{font-weight:650;color:var(--g-ink)}
+.aig ol.steps{counter-reset:s;list-style:none;padding-left:0}
+.aig ol.steps > li{counter-increment:s;position:relative;padding-left:36px;margin:10px 0}
+.aig ol.steps > li::before{content:counter(s);position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:50%;background:var(--g-navy);color:#fff;font-size:12.5px;font-weight:700;display:grid;place-items:center}
+.aig .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:16px 0 22px;max-width:860px}
+@media (max-width:640px){.aig .two{grid-template-columns:1fr}}
+.aig .two div{background:var(--g-card);border:1px solid var(--g-line);border-radius:10px;padding:14px 16px}
+.aig .two b{display:block;font-size:16px;color:var(--g-ink);margin-bottom:4px}
+.aig .two span{font-size:13.5px;color:var(--g-muted)}
+.aig .g-top{float:right;font-size:12px;font-weight:700;text-decoration:none;color:var(--g-muted)}
+</style>
+
+<div class="aig" id="aig-top">
+<div class="g-head">
+  <p class="g-lede">Your AI follows a written instruction: who you are, what you sell and how to talk to customers. There's one for <b>WhatsApp</b> and one for the <b>chat box on your website</b>, each on its own page under <b>AI Assistant</b> in the side menu.</p>
+  <p class="g-meta">For owners and staff whose role can see the AI instructions.</p>
+</div>
+
+<nav class="toc"><details open><summary>Contents</summary>
+<ol>
+  <li><a href="#aig-pages">1. The two pages</a></li>
+  <li><a href="#aig-plans">2. Which pages your plan includes</a></li>
+  <li><a href="#aig-wa">3. WhatsApp AI Instruction</a></li>
+  <li><a href="#aig-web">4. Website AI Instruction</a></li>
+  <li><a href="#aig-edit">5. Guided steps or your own wording</a></li>
+  <li><a href="#aig-fix">6. Problems and fixes</a></li>
+  <li><a href="#aig-roles">7. For owners and IT: who can change it</a></li>
+</ol></details></nav>
+
+<section class="part" id="aig-pages">
+  <h2><span class="num">1</span>The two pages</h2>
+  <p class="where">Side menu › AI Assistant</p>
+  <figure class="narrow"><img src="{{ url_for('static', filename='portal/tutorial/ai/a1_menu.jpg') }}" alt="The AI Assistant menu" loading="lazy"><figcaption>AI Assistant in the side menu, with the two instruction pages.</figcaption></figure>
+  <div class="two">
+    <div><b>💬 WhatsApp AI Instruction</b><span>What your AI says to customers who message your WhatsApp number.</span></div>
+    <div><b>🌐 Website AI Instruction</b><span>What your AI says to customers in the chat box on your website.</span></div>
+  </div>
+  <p>They are separate. Changing one never changes the other, so you can write each for the way customers use it. For example, on WhatsApp the AI can ask customers to reply <b>ORDER</b>, while on your website the product cards and order buttons do that job.</p>
+  <p>The page you're on says which chat it controls in the coloured box at the top: <b>green</b> for WhatsApp, <b>blue</b> for your website.</p>
+  <a class="g-top" href="#aig-top">↑ Back to contents</a>
+</section>
+
+<section class="part" id="aig-plans">
+  <h2><span class="num">2</span>Which pages your plan includes</h2>
+  <div class="tbl"><table>
+    <tr><th>Your plan</th><th>WhatsApp AI Instruction</th><th>Website AI Instruction</th></tr>
+    <tr><td>AI Dual-agent</td><td>✅</td><td>✅</td></tr>
+    <tr><td>AI Sales Agent for WhatsApp</td><td>✅</td><td>🔒</td></tr>
+    <tr><td>AI Sales Agent for Website</td><td>🔒</td><td>✅</td></tr>
+    <tr><td>PhiXtra Connect (no AI)</td><td>🔒</td><td>🔒</td></tr>
+  </table></div>
+  <p>A page with a 🔒 padlock isn't part of your plan. It stays in the menu so you know it exists. Opening it shows what upgrading adds.</p>
+  <figure class="narrow"><img src="{{ url_for('static', filename='portal/tutorial/ai/a4_locked.jpg') }}" alt="The Dual Agent upgrade page" loading="lazy"><figcaption>On a WhatsApp plan, Website AI Instruction explains that website chat is part of the Dual Agent plan.</figcaption></figure>
+  <div class="box know"><b class="t">Changing plan</b><ul>
+    <li><b>Upgrade to Dual:</b> both pages open straight away.</li>
+    <li><b>Move off Dual:</b> the page you no longer have gets a padlock. Your wording is kept, so it's still there if you upgrade again.</li>
+  </ul></div>
+  <a class="g-top" href="#aig-top">↑ Back to contents</a>
+</section>
+
+<section class="part" id="aig-wa">
+  <h2><span class="num">3</span>WhatsApp AI Instruction</h2>
+  <p class="where">AI Assistant › WhatsApp AI Instruction</p>
+  <figure><img src="{{ url_for('static', filename='portal/tutorial/ai/a2_whatsapp.jpg') }}" alt="The top of WhatsApp AI Instruction" loading="lazy"><figcaption>The green box names your WhatsApp number and the AI agent it uses. The number in this picture is an example.</figcaption></figure>
+  <ul>
+    <li>The <b>green box</b> shows which WhatsApp number this instruction is used on.</li>
+    <li>If you use <b>AI agents</b>, each WhatsApp number uses the agent chosen for it on WhatsApp Settings. Saving here updates that agent. With more than one agent, pick the one to edit under <b>Which AI agent are you editing?</b></li>
+    <li><span class="ui">Manage agents</span> opens AI Agent Profiles, where you add, rename or remove agents.</li>
+    <li>Press <span class="ui">Save WhatsApp instruction</span> (guided steps) or <span class="ui">Save WhatsApp wording</span> (your own wording). The next WhatsApp message uses it.</li>
+  </ul>
+  <a class="g-top" href="#aig-top">↑ Back to contents</a>
+</section>
+
+<section class="part" id="aig-web">
+  <h2><span class="num">4</span>Website AI Instruction</h2>
+  <p class="where">AI Assistant › Website AI Instruction</p>
+  <figure><img src="{{ url_for('static', filename='portal/tutorial/ai/a3_website.jpg') }}" alt="The top of Website AI Instruction" loading="lazy"><figcaption>The blue box names your website. Copy from WhatsApp sits just below it.</figcaption></figure>
+  <ul>
+    <li>The <b>blue box</b> shows the website whose chat box uses this instruction.</li>
+    <li>You don't need to write about product cards, the hand-off form or the "talk to the team" button. PhiXtra adds those for you.</li>
+    <li>If you've never saved a website instruction, the chat box uses the <b>standard PhiXtra instruction</b>, and the blue box says so.</li>
+  </ul>
+  <h3 id="aig-copy">Copy from WhatsApp</h3>
+  <ol class="steps">
+    <li>Press <span class="ui">⇣ Copy from WhatsApp</span>. Your WhatsApp wording is placed in the wording box lower down the page.</li>
+    <li>Change anything that only makes sense on WhatsApp, such as "reply ORDER".</li>
+    <li>Press <span class="ui">Save website wording</span>.</li>
+  </ol>
+  <div class="box careful"><b class="t">Nothing is saved until you press Save</b><p>Copy from WhatsApp only fills the box. If you leave the page without saving, your website chat keeps its old wording.</p></div>
+  <a class="g-top" href="#aig-top">↑ Back to contents</a>
+</section>
+
+<section class="part" id="aig-edit">
+  <h2><span class="num">5</span>Guided steps or your own wording</h2>
+  <p>Both pages give you two ways to set the instruction.</p>
+  <div class="tbl"><table>
+    <tr><th>Way</th><th>How</th><th>Best for</th></tr>
+    <tr><td>Guided steps</td><td class="wrapok">Step 1: pick what you sell. Step 2: tick what the AI should do. The preview shows the result. Then press Save.</td><td class="wrapok">Getting started quickly.</td></tr>
+    <tr><td>Your own wording</td><td class="wrapok">Open <b>Edit full … instruction directly (advanced)</b>, change the text and press Save … wording.</td><td class="wrapok">Your exact rules: brands you sell, delivery, payment, prices.</td></tr>
+  </table></div>
+  <div class="box careful"><b class="t">Pick one way</b><p>Saving the guided steps rebuilds the whole instruction, so anything you typed in the wording box is replaced. Once you've written your own wording, keep making changes in the wording box. If your wording is very different from the standard one, the page hides the guided steps for you.</p></div>
+  <a class="g-top" href="#aig-top">↑ Back to contents</a>
+</section>
+
+<section class="part" id="aig-fix">
+  <h2><span class="num">6</span>Problems and fixes</h2>
+  <div class="tbl"><table>
+    <tr><th>You see</th><th>Why</th><th>What to do</th></tr>
+    <tr><td>🔒 next to a page</td><td class="wrapok">Your plan doesn't include it.</td><td class="wrapok">Open it to see the plans that do, or ask the owner.</td></tr>
+    <tr><td>Neither page in the menu</td><td class="wrapok">Your role doesn't include the AI instructions.</td><td class="wrapok">Ask your manager or IT.</td></tr>
+    <tr><td>"Your role can view the AI instruction but not change it"</td><td class="wrapok">Your role can look but not save.</td><td class="wrapok">Ask your manager or IT if you need to change it.</td></tr>
+    <tr><td>"… was written by hand — edit it directly in the text box"</td><td class="wrapok">This instruction has its own wording, so the guided steps are switched off.</td><td class="wrapok">Make your change in the wording box.</td></tr>
+    <tr><td>I changed WhatsApp but the website chat didn't change</td><td class="wrapok">They're separate on purpose.</td><td class="wrapok">Change Website AI Instruction too, or use Copy from WhatsApp.</td></tr>
+    <tr><td>An old "System Instruction" link</td><td class="wrapok">That page was split in two on 12 Oct 2026.</td><td class="wrapok">Nothing. Old links open the right new page.</td></tr>
+  </table></div>
+  <a class="g-top" href="#aig-top">↑ Back to contents</a>
+</section>
+
+<section class="part" id="aig-roles">
+  <h2><span class="num">7</span>For owners and IT: who can change it</h2>
+  <p>On <b>Team › Roles</b>, the <b>Custom AI Instructions</b> row covers both pages:</p>
+  <div class="tbl"><table>
+    <tr><th>Tick</th><th>What it allows</th></tr>
+    <tr><td>View</td><td class="wrapok">Open both pages your plan includes and read the instructions.</td></tr>
+    <tr><td>Edit</td><td class="wrapok">Save changes on both pages.</td></tr>
+  </table></div>
+  <a class="g-top" href="#aig-top">↑ Back to contents</a>
+</section>
+</div>

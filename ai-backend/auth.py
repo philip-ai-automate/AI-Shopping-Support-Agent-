@@ -54,6 +54,8 @@ def verify_api_key(api_key: str):
             t.name,
             t.domain,
             COALESCE(ta.system_prompt, t.system_prompt) AS system_prompt,
+            t.web_system_prompt,
+            t.selling_currency,
             t.status,
             t.features
         FROM api_keys ak

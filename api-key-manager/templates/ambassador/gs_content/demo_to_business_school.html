@@ -22,6 +22,7 @@
       SS1, SS2) work reliably.
     </div>
   </div>
+{% if demo_wa_number %}
   <a class="demo-btn" href="https://wa.me/{{ demo_wa_number }}" target="_blank" rel="noopener">
     <span style="font-size:20px">💬</span> Open Demo Chat on WhatsApp
   </a>
@@ -47,6 +48,11 @@
     </div>
   </div>
 
+{% else %}
+  <div style="background:rgba(3,12,24,.04);border:1px solid var(--line);border-radius:12px;padding:13px 16px;font-size:13px;color:var(--muted);margin-top:12px;line-height:1.6">
+    The School WhatsApp demo number isn't available at the moment. Use the demo dashboard login instead to show the school screens.
+  </div>
+{% endif %}
   <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:12px;padding:13px 16px;
               font-size:13px;color:#3730a3;display:flex;gap:10px;align-items:flex-start;margin-top:20px">
     <span style="font-size:18px;flex-shrink:0">🙅</span>

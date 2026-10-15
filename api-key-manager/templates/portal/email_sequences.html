@@ -13,11 +13,13 @@
 .sq-btn.light { background:#fff; color:#0B1D40; border:1.5px solid #cbd5e1; }
 .sq-warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:12px; padding:12px 16px; font-size:13px; margin-bottom:18px; }
 .sq-card { background:#fff; border:1px solid rgba(3,12,24,.08); border-radius:16px; overflow-x:auto; }
-.sq-table { width:100%; border-collapse:collapse; min-width:720px; }
-.sq-table th { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; padding:11px 18px;
+.sq-table { width:100%; border-collapse:collapse; min-width:860px; }
+.sq-table th { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; padding:11px 10px;
                text-align:left; background:#f8fafc; border-bottom:1px solid rgba(3,12,24,.07); }
-.sq-table td { padding:13px 18px; font-size:13px; border-bottom:1px solid rgba(3,12,24,.05); vertical-align:middle; }
+.sq-table td { padding:13px 10px; font-size:13px; border-bottom:1px solid rgba(3,12,24,.05); vertical-align:middle; }
 .sq-table tr:last-child td { border-bottom:none; }
+.sq-table th:first-child, .sq-table td:first-child { padding-left:18px; min-width:220px; }
+.sq-table th:last-child, .sq-table td:last-child { padding-right:18px; }
 .sq-name { font-weight:700; color:var(--ink); text-decoration:none; }
 .sq-name:hover { text-decoration:underline; }
 .pill { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; white-space:nowrap; }
@@ -25,6 +27,8 @@
 .pill-off { background:#f1f5f9; color:#475569; }
 .pill-ready { background:#fef3c7; color:#92400e; }
 .num { font-variant-numeric:tabular-nums; }
+.trk-link { font-weight:600; text-decoration:none; white-space:nowrap; }
+.trk-link:hover { text-decoration:underline; }
 .muted { color:var(--muted); }
 .sq-empty { padding:48px 20px; text-align:center; color:var(--muted); font-size:13px; }
 .sq-empty h3 { font-size:15px; color:var(--ink); margin:0 0 6px; }
@@ -54,7 +58,7 @@
   {% if sequences %}
   <table class="sq-table">
     <thead><tr>
-      <th>Sequence</th><th>Emails</th><th>Status</th><th>Waiting</th><th>Ready to send</th><th>Finished</th><th>Stopped</th><th>Replied</th><th></th>
+      <th>Sequence</th><th>Emails</th><th>Status</th><th>Waiting</th><th>Ready to send</th><th>Finished</th><th>Stopped</th>{% if tracking_on %}<th>Opened</th><th>Clicked</th>{% endif %}<th>Replied</th><th></th>
     </tr></thead>
     <tbody>
     {% for s in sequences %}
@@ -67,7 +71,11 @@
         <td class="num">{% if s.n_ready %}<span class="pill pill-ready">{{ s.n_ready }}</span>{% else %}0{% endif %}</td>
         <td class="num">{{ s.n_finished }}</td>
         <td class="num">{{ s.n_stopped }}</td>
-        <td class="num">{{ s.n_replied }}</td>
+        {% if tracking_on %}
+        <td class="num">{% if s.n_opened %}<a class="trk-link" href="{{ url_for('portal.email_sequence_detail', seq_id=s.id) }}?show=opened" title="See who opened">👁 {{ s.n_opened }}</a>{% else %}0{% endif %}</td>
+        <td class="num">{% if s.n_clicked %}<a class="trk-link" href="{{ url_for('portal.email_sequence_detail', seq_id=s.id) }}?show=clicked" title="See who clicked">🔗 {{ s.n_clicked }}</a>{% else %}0{% endif %}</td>
+        {% endif %}
+        <td class="num">{% if s.n_replied %}<a class="trk-link" href="{{ url_for('portal.email_sequence_detail', seq_id=s.id) }}?show=replied" title="See who replied">↩ {{ s.n_replied }}</a>{% else %}0{% endif %}</td>
         <td style="text-align:right"><a class="sq-btn light" href="{{ url_for('portal.email_sequence_detail', seq_id=s.id) }}">Open</a></td>
       </tr>
     {% endfor %}

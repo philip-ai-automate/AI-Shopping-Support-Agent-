@@ -18,6 +18,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import selling_currency as _sc
+from ai_default_instruction import default_instruction
 import uuid
 import os
 import json as _json
@@ -615,6 +616,11 @@ def _chat(req: ChatRequest):
     # Per-number agent prompt overrides the tenant default (set by WA gateway)
     if req.override_system_prompt:
         system_prompt = req.override_system_prompt
+    elif (req.channel or "") != "whatsapp" and not _sid0.startswith(("wa-", "cw-")):
+        # Website chat has its own instruction (System Instruction › Website
+        # chat, 2026-10-12); none written yet = the standard PhiXtra one.
+        system_prompt = (tenant.get("web_system_prompt") or "").strip() or default_instruction(
+            tenant.get("name"), tenant.get("selling_currency"))
     else:
         system_prompt = tenant["system_prompt"] or ""
 

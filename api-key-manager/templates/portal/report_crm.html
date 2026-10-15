@@ -1,0 +1,566 @@
+{% extends "portal/base.html" %}
+{% block title %}CRM Report — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  /* CRM Report (2026-10-15) — approved design 6jBWbU2JqEsC4DTKSZ3ppy */
+  .crm{--navy:#0B1D40;--soft:#E8EEF8;--sub:#4E5F7A;--edge:#DCE3EF}
+  .crm .crumb{font-size:12.5px;color:var(--muted);margin-bottom:10px}
+  .crm .crumb a{color:var(--muted)}
+  .crm .crumb b{color:var(--ink);font-weight:650}
+  .crm-head{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;justify-content:space-between}
+  .crm-title{font-size:26px;font-weight:800;color:var(--navy);letter-spacing:-.3px;margin:0}
+  .crm-sub{color:var(--sub);margin:4px 0 0;font-size:14px}
+  .crm-actions{display:flex;flex-wrap:wrap;gap:8px}
+  .crm-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-family:inherit;font-size:13.5px;font-weight:650;
+    border-radius:9px;padding:0 14px;min-height:40px;border:1px solid #C9D4E8;background:#fff;color:var(--navy);cursor:pointer;text-decoration:none}
+  .crm-btn:hover{border-color:var(--navy);text-decoration:none}
+  .crm-btn.primary{background:var(--navy);border-color:var(--navy);color:#fff}
+  .crm-btn.sm{min-height:32px;padding:0 10px;font-size:12.5px}
+  .crm-card{background:var(--card,#fff);border:1px solid var(--edge);border-radius:14px;padding:20px 22px;box-shadow:var(--shadow);margin-top:18px;min-width:0}
+  .crm-card.star{border:2px solid var(--navy)}
+  .crm-lbl{display:block;font-size:12.5px;font-weight:600;color:var(--sub);margin-bottom:6px}
+  .crm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;align-items:end}
+  .crm-sel{font-family:inherit;font-size:13.5px;min-height:40px;border:1px solid #C9D4E8;border-radius:9px;padding:0 12px;
+    background:#fff;color:var(--ink);box-sizing:border-box;width:100%}
+  .crm-note{font-size:13px;color:var(--sub);background:var(--soft);border-radius:9px;padding:10px 14px;margin-top:14px}
+  .crm-note b{color:var(--ink)}
+  .crm-range{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  .crm .crm-range input{width:180px;max-width:100%;padding:7px 9px;border-radius:9px;border:1px solid #C9D4E8;font-family:inherit;font-size:13px}
+
+  /* Tick-box dropdown — same behaviour as the Contacts filter (.msdd) */
+  .msdd{position:relative;min-width:0}
+  .msdd-trigger{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:40px;padding:0 12px;
+    border-radius:9px;border:1px solid #C9D4E8;background:#fff;color:var(--ink);font-family:inherit;font-size:13.5px;cursor:pointer;text-align:left}
+  .msdd-trigger span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .msdd.open .msdd-trigger{border-color:var(--navy);box-shadow:0 0 0 2px var(--soft)}
+  .msdd.has-selection .msdd-trigger{font-weight:650}
+  .msdd-chevron{flex-shrink:0;transition:transform .15s}
+  .msdd.open .msdd-chevron{transform:rotate(180deg)}
+  .msdd-panel{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:40;min-width:100%;width:max-content;max-width:320px;
+    background:#fff;border:1px solid #C9D4E8;border-radius:10px;box-shadow:0 10px 28px rgba(11,29,64,.16);padding:6px 0}
+  .msdd.open .msdd-panel{display:block}
+  .msdd-tools{display:flex;gap:6px;padding:4px 10px 8px;border-bottom:1px solid #EEF2F8}
+  .msdd-options{max-height:300px;overflow-y:auto;padding:4px 0}
+  .msdd-option{display:flex;align-items:center;gap:10px;min-height:34px;padding:0 14px;font-size:13.5px;color:var(--ink);cursor:pointer;user-select:none}
+  .msdd-option:hover{background:#f1f5f9}
+  .msdd-option input{width:16px;height:16px;accent-color:var(--navy);cursor:pointer;flex-shrink:0}
+
+  .sec-head{display:flex;gap:12px;align-items:flex-start;margin-bottom:16px}
+  .secnum{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:var(--soft);
+    color:var(--navy);font-weight:800;font-size:14px;flex:0 0 28px}
+  .secnum.star{background:var(--navy);color:#fff}
+  .h2{font-size:18px;font-weight:750;color:var(--ink);margin:0}
+  .h2-sub{font-size:13px;color:var(--sub);margin:3px 0 0}
+  .ready{font-size:16px;font-weight:750;color:var(--navy);margin-top:26px}
+  .ready span{font-weight:400;font-size:13.5px;color:var(--sub)}
+
+  .pills{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .pill-s{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;background:var(--soft);color:var(--navy)}
+  .pill-lost{background:var(--navy);color:#fff}
+  .pill-drop{background:var(--soft);color:var(--navy)}
+
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  @media(max-width:520px){ .tiles{grid-template-columns:repeat(2,minmax(0,1fr))} .tile .num{font-size:21px} }
+  .tile{border:1px solid #E3E9F3;border-radius:10px;padding:13px 15px;display:flex;flex-direction:column;gap:5px}
+  .tile .lbl{font-size:12.5px;font-weight:600;color:var(--sub)}
+  .tile .num{font-size:26px;font-weight:800;color:var(--navy);line-height:1.1}
+  .tile .nt{font-size:12px;color:var(--sub)}
+
+  .bar-row{display:grid;grid-template-columns:minmax(110px,190px) minmax(0,1fr) 64px;gap:10px;align-items:center;font-size:13.5px;margin-bottom:10px}
+  .bar-row.wide{grid-template-columns:minmax(110px,170px) minmax(0,1fr) 64px 120px}
+  .bar-row .n{font-weight:700;text-align:right}
+  .bar-row .cv{font-size:12px;color:var(--sub)}
+  .track{height:12px;background:var(--soft);border-radius:6px;overflow:hidden}
+  .fill{height:12px;background:var(--navy);border-radius:6px}
+  .fill.two{background:#7F9CD3}
+  .two-col{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}
+  .minor{font-weight:650;font-size:13.5px;margin-bottom:10px}
+
+  .crm .table-wrap{overflow-x:auto}
+  .crm .table-wrap table{min-width:640px}
+  .crm .table-wrap td a{font-weight:650}
+  .muted-c{text-align:center;color:var(--muted);padding:24px}
+  .pager{display:flex;align-items:center;gap:10px;margin-top:14px;justify-content:center;font-size:12.5px;color:var(--muted)}
+  .small{font-size:12.5px;color:var(--sub)}
+
+  .saved-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 3px 2px 12px;border-radius:999px;font-size:12.5px;font-weight:650;
+    background:#fff;border:1px solid #C9D4E8;color:var(--navy)}
+  .saved-pill.active{background:var(--navy);border-color:var(--navy);color:#fff}
+  .saved-pill a{color:inherit;text-decoration:none;padding:4px 0}
+  .saved-pill form{display:inline-flex;margin:0}
+  .saved-pill button{width:20px;height:20px;border-radius:50%;border:none;background:transparent;color:inherit;opacity:.6;cursor:pointer}
+  .saved-pill button:hover{opacity:1}
+  .save-row{display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;justify-content:flex-end}
+  .save-row.open{display:flex}
+  .save-row input{padding:8px 10px;border:1px solid #C9D4E8;border-radius:9px;font-family:inherit;font-size:13px;width:220px;max-width:100%}
+  .sec-error{color:#b91c1c;font-size:13px}
+  @media(max-width:640px){ .bar-row.wide{grid-template-columns:minmax(90px,120px) minmax(0,1fr) 50px} .bar-row.wide .cv{display:none} }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set S = d.sections %}
+{% set chev %}<svg class="msdd-chevron" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>{% endset %}
+<div class="crm">
+<div class="crumb">Reports › <a href="{{ url_for('portal.report_custom_picker') }}">Custom Report</a> › <b>CRM Report</b></div>
+
+<div class="crm-head">
+  <div>
+    <h1 class="crm-title">CRM Report</h1>
+    <p class="crm-sub">Everything about your leads, deals, team and customers on one page.</p>
+  </div>
+  <div class="crm-actions">
+    <button type="button" class="crm-btn" onclick="toggleSave()">☆ Save this report</button>
+    <a class="crm-btn" href="{{ url_for('portal.report_crm_export', fmt='pdf') }}?{{ qs }}">Download PDF</a>
+    <a class="crm-btn" href="{{ url_for('portal.report_crm_export', fmt='xlsx') }}?{{ qs }}">Excel</a>
+    <a class="crm-btn" href="{{ url_for('portal.report_crm_export', fmt='csv') }}?{{ qs }}">CSV</a>
+  </div>
+</div>
+<div class="save-row" id="saveRow">
+  <input type="text" id="saveName" placeholder="Name this report, e.g. Monday sales meeting" maxlength="100" autocomplete="off">
+  <button type="button" class="crm-btn primary sm" onclick="saveReport()">Save</button>
+  <span id="saveMsg" class="small"></span>
+</div>
+
+{% if saved_views %}
+<div class="pills" style="margin-top:14px">
+  <span class="crm-lbl" style="margin:0 4px 0 0">Saved reports:</span>
+  {% for v in saved_views %}
+  <span class="saved-pill {{ 'active' if v.active }}">
+    <a href="{{ v.apply_url }}">{{ v.name }}</a>
+    <form method="POST" action="{{ url_for('portal.report_crm_delete_view', view_id=v.id) }}"
+          onsubmit="return confirm('Delete the saved report &quot;{{ v.name }}&quot;? Only the shortcut is removed — no data changes.')">
+      <button type="submit" title="Delete this saved report" aria-label="Delete {{ v.name }}">✕</button>
+    </form>
+  </span>
+  {% endfor %}
+</div>
+{% endif %}
+
+<form method="get" action="{{ url_for('portal.report_crm') }}" id="reportForm">
+  <input type="hidden" name="cols_set" value="1">
+  <input type="hidden" name="secs_set" value="1">
+
+  <!-- Filters -->
+  <div class="crm-card">
+    <div class="crm-grid">
+      <div>
+        <label class="crm-lbl" for="f-period">Time period</label>
+        <select id="f-period" name="period" class="crm-sel" onchange="periodChanged(this)">
+          {% for k, label in rep.PERIODS %}<option value="{{ k }}" {{ 'selected' if opts.period == k }}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <span class="crm-lbl">Assigned to</span>
+        <div class="msdd" data-none="Everyone" data-all="Everyone">
+          <button type="button" class="msdd-trigger" onclick="toggleMsdd(this)" aria-haspopup="true"><span></span>{{ chev }}</button>
+          <div class="msdd-panel">
+            <div class="msdd-tools"><button type="button" class="crm-btn sm" onclick="tickAll(this,true)">Tick all</button><button type="button" class="crm-btn sm" onclick="tickAll(this,false)">Clear</button></div>
+            <div class="msdd-options">
+              {% for p in people %}
+              <label class="msdd-option"><input type="checkbox" name="asg" value="{{ p.key }}" data-label="{{ p.display }}" {{ 'checked' if p.key in opts.asg }}><span>{{ p.display }}</span></label>
+              {% endfor %}
+              <label class="msdd-option"><input type="checkbox" name="asg" value="__none__" data-label="Unassigned" {{ 'checked' if '__none__' in opts.asg }}><span>Unassigned</span></label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <span class="crm-lbl">Where the lead came from</span>
+        <div class="msdd" data-none="All sources" data-all="All sources">
+          <button type="button" class="msdd-trigger" onclick="toggleMsdd(this)" aria-haspopup="true"><span></span>{{ chev }}</button>
+          <div class="msdd-panel">
+            <div class="msdd-tools"><button type="button" class="crm-btn sm" onclick="tickAll(this,true)">Tick all</button><button type="button" class="crm-btn sm" onclick="tickAll(this,false)">Clear</button></div>
+            <div class="msdd-options">
+              {% for k in rep.SOURCE_ORDER %}
+              <label class="msdd-option"><input type="checkbox" name="src" value="{{ k }}" data-label="{{ rep.SOURCE_LABELS[k] }}" {{ 'checked' if k in opts.src }}><span>{{ rep.SOURCE_LABELS[k] }}</span></label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <span class="crm-lbl">Sections to show</span>
+        <div class="msdd" data-none="No sections" data-all="All {{ rep.SECTIONS|length }} sections">
+          <button type="button" class="msdd-trigger" onclick="toggleMsdd(this)" aria-haspopup="true"><span></span>{{ chev }}</button>
+          <div class="msdd-panel">
+            <div class="msdd-tools"><button type="button" class="crm-btn sm" onclick="tickAll(this,true)">Tick all</button><button type="button" class="crm-btn sm" onclick="tickAll(this,false)">Clear</button></div>
+            <div class="msdd-options">
+              {% for k, label in rep.SECTIONS %}
+              {% if k != 'team' or can_team %}
+              <label class="msdd-option"><input type="checkbox" name="sec" value="{{ k }}" data-label="{{ label }}" {{ 'checked' if k in opts.sec }}><span>{{ loop.index }}. {{ label }}</span></label>
+              {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+      <button type="submit" class="crm-btn primary">Show report</button>
+    </div>
+    <div class="crm-range" id="customRange" {{ 'hidden' if opts.period != 'custom' }}>
+      <label class="crm-lbl" style="margin:0" for="f-from">From</label>
+      <input type="date" id="f-from" name="date_from" value="{{ opts.date_from.isoformat() }}">
+      <label class="crm-lbl" style="margin:0" for="f-to">to</label>
+      <input type="date" id="f-to" name="date_to" value="{{ opts.date_to.isoformat() }}">
+    </div>
+  </div>
+
+  <div class="crm-note">
+    Showing <b>{{ opts.date_from.strftime('%d %b %Y') }} – {{ opts.date_to.strftime('%d %b %Y') }}</b>,
+    {% if opts.asg %}{{ opts.asg|length }} {{ 'person' if opts.asg|length == 1 else 'people' }}{% else %}everyone{% endif %},
+    {% if opts.src %}{{ opts.src|length }} source{{ 's' if opts.src|length != 1 }}{% else %}all sources{% endif %}.
+    The table lists leads and deals added, moved, won or closed in this period.
+  </div>
+
+  <!-- Your own table -->
+  <section class="crm-card star">
+    <div class="sec-head"><span class="secnum star">★</span><div><h2 class="h2">Your own table — pick the columns</h2>
+      <p class="h2-sub">Tick any columns from deals, contacts, companies, team activity and campaigns. The table updates when you close a dropdown. Saved with “Save this report”.</p></div></div>
+    <div class="small" style="margin-bottom:10px"><b style="color:var(--ink)">Columns</b> — open a dropdown and tick the columns you want (<span id="colCount">{{ opts.col|length }}</span> of {{ rep.TOTAL_COLUMNS }} ticked)</div>
+    <div class="crm-grid" style="align-items:start">
+      {% for gname, cols in rep.COL_GROUPS %}
+      <div>
+        <span class="crm-lbl">{{ gname }}</span>
+        <div class="msdd cols" data-none="None selected" data-autosubmit="1">
+          <button type="button" class="msdd-trigger" onclick="toggleMsdd(this)" aria-haspopup="true"><span></span>{{ chev }}</button>
+          <div class="msdd-panel">
+            <div class="msdd-tools"><button type="button" class="crm-btn sm" onclick="tickAll(this,true)">Tick all</button><button type="button" class="crm-btn sm" onclick="tickAll(this,false)">Clear</button></div>
+            <div class="msdd-options">
+              {% for c in cols %}
+              <label class="msdd-option"><input type="checkbox" name="col" value="{{ c.key }}" data-label="{{ c.label }}" {{ 'checked' if c.key in opts.col }}><span>{{ c.label }}</span></label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="crm-grid" style="margin-top:16px">
+      <div>
+        <label class="crm-lbl" for="f-grp">Group by (optional)</label>
+        <select id="f-grp" name="group_by" class="crm-sel" onchange="this.form.submit()">
+          <option value="">No grouping — one row per lead or deal</option>
+          {% for k, label in rep.GROUP_BY %}<option value="{{ k }}" {{ 'selected' if opts.group_by == k }}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="crm-lbl" for="f-sort">Sort by</label>
+        <select id="f-sort" name="sort" class="crm-sel" onchange="this.form.submit()" {{ 'disabled' if opts.group_by }}>
+          {% for k, label in rep.SORTS %}<option value="{{ k }}" {{ 'selected' if opts.sort == k }}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+
+    {% if opts.group_by %}
+      {% set gl = (rep.GROUP_BY|selectattr(0,'equalto',opts.group_by)|first)[1] %}
+      {% set gmax = ([1] + d.groups|map(attribute='count')|list)|max %}
+      <div class="small" style="margin:16px 0 12px">Grouped by <b style="color:var(--ink)">{{ gl }}</b> — {{ '{:,}'.format(d.total) }} lead{{ 's' if d.total != 1 }} and deals</div>
+      {% for g in d.groups %}
+      <div class="bar-row wide">
+        <span>{{ g.label }}</span>
+        <div class="track"><div class="fill" style="width:{{ [2, (g.count / gmax * 100)|round|int]|max }}%"></div></div>
+        <span class="n">{{ '{:,}'.format(g.count) }}</span>
+        <span class="cv">{{ g.value|money_total }}</span>
+      </div>
+      {% else %}
+      <div class="muted-c">Nothing matches these filters in this period.</div>
+      {% endfor %}
+    {% else %}
+      <div class="pills" style="margin:16px 0 12px">
+        <span class="crm-lbl" style="margin:0 4px 0 0">Showing:</span>
+        {% for k in opts.col %}<span class="pill-s">{{ rep.COLUMNS[k].label }}</span>{% else %}<span class="small">No columns ticked — open a dropdown above and tick some.</span>{% endfor %}
+      </div>
+      {% if opts.col %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr>{% for k in opts.col %}<th>{{ rep.COLUMNS[k].label }}</th>{% endfor %}</tr></thead>
+          <tbody>
+            {% for r in d.rows %}
+            <tr>{% for cell in r.cells %}<td>{% if opts.col[loop.index0] == 'customer' %}<a href="{{ url_for('portal.lead_detail', lead_id=r.id) }}">{{ cell }}</a>{% else %}{{ cell }}{% endif %}</td>{% endfor %}</tr>
+            {% else %}
+            <tr><td colspan="{{ opts.col|length }}" class="muted-c">Nothing matches these filters in this period.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="small" style="margin-top:10px">
+        {{ '{:,}'.format(d.total) }} lead{{ 's' if d.total != 1 }} and deals{% if d.total > per_page %} · showing {{ '{:,}'.format((page-1)*per_page+1) }}–{{ '{:,}'.format([page*per_page, d.total]|min) }}, {{ per_page }} per page{% endif %}
+      </div>
+      {% if total_pages > 1 %}
+      <div class="pager">
+        {% if prev_url %}<a class="crm-btn sm" href="{{ prev_url }}">← Previous</a>{% endif %}
+        <span>Page {{ page }} of {{ '{:,}'.format(total_pages) }}</span>
+        {% if next_url %}<a class="crm-btn sm" href="{{ next_url }}">Next →</a>{% endif %}
+      </div>
+      {% endif %}
+      {% endif %}
+    {% endif %}
+  </section>
+</form>
+
+{% if S %}
+<div class="ready">Ready-made sections <span>— switch each on or off with “Sections to show”</span></div>
+{% endif %}
+
+{% macro failed() %}<p class="sec-error">This section couldn’t be loaded just now. Please refresh the page.</p>{% endmacro %}
+
+{% if 'summary' in S %}{% set s = S.summary %}
+<section class="crm-card">
+  <div class="sec-head"><span class="secnum">1</span><div><h2 class="h2">Summary</h2><p class="h2-sub">The headline numbers for this period.</p></div></div>
+  {% if s.error %}{{ failed() }}{% else %}
+  <div class="tiles">
+    {% for t in s.tiles %}<div class="tile"><span class="lbl">{{ t.label }}</span><span class="num">{{ t.value }}</span><span class="nt">{{ t.note }}</span></div>{% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if 'funnel' in S %}{% set s = S.funnel %}
+<section class="crm-card">
+  <div class="sec-head"><span class="secnum">2</span><div><h2 class="h2">From lead to won</h2><p class="h2-sub">Leads added in this period: how many got to each step, and how many carried on to the next one.</p></div></div>
+  {% if s.error %}{{ failed() }}{% else %}
+  {% for f in s.rows %}
+  <div class="bar-row wide"><span style="font-weight:600">{{ f.label }}</span><div class="track"><div class="fill" style="width:{{ f.pct }}%"></div></div><span class="n">{{ '{:,}'.format(f.n) }}</span><span class="cv">{{ f.conv }}</span></div>
+  {% endfor %}
+  {% endif %}
+</section>
+{% endif %}
+
+{% if 'closed' in S %}{% set s = S.closed %}
+<section class="crm-card">
+  <div class="sec-head"><span class="secnum">3</span><div><h2 class="h2">Lost &amp; Dropped deals</h2><p class="h2-sub">Why deals closed without a sale in this period, and how far they got. Lost = the customer said no. Dropped = we decided to stop.</p></div></div>
+  {% if s.error %}{{ failed() }}{% elif not s.rows %}
+  <div class="muted-c">No deals were lost or dropped in this period.</div>
+  {% else %}
+  <div class="two-col">
+    <div><div class="minor">Reasons given</div>
+      {% for r in s.reasons %}<div class="bar-row"><span>{{ r.label }}</span><div class="track"><div class="fill" style="width:{{ r.pct }}%"></div></div><span class="n">{{ r.n }}</span></div>{% endfor %}
+    </div>
+    <div><div class="minor">Step they had reached</div>
+      {% for r in s.reached %}<div class="bar-row"><span>{{ r.label }}</span><div class="track"><div class="fill two" style="width:{{ r.pct }}%"></div></div><span class="n">{{ r.n }}</span></div>{% endfor %}
+    </div>
+  </div>
+  <div class="table-wrap" style="margin-top:18px">
+    <table>
+      <thead><tr><th>Customer</th><th>Outcome</th><th>Step reached</th><th>Reason</th><th>Closed by</th><th>Closed on</th>{% if can_reopen %}<th></th>{% endif %}</tr></thead>
+      <tbody>
+      {% for c in s.rows %}
+        <tr>
+          <td><a href="{{ url_for('portal.lead_detail', lead_id=c.id) }}">{{ c.name }}</a></td>
+          <td><span class="pill-s {{ 'pill-lost' if c.outcome == 'lost' else 'pill-drop' }}">{{ c.outcome_label }}</span></td>
+          <td>{{ c.stage }}</td><td>{{ c.reason }}</td><td>{{ c.by }}</td><td>{{ c.date }}</td>
+          {% if can_reopen %}<td>
+            <form method="POST" action="{{ url_for('portal.sales_pipeline_reopen', lead_id=c.id) }}" style="margin:0"
+                  onsubmit="return confirm('Reopen {{ c.name|e }}? It goes back on the Sales Pipeline at {{ c.stage|e }}.')">
+              <input type="hidden" name="next" value="{{ back_url }}">
+              <button type="submit" class="crm-btn sm">Reopen</button>
+            </form>
+          </td>{% endif %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if s.total > s.rows|length %}<div class="small" style="margin-top:8px">Showing the latest {{ s.rows|length }} of {{ s.total }}.</div>{% endif %}
+  {% endif %}
+</section>
+{% endif %}
+
+{% if 'team' in S %}{% set s = S.team %}
+<section class="crm-card">
+  <div class="sec-head"><span class="secnum">4</span><div><h2 class="h2">Team performance</h2><p class="h2-sub">What each person did in this period and what came of it. Work counts come from what was logged in the portal (recorded since 11 Oct 2026). Open leads and open value are as of today.</p></div></div>
+  {% if s.error %}{{ failed() }}{% else %}
+  <div class="table-wrap">
+    <table style="min-width:960px">
+      <thead><tr><th>Person</th><th>Open leads</th><th>Became deals</th><th>Steps moved</th><th>Emails</th><th>WhatsApp</th><th>Calls</th><th>Notes</th><th>Won</th><th>Win rate</th><th>Open value</th></tr></thead>
+      <tbody>
+      {% for t in s.rows %}
+        <tr><td style="font-weight:650">{{ t.name }}</td><td>{{ '{:,}'.format(t.leads) }}</td><td>{{ t.deals }}</td><td>{{ t.moves }}</td><td>{{ '{:,}'.format(t.emails) if t.emails is number else t.emails }}</td><td>{{ t.wa }}</td><td>{{ t.calls }}</td><td>{{ t.notes }}</td><td>{{ t.won }}</td><td>{{ t.rate }}</td><td style="font-weight:650">{{ t.value }}</td></tr>
+      {% else %}
+        <tr><td colspan="11" class="muted-c">No team work recorded in this period.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if 'sources' in S %}{% set s = S.sources %}
+<section class="crm-card">
+  <div class="sec-head"><span class="secnum">5</span><div><h2 class="h2">Where leads came from</h2><p class="h2-sub">Leads added in this period, by source, and how many turned into sales.</p></div></div>
+  {% if s.error %}{{ failed() }}{% else %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Source</th><th>Leads</th><th>Became deals</th><th>Won</th><th>Lead → won</th><th>Won value</th></tr></thead>
+      <tbody>
+      {% for r in s.rows %}
+        <tr><td style="font-weight:650">{{ r.name }}</td><td>{{ '{:,}'.format(r.leads) }}</td><td>{{ r.deals }}</td><td>{{ r.won }}</td><td>{{ r.conv }}</td><td style="font-weight:650">{{ r.value }}</td></tr>
+      {% else %}
+        <tr><td colspan="6" class="muted-c">No leads were added in this period.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if 'attention' in S %}{% set s = S.attention %}
+<section class="crm-card">
+  <div class="sec-head"><span class="secnum">6</span><div><h2 class="h2">Deals needing attention</h2><p class="h2-sub">Open deals that haven’t moved for {{ rep.STALL_DAYS }} days or more, longest first (as of today).</p></div></div>
+  {% if s.error %}{{ failed() }}{% else %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Customer</th><th>Step</th><th>Assigned to</th><th>Days without moving</th><th>Last activity</th><th>Deal value</th></tr></thead>
+      <tbody>
+      {% for r in s.rows %}
+        <tr><td><a href="{{ url_for('portal.lead_detail', lead_id=r.id) }}">{{ r.name }}</a></td><td>{{ r.stage }}</td><td>{{ r.who }}</td><td style="font-weight:700">{{ r.days }}</td><td>{{ r.last }}</td><td>{{ r.value }}</td></tr>
+      {% else %}
+        <tr><td colspan="6" class="muted-c">Every open deal has moved in the last {{ rep.STALL_DAYS }} days.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if s.total > s.rows|length %}<div class="small" style="margin-top:8px">Showing the {{ s.rows|length }} longest of {{ '{:,}'.format(s.total) }}.</div>{% endif %}
+  {% endif %}
+</section>
+{% endif %}
+
+{% if 'contacts' in S %}{% set s = S.contacts %}
+<section class="crm-card">
+  <div class="sec-head"><span class="secnum">7</span><div><h2 class="h2">Contacts &amp; Companies</h2><p class="h2-sub">How your address book grew in this period, and which companies hold the most open business.</p></div></div>
+  {% if s.error %}{{ failed() }}{% else %}
+  <div class="two-col">
+    <div>
+      <div class="tiles" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+        <div class="tile"><span class="lbl">New contacts</span><span class="num" style="font-size:22px">{{ '{:,}'.format(s.new_contacts) }}</span></div>
+        <div class="tile"><span class="lbl">New companies</span><span class="num" style="font-size:22px">{{ '{:,}'.format(s.new_companies) }}</span></div>
+        <div class="tile"><span class="lbl">Became customers</span><span class="num" style="font-size:22px">{{ '{:,}'.format(s.customers) }}</span></div>
+      </div>
+      <div class="minor" style="margin-top:16px">All contacts by status</div>
+      {% for r in s.statuses %}<div class="bar-row"><span>{{ r.label }}</span><div class="track"><div class="fill" style="width:{{ r.pct }}%"></div></div><span class="n">{{ '{:,}'.format(r.n) }}</span></div>{% endfor %}
+    </div>
+    <div style="min-width:0">
+      <div class="minor">Top companies by open deal value</div>
+      <div class="table-wrap">
+        <table style="min-width:360px">
+          <thead><tr><th>Company</th><th>People</th><th>Open deals</th><th>Open value</th></tr></thead>
+          <tbody>
+          {% for c in s.companies %}
+            <tr><td style="font-weight:650">{{ c.name }}</td><td>{{ c.people }}</td><td>{{ c.deals }}</td><td style="font-weight:650">{{ c.value }}</td></tr>
+          {% else %}
+            <tr><td colspan="4" class="muted-c">No open deals are linked to a company yet.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if 'campaigns' in S %}{% set s = S.campaigns %}
+<section class="crm-card">
+  <div class="sec-head"><span class="secnum">8</span><div><h2 class="h2">Campaigns that brought business</h2><p class="h2-sub">WhatsApp campaigns sent in this period, and the deals that came from their replies.</p></div></div>
+  {% if s.error %}{{ failed() }}{% else %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Campaign</th><th>Sent</th><th>Replied</th><th>Reply rate</th><th>Became deals</th><th>Won value</th></tr></thead>
+      <tbody>
+      {% for c in s.rows %}
+        <tr><td style="font-weight:650">{{ c.name }}</td><td>{{ '{:,}'.format(c.sent) }}</td><td>{{ c.replied }}</td><td>{{ c.rate }}</td><td>{{ c.deals }}</td><td style="font-weight:650">{{ c.value }}</td></tr>
+      {% else %}
+        <tr><td colspan="6" class="muted-c">No WhatsApp campaigns were sent in this period.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+</div>
+
+<script>
+(function () {
+  // Tick-box dropdowns: one open at a time; the trigger reads "Everyone",
+  // "5 selected", the one ticked name, or "None selected".
+  function label(dd) {
+    var boxes = dd.querySelectorAll('.msdd-options input')
+    var ticked = dd.querySelectorAll('.msdd-options input:checked')
+    var span = dd.querySelector('.msdd-trigger span')
+    var all = dd.dataset.all
+    if (!ticked.length) span.textContent = dd.dataset.none
+    else if (all && ticked.length === boxes.length) span.textContent = all
+    else if (ticked.length === 1) span.textContent = ticked[0].dataset.label
+    else span.textContent = ticked.length + ' selected'
+    dd.classList.toggle('has-selection', ticked.length > 0)
+  }
+  function colCount() {
+    var el = document.getElementById('colCount')
+    if (el) el.textContent = document.querySelectorAll('.msdd.cols input:checked').length
+  }
+  function closeAll(except) {
+    document.querySelectorAll('.msdd.open').forEach(function (dd) {
+      if (dd === except) return
+      dd.classList.remove('open')
+      dd.querySelector('.msdd-trigger').setAttribute('aria-expanded', 'false')
+      if (dd.dataset.autosubmit && dd.dataset.dirty) document.getElementById('reportForm').submit()
+    })
+  }
+  window.toggleMsdd = function (btn) {
+    var dd = btn.closest('.msdd')
+    var wasOpen = dd.classList.contains('open')
+    closeAll(wasOpen ? null : dd)
+    if (!wasOpen) { dd.classList.add('open'); btn.setAttribute('aria-expanded', 'true') }
+  }
+  window.tickAll = function (btn, on) {
+    var dd = btn.closest('.msdd')
+    dd.querySelectorAll('.msdd-options input').forEach(function (i) { i.checked = on })
+    dd.dataset.dirty = '1'; label(dd); colCount()
+  }
+  document.querySelectorAll('.msdd').forEach(function (dd) {
+    label(dd)
+    dd.querySelectorAll('.msdd-options input').forEach(function (i) {
+      i.addEventListener('change', function () { dd.dataset.dirty = '1'; label(dd); colCount() })
+    })
+  })
+  document.addEventListener('click', function (e) { if (!e.target.closest('.msdd')) closeAll(null) })
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeAll(null) })
+  // The From/To dates only travel with "Custom dates…".
+  document.getElementById('reportForm').addEventListener('submit', function () {
+    var f = document.getElementById('f-period')
+    if (f.value !== 'custom') document.getElementById('customRange').querySelectorAll('input').forEach(function (i) { i.disabled = true })
+  })
+  window.periodChanged = function (sel) {
+    var range = document.getElementById('customRange')
+    range.hidden = sel.value !== 'custom'
+    if (sel.value !== 'custom') sel.form.submit()
+  }
+
+  window.toggleSave = function () {
+    var row = document.getElementById('saveRow')
+    row.classList.toggle('open')
+    if (row.classList.contains('open')) document.getElementById('saveName').focus()
+  }
+  window.saveReport = function () {
+    var name = document.getElementById('saveName').value.trim()
+    var msg = document.getElementById('saveMsg')
+    if (!name) { msg.style.color = '#b91c1c'; msg.textContent = 'Please name this report.'; return }
+    var fd = new FormData(document.getElementById('reportForm'))
+    fd.set('name', name)
+    msg.style.color = ''; msg.textContent = 'Saving…'
+    fetch('{{ url_for("portal.report_crm_save_view") }}', { method: 'POST', body: fd })
+      .then(function (r) { return r.json() })
+      .then(function (data) {
+        if (data.error) { msg.style.color = '#b91c1c'; msg.textContent = data.error; return }
+        window.location.href = data.apply_url
+      })
+      .catch(function () { msg.style.color = '#b91c1c'; msg.textContent = 'Could not save — check your connection.' })
+  }
+})()
+</script>
+{% endblock %}

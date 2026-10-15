@@ -339,12 +339,14 @@ def save_settings(tenant_id, new_code, rate_mode=None, own_rates=None, by=None) 
             rates_cleared = cur.rowcount > 0
             # The AI's standard pricing instruction follows the new currency
             # (a business's own wording is covered by pricing_override()).
-            for tbl, key in (("tenants", "id"), ("tenant_agents", "tenant_id")):
-                cur.execute(f"SELECT id, system_prompt FROM {tbl} WHERE {key}=%s", (tid,))
+            for tbl, key, col in (("tenants", "id", "system_prompt"),
+                                  ("tenants", "id", "web_system_prompt"),
+                                  ("tenant_agents", "tenant_id", "system_prompt")):
+                cur.execute(f"SELECT id, {col} FROM {tbl} WHERE {key}=%s", (tid,))
                 for rid, prompt in cur.fetchall():
                     new_prompt = rewrite_prompt_pricing(prompt, new_code)
                     if new_prompt:
-                        cur.execute(f"UPDATE {tbl} SET system_prompt=%s WHERE id=%s", (new_prompt, rid))
+                        cur.execute(f"UPDATE {tbl} SET {col}=%s WHERE id=%s", (new_prompt, rid))
         elif own_rates is not None:
             cur.execute("DELETE FROM tenant_fx_rates WHERE tenant_id=%s", (tid,))
             for code, rate in own_rates.items():
@@ -516,7 +518,7 @@ def _other_currency_words(text, code) -> list[str]:
 
 def instructions_mentioning_other_currency(tenant_id) -> list[dict]:
     """The business's AI instructions that mention a currency other than its
-    selling currency: [{'kind': 'main'|'agent', 'id', 'name', 'currencies'}]."""
+    selling currency: [{'kind': 'main'|'web'|'agent', 'id', 'name', 'currencies'}]."""
     tid = int(tenant_id)
     clear_cache(tid)
     code = tenant_currency(tid)
@@ -526,6 +528,10 @@ def instructions_mentioning_other_currency(tenant_id) -> list[dict]:
             words = _other_currency_words(prompt, code)
             if words:
                 found.append({"kind": "main", "id": None, "name": "AI instructions", "currencies": words})
+        for (prompt,) in _query("SELECT web_system_prompt FROM tenants WHERE id=%s", (tid,)):
+            words = _other_currency_words(prompt, code)
+            if words:
+                found.append({"kind": "web", "id": None, "name": "Website chat instructions", "currencies": words})
         for aid, name, prompt in _query(
                 "SELECT id, name, system_prompt FROM tenant_agents WHERE tenant_id=%s ORDER BY id", (tid,)):
             words = _other_currency_words(prompt, code)

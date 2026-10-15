@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% import "portal/_social_preview.html" as spv with context %}
 {% block title %}Approval — Social Media — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -11,7 +12,7 @@
   .ap-switch{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
   .ap-switch b{color:var(--ink)}
   .ap-hint{font-size:12.5px;color:var(--muted);line-height:1.5}
-  .ap-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;grid-template-columns:200px 1fr;gap:18px}
+  .ap-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;grid-template-columns:280px 1fr;gap:18px}
   @media (max-width:760px){.ap-card{grid-template-columns:1fr}}
   .ap-img{width:100%;max-width:200px;aspect-ratio:1/1;object-fit:cover;border-radius:12px;border:1px solid var(--line);background:#F2F4F7;
     display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px}
@@ -23,7 +24,8 @@
   .ap-form{display:flex;flex-direction:column;gap:10px;margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
   .ap-when{display:flex;gap:14px;flex-wrap:wrap;font-size:13px}
   .ap-when label{display:inline-flex;gap:6px;align-items:center;font-weight:600;cursor:pointer}
-  .ap-when input{accent-color:var(--ink);margin:0}
+  .ap-when input{accent-color:var(--ink);margin:0;width:auto;flex:none}
+  .ap-when label{white-space:nowrap}
   .ap-form input[type=datetime-local]{font:inherit;font-size:14px;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;max-width:260px}
   .ap-form textarea{font:inherit;font-size:13.5px;padding:9px 11px;border:1.5px solid var(--line);border-radius:10px;width:100%;min-height:70px;resize:vertical}
   .ap-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -82,8 +84,7 @@
   {% set c = cards[p.id] %}
   <article class="ap-card" id="post-{{ p.id }}">
     <div>
-      {% if p.image_filename %}<img class="ap-img" src="{{ url_for('buffer.post_image', post_id=p.id) }}" alt="Post image">
-      {% else %}<div class="ap-img">Text only</div>{% endif %}
+      {{ spv.media(p) }}
     </div>
     <div style="min-width:0">
       <div class="ap-row"><span class="sp-pill p-w">Awaiting approval</span>
@@ -156,4 +157,5 @@
   });
 })();
 </script>
+{{ spv.viewer() }}
 {% endblock %}

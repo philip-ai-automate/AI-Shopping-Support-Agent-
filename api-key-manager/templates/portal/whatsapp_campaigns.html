@@ -876,6 +876,18 @@
           <input type="hidden" name="language_code" id="f-lang" value="en">
         </div>
 
+        <!-- Shown only when the chosen template has a blank ({{1}}) -->
+        <div class="field" id="fillWithField" style="display:none">
+          <label class="field-label">
+            Fill the blank with
+            <span class="field-hint">This message has a blank the portal fills in for each person</span>
+          </label>
+          <select class="field-select" name="fill_with" id="f-fill-with">
+            <option value="">Personal note (or first name if there is no note)</option>
+            <option value="business">Business name (full name, e.g. Finlab Nigeria Limited)</option>
+          </select>
+        </div>
+
         <!-- Dynamic header field — shown and adapted based on template header type -->
         <input type="hidden" name="header_type" id="f-header-type" value="">
 
@@ -910,6 +922,9 @@
           <input class="field-input" type="url" name="header_image_url" id="f-header-image"
                  placeholder="https://yoursite.com/images/promo-banner.jpg"
                  autocomplete="off" oninput="onImageUrlInput(this)">
+          <!-- Real name of an uploaded file, so a PDF reaches people as
+               "PhiXtra_Brochure.pdf", not "document.pdf" (2026-10-13) -->
+          <input type="hidden" name="header_filename" id="f-header-filename" value="">
           <div id="headerMediaHints" style="margin-top:6px;font-size:11px;color:#94a3b8"></div>
         </div>
 
@@ -1123,7 +1138,7 @@ function loadTemplates() {
       }
       sel.innerHTML = '<option value="">— select a template —</option>' +
         templates.map(t =>
-          `<option value="${t.name}" data-lang="${t.language}" data-cat="${t.category}" data-header="${t.header_type || ''}">`
+          `<option value="${t.name}" data-lang="${t.language}" data-cat="${t.category}" data-header="${t.header_type || ''}" data-blank="${t.has_blank ? '1' : ''}">`
           + `${t.name}  ·  ${t.category.toLowerCase().replace('_',' ')}`
           + (t.header_type === 'IMAGE'    ? '  \u{1F4F7}' :
              t.header_type === 'VIDEO'    ? '  \u{1F3AC}' :
@@ -1144,6 +1159,9 @@ function onTemplateChange(sel) {
   const headerType = (opt && opt.getAttribute('data-header')) || ''
   document.getElementById('f-lang').value    = (opt && opt.getAttribute('data-lang')) || 'en'
   document.getElementById('f-header-type').value = headerType
+  const hasBlank = !!(opt && opt.getAttribute('data-blank'))
+  document.getElementById('fillWithField').style.display = hasBlank ? 'block' : 'none'
+  if (!hasBlank) document.getElementById('f-fill-with').value = ''
 
   // Hide all header fields first
   document.getElementById('headerMediaField').style.display    = 'none'
@@ -1478,6 +1496,7 @@ function uploadHeaderMedia(input) {
     bar.style.width = '100%'
     if (data.url) {
       urlInput.value = data.url
+      document.getElementById('f-header-filename').value = data.filename || ''
       status.textContent = 'Upload complete!'
       status.style.color = '#16a34a'
       if (headerType === 'IMAGE') showImagePreview(data.url)
@@ -1512,6 +1531,8 @@ function showImagePreview(url) {
 
 function onImageUrlInput(input) {
   const url = input.value.trim()
+  // A typed/pasted link names itself — forget any earlier upload's name
+  document.getElementById('f-header-filename').value = ''
   if (url.match(/^https?:\/\/.+\.(jpg|jpeg|png)(\?.*)?$/i)) {
     showImagePreview(url)
   } else {

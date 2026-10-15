@@ -261,6 +261,7 @@
     <div class="s-panel card" id="panel-notifications">
       <h2 class="section-heading">Notification Preferences</h2>
       <p class="section-sub">Choose which emails you'd like to receive from PhiXtra.</p>
+      {% include "portal/_push_card.html" %}
       <form method="POST" action="{{ url_for('portal.settings_notifications') }}">
 
         <!-- Chat alerts (hand-overs and new chats needing a person) moved to
