@@ -7,6 +7,7 @@
 {% block content %}
 {% from "portal/_labels_ui.html" import label_chip %}
 {% from "portal/_columns_ui.html" import cc_head, cc_cell, cc_filter_bar %}
+{% from "portal/_filter_ui.html" import fs_business, fs_columns, fs_contact, fs_labels, fs_location, fs_dates with context %}
 {% set can_label = staff_can('crm.tags_assign') %}
 {% set can_bulk = staff_can('leads.qualify') or staff_can('leads.assign') or can_label or (all_lead_cols|selectattr('can_fill')|list|length > 0) %}
 
@@ -445,114 +446,174 @@
   </form>
 </div>
 
-<div class="leads-toolbar">
-  <form class="leads-search" method="GET">
-    <span class="leads-search-icon">🔍</span>
-    <input type="text" name="q" value="{{ search }}" placeholder="Search by business or contact…">
-    {% if view_mode == 'board' %}<input type="hidden" name="view" value="board">{% endif %}
-    {% if tier_filter != 'all' %}<input type="hidden" name="tier" value="{{ tier_filter }}">{% endif %}
-    {% for k, v in fargs.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
-  </form>
-  <div class="view-switch">
-    <a href="{{ url_for('portal.leads_page', q=search, tier=(tier_filter if tier_filter != 'all' else none), view='list', **fargs) }}"
-       class="{{ 'active' if view_mode == 'list' }}">☰ List</a>
-    <a href="{{ url_for('portal.leads_page', q=search, tier=(tier_filter if tier_filter != 'all' else none), view='board') }}"
-       class="{{ 'active' if view_mode == 'board' }}">▦ Board</a>
-  </div>
-  <div class="filter-bar">
-    <a href="{{ url_for('portal.leads_page', q=search, view=view_mode, **fargs) }}" class="filter-btn {{ 'active' if tier_filter == 'all' }}">All ({{ tier_counts.values()|sum }})</a>
-    <a href="{{ url_for('portal.leads_page', q=search, view=view_mode, tier='hot', **fargs) }}" class="filter-btn {{ 'active' if tier_filter == 'hot' }}">🔥 Hot ({{ tier_counts.get('hot', 0) }})</a>
-    <a href="{{ url_for('portal.leads_page', q=search, view=view_mode, tier='warm', **fargs) }}" class="filter-btn {{ 'active' if tier_filter == 'warm' }}">🌤️ Warm ({{ tier_counts.get('warm', 0) }})</a>
-    <a href="{{ url_for('portal.leads_page', q=search, view=view_mode, tier='cold', **fargs) }}" class="filter-btn {{ 'active' if tier_filter == 'cold' }}">❄️ Cold ({{ tier_counts.get('cold', 0) }})</a>
-  </div>
-  {% if view_mode == 'list' %}
-  <a href="{{ url_for('portal.leads_page', q=search, tier=(tier_filter if tier_filter != 'all' else none), sort=(none if sort_by == 'score' else 'score'), **fargs) }}"
-     class="filter-btn {{ 'active' if sort_by == 'score' }}">📊 {{ 'Sorted by Score' if sort_by == 'score' else 'Sort by Score' }}</a>
-  <form method="GET" style="display:flex;align-items:center;gap:6px;margin-left:auto">
-    <input type="hidden" name="q" value="{{ search }}">
-    {% if tier_filter != 'all' %}<input type="hidden" name="tier" value="{{ tier_filter }}">{% endif %}
-    {% if sort_by == 'score' %}<input type="hidden" name="sort" value="score">{% endif %}
-    {% for k, v in fargs.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
-    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
-      Per page
-      <select name="per_page" onchange="this.form.submit()"
-              style="padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit">
-        {% for opt in per_page_options %}
-        <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ 'All' if opt == 'all' else opt }}</option>
+{# ── Filter bar + Filters panel (redesigned 2026-10-17, same as Sales Pipeline) ── #}
+{% set clear_url = url_for('portal.leads_page', reset=1, view=('board' if view_mode == 'board' else none)) %}
+<form method="GET" action="{{ url_for('portal.leads_page') }}" class="spf-bar" id="spFilterForm" data-noun="leads" onsubmit="spfTidySubmit(this)">
+  <div class="spf-row">
+    <div class="spf-search">
+      <button type="submit" class="spf-search-go" aria-label="Search">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      </button>
+      <label for="spfQ" class="spf-sr">Search leads</label>
+      <input type="search" id="spfQ" name="q" value="{{ search }}" placeholder="Search business, contact, phone or email…"/>
+    </div>
+
+    {% if can_filter_assigned %}
+    {% set _sel = (assignee_options | selectattr('selected') | first) %}
+    <div class="spf-asg-wrap">
+      <button type="button" class="spf-btn spf-asg {{ 'on' if lf.assigned }}" id="spfAsgBtn" aria-haspopup="true" aria-expanded="false" onclick="spfToggleAsg(event)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+        <span class="spf-asg-lbl">Assigned to</span>
+        <strong>{{ _sel.label if _sel else 'Everyone' }}</strong>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="spf-asg-menu" id="spfAsgMenu">
+        <label for="spfAsgFind" class="spf-sr">Find a team member</label>
+        <input type="search" id="spfAsgFind" class="spf-asg-find" placeholder="Find a team member…" oninput="spfFilterAsg(this.value)" autocomplete="off">
+        <div class="spf-asg-group">Quick views</div>
+        {% for o in assignee_options[:3] %}
+        <a href="{{ o.url }}" class="spf-asg-opt {{ 'sel' if o.selected }}" data-name="{{ o.label|lower }}">
+          <span class="spf-av {{ 'all' if not o.value else ('none' if o.value == 'none' else 'me') }}">{% if not o.value %}ALL{% elif o.value == 'none' %}?{% else %}ME{% endif %}</span>
+          <span class="spf-asg-txt"><b>{{ o.label }}</b><small>{{ "{:,}".format(o.n) }} lead{{ "s" if o.n != 1 }}</small></span>
+        </a>
         {% endfor %}
-      </select>
-    </label>
-  </form>
-  {% endif %}
-  <a href="{{ url_for('portal.lead_scoring_explainer') }}" class="filter-btn">🎯 How this works</a>
-</div>
-
-{% if view_mode == 'list' %}
-{# ── Filters (2026-10-02): Contact details tick-list, Assigned to, Date added ── #}
-{% set _ns = namespace(no_contact={}, no_date={}) %}
-{% for k, v in fargs.items() %}
-  {% if not k.startswith('has_') and k != 'check_numbers' %}{% set _ = _ns.no_contact.update({k: v}) %}{% endif %}
-  {% if k not in ('added_from', 'added_to') %}{% set _ = _ns.no_date.update({k: v}) %}{% endif %}
-{% endfor %}
-{% if lf.flagged_count and not lf.check_numbers %}
-<div style="margin:0 0 10px;padding:9px 12px;border-radius:10px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:13px">
-  ⚠️ {{ lf.flagged_count }} lead{{ 's' if lf.flagged_count != 1 }} {{ 'have' if lf.flagged_count != 1 else 'has' }} a phone number to check (no country code, or not a real number). WhatsApp campaigns skip these numbers until they're fixed.
-  <a href="{{ url_for('portal.leads_page', check_numbers=1) }}" style="font-weight:600;color:#92400e;text-decoration:underline">Show them</a>
-</div>
-{% endif %}
-<form method="GET" class="lf-bar" id="leadFilterForm">
-  {% if search %}<input type="hidden" name="q" value="{{ search }}">{% endif %}
-  {% if tier_filter != 'all' %}<input type="hidden" name="tier" value="{{ tier_filter }}">{% endif %}
-  {% if sort_by == 'score' %}<input type="hidden" name="sort" value="score">{% endif %}
-  {% if per_page != '50' %}<input type="hidden" name="per_page" value="{{ per_page }}">{% endif %}
-
-  <details class="lf-dd">
-    <summary class="filter-btn {{ 'active' if lf.contact_filter_count }}">Contact details{% if lf.contact_filter_count %} ({{ lf.contact_filter_count }}){% endif %} ▾</summary>
-    <div class="lf-menu">
-      <label class="lf-item"><input type="checkbox" name="has_phone" value="1" {% if lf.has_phone %}checked{% endif %}> Has phone number</label>
-      <label class="lf-item"><input type="checkbox" name="has_email" value="1" {% if lf.has_email %}checked{% endif %}> Has email</label>
-      <label class="lf-item"><input type="checkbox" name="has_whatsapp" value="1" {% if lf.has_whatsapp %}checked{% endif %}> Has WhatsApp number</label>
-      <label class="lf-item"><input type="checkbox" name="has_company" value="1" {% if lf.has_company %}checked{% endif %}> Has company</label>
-      <label class="lf-item"><input type="checkbox" name="check_numbers" value="1" {% if lf.check_numbers %}checked{% endif %}> ⚠️ Numbers to check ({{ lf.flagged_count }})</label>
-      <div class="lf-foot">
-        <a class="btn btn-sm btn-ghost" href="{{ url_for('portal.leads_page', q=search or none, tier=(tier_filter if tier_filter != 'all' else none), sort=(sort_by or none), **_ns.no_contact) }}">Clear</a>
-        <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+        {% if assignee_options|length > 3 %}
+        <div class="spf-asg-group spf-asg-team">Sales team</div>
+        {% for o in assignee_options[3:] %}
+        <a href="{{ o.url }}" class="spf-asg-opt {{ 'sel' if o.selected }}" data-name="{{ o.label|lower }}">
+          <span class="spf-av">{{ o.initials }}</span>
+          <span class="spf-asg-txt"><b>{{ o.label }}</b><small>{{ "{:,}".format(o.n) }} lead{{ "s" if o.n != 1 }}</small></span>
+        </a>
+        {% endfor %}
+        {% endif %}
+        <div class="spf-asg-empty" id="spfAsgEmpty">No one matches that name.</div>
       </div>
     </div>
-  </details>
+    {% endif %}
 
-  <label class="lf-sel">Assigned to
-    <select name="assigned" onchange="this.form.submit()">
-      <option value="">Anyone</option>
-      <option value="me" {% if lf.assigned == 'me' %}selected{% endif %}>Assigned to me</option>
-      <option value="none" {% if lf.assigned == 'none' %}selected{% endif %}>Unassigned</option>
-      {% for a in assignees %}
-      <option value="{{ a.key }}" {% if lf.assigned == a.key %}selected{% endif %}>{{ a.display }}</option>
+    {% set _nf = filter_chips | rejectattr('label', 'equalto', 'Search') | rejectattr('label', 'equalto', 'Score') | map(attribute='label') | unique | list | length %}
+    <button type="button" class="spf-btn" onclick="spfOpenDrawer()" aria-haspopup="dialog">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+      Filters{% if _nf %} <span class="spf-badge">{{ _nf }}</span>{% endif %}
+    </button>
+  </div>
+
+  <div class="spf-row lf-row2">
+    <div class="lf-tiers" role="group" aria-label="Lead score">
+      {% for v, t in [('all', 'All'), ('hot', '🔥 Hot'), ('warm', '🌤️ Warm'), ('cold', '❄️ Cold')] %}
+      <a href="{{ url_with({'tier': v} if v != 'all' else {}, ('tier',)) }}" class="{{ 'on' if tier_filter == v }}">{{ t }} <small>{{ '{:,}'.format(tier_counts.values()|sum if v == 'all' else tier_counts.get(v, 0)) }}</small></a>
       {% endfor %}
-    </select>
-  </label>
-
-  {{ address_filters(lf.addr, addr_opts) }}
-
-  {{ biz_filters(lf.biz) }}
-
-  <details class="lf-dd">
-    <summary class="filter-btn {{ 'active' if lf.added_from or lf.added_to }}">Date added{% if lf.added_from or lf.added_to %}: {{ lf.added_from.strftime('%d %b %Y') if lf.added_from else '…' }} – {{ lf.added_to.strftime('%d %b %Y') if lf.added_to else '…' }}{% endif %} ▾</summary>
-    <div class="lf-menu">
-      <label class="lf-item lf-date">From <input type="date" name="added_from" value="{{ lf.added_from.isoformat() if lf.added_from else '' }}"></label>
-      <label class="lf-item lf-date">To <input type="date" name="added_to" value="{{ lf.added_to.isoformat() if lf.added_to else '' }}"></label>
-      <div class="lf-foot">
-        <a class="btn btn-sm btn-ghost" href="{{ url_for('portal.leads_page', q=search or none, tier=(tier_filter if tier_filter != 'all' else none), sort=(sort_by or none), **_ns.no_date) }}">Clear</a>
-        <button type="submit" class="btn btn-sm btn-primary">Apply</button>
-      </div>
     </div>
-  </details>
+    <div class="spf-right">
+      {% if view_mode == 'list' %}
+      <label class="lf-sort"><span>Sort</span>
+        <select name="sort" onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+          <option value="" {% if not sort_by %}selected{% endif %}>Newest first</option>
+          <option value="score" {% if sort_by == 'score' %}selected{% endif %}>Highest score first</option>
+          {% for c in all_lead_cols %}
+          <option value="cc{{ c.id }}_asc" {% if sort_by == 'cc' ~ c.id ~ '_asc' %}selected{% endif %}>{{ c.name }} ↑</option>
+          <option value="cc{{ c.id }}_desc" {% if sort_by == 'cc' ~ c.id ~ '_desc' %}selected{% endif %}>{{ c.name }} ↓</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% endif %}
+      <div class="spf-views">
+        <a href="{{ url_with({'view': 'list'}) }}" class="{{ 'active' if view_mode == 'list' }}">☰ List</a>
+        <a href="{{ url_with({'view': 'board'}) }}" class="{{ 'active' if view_mode == 'board' }}">▦ Board</a>
+      </div>
+      {% if view_mode == 'list' %}
+      <button type="button" class="spf-btn" onclick="ColumnUI.columnsMenu(this)">▦ Columns{% if all_lead_cols %} ({{ all_lead_cols|length }}){% endif %}</button>
+      {% if staff_can('crm.columns_own') or staff_can('crm.columns_create') %}<button type="button" class="spf-btn" onclick="ColumnUI.openWindow(null)">+ Add column</button>{% endif %}
+      {% endif %}
+    </div>
+  </div>
 
-  {% if fargs %}
-  <a class="lf-clear" href="{{ url_for('portal.leads_page', q=search or none, tier=(tier_filter if tier_filter != 'all' else none), sort=(sort_by or none)) }}">Clear all filters</a>
-  {% endif %}
+  <div class="spf-chips">
+    <span class="spf-count">{{ '{:,}'.format(filtered_total if view_mode == 'list' else tier_counts.values()|sum) }} lead{{ 's' if filtered_total != 1 }}</span>
+    {% for c in filter_chips if c.label != 'Score' %}
+    <span class="spf-chip"><span class="k">{{ c.label }}:</span> <b>{{ c.value }}</b>
+      <a href="{{ c.url }}" aria-label="Remove {{ c.label }} {{ c.value }}" title="Remove">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </a>
+    </span>
+    {% endfor %}
+    {% if filter_chips|rejectattr('label', 'equalto', 'Score')|list %}<a href="{{ clear_url }}" class="spf-clearall">Clear all</a>{% else %}<span class="spf-none">· No filters on</span>{% endif %}
+    {% if lf.flagged_count and not lf.check_numbers %}
+    <span class="spf-chip warn" style="margin-left:auto;white-space:nowrap">⚠️ {{ '{:,}'.format(lf.flagged_count) }} phone number{{ 's' if lf.flagged_count != 1 }} to check · <a href="{{ url_with({'check_numbers': '1'}) }}">Show them</a></span>
+    {% endif %}
+  </div>
+
+  {% if tier_filter != 'all' %}<input type="hidden" name="tier" value="{{ tier_filter }}">{% endif %}
+  {% if view_mode == 'board' %}<input type="hidden" name="view" value="board">{% endif %}
+
+  {# ── All filters side panel ── #}
+  <div class="spf-drawer" id="spfDrawer" aria-hidden="true">
+    <div class="spf-backdrop" onclick="spfCloseDrawer()"></div>
+    <aside class="spf-panel" role="dialog" aria-modal="true" aria-labelledby="spfTitle">
+      <div class="spf-head">
+        <h2 id="spfTitle">Filters</h2>
+        <button type="button" class="spf-x" aria-label="Close filters" onclick="spfCloseDrawer()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="spf-body">
+        {% if can_filter_assigned %}
+        <section>
+          <h3>Assigned to</h3>
+          {% for o in assignee_options %}
+          <label class="spf-radio"><input type="radio" name="assigned" value="{{ o.value }}" {% if o.selected %}checked{% endif %}>
+            <span>{{ o.label }}</span><small>{{ "{:,}".format(o.n) }}</small></label>
+          {% endfor %}
+        </section>
+        {% endif %}
+
+        {{ fs_business(biz_state, opt_counts) }}
+
+        {{ fs_columns(all_lead_cols, col_filter_state, opt_counts) }}
+
+        {{ fs_contact([('has_phone', 'Has phone number', lf.has_phone, opt_counts.contact.has_phone),
+                       ('has_email', 'Has email', lf.has_email, opt_counts.contact.has_email),
+                       ('has_whatsapp', 'Has WhatsApp number', lf.has_whatsapp, opt_counts.contact.has_whatsapp),
+                       ('has_company', 'Has company', lf.has_company, opt_counts.contact.has_company),
+                       ('check_numbers', '⚠️ Phone number to check', lf.check_numbers, lf.flagged_count)]) }}
+
+        {{ fs_labels(all_labels, biz_state.labels or [], biz_state.hide_labels or [], opt_counts) }}
+
+        {{ fs_location(addr_state, addr_opts) }}
+
+        {{ fs_dates(lf.added_from, lf.added_to) }}
+
+        {% if lead_imports %}
+        <section>
+          <h3>Came from</h3>
+          <label class="spf-field">Import
+            <select name="import">
+              <option value="">Any source</option>
+              {% for im in lead_imports %}<option value="{{ im.id }}" {% if biz_state.import == im.id %}selected{% endif %}>{{ im.file_name }} ({{ im.created_at.strftime('%-d %b') }})</option>{% endfor %}
+            </select>
+          </label>
+        </section>
+        {% endif %}
+      </div>
+      <div class="spf-foot">
+        <a href="{{ clear_url }}" class="spf-clearall">Clear all</a>
+        <button type="submit" class="spf-apply">Show {{ '{:,}'.format(filtered_total) }} leads</button>
+      </div>
+    </aside>
+  </div>
 </form>
-{% endif %}
+<style>
+  .lf-row2 { justify-content:space-between }
+  .lf-tiers { display:inline-flex; border:1.5px solid #DCE3EE; border-radius:11px; padding:3px; gap:2px; background:#F5F7FB; flex-wrap:wrap }
+  .lf-tiers a { padding:6px 12px; border-radius:8px; font-size:13px; font-weight:600; color:#5A6B85; text-decoration:none; white-space:nowrap }
+  .lf-tiers a small { font-weight:500; margin-left:3px; font-variant-numeric:tabular-nums }
+  .lf-tiers a.on { background:#fff; color:#111E2D; box-shadow:0 1px 3px rgba(11,29,64,.12) }
+  .lf-sort { display:inline-flex; align-items:center; gap:6px; height:40px; padding:0 10px; border:1px solid #DCE3EE; border-radius:10px; background:#fff; font-size:13px }
+  .lf-sort span { color:#5A6B85 }
+  .lf-sort select { border:0; background:none; font:inherit; font-weight:600; color:#111E2D; max-width:190px }
+  .lf-under { display:flex; align-items:center; gap:10px; font-size:12px; color:var(--muted) }
+  .lf-under select { padding:5px 8px; border:1.5px solid var(--line); border-radius:8px; font:inherit }
+</style>
 
 {% if view_mode == 'board' %}
 {% macro cust_color(name) %}{% set _p=['#5C6BC0','#26A69A','#0288D1','#388E3C','#F57C00','#8E24AA','#E53935','#00838F'] %}{{ _p[(name|length)%8] }}{% endmacro %}
@@ -621,10 +682,9 @@
 </div>
 
 {% elif not real_leads %}
-{{ cc_filter_bar(col_filter_chips) }}
 <div class="empty-leads">
   <div class="empty-leads-icon">📇</div>
-  <div style="font-size:17px;font-weight:700;margin-bottom:8px">{{ 'No leads match these filters' if col_filter_chips else 'No Leads yet' }}</div>
+  <div style="font-size:17px;font-weight:700;margin-bottom:8px">{{ 'No leads match these filters' if filter_chips else 'No Leads yet' }}</div>
   <p style="max-width:380px;margin:0 auto">Add one by hand above, or create one from a Hot Conversation.</p>
 </div>
 {% else %}
@@ -644,11 +704,7 @@
   <button type="button" class="lb-btn lb-ghost" onclick="lbClear()">Clear</button>
 </div>
 {% endif %}
-{{ cc_filter_bar(col_filter_chips) }}
-<div class="cc-toolbar">
-  <button type="button" class="btn btn-sm" onclick="ColumnUI.columnsMenu(this)">▦ Columns{% if all_lead_cols %} ({{ all_lead_cols|length }}){% endif %}</button>
-  {% if staff_can('crm.columns_own') or staff_can('crm.columns_create') %}<button type="button" class="btn btn-sm btn-primary" onclick="ColumnUI.openWindow(null)">+ Add column</button>{% endif %}
-</div>
+
 <div class="card" style="padding:0">
   <div class="table-wrap">
     <table class="rpt-table">
@@ -707,8 +763,14 @@
   {% if real_leads %}
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
               padding:12px 18px;border-top:1px solid rgba(3,12,24,.06)">
-    <span style="font-size:12px;color:var(--muted)">
+    <span class="lf-under">
       {% if per_page == 'all' %}Showing all {{ filtered_total }}{% else %}Showing {{ ((page-1)*per_page|int)+1 }}–{{ [page*per_page|int, filtered_total]|min }} of {{ filtered_total }}{% endif %}
+      <label>Per page
+        <select name="per_page" form="spFilterForm" onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+          {% for opt in per_page_options %}<option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ 'All' if opt == 'all' else opt }}</option>{% endfor %}
+        </select>
+      </label>
+      · <a href="{{ url_for('portal.lead_scoring_explainer') }}" style="color:inherit">🎯 How scoring works</a>
     </span>
     {% if total_pages > 1 %}
     {% set base_args = {'q': search, 'tier': (tier_filter if tier_filter != 'all' else none),
@@ -907,7 +969,7 @@ tr.lb-sel td{background:#eef2fa}
 
 <script>
 var LB = { all: false, total: {{ filtered_total|int }}, preview: null,
-           filterKeys: ['q','tier','has_phone','has_email','has_whatsapp','has_company','check_numbers','assigned','added_from','added_to','country','state','city','addr_missing','biz_category','employees','label','import'] };
+           filterKeys: ['q','tier','has_phone','has_email','has_whatsapp','has_company','check_numbers','assigned','added_from','added_to','country','state','city','addr_missing','biz_category','employees','label','hide_label','import'] };
 function lbRows(){ return Array.prototype.slice.call(document.querySelectorAll('.lb-row')); }
 function lbIds(){ return lbRows().filter(function(r){ var c=r.querySelector('.lb-row-ck'); return c && c.checked; })
                                  .map(function(r){ return r.dataset.leadId; }); }
@@ -1092,5 +1154,6 @@ document.addEventListener('click', function(e){
 
 {% include "portal/_labels_ui.html" %}
 {% include "portal/_columns_ui.html" %}
+{% include "portal/_filter_ui.html" %}
 <style>.cc-toolbar{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin:0 0 10px}</style>
 {% endblock %}

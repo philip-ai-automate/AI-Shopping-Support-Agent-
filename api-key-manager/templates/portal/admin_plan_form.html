@@ -162,6 +162,10 @@
         <input type="number" step="0.01" name="price_usd" value="{{ plan.price_usd }}" min="0">
       </div>
       <div class="pf-field">
+        <label>Price ($ / month)</label>
+        <input type="number" step="0.01" name="price_dollars" value="{{ plan.price_dollars or 0 }}" min="0">
+      </div>
+      <div class="pf-field">
         <label>Annual discount %</label>
         <input type="number" name="annual_discount_pct" value="{{ plan.annual_discount_pct }}">
       </div>

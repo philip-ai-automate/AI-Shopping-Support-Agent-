@@ -11,7 +11,8 @@
 {% set can_bulk_wa_seg    = staff_can_open('portal.whatsapp_pipeline_segments_bulk_add_members') and 'campaigns_wa.segments_edit' in (granted_features or []) %}
 {% set can_bulk_sms_seg   = staff_can_open('portal.sms_pipeline_segments_bulk_add_members') %}
 {% from "portal/_labels_ui.html" import label_chip %}
-{% from "portal/_columns_ui.html" import cc_head, cc_cell, cc_filter_bar %}
+{% from "portal/_columns_ui.html" import cc_head, cc_cell %}
+{% from "portal/_filter_ui.html" import fs_business, fs_columns, fs_contact, fs_labels, fs_location with context %}
 {% set can_bulk_label     = staff_can_open('portal.lead_labels_bulk_add_members') and 'crm.tags_assign' in (granted_features or []) %}
 {% set can_bulk_assign = staff_can('leads.assign') %}
 {% set can_bulk_cols = all_lead_cols|selectattr('can_fill')|list|length > 0 %}
@@ -307,135 +308,6 @@
 
   @media(max-width:600px){ .frow{grid-template-columns:1fr} }
 
-  /* ── Filter bar (redesigned 2026-10-14) ─────────────────────────────── */
-  .spf-bar { background:#fff; border:1px solid #DCE3EE; border-radius:14px; padding:14px; margin-bottom:16px;
-             display:flex; flex-direction:column; gap:12px }
-  .spf-row { display:flex; flex-wrap:wrap; align-items:center; gap:10px }
-  .spf-sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap }
-  .spf-search { position:relative; flex:1 1 200px; min-width:0 }
-  .spf-search input { width:100%; height:44px; box-sizing:border-box; padding:0 12px 0 42px; border:1px solid #DCE3EE;
-                      border-radius:10px; font:inherit; font-size:14px; color:#111E2D; background:#fff }
-  .spf-search input:focus { outline:none; border-color:#0B1D40; box-shadow:0 0 0 3px rgba(11,29,64,.12) }
-  .spf-search-go { position:absolute; left:4px; top:4px; width:36px; height:36px; border:0; background:transparent;
-                   color:#5A6B85; cursor:pointer; display:flex; align-items:center; justify-content:center; border-radius:8px }
-  .spf-search-go:hover { color:#0B1D40 }
-  .spf-btn { height:44px; padding:0 14px; border:1px solid #DCE3EE; background:#fff; border-radius:10px; display:inline-flex;
-             align-items:center; gap:8px; cursor:pointer; font:inherit; font-size:14px; font-weight:600; color:#0B1D40; white-space:nowrap }
-  .spf-btn:hover { background:#F5F7FB; border-color:#C9D8F2 }
-  .spf-btn.spf-icon { width:44px; padding:0; justify-content:center }
-  .spf-btn:focus-visible, .spf-views a:focus-visible, .spf-asg-opt:focus-visible { outline:2px solid #0B1D40; outline-offset:2px }
-  .spf-asg.on { border-color:#0B1D40; background:#E8EEF8 }
-  .spf-asg-lbl { font-weight:400; font-size:13px; color:#5A6B85 }
-  .spf-badge { min-width:20px; height:20px; padding:0 6px; box-sizing:border-box; border-radius:10px; background:#0B1D40; color:#fff;
-               font-size:11.5px; font-weight:600; display:inline-flex; align-items:center; justify-content:center }
-  .spf-right { display:flex; align-items:center; gap:8px; margin-left:auto; flex-wrap:wrap }
-  .spf-views { display:flex; border:1px solid #DCE3EE; border-radius:10px; padding:3px; background:#F5F7FB }
-  .spf-views a { height:36px; padding:0 12px; border-radius:7px; display:flex; align-items:center; gap:6px; font-size:13px;
-                 font-weight:500; color:#5A6B85; text-decoration:none }
-  .spf-views a:hover { color:#0B1D40; text-decoration:none }
-  .spf-views a.active { background:#fff; color:#0B1D40; font-weight:600; box-shadow:0 1px 2px rgba(11,29,64,.12) }
-  .spf-right .col-picker-menu { right:0; left:auto }
-
-  .spf-asg-wrap { position:relative }
-  .spf-asg-menu { display:none; position:absolute; top:52px; left:0; z-index:60; width:340px; max-width:calc(100vw - 32px);
-                  max-height:440px; overflow-y:auto; background:#fff; border:1px solid #DCE3EE; border-radius:14px;
-                  box-shadow:0 16px 40px rgba(11,29,64,.18); padding:10px; box-sizing:border-box }
-  .spf-asg-menu.open { display:block }
-  .spf-asg-find { width:100%; height:40px; box-sizing:border-box; padding:0 10px; border:1px solid #DCE3EE; border-radius:8px;
-                  font:inherit; font-size:13px; margin-bottom:4px }
-  .spf-asg-group { font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#5A6B85; padding:8px 8px 4px }
-  .spf-asg-team { border-top:1px solid #EEF2F8; margin-top:6px; padding-top:10px }
-  .spf-asg-opt { display:flex; align-items:center; gap:10px; min-height:48px; padding:6px 8px; border-radius:8px; color:#111E2D;
-                 text-decoration:none }
-  .spf-asg-opt:hover { background:#F5F7FB; text-decoration:none; color:#111E2D }
-  .spf-asg-opt.sel { background:#E8EEF8 }
-  .spf-asg-opt svg { color:#0B1D40; flex-shrink:0 }
-  .spf-asg-txt { flex:1; min-width:0; display:flex; flex-direction:column }
-  .spf-asg-txt b { font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
-  .spf-asg-txt small { font-size:12px; color:#5A6B85 }
-  .spf-asg-empty { display:none; padding:10px 8px; font-size:13px; color:#5A6B85 }
-  .spf-av { width:30px; height:30px; flex:0 0 30px; border-radius:50%; background:#1E3A6E; color:#fff; display:flex;
-            align-items:center; justify-content:center; font-size:11px; font-weight:600; box-sizing:border-box }
-  .spf-av.me { background:#0B1D40 }
-  .spf-av.all { background:#F5F7FB; color:#5A6B85; border:1px solid #DCE3EE; font-size:9.5px }
-  .spf-av.none { background:#fff; color:#5A6B85; border:1.5px dashed #9DB8E8 }
-  .spf-av.big { width:44px; height:44px; flex-basis:44px; font-size:14px; background:#0B1D40 }
-
-  .spf-chips { display:flex; flex-wrap:wrap; align-items:center; gap:8px; border-top:1px solid #EEF2F8; padding-top:12px }
-  .spf-count { font-size:13px; font-weight:600; color:#0B1D40; margin-right:4px }
-  .spf-chip { display:inline-flex; align-items:center; gap:4px; height:32px; padding:0 4px 0 12px; border-radius:16px;
-              background:#E8EEF8; font-size:13px; color:#0B1D40 }
-  .spf-chip .k { color:#5A6B85 }
-  .spf-chip a { width:24px; height:24px; border-radius:12px; display:flex; align-items:center; justify-content:center; color:#0B1D40 }
-  .spf-chip a:hover { background:#C9D8F2 }
-  .spf-clearall { font-size:13px; font-weight:600; color:#1E3A6E; text-decoration:underline; padding:0 6px }
-  .spf-none { font-size:13px; color:#5A6B85 }
-
-  .spf-snap { background:#fff; border:1px solid #DCE3EE; border-radius:14px; padding:16px 18px; margin-bottom:16px;
-              display:flex; flex-wrap:wrap; align-items:center; gap:16px }
-  .spf-snap-who { display:flex; align-items:center; gap:12px; flex:1 1 240px }
-  .spf-snap-title { font-size:16px; font-weight:700; color:#0B1D40 }
-  .spf-snap-sub { font-size:12px; color:#5A6B85 }
-  .spf-snap-stats { display:flex; flex-wrap:wrap }
-  .spf-snap-stats div { padding:4px 20px; border-left:1px solid #EEF2F8; display:flex; flex-direction:column }
-  .spf-snap-stats small { font-size:12px; color:#5A6B85 }
-  .spf-snap-stats b { font-size:19px; font-weight:700; color:#0B1D40; white-space:nowrap }
-
-  .spf-drawer { display:none; position:fixed; inset:0; z-index:1000 }
-  .spf-drawer.open { display:flex; justify-content:flex-end }
-  .spf-backdrop { position:absolute; inset:0; background:rgba(11,29,64,.35) }
-  .spf-panel { position:relative; width:420px; max-width:100%; height:100%; background:#fff; display:flex; flex-direction:column;
-               box-shadow:-12px 0 40px rgba(11,29,64,.2) }
-  .spf-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #DCE3EE }
-  .spf-head h2 { margin:0; font-size:20px; font-weight:700; color:#0B1D40 }
-  .spf-x { width:40px; height:40px; border:0; border-radius:10px; background:#F5F7FB; color:#0B1D40; cursor:pointer;
-           display:flex; align-items:center; justify-content:center }
-  .spf-body { flex:1; overflow-y:auto; padding:4px 20px 20px }
-  .spf-body section { padding:16px 0; border-bottom:1px solid #EEF2F8 }
-  .spf-body section:last-child { border-bottom:0 }
-  .spf-body h3 { margin:0 0 10px; font-size:14px; font-weight:700; color:#111E2D }
-  .spf-hint { margin:-6px 0 10px; font-size:12px; color:#5A6B85 }
-  .spf-radio { display:flex; align-items:center; gap:10px; min-height:40px; padding:0 8px; border-radius:8px; cursor:pointer; font-size:14px }
-  .spf-radio:hover { background:#F5F7FB }
-  .spf-radio span { flex:1 }
-  .spf-radio small { font-size:12px; color:#5A6B85 }
-  .spf-radio input, .spf-check input { width:18px; height:18px; margin:0; accent-color:#0B1D40 }
-  .spf-check { display:flex; align-items:center; gap:10px; min-height:36px; font-size:14px; cursor:pointer }
-  .spf-pills { display:flex; gap:8px; flex-wrap:wrap }
-  .spf-pill input { position:absolute; opacity:0; pointer-events:none }
-  .spf-pill span { display:inline-flex; align-items:center; height:38px; padding:0 16px; border-radius:19px; border:1.5px solid #DCE3EE;
-                   font-size:13px; font-weight:600; cursor:pointer; color:#111E2D; background:#fff }
-  .spf-pill input:focus-visible + span { outline:2px solid #0B1D40; outline-offset:2px }
-  .spf-pill.any input:checked + span { background:#0B1D40; border-color:#0B1D40; color:#fff }
-  .spf-pill.hot input:checked + span { background:#FFEDD5; border-color:#9A3412; color:#9A3412 }
-  .spf-pill.warm input:checked + span { background:#FEF3C7; border-color:#854D0E; color:#854D0E }
-  .spf-pill.cold input:checked + span { background:#EEF2F6; border-color:#475569; color:#475569 }
-  .spf-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; margin-bottom:6px }
-  .spf-span2 { grid-column:span 2 }
-  .spf-field { display:flex; flex-direction:column; gap:4px; font-size:12px; color:#5A6B85 }
-  .spf-field select, .spf-field input { height:40px; padding:0 10px; border:1px solid #DCE3EE; border-radius:8px; font:inherit;
-                                        font-size:14px; color:#111E2D; background:#fff; min-width:0 }
-  .spf-field select:disabled { opacity:.55 }
-  .spf-label-row { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:44px; font-size:14px }
-  .spf-seg { display:flex; border:1px solid #DCE3EE; border-radius:8px; padding:2px; background:#F5F7FB; flex-shrink:0 }
-  .spf-seg input { position:absolute; opacity:0; pointer-events:none }
-  .spf-seg span { display:inline-flex; align-items:center; height:30px; padding:0 12px; border-radius:6px; font-size:12px;
-                  font-weight:600; color:#5A6B85; cursor:pointer }
-  .spf-seg input:checked + span { background:#0B1D40; color:#fff }
-  .spf-seg .hide input:checked + span { background:#9A3412; color:#fff }
-  .spf-seg input:focus-visible + span { outline:2px solid #0B1D40; outline-offset:1px }
-  .spf-details { border:1px solid #EEF2F8; border-radius:10px; margin-bottom:8px }
-  .spf-details summary { padding:10px 12px; font-size:14px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:8px }
-  .spf-scroll { max-height:200px; overflow-y:auto; padding:0 12px 8px }
-  .spf-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 20px; border-top:1px solid #DCE3EE }
-  .spf-apply { height:44px; padding:0 22px; border:0; border-radius:10px; background:#0B1D40; color:#fff; font:inherit;
-               font-size:14px; font-weight:600; cursor:pointer }
-  .spf-apply:hover { background:#1E3A6E }
-  @media(max-width:700px){
-    .spf-right { margin-left:0; width:100% }
-    .spf-snap-stats { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; width:100% }
-    .spf-snap-stats div { padding:0; border-left:0 }
-  }
 </style>
 
 <div class="sp-hero">
@@ -559,7 +431,7 @@
    server does the filtering. #}
 {% set _clear_args = {'view': 'board'} if view_mode == 'board' else {} %}
 {% set clear_url = url_for('portal.sales_pipeline', **_clear_args) %}
-<form method="GET" action="{{ url_for('portal.sales_pipeline') }}" class="spf-bar" id="spFilterForm" onsubmit="spfTidySubmit(this)">
+<form method="GET" action="{{ url_for('portal.sales_pipeline') }}" class="spf-bar" id="spFilterForm" data-noun="deals" onsubmit="spfTidySubmit(this)">
   <div class="spf-row">
     <div class="spf-search">
       <button type="submit" class="spf-search-go" aria-label="Search">
@@ -605,7 +477,7 @@
     </div>
     {% endif %}
 
-    {% set _nf = filter_chips | rejectattr('label', 'equalto', 'Search') | list | length %}
+    {% set _nf = filter_chips | rejectattr('label', 'equalto', 'Search') | map(attribute='label') | unique | list | length %}
     <button type="button" class="spf-btn" onclick="spfOpenDrawer()" aria-haspopup="dialog">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
       Filters{% if _nf %} <span class="spf-badge">{{ _nf }}</span>{% endif %}
@@ -708,68 +580,18 @@
           </div>
         </section>
 
-        <section>
-          <h3>Contact details</h3>
-          <label class="spf-check"><input type="checkbox" name="has_phone" value="1" {% if has_phone %}checked{% endif %}> Has phone number</label>
-          <label class="spf-check"><input type="checkbox" name="has_whatsapp" value="1" {% if has_whatsapp %}checked{% endif %}> Has WhatsApp</label>
-          <label class="spf-check"><input type="checkbox" name="has_email" value="1" {% if has_email %}checked{% endif %}> Has email</label>
-        </section>
+        {{ fs_business(biz_state, opt_counts) }}
 
-        <section>
-          <h3>Location</h3>
-          <div class="spf-grid">
-            <label class="spf-field spf-span2">Country
-              <select name="country" id="spfCountry" onchange="spfFillStates(this.value, '')">
-                <option value="">All countries</option>
-                {% for iso, cname, n in addr_opts.countries %}<option value="{{ iso }}" {% if addr_state.country == iso %}selected{% endif %}>{{ cname }} ({{ '{:,}'.format(n) }})</option>{% endfor %}
-              </select>
-            </label>
-            <label class="spf-field"><span id="spfStateLbl">{{ address_state_label(addr_state.country) if addr_state.country else 'State' }}</span>
-              <select name="state" id="spfState"></select>
-            </label>
-            <label class="spf-field">City / Town
-              <input type="text" name="city" value="{{ addr_state.city }}" placeholder="Any">
-            </label>
-          </div>
-          <label class="spf-check"><input type="checkbox" name="addr_missing" value="1" {% if addr_state.addr_missing %}checked{% endif %}> Only deals with no address ({{ '{:,}'.format(addr_opts.missing) }})</label>
-        </section>
+        {{ fs_columns(all_lead_cols, col_filter_state, opt_counts) }}
 
-        <section>
-          <h3>Business</h3>
-          {% set _bo = biz_field_options() %}
-          <div class="spf-grid">
-            <label class="spf-field">Category
-              <select name="biz_category">
-                <option value="">All</option>
-                {% for v in _bo.business_category %}<option value="{{ v }}" {% if biz_state.biz_category == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
-                <option value="__none__" {% if biz_state.biz_category == '__none__' %}selected{% endif %}>No category</option>
-              </select>
-            </label>
-            <label class="spf-field">Employees
-              <select name="employees">
-                <option value="">All</option>
-                {% for v in _bo.employees %}<option value="{{ v }}" {% if biz_state.employees == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
-                <option value="__none__" {% if biz_state.employees == '__none__' %}selected{% endif %}>Not set</option>
-              </select>
-            </label>
-          </div>
-        </section>
+        {{ fs_contact([('has_phone', 'Has phone number', has_phone, opt_counts.contact.has_phone),
+                       ('has_whatsapp', 'Has WhatsApp number', has_whatsapp, opt_counts.contact.has_whatsapp),
+                       ('has_email', 'Has email', has_email, opt_counts.contact.has_email)]) }}
 
-        {% if all_labels %}
-        <section>
-          <h3>Labels</h3>
-          <p class="spf-hint">Show only deals with a label, or hide them.</p>
-          {% for lb in all_labels %}
-          <div class="spf-label-row">
-            <span>{{ lb.name }}</span>
-            <span class="spf-seg">
-              <label><input type="checkbox" name="label" value="{{ lb.id }}" {% if lb.id in show_label_ids %}checked{% endif %} onchange="spfLabelMode(this)"><span>Only</span></label>
-              <label class="hide"><input type="checkbox" name="hide_label" value="{{ lb.id }}" {% if lb.id in hide_label_ids %}checked{% endif %} onchange="spfLabelMode(this)"><span>Hide</span></label>
-            </span>
-          </div>
-          {% endfor %}
-        </section>
-        {% endif %}
+        {{ fs_location(addr_state, addr_opts) }}
+
+
+        {{ fs_labels(all_labels, show_label_ids, hide_label_ids, opt_counts) }}
 
         {% if all_segments or all_wa_segments or (SMS_ENABLED and customer.tenant_id == 19 and all_sms_segments) %}
         <section>
@@ -794,7 +616,7 @@
       </div>
       <div class="spf-foot">
         <a href="{{ clear_url }}" class="spf-clearall">Clear all</a>
-        <button type="submit" class="spf-apply">Show results</button>
+        <button type="submit" class="spf-apply">Show {{ '{:,}'.format(filtered_total) }} deals</button>
       </div>
     </aside>
   </div>
@@ -842,7 +664,6 @@
 </div>
 
 <!-- Pipeline table -->
-{{ cc_filter_bar(col_filter_chips) }}
 <div class="card" style="padding:0" data-sptour="pipeline-table">
   <div class="table-wrap">
     <table>
@@ -1870,84 +1691,6 @@ function toggleColPicker() {
   document.getElementById('colPickerMenu').classList.toggle('open');
 }
 
-/* ── Filter bar (2026-10-14): Assigned to menu + Filters side panel ── */
-function spfToggleAsg(ev) {
-  ev.stopPropagation();
-  var menu = document.getElementById('spfAsgMenu');
-  var open = !menu.classList.contains('open');
-  menu.classList.toggle('open', open);
-  document.getElementById('spfAsgBtn').setAttribute('aria-expanded', open ? 'true' : 'false');
-  if (open) { var f = document.getElementById('spfAsgFind'); f.value = ''; spfFilterAsg(''); f.focus(); }
-}
-function spfCloseAsg() {
-  var menu = document.getElementById('spfAsgMenu');
-  if (!menu || !menu.classList.contains('open')) return;
-  menu.classList.remove('open');
-  document.getElementById('spfAsgBtn').setAttribute('aria-expanded', 'false');
-}
-function spfFilterAsg(q) {
-  q = (q || '').trim().toLowerCase();
-  var shown = 0;
-  document.querySelectorAll('#spfAsgMenu .spf-asg-opt').forEach(function(a) {
-    var ok = !q || a.dataset.name.indexOf(q) !== -1;
-    a.style.display = ok ? '' : 'none';
-    if (ok) shown++;
-  });
-  document.querySelectorAll('#spfAsgMenu .spf-asg-group').forEach(function(g) { g.style.display = q ? 'none' : ''; });
-  document.getElementById('spfAsgEmpty').style.display = shown ? 'none' : 'block';
-}
-function spfOpenDrawer() {
-  var d = document.getElementById('spfDrawer');
-  d.classList.add('open'); d.setAttribute('aria-hidden', 'false');
-  document.body.style.overflow = 'hidden';
-  var first = d.querySelector('input, select, button');
-  if (first) first.focus();
-}
-function spfCloseDrawer() {
-  var d = document.getElementById('spfDrawer');
-  if (!d || !d.classList.contains('open')) return;
-  d.classList.remove('open'); d.setAttribute('aria-hidden', 'true');
-  document.body.style.overflow = '';
-}
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') { spfCloseAsg(); spfCloseDrawer(); }
-});
-/* Only / Hide on a label: one or the other, never both. */
-function spfLabelMode(cb) {
-  if (!cb.checked) return;
-  var otherName = cb.name === 'label' ? 'hide_label' : 'label';
-  var other = cb.form.querySelector('input[name="' + otherName + '"][value="' + cb.value + '"]');
-  if (other) other.checked = false;
-}
-/* State list follows the country picked in the panel. */
-var SPF_STATES = {{ addr_opts.states|tojson if addr_opts else '{}' }};
-var SPF_STATE_NOW = {{ (addr_state.state if addr_state else '')|tojson }};
-function spfFillStates(country, keep) {
-  var sel = document.getElementById('spfState');
-  if (!sel) return;
-  sel.innerHTML = '';
-  var first = document.createElement('option');
-  first.value = ''; first.textContent = country ? 'All' : 'Choose a country first';
-  sel.appendChild(first);
-  (SPF_STATES[country] || []).forEach(function(pair) {
-    var o = document.createElement('option');
-    o.value = pair[0]; o.textContent = pair[0] + ' (' + Number(pair[1]).toLocaleString() + ')';
-    if (keep && pair[0].toLowerCase() === keep.toLowerCase()) o.selected = true;
-    sel.appendChild(o);
-  });
-  sel.disabled = !country;
-}
-(function() {
-  var c = document.getElementById('spfCountry');
-  if (c) spfFillStates(c.value, SPF_STATE_NOW);
-})();
-/* Leave empty boxes out of the address bar so links stay short. */
-function spfTidySubmit(form) {
-  Array.prototype.forEach.call(form.elements, function(el) {
-    if (el.name && !el.disabled && el.value === '' && (el.type !== 'radio' || el.checked)) el.disabled = true;
-  });
-}
-
 /* ── Row / card action menus (kebab ⋮) — list rows and Board cards share
    the same markup pattern (.row-actions-wrap > .kebab-btn + .row-action-menu),
    only one open at a time. ─────────────────────────────────────────────── */
@@ -1996,14 +1739,6 @@ document.addEventListener('click', function(e) {
   if (!e.target.closest('.spf-asg-wrap')) spfCloseAsg();
   if (!e.target.closest('.row-actions-wrap')) closeAllRowMenus();
 });
-/* Boxes left out on submit come back if the browser's Back button restores this page. */
-window.addEventListener('pageshow', function() {
-  var f = document.getElementById('spFilterForm');
-  if (f) Array.prototype.forEach.call(f.elements, function(el) { el.disabled = false; });
-  var c = document.getElementById('spfCountry');
-  if (c) spfFillStates(c.value, SPF_STATE_NOW);
-});
-
 const STAGE_LABELS = {{ stage_labels|tojson }};
 const STAGE_DESC    = {{ stage_descriptions|tojson }};
 
@@ -2495,4 +2230,5 @@ function bpMoveToLeads(){
 {% if staff_can('inbox.send_new') %}{% include 'portal/_send_one_wa.html' %}{% endif %}
 {% include "portal/_labels_ui.html" %}
 {% include "portal/_columns_ui.html" %}
+{% include "portal/_filter_ui.html" %}
 {% endblock %}

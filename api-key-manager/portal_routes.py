@@ -949,7 +949,7 @@ def _cheapest_dual_plan() -> dict | None:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
-            SELECT name, price_ngn, price_usd FROM plans
+            SELECT name, price_ngn, price_usd, price_dollars FROM plans
             WHERE channel_mode='dual' AND is_active=TRUE AND NOT is_custom
             ORDER BY price_ngn, sort_order LIMIT 1""")
         row = cur.fetchone()
@@ -962,11 +962,19 @@ def _cheapest_dual_plan() -> dict | None:
 
 def _wa_dual_required_page(customer: dict, feature_label: str = "WhatsApp"):
     plan = _get_tenant_plan(int(customer["tenant_id"]))
+    dual_plan = _cheapest_dual_plan()
+    # "Starts at" in the business's own plan currency (2026-10-17); no
+    # country known or no price in it → no figure.
+    ccy = _plan_currency(customer)
+    price = _plan_price(dual_plan, ccy) if (dual_plan and ccy) else 0
+    dual_price_text = (f"{PLAN_CURRENCY_SIGN[ccy]}{price:,.0f}" if price == int(price)
+                       else f"{PLAN_CURRENCY_SIGN[ccy]}{price:,.2f}") if price else ""
     return render_template(
         "portal/upgrade_dual_required.html",
         customer=customer,
         feature_label=feature_label,
-        dual_plan=_cheapest_dual_plan(),
+        dual_plan=dual_plan,
+        dual_price_text=dual_price_text,
         current_plan=plan.get("plan_name", "Free"),
         is_trial=plan.get("is_trial", False),
     ), 403
@@ -6317,7 +6325,9 @@ def billing():
                            saved_methods=saved_methods,
                            design_packs=design_packs,
                            design_balance=design_balance,
-                           fw_ready=_fw_ok())
+                           # Naira top-ups for businesses based in Nigeria
+                           # only, and they see naira only (2026-10-17).
+                           fw_ready=_fw_ok() and _plan_currency(customer) == "NGN")
 
 
 @portal_bp.route("/billing/checkout", methods=["POST"])
@@ -6438,6 +6448,10 @@ def billing_checkout_ngn():
     pkg_id   = int(request.form.get("package_id") or 0)
     customer = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    # Naira is for businesses based in Nigeria only (2026-10-17).
+    if _plan_currency(customer) != "NGN":
+        flash("Naira payments are only for businesses based in Nigeria.", "danger")
+        return redirect(url_for("portal.billing"))
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT * FROM credit_packages WHERE id=%s AND is_active=TRUE AND price_ngn > 0", (pkg_id,))
@@ -16047,6 +16061,56 @@ def _tenant_country(tenant_id) -> str:
     return country
 
 
+# ── Plan prices by country (2026-10-17) ─────────────────────────────────────
+# A business sees and pays its plan in ONE currency, decided by the country
+# it's based in: Nigeria → naira (Flutterwave), UK → pounds (Stripe), any
+# other country → dollars (Stripe). Nigerian businesses get naira only, even
+# with a foreign phone number. plans.price_usd holds POUNDS (historical name);
+# plans.price_dollars holds dollars.
+PLAN_CURRENCY_SIGN = {"NGN": "₦", "GBP": "£", "USD": "$"}
+PLAN_CURRENCY_NAME = {"NGN": "Nigerian naira (₦)", "GBP": "British pounds (£)", "USD": "US dollars ($)"}
+_PLAN_PRICE_COL = {"NGN": "price_ngn", "GBP": "price_usd", "USD": "price_dollars"}
+
+
+def _country_from_phone(number) -> str | None:
+    """Country of a number written with its own country code (+234…);
+    None for local numbers like 0803… — those are never guessed."""
+    s = (number or "").strip()
+    if not s.startswith("+"):
+        return None
+    try:
+        return _pn.region_code_for_number(_pn.parse(s)) or None
+    except Exception:
+        return None
+
+
+def _plan_currency(customer) -> str | None:
+    """'NGN', 'GBP' or 'USD' for this business's plan prices. No country
+    saved → the country of its phone or WhatsApp number (only when written
+    with a country code); still unknown → None, and the Plans page asks."""
+    tenant_id = int(customer["tenant_id"])
+    country = _tenant_country(tenant_id)
+    if not country:
+        numbers = [customer.get("phone_number")]
+        try:
+            conn = get_db_connection(); cur = conn.cursor()
+            cur.execute("SELECT display_phone_number FROM wa_tenants WHERE tenant_id=%s "
+                        "AND display_phone_number IS NOT NULL ORDER BY id", (tenant_id,))
+            numbers += [r[0] for r in cur.fetchall()]
+            cur.close(); conn.close()
+        except Exception as e:
+            print("⚠️ _plan_currency phone lookup error:", e)
+        country = next((c for c in map(_country_from_phone, numbers) if c), None)
+    if not country:
+        return None
+    return {"NG": "NGN", "GB": "GBP"}.get(country.upper(), "USD")
+
+
+def _plan_price(plan, currency) -> float:
+    """Monthly price of a plan in this currency; 0 = no price set."""
+    return float((plan or {}).get(_PLAN_PRICE_COL.get(currency, "price_ngn")) or 0)
+
+
 @portal_bp.app_template_global()
 def business_country_not_set() -> bool:
     """True when the logged-in business hasn't chosen its country yet —
@@ -23971,6 +24035,17 @@ def lead_labels_bulk_remove_members(label_id: int):
 # YOUR OWN COLUMNS on Leads + Sales Pipeline (2026-10-16) — see columns_core.py.
 # Private / group / business like labels; six types; no limit on how many.
 # ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.app_template_global("url_with")
+def _url_with(set_args=None, drop=()):
+    """This page's address with some arguments changed / removed (page and
+    _count always dropped) — for the Leads filter bar links."""
+    a = request.args.to_dict(flat=False)
+    for k in ("page", "_count", "reset") + tuple(drop):
+        a.pop(k, None)
+    a.update(set_args or {})
+    return url_for(request.endpoint, **a)
+
 
 @portal_bp.app_template_filter("cc_date")
 def _cc_date_filter(v):
@@ -32842,10 +32917,21 @@ def billing_plans():
     default_channel_mode = "dual" if (current.get("channel_mode") == "dual"
                                       or request.args.get("view") == "dual") else "single"
 
+    # One currency per business, from its country (2026-10-17). None → the
+    # page asks "Where is your business based?" before showing any price.
+    plan_ccy = _plan_currency(customer)
+    for p in plans:
+        p["my_price"] = _plan_price(p, plan_ccy) if plan_ccy else 0
+        p["my_annual_month"] = (_yearly_per_month(p["my_price"], p.get("annual_discount_pct"))
+                                if p["my_price"] else 0)
+
     return render_template(
         "portal/billing_plans.html",
         customer=customer,
         current=current,
+        plan_ccy=plan_ccy,
+        ccy_sign=PLAN_CURRENCY_SIGN.get(plan_ccy, ""),
+        ccy_name=PLAN_CURRENCY_NAME.get(plan_ccy, ""),
         all_plans=plans,
         single_plans=single_plans,
         dual_plans=dual_plans,
@@ -32858,8 +32944,39 @@ def billing_plans():
     )
 
 
+@portal_bp.route("/billing/plans/country", methods=["POST"])
+@team_feature("billing.subscription_view")
+def billing_plans_country():
+    """The Plans page asks once where the business is based when no country
+    is saved (2026-10-17). Only fills an empty country — changing a saved
+    one is done in Settings."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("billing.subscription_view")
+    if _rperm: return _rperm
+    customer = _get_customer(_customer_id())
+    country = (request.form.get("business_country") or "").strip().upper()
+    if country not in _pn.SUPPORTED_REGIONS:
+        flash("Please choose the country your business is based in.", "danger")
+        return redirect(url_for("portal.billing_plans"))
+    tenant_id = int(customer["tenant_id"])
+    if not _tenant_country(tenant_id):
+        try:
+            conn = get_db_connection(); cur = conn.cursor()
+            cur.execute("UPDATE customers SET business_country=%s WHERE id=%s AND business_country IS NULL",
+                        (country, int(customer["id"])))
+            conn.commit(); cur.close(); conn.close()
+            _tenant_country_cache.clear()
+            insert_audit_log(action="business_country_set", tenant_id=tenant_id,
+                             details={"business_country": country, "from": "plans_page"})
+        except Exception as e:
+            print("⚠️ billing_plans_country error:", e)
+            flash("We couldn't save your country. Please try again.", "danger")
+    return redirect(url_for("portal.billing_plans"))
+
+
 # ══════════════════════════════════════════════════════════════════════════════
-# PLAN SUBSCRIPTION PAYMENTS — Flutterwave (NGN) + Stripe (USD)
+# PLAN SUBSCRIPTION PAYMENTS — Flutterwave (NGN) + Stripe (GBP / USD)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _fw_ok() -> bool:
@@ -32934,14 +33051,18 @@ def _yearly_per_month(price, disc_pct) -> int:
 
 
 def _stripe_get_or_create_price(plan_id: int, plan_slug: str, plan_name: str,
-                                cycle: str, amount_pence: int) -> str | None:
-    """Return a Stripe Price (GBP) that charges exactly amount_pence per
-    month/year for this plan. A stored Price is only reused after checking
-    with Stripe that it's still active, in pounds, and the same amount — so a
-    price changed in the Plan editor never charges the old price."""
+                                cycle: str, amount_pence: int, currency: str = "gbp") -> str | None:
+    """Return a Stripe Price (GBP or USD) that charges exactly amount_pence
+    (pence or cents) per month/year for this plan. A stored Price is only
+    reused after checking with Stripe that it's still active, in the same
+    currency, and the same amount — so a price changed in the Plan editor
+    never charges the old price. Dollar prices are stored apart (2026-10-17)."""
     if not _stripe_ok():
         return None
+    currency = (currency or "gbp").lower()
     col = "stripe_price_id_monthly" if cycle == "monthly" else "stripe_price_id_annual"
+    if currency == "usd":
+        col = col.replace("stripe_price_id", "stripe_usd_price_id")
     interval = "month" if cycle == "monthly" else "year"
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -32954,7 +33075,7 @@ def _stripe_get_or_create_price(plan_id: int, plan_slug: str, plan_name: str,
     if existing:
         try:
             pr = stripe.Price.retrieve(existing)
-            if (pr.get("active") and pr.get("currency") == "gbp"
+            if (pr.get("active") and pr.get("currency") == currency
                     and int(pr.get("unit_amount") or 0) == int(amount_pence)
                     and (pr.get("recurring") or {}).get("interval") == interval):
                 return existing
@@ -32977,7 +33098,7 @@ def _stripe_get_or_create_price(plan_id: int, plan_slug: str, plan_name: str,
         price = stripe.Price.create(
             product=product_id,
             unit_amount=int(amount_pence),
-            currency="gbp",
+            currency=currency,
             recurring={"interval": interval, "interval_count": 1},
             metadata={"phixtra_plan_slug": plan_slug, "phixtra_cycle": cycle},
         )
@@ -33088,17 +33209,26 @@ def billing_plan_upgrade():
 
     plan_slug = (request.form.get("plan_slug") or "").strip()
     cycle     = request.form.get("cycle", "monthly")
-    currency  = request.form.get("currency", "NGN").upper()
 
     if cycle not in ("monthly", "annual"):
         cycle = "monthly"
-    if currency == "USD":      # old form value — Stripe charges in pounds now
-        currency = "GBP"
-    if currency not in ("NGN", "GBP"):
-        currency = "NGN"
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+
+    # The currency comes from the business's country, never from the form
+    # (2026-10-17): Nigeria → NGN, UK → GBP, anywhere else → USD. A form
+    # asking for another currency is refused, so naira can't be bought
+    # from outside Nigeria by changing the page.
+    currency = _plan_currency(customer)
+    if not currency:
+        flash("Tell us where your business is based first, so we can show your prices.", "warning")
+        return redirect(url_for("portal.billing_plans"))
+    asked = (request.form.get("currency") or currency).upper()
+    if asked != currency:
+        print(f"⚠️ plan upgrade refused: tenant {tenant_id} asked {asked}, country gives {currency}")
+        flash(f"Your plan is paid in {PLAN_CURRENCY_NAME[currency]}, because of where your business is based.", "danger")
+        return redirect(url_for("portal.billing_plans"))
 
     # Load plan
     conn = get_db_connection()
@@ -33173,24 +33303,24 @@ def billing_plan_upgrade():
             flash("Could not reach payment provider. Please try again.", "danger")
         return redirect(url_for("portal.billing_plans"))
 
-    # ── Stripe (GBP) ──────────────────────────────────────────────────────────
+    # ── Stripe (GBP for the UK, USD anywhere else) ──────────────────────────
     # plans.price_usd holds the POUND price (the column name is historical;
-    # the Plan editor labels it £ since 2026-09-30).
+    # the Plan editor labels it £ since 2026-09-30); price_dollars = dollars.
     if not _stripe_ok():
-        flash("Card payments in pounds are not set up yet. Contact support.", "warning")
+        flash("Card payments are not set up yet. Contact support.", "warning")
         return redirect(url_for("portal.billing_plans"))
 
-    price_gbp = float(plan["price_usd"] or 0)
-    if price_gbp <= 0:
-        flash("This plan has no pound price yet. Please pay in Naira or contact support.", "warning")
+    price_main = _plan_price(plan, currency)
+    if price_main <= 0:
+        flash("This plan has no price in your currency yet. Please talk to our sales team.", "warning")
         return redirect(url_for("portal.billing_plans"))
     if cycle == "monthly":
-        amount_pence = round(price_gbp * 100)
+        amount_pence = round(price_main * 100)
     else:
-        amount_pence = _yearly_per_month(plan["price_usd"], plan.get("annual_discount_pct")) * 12 * 100
-    amount_gbp = amount_pence / 100
+        amount_pence = _yearly_per_month(price_main, plan.get("annual_discount_pct")) * 12 * 100
+    amount_main = amount_pence / 100
     price_id   = _stripe_get_or_create_price(
-        plan["id"], plan_slug, plan["name"], cycle, amount_pence
+        plan["id"], plan_slug, plan["name"], cycle, amount_pence, currency.lower()
     )
     if not price_id:
         flash("Could not initialise Stripe price. Please try again.", "danger")
@@ -33213,8 +33343,8 @@ def billing_plan_upgrade():
                 "plan_id":    str(plan["id"]),
                 "plan_slug":  plan_slug,
                 "cycle":      cycle,
-                "currency":   "GBP",
-                "amount_gbp": str(amount_gbp),
+                "currency":   currency,
+                ("amount_gbp" if currency == "GBP" else "amount_usd"): str(amount_main),
             },
             subscription_data={
                 "metadata": {
@@ -34102,6 +34232,42 @@ def _lead_mark_not_a_fit(lead: dict, reason: str, changed_by: str) -> None:
     pipeline_record_stage_change(lead["id"], lead["stage"], "not_a_fit", changed_by, reason)
 
 
+_LEADS_NOT_REMEMBERED = {"page", "per_page", "_count", "reset", "open_add", "q"}
+
+
+def _leads_remember_filters(tenant_id: int, actor_key: str):
+    """All Leads remembers each person's last filters (user, 2026-10-17).
+    Filters in the address → saved. A plain visit → back to the saved ones.
+    ?reset=1 (Clear all) → forgotten. Search text is not remembered."""
+    try:
+        keep = [(k, v) for k in request.args.keys() if k not in _LEADS_NOT_REMEMBERED for v in request.args.getlist(k)]
+        conn = get_db_connection(); cur = conn.cursor()
+        try:
+            if request.args.get("reset") or keep:
+                from urllib.parse import urlencode
+                cur.execute("""INSERT INTO user_list_prefs (tenant_id, actor_key, page_key, per_page, filters)
+                               VALUES (%s,%s,'leads_filters','',%s)
+                               ON CONFLICT (tenant_id, actor_key, page_key)
+                               DO UPDATE SET filters=EXCLUDED.filters, updated_at=NOW()""",
+                            (tenant_id, actor_key, "" if request.args.get("reset") else urlencode(keep)))
+                conn.commit()
+                if request.args.get("reset"):
+                    return redirect(url_for("portal.leads_page", view=request.args.get("view") or None))
+                return None
+            if any(k not in ("page", "per_page") for k in request.args.keys()):
+                return None
+            cur.execute("SELECT filters FROM user_list_prefs WHERE tenant_id=%s AND actor_key=%s AND page_key='leads_filters'",
+                        (tenant_id, actor_key))
+            row = cur.fetchone()
+            if row and row[0]:
+                return redirect(url_for("portal.leads_page") + "?" + row[0])
+        finally:
+            cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _leads_remember_filters:", e)
+    return None
+
+
 @portal_bp.route("/leads", methods=["GET", "POST"])
 @team_feature("leads.create", "leads.page")
 def leads_page():
@@ -34120,6 +34286,20 @@ def leads_page():
     if r2: return r2
     _rperm = _require_team_permission("leads.create" if request.method == "POST" else "leads.page")
     if _rperm: return _rperm
+    if request.method == "GET" and request.args.get("_count"):   # Filters panel: "Show N leads", live
+        _cl, _cp, _ = _leads_list_filters(tenant_id, request.args, _current_actor(customer)["key"], need_flagged=False)
+        _c = get_db_connection(); _cc = _c.cursor()
+        try:
+            # The score is only worked out when Hot / Warm / Cold is picked (much faster).
+            _from = _pipeline_scored_from_sql() if (request.args.get("tier") or "all") != "all" \
+                    else "(SELECT * FROM merchant_pipeline_leads WHERE tenant_id=%s)"
+            _cc.execute(f"SELECT count(*) FROM {_from} mpl WHERE {' AND '.join(_cl)}", [tenant_id] + _cp)
+            return jsonify({"count": _cc.fetchone()[0]})
+        finally:
+            _cc.close(); _c.close()
+    if request.method == "GET":
+        _back = _leads_remember_filters(tenant_id, _current_actor(customer)["key"])
+        if _back: return _back
 
     if request.method == "POST":
         f = request.form
@@ -34225,6 +34405,7 @@ def leads_page():
     actor = _current_actor(customer)
     _lf_clauses, _lf_params, lf = _leads_list_filters(tenant_id, request.args, actor["key"])
     search, tier_filter = lf["search"], lf["tier"]
+
     sort_by = (request.args.get("sort") or "").strip().lower()
     if sort_by not in ("score",) and not _re.match(r"^cc\d+_(asc|desc)$", sort_by):
         sort_by = ""
@@ -34295,19 +34476,59 @@ def leads_page():
             l["labels"] = _lmap.get(l["id"], [])
             l["cc"] = _cv.get(l["id"], {})
 
-        cur.execute(
-            f"SELECT lead_tier, count(*) AS c FROM {scored_from} mpl WHERE mpl.is_opportunity=FALSE GROUP BY lead_tier",
-            [tenant_id],
-        )
+        # Hot / Warm / Cold counts follow every other filter (2026-10-17).
+        _no_tier = request.args.copy(); _no_tier.pop("tier", None)
+        _tc, _tp, _ = _leads_list_filters(tenant_id, _no_tier, actor["key"])
+        cur.execute(f"SELECT lead_tier, count(*) AS c FROM {scored_from} mpl WHERE {' AND '.join(_tc)} GROUP BY lead_tier",
+                    [tenant_id] + _tp)
         tier_counts = {row["lead_tier"]: row["c"] for row in cur.fetchall()}
 
     addr_opts = _addr.address_filter_options(
         cur, "merchant_pipeline_leads", tenant_id,
         "NOT t.is_opportunity AND t.dropped_at IS NULL AND t.outcome IS NULL")
+
+    # Filters panel (2026-10-17): counts on every option, Assigned to with
+    # counts, and the "filters that are on" tags — same as Sales Pipeline.
+    _ssql, _sparams = _lead_scope("mpl")
+    _base_where = "mpl.tenant_id=%s AND NOT mpl.is_opportunity AND mpl.dropped_at IS NULL AND mpl.outcome IS NULL" + _ssql
+    opt_counts = _filter_option_counts(cur, _base_where, [tenant_id] + _sparams, lead_cols)
+    all_labels = _lbl.visible_labels(cur, tenant_id)
+    cur.execute("SELECT id, file_name, created_at FROM crm_imports WHERE tenant_id=%s ORDER BY id DESC LIMIT 30", (tenant_id,))
+    lead_imports = [dict(r) for r in cur.fetchall()]
+    assignee_options = []
+    if _leads_see_all():
+        cur.execute(f"SELECT COALESCE(mpl.assigned_key,'') AS k, count(*) AS n FROM merchant_pipeline_leads mpl "
+                    f"WHERE {_base_where} GROUP BY 1", [tenant_id] + _sparams)
+        _by = {row["k"]: int(row["n"]) for row in cur.fetchall()}
+        _b = request.args.to_dict(flat=False)
+        for _k in ("page", "assigned", "_count"):
+            _b.pop(_k, None)
+        def _ao(value, label, n, initials=None):
+            return {"value": value, "label": label, "n": n, "selected": lf["assigned"] == value, "initials": initials,
+                    "url": url_for("portal.leads_page", **dict(_b, **({"assigned": value} if value else {})))}
+        assignee_options = [_ao("", "Everyone", sum(_by.values())), _ao("me", "Me", _by.get(actor["key"], 0)),
+                            _ao("none", "Unassigned", _by.get("", 0))]
+        for a in _lead_assignees(tenant_id, customer):
+            if a["key"] != actor["key"]:
+                assignee_options.append(_ao(a["key"], a["display"], _by.get(a["key"], 0),
+                                            "".join(w[0] for w in a["display"].split()[:2]).upper() or "?"))
+    _extra = []
+    if lf["has_company"]: _extra.append(("Contact", "Has company", "has_company"))
+    if lf["check_numbers"]: _extra.append(("Contact", "Phone number to check", "check_numbers"))
+    if lf["added_from"]: _extra.append(("Added from", lf["added_from"].strftime("%-d %b %Y"), "added_from"))
+    if lf["added_to"]: _extra.append(("Added to", lf["added_to"].strftime("%-d %b %Y"), "added_to"))
+    filter_chips = _pipeline_filter_chips(
+        "all", search, lf["assigned"], assignee_options, tier_filter,
+        lf["has_phone"], lf["has_whatsapp"], lf["has_email"], lf["addr"], addr_opts, lf["biz"],
+        lf["biz"].get("labels") or [], lf["biz"].get("hide_labels") or [], all_labels,
+        [], [], [], [], [], [], {}, endpoint="portal.leads_page", cols=lead_cols, extra=_extra)
     cur.close(); conn.close()
 
     return render_template(
         "portal/leads.html", addr_opts=addr_opts,
+        opt_counts=opt_counts, all_labels=all_labels, assignee_options=assignee_options,
+        can_filter_assigned=_leads_see_all(), filter_chips=filter_chips, lead_imports=lead_imports,
+        biz_state=lf["biz"], addr_state=lf["addr"],
         customer=customer, connection=connection,
         hot_leads=hot_leads, hot_count=hot_count, warm_count=warm_count,
         real_leads=real_leads, search=search,
@@ -34564,31 +34785,47 @@ def _biz_filter_clauses(alias: str, args, tenant_id: int, label_link: str = "lea
     """Business category / Number of employees / Label / Import filters
     (2026-10-06), shared by Leads, Sales Pipeline and Contacts. label_link:
     'lead' = lead_label_leads, 'contact' = lead_label_contacts.
+    Several categories / sizes / labels may be picked at once (2026-10-17,
+    Filters panel): a lead matches if it has ANY of them. A lead's category
+    can hold several ("Business Services, Legal") — picking one finds it.
     Returns (clauses, params, state, fargs)."""
     clauses, params, fargs = [], [], {}
-    cat = (args.get("biz_category") or "").strip()
-    emp = (args.get("employees") or "").strip()
-    lab = (args.get("label") or "").strip() if with_label else ""
+    cats = [v.strip() for v in args.getlist("biz_category") if v and v.strip()]
+    emps = [v.strip() for v in args.getlist("employees") if v and v.strip()]
+    labs = [int(v) for v in args.getlist("label") if v.isdigit()] if with_label else []
+    hide_labs = [int(v) for v in args.getlist("hide_label") if v.isdigit()] if (with_label and label_link == "lead") else []
     imp = (args.get("import") or "").strip()
-    if cat == "__none__":
-        clauses.append(f"COALESCE({alias}.business_category,'')=''"); fargs["biz_category"] = cat
-    elif cat:
-        clauses.append(f"{alias}.business_category=%s"); params.append(cat); fargs["biz_category"] = cat
-    if emp == "__none__":
-        clauses.append(f"COALESCE({alias}.employees,'')=''"); fargs["employees"] = emp
-    elif emp:
-        clauses.append(f"{alias}.employees=%s"); params.append(emp); fargs["employees"] = emp
-    label_id = int(lab) if lab.isdigit() else None
-    if label_id:
-        if label_link == "contact":
-            clauses.append(f"{alias}.id IN (SELECT contact_id FROM lead_label_contacts WHERE label_id=%s)")
-        else:
-            clauses.append(f"{alias}.id IN (SELECT lead_id FROM lead_label_leads WHERE label_id=%s)")
-        params.append(label_id); fargs["label"] = str(label_id)
+    cat, emp = (cats[0] if cats else ""), (emps[0] if emps else "")   # single-value callers (Contacts)
+    def _one_or_many(key, vals):
+        if vals:
+            fargs[key] = vals if len(vals) > 1 else vals[0]
+    if cats:
+        ors, real = [], [c for c in cats if c != "__none__"]
+        if "__none__" in cats:
+            ors.append(f"COALESCE({alias}.business_category,'')=''")
+        if real:
+            ors.append(f"string_to_array({alias}.business_category, ', ') && %s::text[]"); params.append(real)
+        clauses.append("(" + " OR ".join(ors) + ")"); _one_or_many("biz_category", cats)
+    if emps:
+        ors, real = [], [e for e in emps if e != "__none__"]
+        if "__none__" in emps:
+            ors.append(f"COALESCE({alias}.employees,'')=''")
+        if real:
+            ors.append(f"{alias}.employees = ANY(%s)"); params.append(real)
+        clauses.append("(" + " OR ".join(ors) + ")"); _one_or_many("employees", emps)
+    link_tbl, link_col = (("lead_label_contacts", "contact_id") if label_link == "contact" else ("lead_label_leads", "lead_id"))
+    if labs:
+        clauses.append(f"{alias}.id IN (SELECT {link_col} FROM {link_tbl} WHERE label_id = ANY(%s))")
+        params.append(labs); _one_or_many("label", [str(x) for x in labs])
+    if hide_labs:
+        clauses.append(f"{alias}.id NOT IN (SELECT {link_col} FROM {link_tbl} WHERE label_id = ANY(%s))")
+        params.append(hide_labs); _one_or_many("hide_label", [str(x) for x in hide_labs])
+    label_id = labs[0] if labs else None
     import_id = int(imp) if imp.isdigit() else None
     if import_id:
         clauses.append(f"{alias}.import_id=%s"); params.append(import_id); fargs["import"] = str(import_id)
-    state = {"biz_category": cat, "employees": emp, "label": label_id, "import": import_id, "cols": {}}
+    state = {"biz_category": cat, "employees": emp, "label": label_id, "import": import_id, "cols": {},
+             "biz_categories": cats, "employees_list": emps, "labels": labs, "hide_labels": hide_labs}
     # People's own columns (cf<id>=…, 2026-10-16) — Leads + Sales Pipeline only.
     if label_link == "lead" and any(k.startswith("cf") for k in args.keys()):
         _c = get_db_connection(); _cc = _c.cursor()
@@ -35013,7 +35250,7 @@ def _flagged_lead_ids(tenant_id: int) -> list:
     return ids
 
 
-def _leads_list_filters(tenant_id: int, args, actor_key: str):
+def _leads_list_filters(tenant_id: int, args, actor_key: str, need_flagged: bool = True):
     """WHERE clauses for the Leads list (not-yet-qualified Leads) from the
     page's filter fields. Shared by the list itself and every bulk action's
     "all matching" selection so both always mean the same leads. Returns
@@ -35038,7 +35275,8 @@ def _leads_list_filters(tenant_id: int, args, actor_key: str):
     )
     if has_company:
         clauses.append("mpl.company_id IS NOT NULL")
-    flagged_ids = _flagged_lead_ids(tenant_id)
+    # need_flagged=False (live counts): only work the numbers out if that filter is on.
+    flagged_ids = _flagged_lead_ids(tenant_id) if (need_flagged or check_numbers) else []
     if check_numbers:
         clauses.append("mpl.id = ANY(%s)"); params.append(flagged_ids or [0])
     if assigned == "me":
@@ -35635,15 +35873,52 @@ def _pipeline_assigned_clauses(assigned: str, actor_key: str):
     return [], [], ""
 
 
+def _filter_option_counts(cur, where_sql: str, params: list, cols: list) -> dict:
+    """How many leads/deals each Filters-panel option has (2026-10-17), over
+    the page's own records (mpl) — before any other filter, so the numbers
+    stay put while ticking. Only labels / columns this person may see."""
+    c = cur.connection.cursor()
+    def q(sql, extra=()):
+        c.execute(sql, list(params) + list(extra)); return c.fetchall()
+    base = f"FROM merchant_pipeline_leads mpl WHERE {where_sql}"
+    out = {"employees": dict(q(f"SELECT COALESCE(NULLIF(mpl.employees,''),'__none__'), count(*) {base} GROUP BY 1")),
+           "category": dict(q(f"""SELECT x, count(*) FROM (SELECT unnest(CASE WHEN COALESCE(mpl.business_category,'')=''
+                                   THEN ARRAY['__none__'] ELSE string_to_array(mpl.business_category, ', ') END) AS x {base}) t
+                                   GROUP BY 1"""))}
+    r = q(f"""SELECT count(*) FILTER (WHERE COALESCE(mpl.phone,'')<>''), count(*) FILTER (WHERE COALESCE(mpl.email,'')<>''),
+                     count(*) FILTER (WHERE COALESCE(mpl.whatsapp_number,'')<>''), count(*) FILTER (WHERE mpl.company_id IS NOT NULL),
+                     count(*) {base}""")[0]
+    out["contact"] = {"has_phone": r[0], "has_email": r[1], "has_whatsapp": r[2], "has_company": r[3]}
+    out["total"] = r[4]
+    out["labels"] = dict(q(f"""SELECT ll.label_id, count(*) FROM lead_label_leads ll
+                                JOIN merchant_pipeline_leads mpl ON mpl.id = ll.lead_id
+                               WHERE {where_sql} AND label_visible(ll.label_id) GROUP BY 1"""))
+    out["cols"] = {}
+    ch_cols = [col["id"] for col in cols if col["col_type"] in ("choice", "multi")]
+    if ch_cols:
+        for cid, x, n in q(f"""SELECT v.column_id, x, count(*) FROM lead_column_values v
+                                 JOIN merchant_pipeline_leads mpl ON mpl.id = v.lead_id
+                                 CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(v.value)='array'
+                                       THEN v.value ELSE jsonb_build_array(v.value) END) x
+                                WHERE {where_sql} AND v.column_id = ANY(%s) GROUP BY 1, 2""", [ch_cols]):
+            out["cols"].setdefault(cid, {})[x] = n
+    c.close()
+    return out
+
+
 def _pipeline_filter_chips(stage_filter, search, assigned, assignee_options, tier,
                            has_phone, has_whatsapp, has_email, addr_state, addr_opts, biz_state,
                            show_label_ids, hide_label_ids, all_labels,
                            hide_segment_ids, all_segments, hide_wa_segment_ids, all_wa_segments,
-                           hide_sms_segment_ids, all_sms_segments, stage_labels):
-    """The "filters that are on" tags under the Sales Pipeline search bar
-    (2026-10-14). Each carries the link that takes just that one filter off."""
+                           hide_sms_segment_ids, all_sms_segments, stage_labels,
+                           endpoint="portal.sales_pipeline", cols=None, extra=None):
+    """The "filters that are on" tags under the search bar — Sales Pipeline
+    (2026-10-14) and All Leads (2026-10-17, endpoint=leads_page). Each carries
+    the link that takes just that one filter (or one picked value) off.
+    extra = [(label, value, key)] for page-only filters."""
     base = request.args.to_dict(flat=False)
-    base.pop("page", None)
+    for _k in ("page", "_count", "reset"):
+        base.pop(_k, None)
 
     def without(*keys, value=None):
         a = {k: list(v) for k, v in base.items()}
@@ -35652,7 +35927,7 @@ def _pipeline_filter_chips(stage_filter, search, assigned, assignee_options, tie
                 a.pop(k, None)
             else:
                 a[k] = [x for x in a.get(k, []) if x != str(value)]
-        return url_for("portal.sales_pipeline", **a)
+        return url_for(endpoint, **a)
 
     chips = []
     def add(label, value, url):
@@ -35678,12 +35953,16 @@ def _pipeline_filter_chips(stage_filter, search, assigned, assignee_options, tie
         add("City", addr_state["city"], without("city"))
     if addr_state.get("addr_missing"):
         add("Address", "Missing", without("addr_missing"))
-    if biz_state.get("biz_category"):
-        add("Category", "No category" if biz_state["biz_category"] == "__none__" else biz_state["biz_category"],
-            without("biz_category"))
-    if biz_state.get("employees"):
-        add("Employees", "Not set" if biz_state["employees"] == "__none__" else biz_state["employees"],
-            without("employees"))
+    for v in biz_state.get("biz_categories") or []:
+        add("Category", "Not filled in" if v == "__none__" else v, without("biz_category", value=v))
+    for v in biz_state.get("employees_list") or []:
+        add("Employees", "Not filled in" if v == "__none__" else v, without("employees", value=v))
+    for label, value, key in (extra or []):
+        add(label, value, without(key))
+    for cc in _cc_filter_chips(cols or [], biz_state.get("cols") or {}):
+        nm, _, val = cc["text"].partition(": ")
+        cid = next((c["id"] for c in (cols or []) if c["name"] == nm and c["id"] in (biz_state.get("cols") or {})), None)
+        add(nm, val, without(f"cf{cid}", f"cf{cid}_from", f"cf{cid}_to") if cid else cc["url"])
     if biz_state.get("import"):
         add("Import", f"#{biz_state['import']}", without("import"))
     label_names = {r["id"]: r["name"] for r in all_labels}
@@ -36037,6 +36316,13 @@ def sales_pipeline():
     extra_params  = a_params + b_params + as_params
     where = " AND ".join(clauses)
     scored_from = _pipeline_scored_from_sql()
+    if request.args.get("_count"):          # Filters panel: "Show N deals", live
+        _c = get_db_connection(); _cc = _c.cursor()
+        try:
+            _cc.execute(f"SELECT count(*) FROM {scored_from} mpl WHERE {where}", [tenant_id] + params)
+            return jsonify({"count": _cc.fetchone()[0]})
+        finally:
+            _cc.close(); _c.close()
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -36182,8 +36468,7 @@ def sales_pipeline():
         l["label_names"] = [x["name"] for x in l["labels"]]
         l["cc"] = _cv.get(l["id"], {})
 
-    _ls_exec(cur, "SELECT id, name FROM lead_labels WHERE tenant_id=%s AND label_visible(id) ORDER BY lower(name)", (tenant_id,))
-    all_labels = cur.fetchall()
+    all_labels = _lbl.visible_labels(cur, tenant_id)
 
     # Stage tallies and pipeline value are always over the FULL active (non-dropped)
     # pipeline, independent of the current search/stage/channel filters or pagination —
@@ -36304,13 +36589,17 @@ def sales_pipeline():
             extra_clauses=extra_clauses, extra_params=extra_params,
         )
 
+    _ssql, _sparams = _lead_scope("mpl")
+    opt_counts = _filter_option_counts(
+        cur, "mpl.tenant_id=%s AND mpl.is_opportunity AND mpl.dropped_at IS NULL AND mpl.outcome IS NULL" + _ssql,
+        [tenant_id] + _sparams, lead_cols)
     filter_chips = _pipeline_filter_chips(
         stage_filter, search, assigned, assignee_options, tier_filter,
         has_phone, has_whatsapp, has_email, addr_state, addr_opts, biz_state,
         show_label_ids, hide_label_ids, all_labels,
         hide_segment_ids, all_segments, hide_wa_segment_ids, all_wa_segments,
         hide_sms_segment_ids, all_sms_segments,
-        pipeline_effective_stage_labels(tenant_id))
+        pipeline_effective_stage_labels(tenant_id), cols=lead_cols)
 
     cur.close(); conn.close()
 
@@ -36319,7 +36608,7 @@ def sales_pipeline():
         lead_cols             = [c for c in lead_cols if not c["hidden"]],
         all_lead_cols         = lead_cols,
         col_filter_state      = biz_state.get("cols", {}),
-        col_filter_chips      = _cc_filter_chips(lead_cols, biz_state.get("cols", {})),
+        opt_counts            = opt_counts,
         sort_by               = sort_by,
         addr_state            = addr_state,
         addr_fargs            = addr_fargs,

@@ -147,6 +147,7 @@
     <div class="pc-price">
       <span class="pc-price-ngn">₦{{ "{:,}".format(p.price_ngn) }}</span>
       <span class="pc-price-usd">£{{ p.price_usd }}</span>
+      <span class="pc-price-usd">${{ p.price_dollars or 0 }}</span>
       <span class="pc-price-period">/mo · {{ p.annual_discount_pct }}% off annual</span>
     </div>
     {% endif %}

@@ -4592,6 +4592,10 @@ def ensure_portal_tables():
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 PRIMARY KEY (tenant_id, actor_key, page_key)
             )""")
+        # Each person's last All Leads filters (2026-10-17): page_key 'leads_filters'.
+        if not _column_exists(cur, "user_list_prefs", "filters"):
+            cur.execute("SET LOCAL lock_timeout = '5s'")
+            cur.execute("ALTER TABLE user_list_prefs ADD COLUMN IF NOT EXISTS filters TEXT")
 
         # Who created / deleted each WhatsApp message template from the portal
         # (Meta keeps the template itself; this is the business's own record,
@@ -4612,6 +4616,24 @@ def ensure_portal_tables():
                 deleted_at         TIMESTAMPTZ
             )""")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_wa_tpl_sub_tenant ON wa_template_submissions (tenant_id, waba_id)")
+
+        # Plan prices by country (2026-10-17): businesses outside Nigeria and
+        # the UK see and pay in dollars. Filled once from the pound price
+        # (plans.price_usd holds POUNDS) at that day's rate, to the nearest
+        # whole dollar — the user: "just convert pounds prices to dollar".
+        # Changed in the Plan editor afterwards. Stripe dollar prices are
+        # stored apart from the pound ones.
+        if not _column_exists(cur, "plans", "price_dollars"):
+            cur.execute("SET LOCAL lock_timeout = '5s'")
+            cur.execute("ALTER TABLE plans ADD COLUMN price_dollars NUMERIC(10,2) NOT NULL DEFAULT 0")
+            cur.execute("""
+                UPDATE plans p SET price_dollars = ROUND(p.price_usd / r.per_usd)
+                  FROM fx_rates r
+                 WHERE r.currency = 'GBP' AND r.per_usd > 0 AND p.price_usd > 0""")
+        for _col in ("stripe_usd_price_id_monthly", "stripe_usd_price_id_annual"):
+            if not _column_exists(cur, "plans", _col):
+                cur.execute("SET LOCAL lock_timeout = '5s'")
+                cur.execute(f"ALTER TABLE plans ADD COLUMN {_col} VARCHAR(100)")
 
         # Anything a backfill above granted this run is now "seen" — never
         # re-granted on a later start (see _GRANT_ONCE_SQL).

@@ -188,8 +188,8 @@
       <strong>Quota exceeded.</strong> Your AI assistant is paused.
       Upgrade your plan to resume service — or wait until your next billing period resets.
       <br><br>
-      <strong>Overage rate:</strong> ₦{{ current.overage_per_msg_ngn }} per message
-      (£{{ "%.4f"|format(current.overage_per_msg_usd|float) }})
+      {% if plan_ccy == 'NGN' %}<strong>Overage rate:</strong> ₦{{ current.overage_per_msg_ngn }} per message
+      {% elif plan_ccy == 'GBP' %}<strong>Overage rate:</strong> £{{ "%.4f"|format(current.overage_per_msg_usd|float) }} per message{% endif %}
     </div>
   </div>
   {% elif pct >= 80 %}
@@ -200,6 +200,21 @@
   {% endif %}
 </div>
 {% endif %}
+
+{# ── Country unknown: ask once before showing any price (2026-10-17) ───── #}
+{% if not plan_ccy %}
+<div class="usage-card" style="max-width:520px">
+  <div style="font-size:17px;font-weight:800;margin-bottom:4px">Before we show prices</div>
+  <p class="muted" style="font-size:13px;margin:0 0 14px">Plan prices depend on where your business is based.</p>
+  <form method="POST" action="{{ url_for('portal.billing_plans_country') }}">
+    <label for="fPlanCountry" style="display:block;font-size:12.5px;font-weight:700;margin-bottom:6px">Where is your business based?</label>
+    {% set pc_name = 'business_country' %}{% set pc_id = 'fPlanCountry' %}{% set pc_required = true %}
+    {% set pc_selected = '' %}{% set pc_style = 'width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:14px' %}{% set pc_placeholder = 'Choose a country…' %}
+    {% include "portal/_phone_country_select.html" %}
+    <button type="submit" class="btn-upgrade btn-upgrade-primary" style="margin-top:14px">Show my prices</button>
+  </form>
+</div>
+{% else %}
 
 {# ── Channel toggle ────────────────────────────────────────────────────────── #}
 {% if dual_plans %}
@@ -212,9 +227,13 @@
 <p class="channel-note">Running both the WhatsApp AI Sales Agent and the Website AI Sales Agent on one account? Switch to Dual Agent Plan pricing.</p>
 {% endif %}
 
+{# Prices in the business's one plan currency (2026-10-17): ₦ Nigeria,
+   £ UK, $ anywhere else. plan.my_price = 0 → no price in that currency. #}
+{% macro money(v) %}{{ ccy_sign }}{{ "{:,.0f}".format(v) if v == v|int else "{:,.2f}".format(v) }}{% endmacro %}
+{% macro overage(plan) %}{% if plan_ccy == 'NGN' %}₦{{ plan.overage_per_msg_ngn|int }}/msg{% elif plan_ccy == 'GBP' %}£{{ '%g'|format(plan.overage_per_msg_usd|float) }}/msg{% endif %}{% endmacro %}
+
 {% macro plan_card(plan, current) %}
 {% set is_current = plan.slug == current.plan_slug %}
-{% set annual_ngn = (plan.price_ngn * (100 - plan.annual_discount_pct) / 100 + 0.5)|int %}
 {# Every line on the card comes from the Plan editor (2026-10-02); only what
    the plan includes is listed — the website has the full comparison. #}
 {% set is_popular = plan.is_recommended %}
@@ -229,17 +248,21 @@
   {% if plan.is_custom %}
   <div class="plan-period">For customisation requests. Contact us to discuss what you need.</div>
   {% else %}
+  {% if plan.price_ngn > 0 and not plan.my_price %}
+  <div class="plan-period">Talk to our sales team for the price in {{ ccy_name }}.</div>
+  {% else %}
   <div class="plan-price">
     {% if plan.price_ngn == 0 %}Free
-    {% else %}₦{{ "{:,}".format(plan.price_ngn) }}{% endif %}
+    {% else %}{{ money(plan.my_price) }}{% endif %}
   </div>
+  {% endif %}
   {% if plan.price_ngn > 0 %}
-  {% set _gbp = plan.price_usd|float %}
-  {% if _gbp > 0 %}<div class="plan-currency">£{{ '%d'|format(_gbp) if _gbp == _gbp|int else '%.2f'|format(_gbp) }} / month</div>{% endif %}
+  {% if plan.my_price %}
   <div class="plan-period">
-    billed monthly
-    <span class="plan-annual"> · ₦{{ "{:,}".format(annual_ngn) }}/mo if annual ({{ plan.annual_discount_pct }}% off)</span>
+    per month, billed monthly
+    <span class="plan-annual"> · {{ money(plan.my_annual_month) }}/mo if annual ({{ plan.annual_discount_pct }}% off)</span>
   </div>
+  {% endif %}
   {% else %}
   <div class="plan-period">forever free</div>
   {% endif %}
@@ -316,10 +339,10 @@
     {% endif %}
     {% endfor %}
 
-    {% if not _no_ai %}
+    {% if not _no_ai and plan_ccy in ('NGN', 'GBP') %}
     <li>
       <span class="feat-yes">✓</span>
-      <span class="feat-lbl">Overage: ₦{{ plan.overage_per_msg_ngn|int }}/msg</span>
+      <span class="feat-lbl">Overage: {{ overage(plan) }}</span>
     </li>
     {% endif %}
   </ul>
@@ -332,19 +355,16 @@
     <a href="https://outlook.office.com/book/TalktoUs1@phixtra.com/?ismsaljsauthenabled" target="_blank" rel="noopener" class="btn-upgrade btn-upgrade-outline">Talk to Sales</a>
     {% elif plan.slug in ('free', 'connect') %}
     <span class="btn-upgrade btn-upgrade-outline" style="cursor:default">Downgrade</span>
-    {% elif is_popular %}
-    <button type="button" onclick="openUpgradeModal('{{ plan.slug }}','{{ plan.name }}',{{ plan.price_ngn }},{{ plan.price_usd }},{{ plan.annual_discount_pct }})"
-            class="btn-upgrade btn-upgrade-purple">
-      Upgrade to {{ plan.name }}
-    </button>
+    {% elif not plan.my_price %}
+    <a href="https://outlook.office.com/book/TalktoUs1@phixtra.com/?ismsaljsauthenabled" target="_blank" rel="noopener" class="btn-upgrade btn-upgrade-outline">Talk to Sales</a>
     {% else %}
-    <button type="button" onclick="openUpgradeModal('{{ plan.slug }}','{{ plan.name }}',{{ plan.price_ngn }},{{ plan.price_usd }},{{ plan.annual_discount_pct }})"
-            class="btn-upgrade btn-upgrade-primary">
+    <button type="button" onclick="openUpgradeModal('{{ plan.slug }}',{{ plan.name|tojson|forceescape }},{{ plan.my_price }},{{ plan.my_annual_month }},{{ plan.annual_discount_pct }})"
+            class="btn-upgrade {{ 'btn-upgrade-purple' if is_popular else 'btn-upgrade-primary' }}">
       Upgrade to {{ plan.name }}
     </button>
     {% endif %}
-    {% if plan.price_ngn > 0 and not plan.is_custom %}
-    <div class="overage-note">Overage charged at ₦{{ plan.overage_per_msg_ngn|int }}/msg</div>
+    {% if plan.my_price and not plan.is_custom and plan_ccy in ('NGN', 'GBP') %}
+    <div class="overage-note">Overage charged at {{ overage(plan) }}</div>
     {% endif %}
   </div>
 </div>
@@ -367,8 +387,10 @@
 </div>
 
 <p style="font-size:12px;color:var(--muted);margin-top:20px;text-align:center">
-  Payments are processed securely via Flutterwave (Naira) and Stripe (British Pounds). Annual billing saves 10–20%.
+  Prices in {{ ccy_name }}, because of where your business is based. Payments are processed securely via
+  {{ 'Flutterwave' if plan_ccy == 'NGN' else 'Stripe (card)' }}. Annual billing saves up to 15%.
 </p>
+{% endif %}
 
 {# ── Flash messages from callback ─────────────────────────────────────────── #}
 {% if request.args.get('sub_success') %}
@@ -389,10 +411,11 @@
             background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">✕</button>
 
     <div style="font-size:18px;font-weight:800;margin-bottom:4px">Upgrade to <span id="modalPlanName"></span></div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:24px">Choose your billing cycle and currency</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:24px">Choose your billing cycle</div>
 
     <form method="POST" action="/billing/plan-upgrade" id="upgradeForm">
       <input type="hidden" name="plan_slug" id="modalPlanSlug">
+      <input type="hidden" name="currency" value="{{ plan_ccy or '' }}">
 
       {# Billing cycle #}
       <div style="margin-bottom:20px">
@@ -420,30 +443,8 @@
         </div>
       </div>
 
-      {# Currency #}
-      <div style="margin-bottom:24px">
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;
-                    letter-spacing:.5px;color:var(--muted);margin-bottom:8px">Pay with</div>
-        <div style="display:flex;gap:10px">
-          <label style="flex:1;cursor:pointer">
-            <input type="radio" name="currency" value="NGN" checked onchange="updatePrices()"
-                   style="display:none" id="currNGN">
-            <div class="curr-btn" id="btnNGN" style="border:2px solid var(--ink);background:#f9fafb;
-                 border-radius:10px;padding:12px;text-align:center">
-              <div style="font-weight:700;font-size:14px">🇳🇬 Flutterwave</div>
-              <div style="font-size:12px;color:var(--muted)">Pay in NGN</div>
-            </div>
-          </label>
-          <label style="flex:1;cursor:pointer">
-            <input type="radio" name="currency" value="GBP" onchange="updatePrices()"
-                   style="display:none" id="currUSD">
-            <div class="curr-btn" id="btnUSD" style="border:2px solid var(--line);background:#f9fafb;
-                 border-radius:10px;padding:12px;text-align:center">
-              <div style="font-weight:700;font-size:14px">💳 Stripe</div>
-              <div style="font-size:12px;color:var(--muted)">Pay in GBP (£)</div>
-            </div>
-          </label>
-        </div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:16px">
+        You'll pay in <b style="color:var(--ink)">{{ ccy_name }}</b> with {{ 'Flutterwave' if plan_ccy == 'NGN' else 'Stripe (card)' }}.
       </div>
 
       {# Price summary #}
@@ -466,18 +467,25 @@
 </div>
 
 <script>
-var _modalPlanNGN = 0, _modalPlanUSD = 0, _modalDiscPct = 5;
+var _modalPrice = 0, _modalAnnualMonth = 0, _modalDiscPct = 5;
+var _ccySign = {{ ccy_sign|tojson }};
+var _payWith = {{ ('Flutterwave' if plan_ccy == 'NGN' else 'Stripe')|tojson }};
 
-function openUpgradeModal(slug, name, priceNGN, priceUSD, discPct) {
-  _modalPlanNGN = priceNGN;
-  _modalPlanUSD = priceUSD;
+function _money(v) {
+  return _ccySign + v.toLocaleString(undefined, {minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2});
+}
+
+// Prices come from the server in the business's one plan currency
+// (2026-10-17); yearly per month is already rounded to whole ₦/£/$ (same as
+// the website) and the yearly charge is that × 12.
+function openUpgradeModal(slug, name, price, annualMonth, discPct) {
+  _modalPrice = price;
+  _modalAnnualMonth = annualMonth;
   _modalDiscPct = discPct || 5;
   document.getElementById('annualDiscLabel').textContent = _modalDiscPct + '% off';
   document.getElementById('modalPlanName').textContent = name;
   document.getElementById('modalPlanSlug').value = slug;
-  // Reset to defaults
   document.getElementById('cycleMonthly').checked = true;
-  document.getElementById('currNGN').checked = true;
   updatePrices();
   document.getElementById('upgradeModal').style.display = 'flex';
 }
@@ -487,47 +495,20 @@ function closeUpgradeModal() {
 }
 
 function updatePrices() {
-  var cycle    = document.querySelector('input[name="cycle"]:checked').value;
-  var currency = document.querySelector('input[name="currency"]:checked').value;
-  var ngn = _modalPlanNGN, usd = _modalPlanUSD;
+  var cycle = document.querySelector('input[name="cycle"]:checked').value;
+  document.getElementById('priceMonthlyNGN').textContent = _money(_modalPrice) + '/mo';
+  document.getElementById('priceAnnualNGN').textContent  = _money(_modalAnnualMonth) + '/mo';
 
-  // Yearly per month rounded to whole ₦/£ (same as website); yearly = that × 12
-  var monthNGN  = Math.round(ngn * (100 - _modalDiscPct) / 100);
-  var monthUSD  = Math.round(usd * (100 - _modalDiscPct) / 100);
-  var annualNGN = monthNGN * 12;
-  var annualUSD = monthUSD * 12;
-
-  if (currency === 'GBP') {
-    document.getElementById('priceMonthlyNGN').textContent = '£' + usd.toFixed(2) + '/mo';
-    document.getElementById('priceAnnualNGN').textContent  = '£' + monthUSD.toLocaleString() + '/mo';
-  } else {
-    document.getElementById('priceMonthlyNGN').textContent = '₦' + ngn.toLocaleString() + '/mo';
-    document.getElementById('priceAnnualNGN').textContent  = '₦' + monthNGN.toLocaleString() + '/mo';
-  }
-
-  // Highlight selected cycle
   document.getElementById('btnMonthly').style.borderColor = cycle === 'monthly' ? 'var(--ink)' : 'var(--line)';
   document.getElementById('btnAnnual').style.borderColor  = cycle === 'annual'  ? 'var(--ink)' : 'var(--line)';
-  document.getElementById('btnNGN').style.borderColor     = currency === 'NGN'  ? 'var(--ink)' : 'var(--line)';
-  document.getElementById('btnUSD').style.borderColor     = currency === 'GBP'  ? 'var(--ink)' : 'var(--line)';
 
   var summary, note;
-  if (currency === 'NGN') {
-    if (cycle === 'monthly') {
-      summary = '₦' + ngn.toLocaleString() + '/month';
-      note    = 'Charged monthly via Flutterwave. Cancel anytime.';
-    } else {
-      summary = '₦' + annualNGN.toLocaleString() + '/year';
-      note    = _modalDiscPct + '% off — billed annually via Flutterwave.';
-    }
+  if (cycle === 'monthly') {
+    summary = _money(_modalPrice) + '/month';
+    note    = 'Charged monthly via ' + _payWith + '. Cancel anytime.';
   } else {
-    if (cycle === 'monthly') {
-      summary = '£' + usd.toFixed(2) + '/month';
-      note    = 'Charged monthly via Stripe. Cancel anytime.';
-    } else {
-      summary = '£' + annualUSD.toLocaleString() + '/year';
-      note    = _modalDiscPct + '% off — billed annually via Stripe.';
-    }
+    summary = _money(_modalAnnualMonth * 12) + '/year';
+    note    = _modalDiscPct + '% off, billed yearly via ' + _payWith + '.';
   }
   document.getElementById('summaryPrice').textContent = summary;
   document.getElementById('summaryNote').textContent  = note;

@@ -66,8 +66,10 @@
 
     {% if dual_plan %}
     <div class="dual-price">
+      {% if dual_price_text %}
       <div class="dual-price-label">Dual Agent plans start at</div>
-      <div class="dual-price-amount">₦{{ "{:,}".format(dual_plan.price_ngn) }} <span>/ month</span></div>
+      <div class="dual-price-amount">{{ dual_price_text }} <span>/ month</span></div>
+      {% endif %}
       <div class="dual-price-name">{{ dual_plan.name }}</div>
     </div>
     {% endif %}

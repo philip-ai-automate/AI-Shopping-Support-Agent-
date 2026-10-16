@@ -164,6 +164,7 @@
         <div class="pv-price">
           <span class="pv-price-ngn">₦{{ "{:,}".format(plan.price_ngn) }}</span>
           <span class="pv-price-usd">£{{ plan.price_usd }}</span>
+          <span class="pv-price-usd">${{ plan.price_dollars or 0 }}</span>
           <span class="pv-price-period">/month · {{ plan.annual_discount_pct }}% off annual</span>
         </div>
         {% endif %}

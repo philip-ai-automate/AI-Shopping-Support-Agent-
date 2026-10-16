@@ -5041,6 +5041,7 @@ def _plan_form_to_dict(form) -> dict:
         "name":                (form.get("name") or "").strip(),
         "price_ngn":           _int("price_ngn", 0),
         "price_usd":           _num("price_usd", 0),
+        "price_dollars":       _num("price_dollars", 0),
         "ai_messages_limit":   _int("ai_messages_limit", 100),
         "ai_designs_limit":    max(0, _int("ai_designs_limit", 0)),
         "ai_agents_limit":     _int("ai_agents_limit", 1),
@@ -5135,7 +5136,7 @@ def admin_plans_new():
                                     granted_keys=_granted_feature_keys(request.form), is_new=True)
 
     cur.close(); conn.close()
-    blank = {"slug": "", "name": "", "price_ngn": 0, "price_usd": 0,
+    blank = {"slug": "", "name": "", "price_ngn": 0, "price_usd": 0, "price_dollars": 0,
              "ai_messages_limit": 100, "ai_designs_limit": 0,
              "ai_agents_limit": 1, "broadcasts_limit": 0,
              "products_limit": 50, "data_sources_limit": 1, "staff_limit": 0,

@@ -137,10 +137,10 @@
         <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">Pay ₦{{ "{:,}".format(pkg.price_ngn) }} <span style="font-weight:500;opacity:.8">· Nigeria</span></button>
       </form>
       {% endif %}
-      {% if stripe_ready %}
+      {% if stripe_ready and not (pkg.price_ngn and fw_ready) %}
       <form method="POST" action="{{ url_for('portal.billing_checkout') }}">
         <input type="hidden" name="package_id" value="{{ pkg.id }}"/>
-        <button type="submit" class="btn {% if not (pkg.price_ngn and fw_ready) %}btn-primary{% endif %}" style="width:100%;justify-content:center">Pay £{{ "%.2f"|format(pkg.price_pence / 100) }} <span style="font-weight:500;opacity:.8">· UK, by card</span></button>
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">Pay £{{ "%.2f"|format(pkg.price_pence / 100) }} <span style="font-weight:500;opacity:.8">· by card</span></button>
       </form>
       {% endif %}
       {% if not stripe_ready and not (pkg.price_ngn and fw_ready) %}
@@ -251,7 +251,9 @@
         </button>
       </form>
       {% endif %}
-      {% if stripe_ready %}
+      {% if pkg.price_ngn and fw_ready %}
+      {# Nigeria: naira only (2026-10-17) #}
+      {% elif stripe_ready %}
       <form method="POST" action="{{ url_for('portal.billing_checkout') }}">
         <input type="hidden" name="package_id" value="{{ pkg.id }}"/>
 
@@ -270,8 +272,8 @@
           </div>
         </div>
 
-        <button type="submit" class="btn {% if not (pkg.price_ngn and fw_ready) %}btn-primary{% endif %}" style="width:100%;justify-content:center;">
-          {% if pkg.price_ngn and fw_ready %}Pay £{{ "%.2f"|format(pkg.price_pence / 100) }} · UK, by card{% else %}Buy {{ pkg.credits }} credits{% endif %}
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">
+          Buy {{ pkg.credits }} credits
         </button>
       </form>
       {% else %}

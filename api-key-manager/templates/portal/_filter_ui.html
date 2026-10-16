@@ -1,0 +1,442 @@
+{#- Filter bar + Filters side panel shared by All Leads and Sales Pipeline
+    (bar redesigned 2026-10-14 on Pipeline; shared and extended 2026-10-17:
+    counts on every option, several choices at once, people's own columns,
+    live "Show N" button). Section macros below; include once per page. -#}
+
+{% macro fs_business(bs, counts) -%}
+{%- set _bo = biz_field_options() -%}
+{%- set ec = counts.employees if counts else {} -%}{%- set cc = counts.category if counts else {} -%}
+<section>
+  <h3>Business</h3>
+  <div class="spf-sub">Number of employees</div>
+  <div class="spf-quick" role="group" aria-label="Quick sizes">
+    <button type="button" class="spf-qbtn" data-emp="1-5,6-10,11-15,16-25,1-10,11-50">1–25</button>
+    <button type="button" class="spf-qbtn" data-emp="26-50,51-100,101-200">26–200</button>
+    <button type="button" class="spf-qbtn" data-emp="201-500,501-1000,1001-2000,2001-3000,3001-4000,4001-5000,5001-10000,10001+,1001-5000,101-250,251-500">201+</button>
+    <button type="button" class="spf-qbtn" data-emp="__none__">Not filled in</button>
+  </div>
+  <div class="spf-list" data-collapse="6">
+    {%- for v in _bo.employees %}
+    <label class="spf-opt"><span>{{ v }}</span><small>{{ '{:,}'.format(ec.get(v, 0)) }}</small><input type="checkbox" name="employees" value="{{ v }}" {% if v in (bs.employees_list or []) %}checked{% endif %}></label>
+    {%- endfor %}
+    <label class="spf-opt"><span>Not filled in</span><small>{{ '{:,}'.format(ec.get('__none__', 0)) }}</small><input type="checkbox" name="employees" value="__none__" {% if '__none__' in (bs.employees_list or []) %}checked{% endif %}></label>
+  </div>
+  <div class="spf-sub">Business category</div>
+  <div class="spf-list" data-collapse="6">
+    {%- set _cats = _bo.business_category|list -%}
+    {%- for v in _cats %}
+    <label class="spf-opt" data-n="{{ cc.get(v, 0) }}"><span>{{ v }}</span><small>{{ '{:,}'.format(cc.get(v, 0)) }}</small><input type="checkbox" name="biz_category" value="{{ v }}" {% if v in (bs.biz_categories or []) %}checked{% endif %}></label>
+    {%- endfor %}
+    <label class="spf-opt"><span>Not filled in</span><small>{{ '{:,}'.format(cc.get('__none__', 0)) }}</small><input type="checkbox" name="biz_category" value="__none__" {% if '__none__' in (bs.biz_categories or []) %}checked{% endif %}></label>
+  </div>
+</section>
+{%- endmacro %}
+
+{% macro fs_columns(cols, cstate, counts) -%}
+{% if cols %}
+<section>
+  <h3>Your columns</h3>
+  {%- for c in cols %}{% set st = cstate.get(c.id, {}) %}{% set picked = st.get('values') or [] %}
+  <div class="spf-sub">{{ c.name }}{% if c.icon %} {{ c.icon }}{% endif %}</div>
+  {%- if c.col_type in ('choice', 'multi') %}
+  <input type="hidden" name="cf{{ c.id }}" value="{{ picked|join(',') }}" data-cf-join="{{ c.id }}">
+  <div class="spf-list">
+    {%- for ch in c.choices %}
+    <label class="spf-opt"><span><span class="spf-tag" style="{{ ch.style }}">{{ ch.name }}</span></span><small>{{ '{:,}'.format(((counts.cols if counts else {}).get(c.id) or {}).get(ch.id, 0)) }}</small><input type="checkbox" data-cf="{{ c.id }}" value="{{ ch.id }}" {% if ch.id in picked %}checked{% endif %}></label>
+    {%- endfor %}
+  </div>
+  {%- elif c.col_type == 'yesno' %}
+  <div class="spf-pills">
+    {%- for v, t in [('', 'Any'), ('yes', 'Yes'), ('no', 'No')] %}
+    <label class="spf-pill any"><input type="radio" name="cf{{ c.id }}" value="{{ v }}" {% if (picked[:1] or [''])[0] == v %}checked{% endif %}><span>{{ t }}</span></label>
+    {%- endfor %}
+  </div>
+  {%- elif c.col_type == 'text' %}
+  <div class="spf-field"><input type="text" name="cf{{ c.id }}" value="{{ (picked[:1] or [''])[0] if (picked[:1] or [''])[0][:2] != '__' else '' }}" placeholder="Contains…" aria-label="{{ c.name }} contains"></div>
+  {%- else %}
+  <div class="spf-grid">
+    <label class="spf-field">From<input type="{{ 'number' if c.col_type == 'number' else 'date' }}" name="cf{{ c.id }}_from" value="{{ st.get('from') or '' }}"></label>
+    <label class="spf-field">To<input type="{{ 'number' if c.col_type == 'number' else 'date' }}" name="cf{{ c.id }}_to" value="{{ st.get('to') or '' }}"></label>
+  </div>
+  {%- endif %}
+  {%- endfor %}
+</section>
+{% endif %}
+{%- endmacro %}
+
+{% macro fs_contact(items) -%}
+<section>
+  <h3>Contact details</h3>
+  {%- for name, label, on, n in items %}
+  <label class="spf-opt"><span>{{ label }}</span><small>{{ '{:,}'.format(n) }}</small><input type="checkbox" name="{{ name }}" value="1" {% if on %}checked{% endif %}></label>
+  {%- endfor %}
+</section>
+{%- endmacro %}
+
+{% macro fs_labels(labels, show_ids, hide_ids, counts) -%}
+{% if labels %}
+<section>
+  <h3>Labels</h3>
+  <p class="spf-hint">Show only leads with a label, or hide them.</p>
+  <div class="spf-list" data-collapse="8">
+  {%- for lb in labels %}
+  <div class="spf-label-row">
+    <span><span class="spf-tag" style="{{ lb.style }}">{{ lb.icon }}{{ lb.name }}</span> <small>{{ '{:,}'.format((counts.labels if counts else {}).get(lb.id, 0)) }}</small></span>
+    <span class="spf-seg">
+      <label><input type="checkbox" name="label" value="{{ lb.id }}" {% if lb.id in show_ids %}checked{% endif %} onchange="spfLabelMode(this)"><span>Only</span></label>
+      <label class="hide"><input type="checkbox" name="hide_label" value="{{ lb.id }}" {% if lb.id in hide_ids %}checked{% endif %} onchange="spfLabelMode(this)"><span>Hide</span></label>
+    </span>
+  </div>
+  {%- endfor %}
+  </div>
+</section>
+{% endif %}
+{%- endmacro %}
+
+{% macro fs_location(addr_state, addr_opts, noun) -%}
+<section>
+  <h3>Location</h3>
+  <div class="spf-grid">
+    <label class="spf-field spf-span2">Country
+      <select name="country" id="spfCountry" onchange="spfFillStates(this.value, '')">
+        <option value="">All countries</option>
+        {% for iso, cname, n in addr_opts.countries %}<option value="{{ iso }}" {% if addr_state.country == iso %}selected{% endif %}>{{ cname }} ({{ '{:,}'.format(n) }})</option>{% endfor %}
+      </select>
+    </label>
+    <label class="spf-field"><span id="spfStateLbl">{{ address_state_label(addr_state.country) if addr_state.country else 'State' }}</span>
+      <select name="state" id="spfState"></select>
+    </label>
+    <label class="spf-field">City / Town
+      <input type="text" name="city" value="{{ addr_state.city }}" placeholder="Any">
+    </label>
+  </div>
+  <label class="spf-opt"><span>Address missing</span><small>{{ '{:,}'.format(addr_opts.missing) }}</small><input type="checkbox" name="addr_missing" value="1" {% if addr_state.addr_missing %}checked{% endif %}></label>
+</section>
+{%- endmacro %}
+
+{% macro fs_dates(date_from, date_to) -%}
+<section>
+  <h3>Date added</h3>
+  <div class="spf-quick" role="group" aria-label="Quick dates">
+    <button type="button" class="spf-qbtn" data-days="7">Last 7 days</button>
+    <button type="button" class="spf-qbtn" data-days="30">Last 30 days</button>
+    <button type="button" class="spf-qbtn" data-days="year">This year</button>
+  </div>
+  <div class="spf-grid">
+    <label class="spf-field">From<input type="date" name="added_from" id="spfFrom" value="{{ date_from.isoformat() if date_from else '' }}"></label>
+    <label class="spf-field">To<input type="date" name="added_to" id="spfTo" value="{{ date_to.isoformat() if date_to else '' }}"></label>
+  </div>
+</section>
+{%- endmacro %}
+
+{% if not _spf_assets_done %}
+<style>
+  /* ── Filter bar (redesigned 2026-10-14) ─────────────────────────────── */
+  .spf-bar { background:#fff; border:1px solid #DCE3EE; border-radius:14px; padding:14px; margin-bottom:16px;
+             display:flex; flex-direction:column; gap:12px }
+  .spf-row { display:flex; flex-wrap:wrap; align-items:center; gap:10px }
+  .spf-sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap }
+  .spf-search { position:relative; flex:1 1 200px; min-width:0 }
+  .spf-search input { width:100%; height:44px; box-sizing:border-box; padding:0 12px 0 42px; border:1px solid #DCE3EE;
+                      border-radius:10px; font:inherit; font-size:14px; color:#111E2D; background:#fff }
+  .spf-search input:focus { outline:none; border-color:#0B1D40; box-shadow:0 0 0 3px rgba(11,29,64,.12) }
+  .spf-search-go { position:absolute; left:4px; top:4px; width:36px; height:36px; border:0; background:transparent;
+                   color:#5A6B85; cursor:pointer; display:flex; align-items:center; justify-content:center; border-radius:8px }
+  .spf-search-go:hover { color:#0B1D40 }
+  .spf-btn { height:44px; padding:0 14px; border:1px solid #DCE3EE; background:#fff; border-radius:10px; display:inline-flex;
+             align-items:center; gap:8px; cursor:pointer; font:inherit; font-size:14px; font-weight:600; color:#0B1D40; white-space:nowrap }
+  .spf-btn:hover { background:#F5F7FB; border-color:#C9D8F2 }
+  .spf-btn.spf-icon { width:44px; padding:0; justify-content:center }
+  .spf-btn:focus-visible, .spf-views a:focus-visible, .spf-asg-opt:focus-visible { outline:2px solid #0B1D40; outline-offset:2px }
+  .spf-asg.on { border-color:#0B1D40; background:#E8EEF8 }
+  .spf-asg-lbl { font-weight:400; font-size:13px; color:#5A6B85 }
+  .spf-badge { min-width:20px; height:20px; padding:0 6px; box-sizing:border-box; border-radius:10px; background:#0B1D40; color:#fff;
+               font-size:11.5px; font-weight:600; display:inline-flex; align-items:center; justify-content:center }
+  .spf-right { display:flex; align-items:center; gap:8px; margin-left:auto; flex-wrap:wrap }
+  .spf-views { display:flex; border:1px solid #DCE3EE; border-radius:10px; padding:3px; background:#F5F7FB }
+  .spf-views a { height:36px; padding:0 12px; border-radius:7px; display:flex; align-items:center; gap:6px; font-size:13px;
+                 font-weight:500; color:#5A6B85; text-decoration:none }
+  .spf-views a:hover { color:#0B1D40; text-decoration:none }
+  .spf-views a.active { background:#fff; color:#0B1D40; font-weight:600; box-shadow:0 1px 2px rgba(11,29,64,.12) }
+  .spf-right .col-picker-menu { right:0; left:auto }
+
+  .spf-asg-wrap { position:relative }
+  .spf-asg-menu { display:none; position:absolute; top:52px; left:0; z-index:60; width:340px; max-width:calc(100vw - 32px);
+                  max-height:440px; overflow-y:auto; background:#fff; border:1px solid #DCE3EE; border-radius:14px;
+                  box-shadow:0 16px 40px rgba(11,29,64,.18); padding:10px; box-sizing:border-box }
+  .spf-asg-menu.open { display:block }
+  .spf-asg-find { width:100%; height:40px; box-sizing:border-box; padding:0 10px; border:1px solid #DCE3EE; border-radius:8px;
+                  font:inherit; font-size:13px; margin-bottom:4px }
+  .spf-asg-group { font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#5A6B85; padding:8px 8px 4px }
+  .spf-asg-team { border-top:1px solid #EEF2F8; margin-top:6px; padding-top:10px }
+  .spf-asg-opt { display:flex; align-items:center; gap:10px; min-height:48px; padding:6px 8px; border-radius:8px; color:#111E2D;
+                 text-decoration:none }
+  .spf-asg-opt:hover { background:#F5F7FB; text-decoration:none; color:#111E2D }
+  .spf-asg-opt.sel { background:#E8EEF8 }
+  .spf-asg-opt svg { color:#0B1D40; flex-shrink:0 }
+  .spf-asg-txt { flex:1; min-width:0; display:flex; flex-direction:column }
+  .spf-asg-txt b { font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .spf-asg-txt small { font-size:12px; color:#5A6B85 }
+  .spf-asg-empty { display:none; padding:10px 8px; font-size:13px; color:#5A6B85 }
+  .spf-av { width:30px; height:30px; flex:0 0 30px; border-radius:50%; background:#1E3A6E; color:#fff; display:flex;
+            align-items:center; justify-content:center; font-size:11px; font-weight:600; box-sizing:border-box }
+  .spf-av.me { background:#0B1D40 }
+  .spf-av.all { background:#F5F7FB; color:#5A6B85; border:1px solid #DCE3EE; font-size:9.5px }
+  .spf-av.none { background:#fff; color:#5A6B85; border:1.5px dashed #9DB8E8 }
+  .spf-av.big { width:44px; height:44px; flex-basis:44px; font-size:14px; background:#0B1D40 }
+
+  .spf-chips { display:flex; flex-wrap:wrap; align-items:center; gap:8px; border-top:1px solid #EEF2F8; padding-top:12px }
+  .spf-count { font-size:13px; font-weight:600; color:#0B1D40; margin-right:4px }
+  .spf-chip { display:inline-flex; align-items:center; gap:4px; height:32px; padding:0 4px 0 12px; border-radius:16px;
+              background:#E8EEF8; font-size:13px; color:#0B1D40 }
+  .spf-chip .k { color:#5A6B85 }
+  .spf-chip a { width:24px; height:24px; border-radius:12px; display:flex; align-items:center; justify-content:center; color:#0B1D40 }
+  .spf-chip a:hover { background:#C9D8F2 }
+  .spf-clearall { font-size:13px; font-weight:600; color:#1E3A6E; text-decoration:underline; padding:0 6px }
+  .spf-none { font-size:13px; color:#5A6B85 }
+
+  .spf-snap { background:#fff; border:1px solid #DCE3EE; border-radius:14px; padding:16px 18px; margin-bottom:16px;
+              display:flex; flex-wrap:wrap; align-items:center; gap:16px }
+  .spf-snap-who { display:flex; align-items:center; gap:12px; flex:1 1 240px }
+  .spf-snap-title { font-size:16px; font-weight:700; color:#0B1D40 }
+  .spf-snap-sub { font-size:12px; color:#5A6B85 }
+  .spf-snap-stats { display:flex; flex-wrap:wrap }
+  .spf-snap-stats div { padding:4px 20px; border-left:1px solid #EEF2F8; display:flex; flex-direction:column }
+  .spf-snap-stats small { font-size:12px; color:#5A6B85 }
+  .spf-snap-stats b { font-size:19px; font-weight:700; color:#0B1D40; white-space:nowrap }
+
+  .spf-drawer { display:none; position:fixed; inset:0; z-index:1000 }
+  .spf-drawer.open { display:flex; justify-content:flex-end }
+  .spf-backdrop { position:absolute; inset:0; background:rgba(11,29,64,.35) }
+  .spf-panel { position:relative; width:420px; max-width:100%; height:100%; background:#fff; display:flex; flex-direction:column;
+               box-shadow:-12px 0 40px rgba(11,29,64,.2) }
+  .spf-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #DCE3EE }
+  .spf-head h2 { margin:0; font-size:20px; font-weight:700; color:#0B1D40 }
+  .spf-x { width:40px; height:40px; border:0; border-radius:10px; background:#F5F7FB; color:#0B1D40; cursor:pointer;
+           display:flex; align-items:center; justify-content:center }
+  .spf-body { flex:1; overflow-y:auto; padding:4px 20px 20px }
+  .spf-body section { padding:16px 0; border-bottom:1px solid #EEF2F8 }
+  .spf-body section:last-child { border-bottom:0 }
+  .spf-body h3 { margin:0 0 10px; font-size:14px; font-weight:700; color:#111E2D }
+  .spf-hint { margin:-6px 0 10px; font-size:12px; color:#5A6B85 }
+  .spf-radio { display:flex; align-items:center; gap:10px; min-height:40px; padding:0 8px; border-radius:8px; cursor:pointer; font-size:14px }
+  .spf-radio:hover { background:#F5F7FB }
+  .spf-radio span { flex:1 }
+  .spf-radio small { font-size:12px; color:#5A6B85 }
+  .spf-radio input, .spf-check input { width:18px; height:18px; margin:0; accent-color:#0B1D40 }
+  .spf-check { display:flex; align-items:center; gap:10px; min-height:36px; font-size:14px; cursor:pointer }
+  .spf-pills { display:flex; gap:8px; flex-wrap:wrap }
+  .spf-pill input { position:absolute; opacity:0; pointer-events:none }
+  .spf-pill span { display:inline-flex; align-items:center; height:38px; padding:0 16px; border-radius:19px; border:1.5px solid #DCE3EE;
+                   font-size:13px; font-weight:600; cursor:pointer; color:#111E2D; background:#fff }
+  .spf-pill input:focus-visible + span { outline:2px solid #0B1D40; outline-offset:2px }
+  .spf-pill.any input:checked + span { background:#0B1D40; border-color:#0B1D40; color:#fff }
+  .spf-pill.hot input:checked + span { background:#FFEDD5; border-color:#9A3412; color:#9A3412 }
+  .spf-pill.warm input:checked + span { background:#FEF3C7; border-color:#854D0E; color:#854D0E }
+  .spf-pill.cold input:checked + span { background:#EEF2F6; border-color:#475569; color:#475569 }
+  .spf-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; margin-bottom:6px }
+  .spf-span2 { grid-column:span 2 }
+  .spf-field { display:flex; flex-direction:column; gap:4px; font-size:12px; color:#5A6B85 }
+  .spf-field select, .spf-field input { height:40px; padding:0 10px; border:1px solid #DCE3EE; border-radius:8px; font:inherit;
+                                        font-size:14px; color:#111E2D; background:#fff; min-width:0 }
+  .spf-field select:disabled { opacity:.55 }
+  .spf-label-row { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:44px; font-size:14px }
+  .spf-seg { display:flex; border:1px solid #DCE3EE; border-radius:8px; padding:2px; background:#F5F7FB; flex-shrink:0 }
+  .spf-seg input { position:absolute; opacity:0; pointer-events:none }
+  .spf-seg span { display:inline-flex; align-items:center; height:30px; padding:0 12px; border-radius:6px; font-size:12px;
+                  font-weight:600; color:#5A6B85; cursor:pointer }
+  .spf-seg input:checked + span { background:#0B1D40; color:#fff }
+  .spf-seg .hide input:checked + span { background:#9A3412; color:#fff }
+  .spf-seg input:focus-visible + span { outline:2px solid #0B1D40; outline-offset:1px }
+  .spf-details { border:1px solid #EEF2F8; border-radius:10px; margin-bottom:8px }
+  .spf-details summary { padding:10px 12px; font-size:14px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:8px }
+  .spf-scroll { max-height:200px; overflow-y:auto; padding:0 12px 8px }
+  .spf-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 20px; border-top:1px solid #DCE3EE }
+  .spf-apply { height:44px; padding:0 22px; border:0; border-radius:10px; background:#0B1D40; color:#fff; font:inherit;
+               font-size:14px; font-weight:600; cursor:pointer }
+  .spf-apply:hover { background:#1E3A6E }
+  @media(max-width:700px){
+    .spf-right { margin-left:0; width:100% }
+    .spf-snap-stats { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; width:100% }
+    .spf-snap-stats div { padding:0; border-left:0 }
+  }
+  /* 2026-10-17 additions: counts, quick buttons, long lists, live button */
+  .spf-sub { font-size:12px; font-weight:700; color:#5A6B85; text-transform:uppercase; letter-spacing:.05em; margin:12px 0 6px }
+  .spf-sub:first-of-type { margin-top:2px }
+  .spf-opt { display:grid; grid-template-columns:minmax(0,1fr) auto 18px; gap:10px; align-items:center; min-height:36px; font-size:14px; cursor:pointer; padding:0 4px; border-radius:8px }
+  .spf-opt:hover { background:#F5F7FB }
+  .spf-opt small { font-size:12px; color:#5A6B85; font-variant-numeric:tabular-nums }
+  .spf-opt input { width:18px; height:18px; margin:0; accent-color:#0B1D40 }
+  .spf-list [hidden] { display:none !important }
+  .spf-more { border:0; background:none; color:#0B1D40; font:inherit; font-size:13px; font-weight:600; cursor:pointer; padding:6px 4px }
+  .spf-quick { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px }
+  .spf-qbtn { height:32px; padding:0 12px; border-radius:16px; border:1.5px solid #DCE3EE; background:#fff; font:inherit; font-size:12.5px; font-weight:600; color:#111E2D; cursor:pointer }
+  .spf-qbtn.on { background:#E8EEF8; border-color:#0B1D40 }
+  .spf-qbtn:focus-visible, .spf-more:focus-visible { outline:2px solid #0B1D40; outline-offset:2px }
+  .spf-tag { display:inline-flex; border-radius:999px; padding:1px 9px; font-size:12px; font-weight:600; line-height:1.6 }
+  .spf-label-row small { color:#5A6B85; font-size:12px }
+  .spf-chip.warn { background:#FFF7E6; color:#8A5300 }
+  .spf-chip.warn a { color:inherit; font-weight:700; text-decoration:underline }
+</style>
+<script>
+/* ── Filter bar (2026-10-14): Assigned to menu + Filters side panel ── */
+function spfToggleAsg(ev) {
+  ev.stopPropagation();
+  var menu = document.getElementById('spfAsgMenu');
+  var open = !menu.classList.contains('open');
+  menu.classList.toggle('open', open);
+  document.getElementById('spfAsgBtn').setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) { var f = document.getElementById('spfAsgFind'); f.value = ''; spfFilterAsg(''); f.focus(); }
+}
+function spfCloseAsg() {
+  var menu = document.getElementById('spfAsgMenu');
+  if (!menu || !menu.classList.contains('open')) return;
+  menu.classList.remove('open');
+  document.getElementById('spfAsgBtn').setAttribute('aria-expanded', 'false');
+}
+function spfFilterAsg(q) {
+  q = (q || '').trim().toLowerCase();
+  var shown = 0;
+  document.querySelectorAll('#spfAsgMenu .spf-asg-opt').forEach(function(a) {
+    var ok = !q || a.dataset.name.indexOf(q) !== -1;
+    a.style.display = ok ? '' : 'none';
+    if (ok) shown++;
+  });
+  document.querySelectorAll('#spfAsgMenu .spf-asg-group').forEach(function(g) { g.style.display = q ? 'none' : ''; });
+  document.getElementById('spfAsgEmpty').style.display = shown ? 'none' : 'block';
+}
+function spfOpenDrawer() {
+  var d = document.getElementById('spfDrawer');
+  d.classList.add('open'); d.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  var first = d.querySelector('input, select, button');
+  if (first) first.focus();
+}
+function spfCloseDrawer() {
+  var d = document.getElementById('spfDrawer');
+  if (!d || !d.classList.contains('open')) return;
+  d.classList.remove('open'); d.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') { spfCloseAsg(); spfCloseDrawer(); }
+});
+/* Only / Hide on a label: one or the other, never both. */
+function spfLabelMode(cb) {
+  if (!cb.checked) return;
+  var otherName = cb.name === 'label' ? 'hide_label' : 'label';
+  var other = cb.form.querySelector('input[name="' + otherName + '"][value="' + cb.value + '"]');
+  if (other) other.checked = false;
+}
+/* State list follows the country picked in the panel. */
+var SPF_STATES = {{ addr_opts.states|tojson if addr_opts else '{}' }};
+var SPF_STATE_NOW = {{ (addr_state.state if addr_state else '')|tojson }};
+function spfFillStates(country, keep) {
+  var sel = document.getElementById('spfState');
+  if (!sel) return;
+  sel.innerHTML = '';
+  var first = document.createElement('option');
+  first.value = ''; first.textContent = country ? 'All' : 'Choose a country first';
+  sel.appendChild(first);
+  (SPF_STATES[country] || []).forEach(function(pair) {
+    var o = document.createElement('option');
+    o.value = pair[0]; o.textContent = pair[0] + ' (' + Number(pair[1]).toLocaleString() + ')';
+    if (keep && pair[0].toLowerCase() === keep.toLowerCase()) o.selected = true;
+    sel.appendChild(o);
+  });
+  sel.disabled = !country;
+}
+(function() {
+  var c = document.getElementById('spfCountry');
+  if (c) spfFillStates(c.value, SPF_STATE_NOW);
+})();
+/* Leave empty boxes out of the address bar so links stay short. */
+function spfTidySubmit(form) {
+  if (window.spfJoinCf) window.spfJoinCf();
+  Array.prototype.forEach.call(form.elements, function(el) {
+    if (el.name && !el.disabled && el.value === '' && (el.type !== 'radio' || el.checked)) el.disabled = true;
+  });
+}
+
+
+/* Boxes left out on submit come back if the browser's Back button restores this page. */
+window.addEventListener('pageshow', function() {
+  var f = document.getElementById('spFilterForm');
+  if (f) Array.prototype.forEach.call(f.elements, function(el) { el.disabled = false; });
+  var c = document.getElementById('spfCountry');
+  if (c) spfFillStates(c.value, SPF_STATE_NOW);
+});
+
+
+/* ── 2026-10-17: the panel's button shows how many records you'll get,
+   updated as you tick (no page reload until you press it). ── */
+(function() {
+  var form = document.getElementById('spFilterForm');
+  if (!form) return;
+  var btn = form.querySelector('.spf-apply'), noun = form.dataset.noun || 'results', timer = null, seq = 0;
+  function joinCf() {           // ticked choices of a column → one "a,b" value
+    form.querySelectorAll('[data-cf-join]').forEach(function(h) {
+      h.value = Array.prototype.map.call(form.querySelectorAll('input[data-cf="' + h.dataset.cfJoin + '"]:checked'), function(i) { return i.value; }).join(',');
+    });
+  }
+  function query() {
+    joinCf();
+    var p = new URLSearchParams();
+    Array.prototype.forEach.call(form.elements, function(el) {
+      if (!el.name || el.disabled || el.value === '') return;
+      if ((el.type === 'checkbox' || el.type === 'radio') && !el.checked) return;
+      p.append(el.name, el.value);
+    });
+    return p;
+  }
+  function refresh() {
+    if (!btn) return;
+    var p = query(), mine = ++seq; p.set('_count', '1');
+    btn.textContent = 'Counting…';
+    fetch(form.getAttribute('action') + '?' + p.toString(), {credentials: 'same-origin'})
+      .then(function(r) { return r.json(); })
+      .then(function(d) { if (mine === seq) btn.textContent = 'Show ' + Number(d.count).toLocaleString('en-GB') + ' ' + noun; })
+      .catch(function() { if (mine === seq) btn.textContent = 'Show results'; });
+  }
+  window.spfRefreshCount = refresh;
+  window.spfJoinCf = joinCf;
+  form.addEventListener('change', function(e) { if (e.target.closest('#spfDrawer')) { clearTimeout(timer); timer = setTimeout(refresh, 250); } });
+  form.addEventListener('input', function(e) { if (e.target.type === 'text' || e.target.type === 'number') { clearTimeout(timer); timer = setTimeout(refresh, 500); } });
+  form.addEventListener('submit', joinCf, true);
+  var open0 = window.spfOpenDrawer;
+  window.spfOpenDrawer = function() { open0(); refresh(); };
+  /* quick size buttons tick their group of sizes; quick dates fill From / To */
+  form.querySelectorAll('.spf-qbtn[data-emp]').forEach(function(b) {
+    var vals = b.dataset.emp.split(',');
+    function boxes() { return Array.prototype.filter.call(form.querySelectorAll('input[name=employees]'), function(i) { return vals.indexOf(i.value) >= 0; }); }
+    function sync() { var bx = boxes(); b.classList.toggle('on', bx.length > 0 && bx.every(function(i) { return i.checked; })); }
+    b.addEventListener('click', function() {
+      var bx = boxes(), on = !bx.every(function(i) { return i.checked; });
+      bx.forEach(function(i) { i.checked = on; i.closest('label').hidden = false; });
+      sync(); refresh();
+    });
+    form.addEventListener('change', sync); sync();
+  });
+  form.querySelectorAll('.spf-qbtn[data-days]').forEach(function(b) {
+    b.addEventListener('click', function() {
+      var t = new Date(), f = new Date(t), d = b.dataset.days;
+      if (d === 'year') { f = new Date(t.getFullYear(), 0, 1); } else { f.setDate(t.getDate() - Number(d) + 1); }
+      var iso = function(x) { return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+      document.getElementById('spfFrom').value = iso(f); document.getElementById('spfTo').value = iso(t);
+      form.querySelectorAll('.spf-qbtn[data-days]').forEach(function(x) { x.classList.toggle('on', x === b); });
+      refresh();
+    });
+  });
+  /* long lists: show the first few (plus anything ticked), "Show all" for the rest */
+  form.querySelectorAll('.spf-list[data-collapse]').forEach(function(list) {
+    var n = Number(list.dataset.collapse), items = Array.prototype.slice.call(list.children), hiddenCount = 0;
+    items.forEach(function(it, i) { var on = it.querySelector('input:checked'); if (i >= n && !on) { it.hidden = true; hiddenCount++; } });
+    if (!hiddenCount) return;
+    var more = document.createElement('button'); more.type = 'button'; more.className = 'spf-more';
+    more.textContent = 'Show all ' + items.length;
+    more.addEventListener('click', function() { items.forEach(function(it) { it.hidden = false; }); more.remove(); });
+    list.after(more);
+  });
+})();
+</script>
+{% endif %}
