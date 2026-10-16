@@ -186,7 +186,7 @@ def create_app():
             conn = get_db_connection()
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("""
-                SELECT tm.is_active, tm.role_id, r.permissions
+                SELECT tm.is_active, tm.role_id, tm.department_id, r.permissions
                 FROM team_members tm
                 JOIN customers c ON c.id = %s AND c.tenant_id = tm.tenant_id
                 LEFT JOIN tenant_roles r ON r.id = tm.role_id AND r.tenant_id = tm.tenant_id
@@ -202,6 +202,7 @@ def create_app():
             flash("Your team account is no longer active. Contact your business owner.", "warning")
             return redirect(url_for("portal.login"))
         session["team_member_role_id"] = row["role_id"]
+        session["team_member_dept_id"] = row["department_id"]
         session["team_member_permissions"] = _parse_json_maybe_role(row["permissions"]) if row["role_id"] else {}
         return None
 

@@ -97,11 +97,15 @@
       <ol>
         <li><a href="#lead-l-fields">The details</a></li>
         <li><a href="#lead-l-edit">Edit Lead</a></li>
-        <li><a href="#lead-l-activity">Conversations, notes, history</a></li>
+        <li><a href="#lead-l-activity">Activity, conversations, history</a></li>
         <li><a href="#lead-l-check">⚠️ Numbers to check</a></li>
       </ol></li>
     <li><a href="#lead-qualify">11. Qualify: turning a lead into an Opportunity</a></li>
-    <li><a href="#lead-naf">12. Not a Fit (and Reopen)</a></li>
+    <li><a href="#lead-naf">12. Not a Fit (and Reopen)</a>
+      <ul>
+        <li><a href="#lead-n-call">From a call: "Doesn't need us"</a></li>
+        <li><a href="#lead-n-reopen">Reopen</a></li>
+      </ul></li>
     <li><a href="#lead-bulk">13. Many leads at once</a>
       <ol>
         <li><a href="#lead-b-select">Ticking leads</a></li>
@@ -122,7 +126,10 @@
         <li><a href="#lead-t-email">The 6 pm email</a></li>
         <li><a href="#lead-t-count">How each number is counted</a></li>
       </ol></li>
-    <li><a href="#lead-report">19. Leads Report</a></li>
+    <li><a href="#lead-report">19. Leads Report and Not a Fit Report</a>
+      <ul>
+        <li><a href="#lead-r-naf">Not a Fit Report</a></li>
+      </ul></li>
     <li><a href="#lead-roles">20. Who can do what</a></li>
     <li><a href="#lead-recipes">21. Everyday tasks</a></li>
     <li><a href="#lead-faq">22. Questions and problems</a></li>
@@ -382,9 +389,15 @@
 <h2><span class="num">10</span>A lead's page</h2>
 <p class="where">All Leads › click a lead's name</p>
 
-<figure><img src="/static/portal/tutorial/leads/l12_lead_before.jpg" width="1100" height="1228" alt="A lead waiting for a decision. The badge says AWAITING QUALIFICATION." loading="lazy"><figcaption>A lead waiting for a decision. The badge says AWAITING QUALIFICATION.</figcaption></figure>
+<figure><img src="/static/portal/tutorial/leads/l12b_lead_top.jpg" width="1204" height="900" alt="A lead waiting for a decision, with Activity right under the header." loading="lazy"><figcaption>A lead waiting for a decision, with Activity right under the header.</figcaption></figure>
 
-<p>At the top: the lead's name, what they're interested in, and a status badge. While a lead is waiting, you also see <span class="ui">✅ Qualify</span> and <span class="ui">🚫 Not a Fit</span> (sections 10 and 11), and <span class="ui">✏️ Edit Lead</span>. <span class="ui">Leads</span> in the breadcrumb takes you back to the list.</p>
+<p>At the top: the lead's name, what they're interested in, and a status badge, with these buttons:</p>
+<ul>
+  <li><span class="ui">✅ Qualify</span>: only while the lead is waiting for a decision (section 11).</li>
+  <li><span class="ui">🚫 Not a Fit</span>: on any open lead, including one already Qualified onto the Sales Pipeline (section 12).</li>
+  <li><span class="ui">✏️ Edit Lead</span>.</li>
+</ul>
+<p>Right under the header is <b>Activity</b>: notes, calls, stage history and emails. It's at the top so you see what has already happened before you call. Then come the details, Pipeline and Conversations. <span class="ui">Leads</span> in the breadcrumb takes you back to the list.</p>
 
 <h3 id="lead-l-fields">The details</h3>
 <div class="tbl"><table>
@@ -416,11 +429,11 @@
 
 <figure><img src="/static/portal/tutorial/leads/l14_lead_hot.jpg" width="1100" height="1228" alt="After saving: Kano Textiles scores 70 and is now 🔥 Hot." loading="lazy"><figcaption>After saving: Kano Textiles scores 70 and is now 🔥 Hot.</figcaption></figure>
 
-<h3 id="lead-l-activity">Conversations, notes and history</h3>
+<h3 id="lead-l-activity">Activity, conversations and history</h3>
 <ul>
+  <li><b>Activity</b> (at the top, under the header): <span class="ui">📝 Notes</span> shows the lead's notes (change them with Edit Lead). <span class="ui">📞 Calls</span> is where you log a call and see every call logged on this lead (see <a href="#lead-t-calls">Logging calls</a>). <span class="ui">🕒 Stage History</span> lists every change: when the lead was made, qualified, moved or closed, by whom and when. <span class="ui">✉️ Emails</span> lists campaign emails sent to the lead. Tasks shows "NEW" and isn't built yet.</li>
   <li><b>Pipeline</b>: for a waiting lead, "Not yet qualified — this Lead isn't in the Sales Pipeline yet" with the Qualify and Not a Fit buttons again. For an opportunity, a progress bar of the stages (section 14).</li>
   <li><b>Conversations</b>: the last WhatsApp message with this number and <span class="ui">View full conversation →</span>. Instagram and Facebook show "SOON" (not built yet).</li>
-  <li><b>Activity</b>: <span class="ui">📝 Notes</span> shows the lead's notes (change them with Edit Lead). <span class="ui">📞 Calls</span> is where you log a call and see every call logged on this lead (see <a href="#lead-t-calls">Logging calls</a>). <span class="ui">🕒 Stage History</span> lists every change: when the lead was made, qualified, moved or closed, by whom and when. Tasks shows "NEW" and isn't built yet.</li>
 </ul>
 
 <figure><img src="/static/portal/tutorial/leads/l19_history.jpg" width="1100" height="822" alt="Stage History on a qualified lead." loading="lazy"><figcaption>Stage History on a qualified lead.</figcaption></figure>
@@ -473,28 +486,50 @@
 <!-- 12 -->
 <section class="part" id="lead-naf">
 <h2><span class="num">12</span>Not a Fit</h2>
-<p class="where">A lead's page › 🚫 Not a Fit</p>
-<p class="need">Needs the tick: "Qualify a Lead into an Opportunity / mark it Not a Fit"</p>
+<p class="where">A lead's page › 🚫 Not a Fit · Sales Pipeline › ⋮ › Not a Fit · a lead's page › 📞 Calls › Doesn't need us</p>
+<p class="need">Needs the tick: "Qualify a Lead into an Opportunity / mark it Not a Fit", or "Pipeline Board — Edit"</p>
 
-<p>Use Not a Fit for leads that aren't worth chasing. You can undo it later with Reopen. You must choose a reason:</p>
+<p>Not a Fit means <b>"we're stopping: this business isn't right for us"</b>. Use it on any open lead, whether it's still waiting or already Qualified onto the Sales Pipeline, so nobody wastes another call on it. You can undo it later with Reopen.</p>
+<p>The other way to close is <b>Mark as Lost</b>, on the Sales Pipeline only. It's for a Qualified deal where you tried and the customer said no (price, a competitor). Lost counts in your win rate; Not a Fit doesn't.</p>
+<p>You must choose a reason:</p>
 <ul>
   <li>Not our target customer</li>
+  <li>Too small</li>
+  <li>Doesn't use or need this type of service</li>
   <li>No budget</li>
   <li>Wrong product or service fit</li>
   <li>Unresponsive</li>
+  <li>Wrong contact</li>
+  <li>Invalid lead</li>
   <li>Duplicate</li>
   <li>Other… (a box appears for you to type the reason)</li>
 </ul>
 
-<figure><img src="/static/portal/tutorial/leads/l17_naf.jpg" width="520" height="508" alt="The Not a Fit window." loading="lazy"><figcaption>The Not a Fit window.</figcaption></figure>
+<figure><img src="/static/portal/tutorial/leads/l17b_naf.jpg" width="520" height="600" alt="The Not a Fit window and its reasons." loading="lazy"><figcaption>The Not a Fit window and its reasons.</figcaption></figure>
 
-<p>Press <span class="ui">Mark Not a Fit</span>. The lead closes, leaves the Leads list and never reaches the Sales Pipeline. Its page shows <b>NOT A FIT</b> and the reason. It still counts in Leads Overview under "Marked not a fit", and the contact stays in your address book.</p>
+<p>Press <span class="ui">Mark Not a Fit</span>. The lead closes and leaves the Leads list (or the Sales Pipeline, if it was Qualified). Its page shows <b>NOT A FIT</b> and the reason. A Qualified deal also appears in <b>Closed: Lost &amp; Not a Fit</b> at the bottom of the Sales Pipeline. The lead still counts in Leads Overview under "Marked not a fit" and in the <a href="#lead-r-naf">Not a Fit Report</a>, and the contact stays in your address book.</p>
+
+<div class="box careful"><b class="t">Check before you call</b>
+<p>Before calling, look at the lead's <b>Number of employees</b>, <b>Business category</b> and <b>Website</b>. If the business is clearly too small or doesn't sell in a way that needs us, mark it Not a Fit without calling. That saves your time and theirs.</p></div>
+
+<h3 id="lead-n-call">From a call: "Doesn't need us"</h3>
+<p class="where">A lead's page › Activity › 📞 Calls</p>
+<p>When a call shows the business doesn't need you, close the lead in the same step as logging the call:</p>
+<ol class="steps">
+  <li>Open the lead and press <span class="ui">📞 Calls</span>.</li>
+  <li>Under <span class="f">How did it go?</span> choose <b>Doesn't need us</b>. A red box appears.</li>
+  <li>Leave <b>Also mark … as Not a Fit</b> ticked. The reason is set to "Doesn't use or need this type of service"; change it if another one fits better.</li>
+  <li>Add the minutes and what was said, then press <span class="ui">📞 Log call and mark Not a Fit</span>.</li>
+</ol>
+<figure><img src="/static/portal/tutorial/leads/t06b_calls_not_needed.jpg" width="994" height="303" alt="Logging a call as Doesn't need us closes the lead as Not a Fit in the same step." loading="lazy"><figcaption>Logging a call as "Doesn't need us" closes the lead as Not a Fit in the same step.</figcaption></figure>
+<p>Untick the box to log the call only, for example if your manager should decide. If your role can't use Not a Fit, the box says so and the call is just logged. Your manager will see it in the Not a Fit Report.</p>
 
 <figure><img src="/static/portal/tutorial/leads/l18_after_naf.jpg" width="1100" height="1219" alt="A lead marked Not a Fit, with its reason." loading="lazy"><figcaption>A lead marked Not a Fit, with its reason.</figcaption></figure>
 
 <h3 id="lead-n-reopen">Changed your mind? Reopen it</h3>
-<p class="need">Needs the same tick: "Qualify a Lead into an Opportunity / mark it Not a Fit"</p>
+<p class="need">Needs the same tick: "Qualify a Lead into an Opportunity / mark it Not a Fit", or "Pipeline Board — Edit"</p>
 <p>Open the lead and press <span class="ui">↩️ Reopen as Lead</span> (at the top, or under the reason), then OK. The lead goes back on the All Leads list, waiting for a decision again, with its details, notes and assigned person unchanged. Its history shows "Reopened — back on the Leads list" and the old reason.</p>
+<p>A Qualified deal shows <span class="ui">↩️ Reopen on Sales Pipeline</span> instead. It goes back on the Sales Pipeline at the step it had reached. You can also press <span class="ui">↩️ Reopen</span> on its row in <b>Closed: Lost &amp; Not a Fit</b> on the Sales Pipeline.</p>
 <figure><img src="/static/portal/tutorial/leads/l28_reopen.jpg" width="1100" height="1002" alt="A Not a Fit lead: Reopen as Lead at the top and under the reason." loading="lazy"><figcaption>A Not a Fit lead: Reopen as Lead at the top and under the reason.</figcaption></figure>
 
 <div class="box know"><b class="t">Not a Fit or Lost</b>
@@ -701,7 +736,8 @@
 
 <h3 id="lead-t-calls">Logging calls</h3>
 <p class="where">A lead's page › Activity › 📞 Calls</p>
-<p>After calling a lead, open it, press the <span class="ui">📞 Calls</span> tab, choose <span class="f">How did it go?</span> (Answered, No answer, Busy / call back, Left a voicemail, Wrong number), add the <span class="f">Minutes</span> and what was said if you like, and press <span class="ui">📞 Log a call</span>. The call shows on the lead with your name and the time, and counts on Team performance. Anyone who can open the lead can log a call on it.</p>
+<p>After calling a lead, open it, press the <span class="ui">📞 Calls</span> tab, choose <span class="f">How did it go?</span> (Answered, No answer, Busy / call back, Left a voicemail, Wrong number, Doesn't need us), add the <span class="f">Minutes</span> and what was said if you like, and press <span class="ui">📞 Log a call</span>. The call shows on the lead with your name and the time, and counts on Team performance. Anyone who can open the lead can log a call on it.</p>
+<p>Choosing <b>Doesn't need us</b> also lets you close the lead as Not a Fit in the same step. See <a href="#lead-n-call">From a call: "Doesn't need us"</a>.</p>
 
 <figure><img src="/static/portal/tutorial/leads/t06_calls.jpg" width="1042" height="252" alt="The Calls tab on a lead: the Log a call form and a logged call underneath." loading="lazy"><figcaption>The Calls tab on a lead: the Log a call form and a logged call underneath.</figcaption></figure>
 
@@ -734,7 +770,7 @@
 
 <!-- 19 -->
 <section class="part" id="lead-report">
-<h2><span class="num">19</span>Leads Report</h2>
+<h2><span class="num">19</span>Leads Report and Not a Fit Report</h2>
 <p class="where">Side menu › Reports › Leads Report</p>
 <p class="need">Needs the tick: "Leads Sources" (in the Reports part of Roles)</p>
 
@@ -747,6 +783,23 @@
   <li><b>Lead source</b>: how many came from WhatsApp, Manual Entry, Facebook, Instagram, or Not recorded. "WhatsApp" includes leads made from a contact and approved campaign replies.</li>
   <li><b>Export</b>: <span class="ui">🧾 CSV</span>, <span class="ui">📊 Excel</span> or <span class="ui">📄 PDF</span> download the report for the period you've chosen.</li>
 </ul>
+
+<h3 id="lead-r-naf">Not a Fit Report</h3>
+<p class="where">Side menu › Reports › Not a Fit Report</p>
+<p class="need">Needs the tick: "Leads Sources" (in the Reports part of Roles)</p>
+<p>Shows the calls made to businesses that didn't need you, and the leads closed as Not a Fit. Use it to see which callers and which import lists waste the most calls.</p>
+<figure><img src="/static/portal/tutorial/leads/r01_not_a_fit_report.jpg" width="1204" height="900" alt="The Not a Fit Report: totals, then by caller and by import list." loading="lazy"><figcaption>The Not a Fit Report: totals, then by caller and by import list.</figcaption></figure>
+<ul>
+  <li>Choose <span class="ui">Last 7 days</span>, <span class="ui">Last 30 days</span> or <span class="ui">Last 90 days</span>, or pick two dates. Pick a caller in the box (or Everyone) and press <span class="ui">Apply</span>.</li>
+  <li><b>The five boxes</b>: Calls logged; Answered (including "Doesn't need us"); "Doesn't need us" calls; <b>Of answered calls wasted</b> ("Doesn't need us" ÷ Answered); and Leads marked Not a Fit.</li>
+  <li><b>By caller</b>: the same numbers for each person, with a Wasted % bar. Click a name to see only their calls and leads.</li>
+  <li><b>By import list</b>: each list you imported (and "Not imported" for leads added by hand, from WhatsApp or the website). <b>Leads</b> is everything ever imported from it; <b>Called</b> and <b>Not a Fit</b> count the chosen period. A list with a high Not a Fit % is wasting calls. Click a list to see only its leads.</li>
+  <li><b>By reason</b>: why leads were closed.</li>
+  <li><b>Leads marked Not a Fit</b>: each lead with its list, staff size, category, reason, who closed it and when. Click a name to open it, and reopen it from there if needed.</li>
+  <li><b>Export</b>: <span class="ui">🧾 CSV</span>, <span class="ui">📊 Excel</span> or <span class="ui">📄 PDF</span> download the totals and the list of leads for what you've chosen.</li>
+</ul>
+<div class="box know"><b class="t">Counted from 15 October 2026</b>
+<p>"Doesn't need us" was added on 15 October 2026. Calls logged before then as "Answered" aren't counted as wasted, even if the note says the business didn't need you.</p></div>
 </section>
 
 <!-- 20 -->
@@ -761,16 +814,16 @@
 <tbody>
 <tr><td>Leads — view</td><td>Leads › View</td><td class="wrapok">Open Leads Overview, All Leads, lead pages and How Lead Scoring Works.</td></tr>
 <tr><td>Create a Lead</td><td>Leads › Create</td><td class="wrapok">Add Lead, and Create Lead on Hot Conversations.</td></tr>
-<tr><td>Qualify a Lead / mark it Not a Fit</td><td>Leads › other</td><td class="wrapok">Qualify and Not a Fit, one at a time and in bulk. Shows the tick boxes.</td></tr>
+<tr><td>Qualify a Lead / mark it Not a Fit</td><td>Leads › other</td><td class="wrapok">Qualify and Not a Fit, one at a time and in bulk, and Reopen. Shows the tick boxes.</td></tr>
 <tr><td>Assign Leads and Opportunities</td><td>Leads › other</td><td class="wrapok">Choose the Assigned Salesperson anywhere, and Assign to in bulk. Shows the tick boxes.</td></tr>
 <tr><td>See all leads, not just their own</td><td>Leads › other</td><td class="wrapok">Ticked: sees every lead. Not ticked: sees only the leads assigned to them, everywhere (Leads, Sales Pipeline, Dashboard, Reports, and the lead pickers in campaigns, segments and labels), and leads they add are assigned to them.</td></tr>
 <tr><td>See all contacts and companies, not just their own</td><td>CRM › Contact › other</td><td class="wrapok">Ticked: sees every contact and company. Not ticked: sees only the contacts of the leads assigned to them and the contacts and companies they added themselves, and can't open, change or export anyone else's.</td></tr>
 <tr><td>See all chats, not just their own customers'</td><td>Inbox › other</td><td class="wrapok">Ticked: sees every chat on their WhatsApp numbers (and Web Chat / Messenger if those are switched on for them). Not ticked: sees only chats with their own contacts and with people who don't belong to anyone yet; once someone claims a chat, that customer becomes the claimer's contact and the chat is theirs. Chat alerts go only to the people who can see the chat.</td></tr>
 <tr><td colspan="3" class="wrapok">The owner and anyone who can manage the Team (IT Admin) always see every lead, contact and chat, whatever these three ticks say.</td></tr>
 <tr><td>Import leads and contacts (CSV or Excel)</td><td>CRM › Import (leads and contacts)</td><td class="wrapok">The Import button on All Leads and All Contacts, and the templates.</td></tr>
-<tr><td>Pipeline Board — Edit</td><td>CRM › Pipeline Board › Edit</td><td class="wrapok">Edit Lead (details and sales signals), Remove number on a number to check, and Move back to Leads.</td></tr>
+<tr><td>Pipeline Board — Edit</td><td>CRM › Pipeline Board › Edit</td><td class="wrapok">Edit Lead (details and sales signals), Remove number on a number to check, Move back to Leads, and on the Sales Pipeline: Not a Fit, Mark as Lost and Reopen.</td></tr>
 <tr><td>Team performance</td><td>Leads › Team performance › View</td><td class="wrapok">Open Team performance and set targets for the people who report to them (their Line manager in Team is set to this person). Line managers with this tick also get the 6 pm email. Logging a call needs only "Leads — view".</td></tr>
-<tr><td>Leads Sources</td><td>Reports</td><td class="wrapok">Open the Leads Report and download it.</td></tr>
+<tr><td>Leads Sources</td><td>Reports</td><td class="wrapok">Open the Leads Report and the Not a Fit Report, and download them.</td></tr>
 </tbody></table></div>
 
 <p>Your plan also has to include Leads. If it doesn't, the menu items show a 🔒 padlock and open an upgrade page.</p>
@@ -803,6 +856,14 @@
   <li>Open the lead › <span class="ui">📞 Calls</span>.</li>
   <li>Choose how it went, add the minutes and one line on what was said › <span class="ui">📞 Log a call</span>.</li>
   <li>If it's now a real chance, <span class="ui">✅ Qualify</span> it.</li>
+  <li>If they don't need you, choose <b>Doesn't need us</b> and leave "Also mark … as Not a Fit" ticked, so nobody calls them again.</li>
+</ol></div>
+
+<div class="recipe"><h4>Manager: check wasted calls every week</h4>
+<ol class="steps">
+  <li>Reports › <span class="ui">Not a Fit Report</span> › <span class="ui">Last 7 days</span>.</li>
+  <li>Look at <b>Of answered calls wasted</b>. If it's high, look at <b>By import list</b> to see which list the bad leads came from, and stop calling that list.</li>
+  <li>Look at <b>By caller</b>. Someone with a high Wasted % may need help checking leads before calling (staff size, category, website).</li>
 </ol></div>
 
 <div class="recipe"><h4>Manager: check the team at the end of the day</h4>
@@ -884,7 +945,13 @@
 <p>One-at-a-time Qualify needs at least one of the two. Type the person's name or their company in the window.</p>
 
 <h4>I marked a lead Not a Fit by mistake.</h4>
-<p>Open it and press <span class="ui">↩️ Reopen as Lead</span>. It goes straight back on your Leads list (section 11).</p>
+<p>Open it and press <span class="ui">↩️ Reopen as Lead</span> (or <span class="ui">↩️ Reopen on Sales Pipeline</span> for a Qualified deal). It goes straight back where it was (section 12).</p>
+
+<h4>Where has "Mark as Dropped" gone?</h4>
+<p>Not a Fit replaced it on 15 October 2026, so there are only two ways to close: <b>Not a Fit</b> (you're stopping) and <b>Mark as Lost</b> (a Qualified deal said no). Deals closed as Dropped before then still show as Dropped.</p>
+
+<h4>I logged "Doesn't need us" but the lead is still open.</h4>
+<p>Either the "Also mark … as Not a Fit" box was unticked, or your role can't use Not a Fit. Open the lead and press <span class="ui">🚫 Not a Fit</span>, or ask your manager to.</p>
 
 <h4>Add Lead says the number "has no country code".</h4>
 <p>Choose the country in the list next to the number, or type the whole number starting with +, for example +234 803 123 4567. The portal never picks a country for you, not even your business's own country.</p>

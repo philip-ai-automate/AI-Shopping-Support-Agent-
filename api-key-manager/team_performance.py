@@ -572,12 +572,16 @@ def lead_calls(tenant_id: int, lead_id: int) -> list:
 
 
 def log_call(tenant_id: int, lead_id: int, actor: dict, outcome: str, minutes, note: str) -> None:
+    # Full name, same as stage history and Team performance (an owner's
+    # actor label is only their first name).
+    import staff_activity
+    name = staff_activity.current_name(actor["label"]) or actor["label"]
     conn = get_db_connection()
     try:
         cur = conn.cursor()
         cur.execute("""INSERT INTO lead_calls (tenant_id, lead_id, actor_key, actor_name, outcome, minutes, note)
                        VALUES (%s,%s,%s,%s,%s,%s,%s)""",
-                    (tenant_id, lead_id, actor["key"], actor["label"], outcome, minutes, note or None))
+                    (tenant_id, lead_id, actor["key"], name, outcome, minutes, note or None))
         cur.execute("UPDATE merchant_pipeline_leads SET updated_at=NOW() WHERE id=%s AND tenant_id=%s",
                     (lead_id, tenant_id))
         conn.commit()

@@ -49,6 +49,8 @@
 {% endblock %}
 
 {% block content %}
+{% from "portal/_labels_ui.html" import label_chip %}
+{% from "portal/_columns_ui.html" import cc_value %}
 <div class="crumb"><a href="{{ url_for('portal.leads_page') }}">Leads</a> / <b>{{ lead.customer_name }}</b></div>
 
 <div class="lc-card">
@@ -60,6 +62,10 @@
       <div>
         <div class="lc-name">{{ lead.customer_name }}</div>
         <div class="lc-sub">{{ lead.product_interest or 'Sales Lead' }}</div>
+        <div class="lbl-cell" style="margin-top:6px" data-lbl-lead="{{ lead.id }}" data-removable="{{ '1' if can_assign_labels else '0' }}" data-ids="{{ lead_labels|map(attribute='id')|join(',') }}">
+          <span class="lbl-chips">{% for lb in lead_labels %}{{ label_chip(lb, lead.id, can_assign_labels) }}{% endfor %}</span>
+          {% if can_assign_labels %}<button type="button" class="lbl-add" onclick="LabelUI.editLead(this, {{ lead.id }})">+ Add label</button>{% endif %}
+        </div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
@@ -134,8 +140,8 @@
           <div style="font-size:12.5px;color:var(--ink)">The call will be logged. Your manager will see it in the Not a Fit report.</div>
           {% else %}
           <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--ink);cursor:pointer">
-            <input type="checkbox" id="lcNafTick" name="also_not_a_fit" value="1" checked style="margin-top:3px">
-            <span>Also mark <strong>{{ lead.customer_name }}</strong> as Not a Fit, so nobody calls them again</span>
+            <input type="checkbox" id="lcNafTick" name="also_not_a_fit" value="1" checked style="margin:3px 0 0;width:auto;flex:0 0 auto">
+            <span style="flex:1 1 auto">Also mark <strong>{{ lead.customer_name }}</strong> as Not a Fit, so nobody calls them again</span>
           </label>
           <div id="lcNafReasonWrap" style="display:flex;flex-direction:column;gap:3px;margin-top:8px">
             <label for="lcNafReason" style="font-size:11.5px;color:var(--muted);font-weight:600">Reason</label>
@@ -305,6 +311,11 @@
     </div>
     <div><div class="lc-field-label">Business category</div><div class="lc-field-value">{{ lead.business_category or '—' }}</div></div>
     <div><div class="lc-field-label">Number of employees</div><div class="lc-field-value">{{ lead.employees or '—' }}</div></div>
+    {% for c in lead_cols %}{% set v = lead_col_values.get(c.id) %}
+    <div><div class="lc-field-label">{{ c.name }}{% if c.icon %} <span style="text-transform:none">{{ c.icon }}</span>{% endif %}</div>
+      <div class="lc-field-value{{ ' cc-fill' if c.can_fill }}" data-cc-lead="{{ lead.id }}" data-cc-col="{{ c.id }}" data-value='{{ v|tojson }}'
+           {% if c.can_fill %}tabindex="0" role="button" aria-label="Edit {{ c.name }}" onclick="ColumnUI.editCell(this)" onkeydown="if(event.key==='Enter')ColumnUI.editCell(this)"{% endif %}><span class="cc-val">{{ cc_value(c, v) }}</span></div></div>
+    {% endfor %}
     <div><div class="lc-field-label">Address{% if company %} <span style="font-weight:400;text-transform:none;letter-spacing:0">(company's)</span>{% endif %}</div>
       <div class="lc-field-value">{% if has_address(lead) %}{{ location_text(lead, with_street=True) }}{% if lead.addr_postcode %} · {{ lead.addr_postcode }}{% endif %}{% else %}{{ location_cell(lead) }}{% endif %}</div>
     </div>
@@ -550,7 +561,7 @@
         <label class="flbl">Reason</label>
         {% for reason in not_a_fit_reasons %}
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:6px;cursor:pointer">
-          <input type="radio" name="reason" value="{{ reason }}" onchange="document.getElementById('notAFitOtherRow').style.display = (this.value==='Other' ? 'block' : 'none')" required> {{ reason }}
+          <input type="radio" name="reason" value="{{ reason }}" onchange="document.getElementById('notAFitOtherRow').style.display = (this.value==='Other' ? 'block' : 'none')" required style="width:17px;height:17px;margin:0;flex:0 0 auto;accent-color:#0B1D40"> {{ reason }}
         </label>
         {% endfor %}
       </div>
@@ -591,4 +602,6 @@ if (location.hash === '#calls') lcShowTab('calls');
   sync();
 })();
 </script>
+{% include "portal/_labels_ui.html" %}
+{% include "portal/_columns_ui.html" %}
 {% endblock %}

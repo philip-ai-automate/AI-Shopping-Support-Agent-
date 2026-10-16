@@ -1,0 +1,415 @@
+{#- People's own columns on Leads + Sales Pipeline (2026-10-16), see columns_core.py.
+    {% from "portal/_columns_ui.html" import cc_head, cc_cell, cc_value %} for the table;
+    {% include "portal/_columns_ui.html" %} once per page for the window, editors and menus. -#}
+{% macro cc_value(col, v) -%}
+{%- if v is none or v == '' or v == [] -%}<span class="muted">—</span>
+{%- elif col.col_type == 'yesno' -%}{{ '✓ Yes' if v else '✗ No' }}
+{%- elif col.col_type == 'choice' -%}{% for ch in col.choices if ch.id == v %}<span class="cc-chip" style="{{ ch.style }}">{{ ch.name }}</span>{% endfor %}
+{%- elif col.col_type == 'multi' -%}{% for ch in col.choices if ch.id in v %}<span class="cc-chip" style="{{ ch.style }}">{{ ch.name }}</span>{% endfor %}
+{%- elif col.col_type == 'date' -%}{{ v|cc_date }}
+{%- elif col.col_type == 'number' -%}{{ v|cc_number }}
+{%- else -%}<span class="cc-text" title="{{ v }}">{{ v }}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro cc_head(col, sort_by, filtered) -%}
+<th class="cc-th"><button type="button" class="cc-hbtn" onclick="ColumnUI.headMenu(this, {{ col.id }})" title="Sort, filter, hide or edit this column">{{ col.name }}{% if col.icon %} <span class="cc-vis">{{ col.icon }}</span>{% endif %}{% if sort_by == 'cc' ~ col.id ~ '_asc' %} ↑{% elif sort_by == 'cc' ~ col.id ~ '_desc' %} ↓{% endif %}{% if filtered %} <span class="cc-dot" title="Filtered">●</span>{% endif %} ▾</button></th>
+{%- endmacro %}
+
+{% macro cc_cell(col, lead_id, v) -%}
+<td class="cc-td{{ ' cc-fill' if col.can_fill is not defined or col.can_fill }}" data-cc-lead="{{ lead_id }}" data-cc-col="{{ col.id }}" data-value='{{ v|tojson }}'{% if col.can_fill is not defined or col.can_fill %} tabindex="0" role="button" aria-label="Edit {{ col.name }}" onclick="ColumnUI.editCell(this)" onkeydown="if(event.key==='Enter')ColumnUI.editCell(this)"{% endif %}>{{ cc_value(col, v) }}</td>
+{%- endmacro %}
+
+{% macro cc_filter_bar(chips) -%}
+{% if chips %}<div class="cc-fbar"><span>Filtered by your columns:</span>{% for ch in chips %}<a class="cc-fchip" href="{{ ch.url }}" title="Remove this filter">{{ ch.text }} <b aria-hidden="true">×</b><span class="sr-only"> (remove)</span></a>{% endfor %}</div>{% endif %}
+{%- endmacro %}
+
+{% if not _cc_assets_done %}
+<style>
+  .cc-th{background:#eef3fb !important}
+  .cc-fbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12.5px;color:var(--muted);margin:0 0 10px}
+  .cc-fchip{display:inline-flex;gap:6px;align-items:center;background:#E8EEF8;color:#0B1D40;border-radius:999px;padding:3px 10px;font-weight:600;text-decoration:none}
+  .cc-fchip:hover{background:#d6e1f3}
+  .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .cc-hbtn{border:0;background:none;font:inherit;color:#0B1D40;text-transform:inherit;letter-spacing:inherit;font-weight:800;cursor:pointer;padding:0;white-space:nowrap}
+  .cc-vis{font-size:10px}
+  .cc-dot{color:#2F5BB7;font-size:9px}
+  .cc-td{font-size:12px;min-width:110px;max-width:240px}
+  .cc-fill{cursor:pointer}
+  .cc-fill:hover,.cc-fill:focus-visible{outline:1.5px dashed #9DB8E8;outline-offset:-4px}
+  .cc-chip{display:inline-flex;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:600;white-space:nowrap;line-height:1.6;margin:1px 3px 1px 0}
+  .cc-text{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ccp{position:fixed;z-index:620;background:#fff;border:1px solid rgba(3,12,24,.12);border-radius:12px;box-shadow:0 14px 36px rgba(3,12,24,.18);
+       width:300px;max-width:calc(100vw - 24px);padding:10px;display:flex;flex-direction:column;gap:6px;overflow:hidden;font-size:13px}
+  .ccp [hidden]{display:none !important}
+  .ccp-t{font-size:12.5px;font-weight:700;padding:2px 4px}
+  .ccp-body{overflow-y:auto;flex:1 1 auto;min-height:40px;display:flex;flex-direction:column;gap:4px}
+  .ccp input[type=text],.ccp input[type=number],.ccp input[type=date],.ccp select{width:100%;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:9px;font:13px inherit;font-family:inherit}
+  .ccp .opt{display:grid;grid-template-columns:minmax(0,1fr) 16px;gap:10px;align-items:center;padding:6px;border-radius:7px;cursor:pointer;margin:0;font-weight:400;width:auto}
+  .ccp .opt:hover{background:#f1f5f9}
+  .ccp .opt input{width:16px;height:16px;margin:0;accent-color:#0B1D40}
+  .ccp .mi{padding:7px 8px;border-radius:7px;cursor:pointer;border:0;background:none;text-align:left;font:inherit;color:inherit;width:100%}
+  .ccp .mi:hover,.ccp .mi:focus-visible{background:#f1f5f9}
+  .ccp .mi.red{color:#b42318}
+  .ccp-act{display:flex;justify-content:space-between;gap:8px;padding-top:6px;border-top:1px solid rgba(3,12,24,.08)}
+  .ccp-err{color:var(--bad);font-size:12px}
+  .ccp-err:empty{display:none}
+  .ccw-over{position:fixed;inset:0;background:rgba(3,12,24,.4);z-index:640;display:flex;align-items:center;justify-content:center;padding:16px}
+  .ccw-over[hidden]{display:none}
+  .ccw{background:#fff;border-radius:18px;width:100%;max-width:540px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(3,12,24,.2);padding:22px;display:flex;flex-direction:column;gap:14px}
+  .ccw h3{margin:0;font-size:16px;font-weight:800}
+  .ccw [hidden]{display:none !important}
+  .ccw label,.ccw .fl,.ccw-type span{color:#111E2D}
+  .ccw .f{display:flex;flex-direction:column;gap:6px}
+  .ccw .fl{font-size:12.5px;font-weight:700}
+  .ccw .hint{font-size:12px;color:var(--muted);font-weight:400}
+  .ccw input[type=text]{width:100%;padding:9px 11px;border:1.5px solid #e5e7eb;border-radius:9px;font-size:13.5px;font-family:inherit}
+  .ccw-types{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px}
+  .ccw-type{display:flex;gap:8px;align-items:flex-start;border:1.5px solid #e5e7eb;border-radius:10px;padding:9px 10px;cursor:pointer;font-size:13px;font-weight:600;margin:0}
+  .ccw-type small{display:block;color:var(--muted);font-weight:400;font-size:11.5px}
+  .ccw-type input{margin-top:3px;accent-color:#0B1D40;width:auto}
+  .ccw-type.on{border-color:#0B1D40;background:#E8EEF8}
+  .ccw-type.off{opacity:.45;cursor:not-allowed}
+  .ccw-choice{display:flex;gap:8px;align-items:center}
+  .ccw-choice button{border:0;background:none;color:var(--muted);font-size:17px;cursor:pointer}
+  .ccw-box{border:1px solid #e5e7eb;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;background:#f8fafc}
+  .ccw-radio{display:flex;gap:10px;align-items:flex-start;font-size:13px;cursor:pointer;margin:0;font-weight:400}
+  .ccw-radio input{margin-top:3px;accent-color:#0B1D40;width:auto}
+  .ccw-group{display:flex;flex-direction:column;gap:6px;margin-left:24px;padding:10px;background:#fff;border-radius:10px}
+  .ccw-checks{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px}
+  .ccw-checks label{display:flex;gap:6px;align-items:center;font-weight:400;margin:0}
+  .ccw-checks input{width:auto;accent-color:#0B1D40}
+  .ccw-confirm{background:#fef2f2;color:#991b1b;border-radius:10px;padding:10px 12px;font-size:13px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .ccw-act{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;border-top:1px solid #e5e7eb;padding-top:12px}
+  .ccw-err{color:var(--bad);font-size:12.5px}
+  .ccw-err:empty{display:none}
+</style>
+
+<div class="ccw-over" id="ccwOver" hidden onclick="if(event.target===this)ColumnUI.closeWindow()">
+  <div class="ccw" role="dialog" aria-modal="true" aria-labelledby="ccwTitle">
+    <h3 id="ccwTitle">Add a column</h3>
+    <div class="f"><label class="fl" for="ccwName">Column name</label><input type="text" id="ccwName" maxlength="60" autocomplete="off"></div>
+    <div class="f"><span class="fl">What goes in it</span><div class="ccw-types" id="ccwTypes" role="radiogroup" aria-label="Column type"></div>
+      <span class="hint" id="ccwTypeHint" hidden>The type can't be changed after the column is made.</span></div>
+    <div class="f" id="ccwChoicesBox" hidden><span class="fl">Choices</span><div id="ccwChoices" style="display:flex;flex-direction:column;gap:6px"></div>
+      <button type="button" class="btn btn-sm" style="align-self:flex-start" onclick="ColumnUI._addChoice('')">+ Add a choice</button></div>
+    <div class="ccw-box" id="ccwWhoBox">
+      <span class="fl">Who can see this column</span>
+      <label class="ccw-radio"><input type="radio" name="ccwVis" value="private"><span><b>🔒 Only me</b><br><span class="hint">Only you see the column and what's in it.</span></span></label>
+      <label class="ccw-radio"><input type="radio" name="ccwVis" value="group"><span><b>👥 A group</b><br><span class="hint">Departments or staff you pick, plus you.</span></span></label>
+      <div class="ccw-group" id="ccwGroup" hidden>
+        <span class="fl">Departments</span><div class="ccw-checks" id="ccwDepts"></div>
+        <span class="fl">Staff</span><div class="ccw-checks" id="ccwStaff"></div>
+      </div>
+      <label class="ccw-radio" id="ccwBiz"><input type="radio" name="ccwVis" value="business"><span><b>Everyone in the business</b><br><span class="hint">Everyone who can see the lead sees this column.</span></span></label>
+    </div>
+    <p class="hint" id="ccwWhoFixed" hidden></p>
+    <div class="ccw-err" id="ccwErr" role="alert"></div>
+    <div class="ccw-confirm" id="ccwConfirm" hidden><span id="ccwConfirmText"></span><button type="button" class="btn btn-sm btn-danger" onclick="ColumnUI._delete()">Yes, delete</button></div>
+    <div class="ccw-act">
+      <button type="button" class="btn btn-danger" id="ccwDel" hidden onclick="document.getElementById('ccwConfirm').hidden=false">Delete column</button>
+      <span style="display:flex;gap:8px;margin-left:auto">
+        <button type="button" class="btn" onclick="ColumnUI.closeWindow()">Cancel</button>
+        <button type="button" class="btn btn-primary" id="ccwSave" onclick="ColumnUI._save()">Add column</button>
+      </span>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ColumnUI — people's own columns. /columns/list only returns columns this
+   person may see (private / group / business). */
+var ColumnUI = (function(){
+  var data = null, pop = null, anchorEl = null, editing = null;
+  var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function load(force){
+    if (data && !force) return Promise.resolve(data);
+    return fetch('/columns/list', {credentials:'same-origin'}).then(function(r){ return r.json(); })
+      .then(function(d){ if (d.error) throw new Error(d.error); data = d; return d; });
+  }
+  function col(id){ return data.columns.filter(function(c){ return c.id === Number(id); })[0]; }
+  function post(url, fd){
+    return fetch(url, {method:'POST', body:fd, credentials:'same-origin'})
+      .then(function(r){ return r.json().catch(function(){ return {error:'Something went wrong (' + r.status + ').'}; }); });
+  }
+  function fmt(c, v){
+    if (v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length)) return '<span class="muted">—</span>';
+    if (c.col_type === 'yesno') return v ? '✓ Yes' : '✗ No';
+    if (c.col_type === 'choice' || c.col_type === 'multi') {
+      var ids = Array.isArray(v) ? v : [v];
+      return c.choices.filter(function(ch){ return ids.indexOf(ch.id) >= 0; })
+        .map(function(ch){ return '<span class="cc-chip" style="' + esc(ch.style) + '">' + esc(ch.name) + '</span>'; }).join('') || '<span class="muted">—</span>';
+    }
+    if (c.col_type === 'date') { var p = String(v).split('-'); return p.length === 3 ? Number(p[2]) + ' ' + MONTHS[Number(p[1]) - 1] + ' ' + p[0] : esc(v); }
+    if (c.col_type === 'number') return Number(v).toLocaleString('en-GB');
+    return '<span class="cc-text" title="' + esc(v) + '">' + esc(v) + '</span>';
+  }
+  /* ── popover, kept fully on screen (same rules as the label picker) ── */
+  function close(){
+    if (!pop) return;
+    pop.remove(); pop = null; anchorEl = null;
+    document.removeEventListener('mousedown', outside, true);
+    window.removeEventListener('scroll', reposition, true); window.removeEventListener('resize', reposition);
+  }
+  function outside(e){ if (pop && !pop.contains(e.target)) close(); }
+  function reposition(){ if (pop && anchorEl) place(); }
+  function place(){
+    var m = 12, gap = 6, r = anchorEl.getBoundingClientRect(), vw = document.documentElement.clientWidth, vh = window.innerHeight;
+    if (r.bottom < 0 || r.top > vh) { close(); return; }
+    pop.style.maxHeight = 'none';
+    var w = pop.offsetWidth, natural = Math.min(pop.scrollHeight, 460);
+    pop.style.left = Math.max(m, Math.min(r.left, vw - w - m)) + 'px';
+    var below = vh - r.bottom - gap - m, above = r.top - gap - m;
+    if (below >= Math.min(natural, 260) || below >= above) { var h = Math.min(natural, below); pop.style.maxHeight = h + 'px'; pop.style.top = (r.bottom + gap) + 'px'; }
+    else { var h2 = Math.min(natural, above); pop.style.maxHeight = h2 + 'px'; pop.style.top = (r.top - gap - h2) + 'px'; }
+  }
+  function open(anchor, html){
+    close();
+    pop = document.createElement('div'); pop.className = 'ccp'; pop.setAttribute('role', 'dialog'); pop.innerHTML = html;
+    document.body.appendChild(pop); anchorEl = anchor; place();
+    setTimeout(function(){ document.addEventListener('mousedown', outside, true); }, 0);
+    window.addEventListener('scroll', reposition, true); window.addEventListener('resize', reposition);
+    var f = pop.querySelector('input,select,button'); if (f) f.focus();
+    return pop;
+  }
+  /* ── value editor, by type ── */
+  function editorHtml(c, v, title){
+    var h = '<div class="ccp-t">' + esc(title) + '</div><div class="ccp-body">';
+    if (c.col_type === 'choice' || c.col_type === 'multi') {
+      var ids = Array.isArray(v) ? v : (v ? [v] : []);
+      c.choices.forEach(function(ch){
+        h += '<label class="opt"><span><span class="cc-chip" style="' + esc(ch.style) + '">' + esc(ch.name) + '</span></span>'
+          + '<input type="' + (c.col_type === 'multi' ? 'checkbox' : 'radio') + '" name="ccv" value="' + esc(ch.id) + '"' + (ids.indexOf(ch.id) >= 0 ? ' checked' : '') + '></label>';
+      });
+    } else if (c.col_type === 'yesno') {
+      h += '<label class="opt"><span>✓ Yes</span><input type="radio" name="ccv" value="yes"' + (v === true ? ' checked' : '') + '></label>'
+        + '<label class="opt"><span>✗ No</span><input type="radio" name="ccv" value="no"' + (v === false ? ' checked' : '') + '></label>';
+    } else {
+      var type = c.col_type === 'number' ? 'number' : (c.col_type === 'date' ? 'date' : 'text');
+      h += '<input type="' + type + '" name="ccv" ' + (type === 'number' ? 'step="any" ' : '') + 'value="' + esc(v == null ? '' : v) + '" aria-label="' + esc(c.name) + '">';
+    }
+    return h + '</div><div class="ccp-err" role="alert"></div><div class="ccp-act"><button type="button" class="btn btn-sm" data-act="clear">Clear</button>'
+      + '<button type="button" class="btn btn-sm btn-primary" data-act="save">Save</button></div>';
+  }
+  function readEditor(c, fd){
+    if (c.col_type === 'multi') pop.querySelectorAll('input[name=ccv]:checked').forEach(function(i){ fd.append('value', i.value); });
+    else { var i = pop.querySelector('input[name=ccv]' + (c.col_type === 'choice' || c.col_type === 'yesno' ? ':checked' : '')); fd.append('value', i ? i.value : ''); }
+  }
+  function wireEditor(c, url, done, extraFd){
+    function send(clear){
+      var fd = extraFd ? extraFd() : new FormData();
+      if (!clear) readEditor(c, fd); else fd.append('value', '');
+      post(url, fd).then(function(d){
+        if (d.error) { pop.querySelector('.ccp-err').textContent = d.error; return; }
+        close(); done(d);
+      }).catch(function(){ pop.querySelector('.ccp-err').textContent = 'Could not save. Check your connection and try again.'; });
+    }
+    pop.querySelector('[data-act=save]').onclick = function(){ send(false); };
+    pop.querySelector('[data-act=clear]').onclick = function(){ send(true); };
+    pop.addEventListener('keydown', function(e){ if (e.key === 'Escape') close(); if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') { e.preventDefault(); send(false); } });
+  }
+  function editCell(td){
+    load().then(function(){
+      var c = col(td.dataset.ccCol); if (!c) return;
+      var v = JSON.parse(td.dataset.value || 'null');
+      open(td, editorHtml(c, v, c.name));
+      wireEditor(c, '/leads/' + td.dataset.ccLead + '/columns/' + c.id, function(d){
+        document.querySelectorAll('[data-cc-lead="' + td.dataset.ccLead + '"][data-cc-col="' + c.id + '"]').forEach(function(cell){
+          cell.dataset.value = JSON.stringify(d.value === undefined ? null : d.value);
+          var tgt = cell.querySelector('.cc-val') || cell; tgt.innerHTML = fmt(c, d.value);
+        });
+      });
+    }).catch(function(e){ alert(e.message || 'Could not load columns.'); });
+  }
+  /* ── column heading menu ── */
+  function setParams(set, drop){
+    var u = new URL(location.href);
+    Array.from(u.searchParams.keys()).forEach(function(k){ if (drop && drop(k)) u.searchParams.delete(k); });
+    Object.keys(set).forEach(function(k){ if (set[k] === null) u.searchParams.delete(k); else u.searchParams.set(k, set[k]); });
+    u.searchParams.delete('page'); location.href = u.toString();
+  }
+  function headMenu(btn, id){
+    load().then(function(){
+      var c = col(id); if (!c) return;
+      var h = '<div class="ccp-t">' + esc(c.name) + ' <span class="hint" style="font-weight:400">· ' + esc(c.type_name) + '</span></div><div class="ccp-body">'
+        + '<button type="button" class="mi" data-a="asc">↑ Sort ' + (c.col_type === 'number' || c.col_type === 'date' ? 'lowest first' : 'A–Z') + '</button>'
+        + '<button type="button" class="mi" data-a="desc">↓ Sort ' + (c.col_type === 'number' || c.col_type === 'date' ? 'highest first' : 'Z–A') + '</button>'
+        + '<button type="button" class="mi" data-a="filter">Filter…</button>'
+        + '<button type="button" class="mi" data-a="hide">Hide column</button>'
+        + (c.can_change || c.can_delete ? '<button type="button" class="mi" data-a="edit">Edit column</button>' : '')
+        + '</div>';
+      open(btn, h);
+      pop.querySelectorAll('.mi').forEach(function(b){ b.onclick = function(){
+        var a = b.dataset.a;
+        if (a === 'asc' || a === 'desc') setParams({sort: 'cc' + c.id + '_' + a});
+        else if (a === 'hide') { var fd = new FormData(); fd.append('hidden', '1'); post('/columns/' + c.id + '/hide', fd).then(function(){ location.reload(); }); }
+        else if (a === 'edit') { close(); openWindow(c.id); }
+        else if (a === 'filter') filterMenu(btn, c);
+      }; });
+    });
+  }
+  function filterMenu(btn, c){
+    var p = new URL(location.href).searchParams, k = 'cf' + c.id, h = '<div class="ccp-t">Filter: ' + esc(c.name) + '</div><div class="ccp-body">';
+    var cur = (p.get(k) || '').split(',').filter(Boolean);
+    if (c.col_type === 'choice' || c.col_type === 'multi') {
+      c.choices.forEach(function(ch){ h += '<label class="opt"><span><span class="cc-chip" style="' + esc(ch.style) + '">' + esc(ch.name) + '</span></span><input type="checkbox" name="ccf" value="' + esc(ch.id) + '"' + (cur.indexOf(ch.id) >= 0 ? ' checked' : '') + '></label>'; });
+    } else if (c.col_type === 'yesno') {
+      h += '<label class="opt"><span>✓ Yes</span><input type="radio" name="ccf" value="yes"' + (cur[0] === 'yes' ? ' checked' : '') + '></label>'
+        + '<label class="opt"><span>✗ No</span><input type="radio" name="ccf" value="no"' + (cur[0] === 'no' ? ' checked' : '') + '></label>';
+    } else if (c.col_type === 'text') {
+      h += '<input type="text" name="ccf" placeholder="Contains…" value="' + esc(p.get(k) && p.get(k).indexOf('__') !== 0 ? p.get(k) : '') + '">';
+    } else {
+      var t = c.col_type === 'number' ? 'number' : 'date';
+      h += '<label class="hint">From</label><input type="' + t + '" name="ccfrom" value="' + esc(p.get(k + '_from') || '') + '">'
+        + '<label class="hint">To</label><input type="' + t + '" name="ccto" value="' + esc(p.get(k + '_to') || '') + '">';
+    }
+    h += '<label class="opt"><span>Has a value</span><input type="radio" name="ccspecial" value="__any__"' + (cur[0] === '__any__' ? ' checked' : '') + '></label>'
+      + '<label class="opt"><span>Empty</span><input type="radio" name="ccspecial" value="__empty__"' + (cur[0] === '__empty__' ? ' checked' : '') + '></label>'
+      + '</div><div class="ccp-act"><button type="button" class="btn btn-sm" data-act="clear">Clear</button><button type="button" class="btn btn-sm btn-primary" data-act="save">Apply</button></div>';
+    open(btn, h);
+    function dropMine(x){ return x === k || x === k + '_from' || x === k + '_to'; }
+    pop.querySelector('[data-act=clear]').onclick = function(){ setParams({}, dropMine); };
+    pop.querySelector('[data-act=save]').onclick = function(){
+      var set = {}, sp = pop.querySelector('input[name=ccspecial]:checked');
+      if (sp) set[k] = sp.value;
+      else if (c.col_type === 'number' || c.col_type === 'date') {
+        var f = pop.querySelector('input[name=ccfrom]').value, t2 = pop.querySelector('input[name=ccto]').value;
+        if (f) set[k + '_from'] = f; if (t2) set[k + '_to'] = t2;
+      } else {
+        var vals = Array.from(pop.querySelectorAll('input[name=ccf]')).filter(function(i){ return i.type === 'text' ? i.value.trim() : i.checked; })
+          .map(function(i){ return i.value.trim(); });
+        if (vals.length) set[k] = vals.join(',');
+      }
+      setParams(set, dropMine);
+    };
+  }
+  /* ── "Columns" button: show / hide, add ── */
+  function columnsMenu(btn){
+    load(true).then(function(){
+      var h = '<div class="ccp-t">Your columns</div><div class="ccp-body">';
+      if (!data.columns.length) h += '<p class="hint" style="margin:4px">No columns yet. Add one to keep your own information on leads and deals.</p>';
+      data.columns.forEach(function(c){
+        h += '<label class="opt"><span>' + esc(c.icon ? c.icon + ' ' : '') + esc(c.name) + ' <span class="hint">· ' + esc(c.type_name) + '</span></span>'
+          + '<input type="checkbox" data-id="' + c.id + '"' + (c.hidden ? '' : ' checked') + ' aria-label="Show ' + esc(c.name) + '"></label>';
+      });
+      h += '</div>' + (data.can_own || data.can_business ? '<div class="ccp-act"><span></span><button type="button" class="btn btn-sm btn-primary" data-act="add">+ Add column</button></div>' : '');
+      open(btn, h);
+      var changed = false;
+      pop.querySelectorAll('input[data-id]').forEach(function(i){ i.onchange = function(){
+        var fd = new FormData(); fd.append('hidden', i.checked ? '0' : '1');
+        post('/columns/' + i.dataset.id + '/hide', fd).then(function(){ changed = true; });
+      }; });
+      var add = pop.querySelector('[data-act=add]'); if (add) add.onclick = function(){ close(); openWindow(null); };
+      var watch = setInterval(function(){ if (!pop) { clearInterval(watch); if (changed) location.reload(); } }, 300);
+    });
+  }
+  /* ── bulk: fill one column on the ticked leads ── */
+  function bulkFill(btn, formFn, doneFn){
+    load().then(function(){
+      var fill = data.columns.filter(function(c){ return c.can_fill; });
+      var h = '<div class="ccp-t">Fill a column on the selected leads</div><div class="ccp-body">';
+      if (!fill.length) h += '<p class="hint" style="margin:4px">No columns you can fill. Add a column first.</p>';
+      fill.forEach(function(c){ h += '<button type="button" class="mi" data-id="' + c.id + '">' + esc(c.icon ? c.icon + ' ' : '') + esc(c.name) + '</button>'; });
+      open(btn, h + '</div>');
+      pop.querySelectorAll('.mi').forEach(function(b){ b.onclick = function(){
+        var c = col(b.dataset.id);
+        open(btn, editorHtml(c, null, c.name + ' · selected leads'));
+        wireEditor(c, '/columns/' + c.id + '/bulk-fill', function(d){ doneFn(d.count + ' lead(s) updated: ' + c.name + '.'); }, formFn);
+      }; });
+    });
+  }
+  /* ── the Add / Edit column window ── */
+  function chosenType(){ var r = document.querySelector('input[name=ccwType]:checked'); return r ? r.value : null; }
+  function vis(){ var r = document.querySelector('input[name=ccwVis]:checked'); return r ? r.value : null; }
+  function syncWindow(){
+    var t = chosenType();
+    document.querySelectorAll('.ccw-type').forEach(function(l){ l.classList.toggle('on', l.querySelector('input').checked); });
+    document.getElementById('ccwChoicesBox').hidden = !(t === 'choice' || t === 'multi');
+    document.getElementById('ccwGroup').hidden = vis() !== 'group';
+  }
+  function addChoice(name, id){
+    var box = document.getElementById('ccwChoices'), row = document.createElement('div');
+    row.className = 'ccw-choice';
+    row.innerHTML = '<input type="text" maxlength="40" aria-label="Choice" value="' + esc(name) + '"' + (id ? ' data-id="' + esc(id) + '"' : '') + '>'
+      + '<button type="button" aria-label="Remove choice">×</button>';
+    row.querySelector('button').onclick = function(){ row.remove(); };
+    box.appendChild(row);
+    if (!name) row.querySelector('input').focus();
+  }
+  function openWindow(id){
+    load(true).then(function(){
+      var c = id ? col(id) : null; editing = c;
+      document.getElementById('ccwTitle').textContent = c ? 'Edit column' : 'Add a column';
+      document.getElementById('ccwSave').textContent = c ? 'Save' : 'Add column';
+      document.getElementById('ccwName').value = c ? c.name : '';
+      document.getElementById('ccwErr').textContent = '';
+      document.getElementById('ccwConfirm').hidden = true;
+      document.getElementById('ccwTypes').innerHTML = data.types.map(function(t){
+        return '<label class="ccw-type' + (c && c.col_type !== t.key ? ' off' : '') + '"><input type="radio" name="ccwType" value="' + t.key + '"'
+          + (c ? (c.col_type === t.key ? ' checked' : ' disabled') : '') + '><span>' + esc(t.name) + '<small>' + esc(t.example) + '</small></span></label>';
+      }).join('');
+      document.querySelectorAll('input[name=ccwType]').forEach(function(r){ r.onchange = syncWindow; });
+      document.getElementById('ccwTypeHint').hidden = !c;
+      document.getElementById('ccwChoices').innerHTML = '';
+      (c ? c.choices : []).forEach(function(ch){ addChoice(ch.name, ch.id); });
+      if (!c) { addChoice(''); }
+      var editable = !c || c.can_change;
+      document.getElementById('ccwSave').hidden = !editable;
+      document.getElementById('ccwName').disabled = !editable;
+      // who sees it: chosen when making it; afterwards only by whoever made it
+      var canWho = !c || c.mine;
+      document.getElementById('ccwWhoBox').hidden = !canWho;
+      var fixed = document.getElementById('ccwWhoFixed'); fixed.hidden = canWho;
+      if (!canWho) fixed.textContent = c.visibility === 'business' ? 'Everyone in the business sees this column.' : 'Only the person who made this column can change who sees it.';
+      document.getElementById('ccwBiz').hidden = !data.can_business && !(c && c.visibility === 'business');
+      var v = c ? c.visibility : 'private';
+      document.querySelectorAll('input[name=ccwVis]').forEach(function(r){ r.checked = r.value === v; r.onchange = syncWindow; });
+      document.getElementById('ccwDepts').innerHTML = data.departments.length
+        ? data.departments.map(function(d){ return '<label><input type="checkbox" name="ccwDept" value="' + d.id + '"' + (c && c.dept_ids.indexOf(d.id) >= 0 ? ' checked' : '') + '> ' + esc(d.name) + '</label>'; }).join('')
+        : '<span class="hint">No departments set up yet. Create them in Team › Departments and they\'ll appear here.</span>';
+      document.getElementById('ccwStaff').innerHTML = data.staff.filter(function(s){ return s.id !== data.me; })
+        .map(function(s){ return '<label><input type="checkbox" name="ccwMember" value="' + s.id + '"' + (c && c.member_ids.indexOf(s.id) >= 0 ? ' checked' : '') + '> ' + esc(s.name) + '</label>'; }).join('');
+      var del = document.getElementById('ccwDel'); del.hidden = !(c && c.can_delete);
+      if (c) document.getElementById('ccwConfirmText').textContent = 'Delete "' + c.name + '"? The column and everything filled in it go. The leads themselves stay.';
+      syncWindow();
+      document.getElementById('ccwOver').hidden = false;
+      setTimeout(function(){ document.getElementById('ccwName').focus(); }, 0);
+    }).catch(function(e){ alert(e.message || 'Could not load columns.'); });
+  }
+  function closeWindow(){ document.getElementById('ccwOver').hidden = true; editing = null; }
+  function save(){
+    var err = document.getElementById('ccwErr'), fd = new FormData();
+    var name = document.getElementById('ccwName').value.trim();
+    if (!name) { err.textContent = 'Give the column a name.'; return; }
+    var t = editing ? editing.col_type : chosenType();
+    if (!t) { err.textContent = 'Choose what goes in the column.'; return; }
+    fd.append('name', name); fd.append('col_type', t);
+    var choices = Array.from(document.querySelectorAll('#ccwChoices input')).map(function(i){ return {id: i.dataset.id || null, name: i.value.trim()}; })
+      .filter(function(ch){ return ch.name; });
+    if ((t === 'choice' || t === 'multi') && !choices.length) { err.textContent = 'Add at least one choice.'; return; }
+    fd.append('choices', JSON.stringify(choices));
+    if (!document.getElementById('ccwWhoBox').hidden) {
+      fd.append('visibility', vis() || 'private');
+      if (vis() === 'group') {
+        document.querySelectorAll('input[name=ccwDept]:checked').forEach(function(i){ fd.append('dept_ids', i.value); });
+        document.querySelectorAll('input[name=ccwMember]:checked').forEach(function(i){ fd.append('member_ids', i.value); });
+      }
+    }
+    post(editing ? '/columns/' + editing.id + '/update' : '/columns/create', fd).then(function(d){
+      if (d.error) { err.textContent = d.error; return; }
+      location.reload();
+    }).catch(function(){ err.textContent = 'Could not save. Check your connection and try again.'; });
+  }
+  function del(){
+    post('/columns/' + editing.id + '/delete', new FormData()).then(function(d){
+      if (d.error) { document.getElementById('ccwErr').textContent = d.error; return; }
+      location.reload();
+    });
+  }
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !document.getElementById('ccwOver').hidden) closeWindow(); });
+  return {editCell: editCell, headMenu: headMenu, columnsMenu: columnsMenu, bulkFill: bulkFill, openWindow: openWindow,
+          closeWindow: closeWindow, close: close, _save: save, _delete: del, _addChoice: addChoice};
+})();
+</script>
+{% endif %}

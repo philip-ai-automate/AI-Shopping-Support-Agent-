@@ -100,12 +100,12 @@ JOINS = {
               GROUP BY h.lead_id, h.to_stage) stg ON stg.lead_id = l.id AND stg.to_stage = l.stage""",
     "tg": """LEFT JOIN (SELECT x.lead_id, string_agg(DISTINCT x.name, ', ') AS names FROM (
                   SELECT lll.lead_id, ll.name FROM lead_label_leads lll
-                  JOIN lead_labels ll ON ll.id = lll.label_id WHERE ll.tenant_id = {t}
+                  JOIN lead_labels ll ON ll.id = lll.label_id WHERE ll.tenant_id = {t} AND label_visible(ll.id)
                   UNION
                   SELECT ml.id, ll.name FROM lead_label_contacts llc
                   JOIN lead_labels ll ON ll.id = llc.label_id
                   JOIN merchant_pipeline_leads ml ON ml.wa_contact_id = llc.contact_id AND ml.tenant_id = {t}
-                  WHERE ll.tenant_id = {t}) x GROUP BY x.lead_id) tg ON tg.lead_id = l.id""",
+                  WHERE ll.tenant_id = {t} AND label_visible(ll.id)) x GROUP BY x.lead_id) tg ON tg.lead_id = l.id""",
     "cn": """LEFT JOIN (SELECT n.contact_id, COUNT(*) AS n, MAX(n.created_at) AS last_at,
                      (array_agg(n.body ORDER BY n.created_at DESC))[1] AS last_body
               FROM wa_contact_notes n WHERE n.tenant_id = {t} GROUP BY n.contact_id) cn ON cn.contact_id = c.id""",

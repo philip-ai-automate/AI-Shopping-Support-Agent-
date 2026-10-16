@@ -10,9 +10,12 @@
 {% set can_bulk_email_seg = staff_can_open('portal.email_csegments_bulk_add_members') and 'campaigns_email.segments_edit' in (granted_features or []) %}
 {% set can_bulk_wa_seg    = staff_can_open('portal.whatsapp_pipeline_segments_bulk_add_members') and 'campaigns_wa.segments_edit' in (granted_features or []) %}
 {% set can_bulk_sms_seg   = staff_can_open('portal.sms_pipeline_segments_bulk_add_members') %}
-{% set can_bulk_label     = staff_can_open('portal.lead_labels_bulk_add_members') and 'crm.tags_edit' in (granted_features or []) %}
+{% from "portal/_labels_ui.html" import label_chip %}
+{% from "portal/_columns_ui.html" import cc_head, cc_cell, cc_filter_bar %}
+{% set can_bulk_label     = staff_can_open('portal.lead_labels_bulk_add_members') and 'crm.tags_assign' in (granted_features or []) %}
 {% set can_bulk_assign = staff_can('leads.assign') %}
-{% set can_bulk_any = can_edit_deal or can_bulk_email_seg or can_bulk_wa_seg or can_bulk_sms_seg or can_bulk_label or can_bulk_assign %}
+{% set can_bulk_cols = all_lead_cols|selectattr('can_fill')|list|length > 0 %}
+{% set can_bulk_any = can_edit_deal or can_bulk_email_seg or can_bulk_wa_seg or can_bulk_sms_seg or can_bulk_label or can_bulk_assign or can_bulk_cols %}
 
 <style>
   .sp-hero { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:22px }
@@ -508,6 +511,7 @@
                        'tier': tier_filter if tier_filter != 'all' else none,
                        'assigned': assigned or none} %}
 {% set _ = filter_args.update(addr_fargs or {}) %}
+{% if sort_by %}{% set _ = filter_args.update({'sort': sort_by}) %}{% endif %}
 
 <!-- Stage funnel summary — click a stage to filter. Counts follow the other
      filters (2026-10-14), so picking a salesperson shows where their deals sit. -->
@@ -617,6 +621,8 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17" y="4" width="4" height="13" rx="1"/></svg>Board</a>
       </div>
       {% if view_mode == 'list' %}
+      <button type="button" class="spf-btn" onclick="ColumnUI.columnsMenu(this)" title="Your own columns">▦ Your columns{% if all_lead_cols %} ({{ all_lead_cols|length }}){% endif %}</button>
+      {% if staff_can('crm.columns_own') or staff_can('crm.columns_create') %}<button type="button" class="spf-btn" onclick="ColumnUI.openWindow(null)">+ Add column</button>{% endif %}
       <div class="col-picker-wrap">
         <button type="button" class="spf-btn spf-icon" onclick="toggleColPicker()" aria-label="Choose columns" title="Choose columns">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16"/></svg>
@@ -816,7 +822,7 @@
 
 {% set is_phixtra_support_account = (customer.tenant_id == 19) %}
 {% set sms_cols = SMS_ENABLED and is_phixtra_support_account %}
-{% set empty_colspan = 14 + (1 if is_phixtra_support_account else 0) + (1 if sms_cols else 0) %}
+{% set empty_colspan = 14 + (1 if is_phixtra_support_account else 0) + (1 if sms_cols else 0) + (lead_cols|length) %}
 
 {% if view_mode == 'list' %}
 <div class="bulk-action-bar" id="bulkActionBar" style="display:none">
@@ -829,11 +835,14 @@
   {% if sms_cols and can_bulk_sms_seg %}
   <button type="button" class="btn btn-sm btn-primary" onclick="openBulkSmsSegmentModal()">📟 Add to SMS Segment</button>
   {% endif %}
-  {% if can_bulk_label %}<button type="button" class="btn btn-sm btn-primary" onclick="openBulkLabelModal()">🏷️ Add to Label</button>{% endif %}
+  {% if can_bulk_label %}<button type="button" class="btn btn-sm btn-primary" onclick="LabelUI.bulk(this, 'add', bpLabelForm, bpLabelDone)">🏷️ Add label</button>
+  <button type="button" class="btn btn-sm" onclick="LabelUI.bulk(this, 'remove', bpLabelForm, bpLabelDone)">Remove label</button>{% endif %}
+  {% if can_bulk_cols %}<button type="button" class="btn btn-sm" onclick="ColumnUI.bulkFill(this, bpLabelForm, bpLabelDone)">▦ Fill a column</button>{% endif %}
   <button type="button" class="btn btn-sm" onclick="clearLeadSelection()">Clear</button>
 </div>
 
 <!-- Pipeline table -->
+{{ cc_filter_bar(col_filter_chips) }}
 <div class="card" style="padding:0" data-sptour="pipeline-table">
   <div class="table-wrap">
     <table>
@@ -847,6 +856,7 @@
           <th data-col="sms_segment">SMS Segment</th>
           {% endif %}
           <th data-col="label">Label</th>
+          {% for c in lead_cols %}{{ cc_head(c, sort_by, c.id in col_filter_state) }}{% endfor %}
           <th data-col="biz_category">Business category</th>
           <th data-col="employees">Employees</th>
           <th data-col="location">Location</th>
@@ -912,15 +922,10 @@
             {% endif %}
           </td>
           {% endif %}
-          <td data-col="label" style="font-size:11px">
-            {% if l.label_names %}
-              {% for lname in l.label_names %}
-              <span class="stage-pill" style="background:#fee2e2;color:#991b1b;margin:1px 3px 1px 0">{{ lname }}</span>
-              {% endfor %}
-            {% else %}
-              <span class="muted">—</span>
-            {% endif %}
+          <td data-col="label" style="font-size:11px" data-lbl-lead="{{ l.id }}" data-ids="{{ l.labels|map(attribute='id')|join(',') }}">
+            <div class="lbl-cell"><span class="lbl-chips">{% for lb in l.labels %}{{ label_chip(lb) }}{% else %}<span class="muted">—</span>{% endfor %}</span>{% if can_bulk_label %}<button type="button" class="lbl-edit" onclick="LabelUI.editLead(this, {{ l.id }})" aria-label="Edit labels on {{ l.customer_name }}">Edit</button>{% endif %}</div>
           </td>
+          {% for c in lead_cols %}{{ cc_cell(c, l.id, l.cc.get(c.id)) }}{% endfor %}
           <td data-col="biz_category" class="muted" style="font-size:12px;white-space:nowrap">{{ l.business_category or '—' }}</td>
           <td data-col="employees" class="muted" style="font-size:12px;white-space:nowrap">{{ l.employees or '—' }}</td>
           <td data-col="location" class="muted" style="font-size:12px;max-width:200px">{{ location_cell(l) }}</td>
@@ -1715,6 +1720,12 @@ function createWaSegmentAndBulkAdd() {
     .catch(function(){ alert('Could not create segment — check your connection'); });
 }
 
+function bpLabelForm() {
+  var fd = new FormData();
+  getSelectedLeadIds().forEach(function(id){ fd.append('lead_ids', id); });
+  return fd;
+}
+function bpLabelDone(msg) { alert(msg); clearLeadSelection(); location.reload(); }
 function openBulkLabelModal() {
   var count = getSelectedLeadIds().length;
   if (count === 0) return;
@@ -1951,17 +1962,28 @@ function toggleRowMenu(ev, key) {
   var wasOpen = menu.classList.contains('open');
   closeAllRowMenus();
   if (!wasOpen) {
-    menu.style.left = ''; menu.style.right = '';
+    menu.style.left = ''; menu.style.right = ''; menu.style.top = ''; menu.style.position = '';
     menu.classList.add('open'); btn.classList.add('open');
-    // On the Board, a card in the first column opened its menu past the
-    // board's left edge, cutting off the icons (2026-10-13): if the menu
-    // pokes out of the scrolling area on the left, open it rightwards.
+    // Inside a scrolling list or board the menu used to be cut off — on the
+    // last rows that hid Not a Fit / Mark as Lost at the bottom (2026-10-15).
+    // Pin it to the window instead: below the ⋮ button, or above it when
+    // there isn't room, and never past the left or right edge.
     var box = menu.closest('.board-wrap, .table-wrap, [style*="overflow"]');
-    if (box && menu.getBoundingClientRect().left < box.getBoundingClientRect().left) {
-      menu.style.right = 'auto'; menu.style.left = '0';
+    if (box) {
+      var b = btn.getBoundingClientRect(), mw = menu.offsetWidth, mh = menu.offsetHeight;
+      var top = b.bottom + 4;
+      if (top + mh > window.innerHeight - 8 && b.top - mh - 4 > 8) top = b.top - mh - 4;
+      var left = Math.min(Math.max(8, b.right - mw), window.innerWidth - mw - 8);
+      menu.style.position = 'fixed'; menu.style.top = top + 'px';
+      menu.style.left = left + 'px'; menu.style.right = 'auto';
     }
   }
 }
+// A window-pinned menu would float away from its row on scroll — close it.
+// (Only window-pinned ones: the guided tour opens a menu in place and scrolls.)
+window.addEventListener('scroll', function () {
+  if (document.querySelector('.row-action-menu.open[style*="fixed"]')) closeAllRowMenus();
+}, true);
 
 function toggleScoreBreakdown(key) {
   var panel = document.getElementById('score-breakdown-' + key);
@@ -2471,4 +2493,6 @@ function bpMoveToLeads(){
 </script>
 
 {% if staff_can('inbox.send_new') %}{% include 'portal/_send_one_wa.html' %}{% endif %}
+{% include "portal/_labels_ui.html" %}
+{% include "portal/_columns_ui.html" %}
 {% endblock %}

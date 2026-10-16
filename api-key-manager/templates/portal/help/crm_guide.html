@@ -469,7 +469,7 @@
 
 <h3>Choosing the time period</h3>
 <p>Press <span class="ui">Last 7 days</span>, <span class="ui">Last 30 days</span> (the default) or <span class="ui">Last 90 days</span>, or choose two dates and press <span class="ui">Apply custom range</span>. <span class="ui">Reset to last 30 days</span> goes back.</p>
-<p>The period only changes the numbers about <b>closed</b> deals: Won, Lost, Dropped, Win Rate and Avg. Time to Close. <b>Active Deals</b> and <b>Open Pipeline Value</b> are always "right now".</p>
+<p>The period only changes the numbers about <b>closed</b> deals: Won, Lost, Dropped (older deals only), Win Rate and Avg. Time to Close. <b>Active Deals</b> and <b>Open Pipeline Value</b> are always "right now".</p>
 
 <h3>The numbers</h3>
 <div class="tbl"><table>
@@ -477,8 +477,8 @@
 <tr><td>Active Deals</td><td class="wrapok">Deals still open today.</td></tr>
 <tr><td>Open Pipeline Value</td><td class="wrapok">The total ₦ value of those open deals.</td></tr>
 <tr><td>Won</td><td class="wrapok">Value and number of deals won in the period.</td></tr>
-<tr><td>Win Rate</td><td class="wrapok">Won ÷ (Won + Lost). Dropped deals are left out, because you chose not to pursue them.</td></tr>
-<tr><td>Lost / Dropped</td><td class="wrapok">How many deals closed that way in the period.</td></tr>
+<tr><td>Win Rate</td><td class="wrapok">Won ÷ (Won + Lost). Not a Fit (and older Dropped) deals are left out, because you chose not to pursue them.</td></tr>
+<tr><td>Lost / Dropped</td><td class="wrapok">How many deals closed that way in the period. Dropped is no longer offered (Not a Fit replaced it in October 2026), so it only counts older deals.</td></tr>
 <tr><td>Avg. Time to Close</td><td class="wrapok">On average, how many days a won deal took from start to win.</td></tr>
 </table></div>
 
@@ -573,13 +573,17 @@
   <li><b>Not a Fit</b>: you're stopping, because this business isn't right for you. Works on any open lead or deal. Reasons: Not our target customer, Too small, Doesn't use or need this type of service, No budget, Wrong product or service fit, Unresponsive, Wrong contact, Invalid lead, Duplicate, Other.</li>
   <li><b>Lost</b>: a Qualified deal where you tried, but the customer chose someone else or said no. Reasons: Price too high, Customer chose a competitor, Budget unavailable, No longer interested, Other.</li>
 </ul>
+<figure><img src="/static/portal/tutorial/crm/p01_menu_qualified.jpg" width="234" height="274" alt="The ⋮ menu on a deal: Not a Fit and Mark as Lost at the bottom." loading="lazy"><figcaption>The ⋮ menu on a deal: Not a Fit and Mark as Lost at the bottom.</figcaption></figure>
 <ol class="steps">
   <li>Click ⋮ and choose <b>Not a Fit</b> or <b>Mark as Lost</b>.</li>
   <li>Pick a reason (required). If you choose <b>Other</b>, type a short explanation.</li>
   <li>Press <span class="ui">Confirm</span>.</li>
 </ol>
+<figure><img src="/static/portal/tutorial/crm/p03_naf_box.jpg" width="480" height="264" alt="Marking a deal Not a Fit from the Sales Pipeline." loading="lazy"><figcaption>Marking a deal Not a Fit from the Sales Pipeline.</figcaption></figure>
 <figure><img src="/static/portal/tutorial/crm/c20_lost.jpg" width="1100" height="818" alt="Marking a deal as Lost." loading="lazy"><figcaption>Marking a deal as Lost.</figcaption></figure>
+<p class="need">Not a Fit needs "Pipeline Board — Edit" or "Qualify a Lead / mark it Not a Fit". Mark as Lost needs "Pipeline Board — Edit".</p>
 <p>The deal leaves the active list and moves to <b>Closed: Lost &amp; Not a Fit</b> at the bottom of the page, showing the outcome, the stage it had reached, the reason and the date. Lost deals count against your Win Rate; Not a Fit deals don't.</p>
+<figure><img src="/static/portal/tutorial/crm/p04_closed.jpg" width="1044" height="236" alt="Closed: Lost &amp; Not a Fit, with Reopen on each row." loading="lazy"><figcaption>Closed: Lost &amp; Not a Fit, with Reopen on each row.</figcaption></figure>
 <div class="box know"><b class="t">Good to know</b>Closed by mistake? Press <span class="ui">↩️ Reopen</span> in the Closed list or on the deal's page. A Qualified deal goes back on the Sales Pipeline at the step it had reached. Older deals closed as <b>Dropped</b> (before October 2026) still show as Dropped.</div>
 
 <h3 id="crm-b-bulk">Changing many deals at once</h3>
@@ -634,13 +638,14 @@
 <p>One page per deal, with everything about it.</p>
 <figure><img src="/static/portal/tutorial/crm/n08_lead_contact.jpg" width="1100" height="818" alt="The top of a deal&#x27;s page. &quot;Contact&quot; links to the person." loading="lazy"><figcaption>The top of a deal's page. "Contact" links to the person.</figcaption></figure>
 <figure><img src="/static/portal/tutorial/crm/c29_deal_page.jpg" width="1100" height="1158" alt="The whole page for a deal at the Proposal Sent stage." loading="lazy"><figcaption>The whole page for a deal at the Proposal Sent stage.</figcaption></figure>
+<p>The order, top to bottom: the header, then <b>Activity</b>, then the details, Pipeline and Conversations. Activity sits at the top so you see the notes and past calls before you pick up the phone.</p>
 <ul>
-  <li><b>Header</b>: customer name, product of interest, the current stage badge (or WON / LOST / NOT A FIT), and <span class="ui">✏️ Edit Lead</span>.</li>
+  <li><b>Header</b>: customer name, product of interest, the current stage badge (or WON / LOST / NOT A FIT), <span class="ui">🚫 Not a Fit</span> while the deal is open, and <span class="ui">✏️ Edit Lead</span>. A deal closed as Not a Fit shows <span class="ui">↩️ Reopen on Sales Pipeline</span> instead.</li>
+  <li><b>Activity</b>: <b>Notes</b>, <b>Calls</b> (log a call and see every call on this deal), <b>Stage History</b> and <b>Emails</b>. Tasks is marked "New" and isn't available yet. When you log a call as <b>Doesn't need us</b>, you can close the deal as Not a Fit in the same step (Leads guide, section 12).</li>
   <li><b>Contact</b>: the contact this deal belongs to. Click the name to open their profile. If the deal has no phone, WhatsApp number or email yet, it says "No contact yet: add a phone, WhatsApp or email", with an <span class="ui">Add details →</span> button; once you add one, the deal is joined to a contact.</li>
   <li><b>Details</b>: Contact Person, Phone, WhatsApp, Email, Source (WhatsApp, Facebook, Instagram or Manual), Campaign Source (the campaign that produced it, if any), Company, Created, Product / Service, Assigned Salesperson, Lead Score with its breakdown, and Deal Value.</li>
   <li><b>Pipeline</b>: a progress line showing stages done (✓), the current stage (●) and the outcome. <span class="ui">Open on Pipeline Board →</span> jumps to it on the board.</li>
   <li><b>Conversations</b>: the last WhatsApp message and a link to the full chat. Instagram and Facebook are marked "Soon".</li>
-  <li><b>Activity</b>: <b>Notes</b> (the deal's notes) and <b>Stage History</b>. Tasks and Calls are marked "New" and aren't available yet.</li>
 </ul>
 <p><span class="ui">✏️ Edit Lead</span> has the same fields as Edit Deal, plus <span class="f">Assigned Salesperson</span>. Type the name of the team member responsible. It's used on the Leads Overview team table.</p>
 <div class="box know"><b class="t">Not yet qualified?</b>If the page says "Awaiting qualification", the lead hasn't reached the Pipeline Board yet. Its <span class="ui">✅ Qualify</span> and <span class="ui">🚫 Not a Fit</span> buttons are explained in the Leads guide.</div>

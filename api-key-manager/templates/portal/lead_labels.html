@@ -1,9 +1,8 @@
 {% extends "portal/base.html" %}
 {% block title %}Labels — PhiXtra Portal{% endblock %}
 {% block content %}
-{% set can_create_lbl = staff_can_open('portal.lead_labels_create') %}
-{% set can_edit_lbl   = staff_can_open('portal.lead_labels_rename') %}
-{% set can_delete_lbl = staff_can_open('portal.lead_labels_delete') %}
+{% set can_create_lbl = can_create_business %}
+{% set can_edit_lbl   = can_assign %}
 
 <style>
   .lbl-hero { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:22px }
@@ -55,6 +54,28 @@
   .lm-tab.active { background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(3,12,24,.1) }
   .lm-section { display:none }
   .lm-section.active { display:block }
+  .lbl-sec-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+  .lbl-sec-head h2{font-size:15px;font-weight:800;margin:0}
+  .lbl-sec-head span,.lbl-none{font-size:12.5px;color:var(--muted);margin:0}
+  .lbl-chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:3px 11px;font-size:12px;font-weight:700;white-space:nowrap}
+  .lw-body{display:flex;flex-direction:column;gap:14px}
+  .lw-field{display:flex;flex-direction:column;gap:6px}
+  .lw-field label,.lw-lbl{font-size:12.5px;font-weight:700}
+  .lw-hint{font-size:12px;color:var(--muted);font-weight:400}
+  .lw-swatches{display:flex;gap:8px;flex-wrap:wrap}
+  .lw-swatch{width:30px;height:30px;border-radius:50%;border:2px solid transparent;cursor:pointer;display:grid;place-items:center;padding:0}
+  .lw-swatch span{width:14px;height:14px;border-radius:50%}
+  .lw-swatch[aria-pressed="true"]{border-color:#0B1D40}
+  .lw-swatch:focus-visible{outline:2px solid #2F5BB7;outline-offset:2px}
+  .lw-preview{font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center}
+  .lw-radio{display:flex;gap:10px;align-items:flex-start;font-size:13px;font-weight:400 !important;cursor:pointer}
+  .lw-radio input{margin-top:3px;accent-color:#0B1D40}
+  .lw-group{display:flex;flex-direction:column;gap:6px;padding:10px 12px;margin-left:24px;background:#f8fafc;border-radius:10px}
+  .lw-checks{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px}
+  .lw-checks label{display:flex;gap:6px;align-items:center;font-weight:400}
+  .lw-err{font-size:12.5px;color:var(--bad)}
+  .lw-err:empty{display:none}
+  .lw-confirm{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:#fef2f2;color:#991b1b;border-radius:10px;padding:10px 12px;font-size:13px}
 </style>
 
 <div class="lbl-hero">
@@ -62,7 +83,7 @@
     <div class="lbl-hero-icon">🏷️</div>
     <div>
       <h1>Labels</h1>
-      <p>One shared list of labels (e.g. "Bounced", "VIP", "High Lead") that you can put on contacts and on Sales Pipeline deals. Labels mark people; they are separate from segments, which are the lists you pick as a campaign's audience.</p>
+      <p>Labels you put on leads, deals and contacts by hand. Keep a label for yourself, share it with a group, or use it across the business. Labels are separate from segments, which are the lists you pick as a campaign's audience.</p>
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -71,53 +92,41 @@
   </div>
 </div>
 
-<div class="card" style="padding:20px">
-  {% if can_create_lbl %}
-  <form method="POST" action="{{ url_for('portal.lead_labels_create') }}" class="lbl-create-row" onsubmit="return submitCreateLabel(event)">
-    <div style="flex:1;max-width:320px">
-      <input type="text" name="name" id="newLabelName" class="finp" placeholder="New label name, e.g. VIP" required autocomplete="off">
-      <div class="dedupe-warn" id="newTagDedupe"></div>
-    </div>
-    <button type="submit" class="btn btn-primary">+ Create Label</button>
-  </form>
+<div class="card" style="padding:20px;display:flex;flex-direction:column;gap:22px">
+  {% if can_assign or can_create_business %}
+  <div style="display:flex;justify-content:flex-end"><button type="button" class="btn btn-primary" onclick="openLabelWindow(null)">+ New label</button></div>
   {% endif %}
 
-  {% if labels %}
-  <div class="table-wrap">
-    <table class="lbl-table">
-      <thead>
-        <tr><th>Label</th><th>People</th><th>Deals</th><th>Created</th><th></th></tr>
-      </thead>
-      <tbody>
-        {% for l in labels %}
-        <tr id="lblRow-{{ l.id }}">
-          <td><span class="lbl-pill" id="lblPill-{{ l.id }}">{{ l.name }}</span></td>
-          <td class="muted">{{ l.contact_count }} {{ 'person' if l.contact_count == 1 else 'people' }}</td>
-          <td class="muted">{{ l.member_count }} deal{{ 's' if l.member_count != 1 else '' }}</td>
-          <td class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
-          <td style="text-align:right">
-            <button type="button" class="btn btn-sm" onclick='openMembersModal({{ l.id }}, {{ l.name|tojson }})'>{{ 'View / Edit' if can_edit_lbl else 'View' }}</button>
-            {% if can_edit_lbl %}<button type="button" class="btn btn-sm" onclick='openRenameModal({{ l.id }}, {{ l.name|tojson }})'>Rename</button>{% endif %}
-            {% if can_delete_lbl %}
-            <form method="POST" action="{{ url_for('portal.lead_labels_delete', label_id=l.id) }}" style="display:inline"
-                  onsubmit="return confirm('Delete the {{ l.name }} label? This removes it from every contact and deal it\'s on — nothing else about them is affected.')">
-              <input type="hidden" name="redirect" value="1">
-              <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-            </form>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <div class="lbl-empty">
-    <div class="lbl-empty-icon">🏷️</div>
-    <h3 style="font-size:15px;font-weight:700;color:var(--ink);margin:0 0 6px">No labels yet</h3>
-    <p style="font-size:13px;margin:0;max-width:320px">{% if can_create_lbl %}Create one above, or add{% else %}Add{% endif %} a label from a Contact's profile or the Sales Pipeline's "Add to Label" — either way works.</p>
-  </div>
-  {% endif %}
+  {% for kind, title, sub in sections %}
+  {% set rows = labels|selectattr('visibility', 'equalto', kind)|list %}
+  <section>
+    <div class="lbl-sec-head"><h2>{{ title }}</h2><span>{{ sub }}</span></div>
+    {% if rows %}
+    <div class="table-wrap">
+      <table class="lbl-table">
+        <thead><tr><th>Label</th><th>Meaning</th><th>People</th><th>Deals</th><th>Who sees it</th><th></th></tr></thead>
+        <tbody>
+          {% for l in rows %}
+          <tr id="lblRow-{{ l.id }}">
+            <td><span class="lbl-chip" style="{{ l.style }}">{{ l.icon }}{{ l.name }}</span></td>
+            <td class="muted" style="max-width:280px">{{ l.description or '—' }}</td>
+            <td class="muted">{{ l.contact_count }}</td>
+            <td class="muted">{{ l.member_count }}</td>
+            <td class="muted" style="max-width:220px">{{ l.who }}</td>
+            <td style="text-align:right;white-space:nowrap">
+              <button type="button" class="btn btn-sm" onclick='openMembersModal({{ l.id }}, {{ l.name|tojson }})'>{{ 'View / Edit' if can_assign else 'View' }}</button>
+              {% if l.can_change or l.can_delete %}<button type="button" class="btn btn-sm" onclick="openLabelWindow({{ l.id }})">Edit</button>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="lbl-none">{% if kind == 'private' %}You have no private labels yet. Choose "Only me" when you make a label.{% elif kind == 'group' %}No group labels yet. Choose "A group" when you make a label to share it with a department or chosen staff.{% else %}No business labels yet.{% endif %}</p>
+    {% endif %}
+  </section>
+  {% endfor %}
 </div>
 
 <!-- ── Members modal ── -->
@@ -156,66 +165,134 @@
   </div>
 </div>
 
-<!-- ── Rename modal ── -->
-<div class="modal-over" id="renameLabelModal" onclick="if(event.target===this)closeRenameModal()">
-  <div class="modal-card" style="max-width:420px">
-    <div class="modal-title">Rename Label</div>
-    <p class="modal-sub">Updates everywhere this label shows — Sales Pipeline, Contacts, campaign pickers — every contact and deal on it keeps it.</p>
-    <input type="text" class="finp" id="renameLabelInput" autocomplete="off" maxlength="60"
-           onkeydown="if(event.key==='Enter'){event.preventDefault();submitRenameLabel();}">
-    <div class="dedupe-warn" id="renameLabelError" style="color:var(--bad);margin-top:8px"></div>
-    <div class="modal-actions">
-      <button type="button" class="modal-cancel" onclick="closeRenameModal()">Cancel</button>
-      <button type="button" class="btn btn-primary" onclick="submitRenameLabel()">Save</button>
+<!-- ── New / Edit label window ── -->
+<div class="modal-over" id="labelWindow" onclick="if(event.target===this)closeLabelWindow()">
+  <div class="modal-card" style="max-width:500px">
+    <div class="modal-title" id="lwTitle">New label</div>
+    <div class="lw-body">
+      <div class="lw-field"><label for="lwName">Name</label>
+        <input type="text" class="finp" id="lwName" maxlength="60" autocomplete="off"></div>
+      <div class="lw-field"><span class="lw-lbl" id="lwColLbl">Colour</span>
+        <div class="lw-swatches" role="group" aria-labelledby="lwColLbl">
+          {% for key, cname, bg, fg in colours %}
+          <button type="button" class="lw-swatch" data-colour="{{ key }}" aria-pressed="false" aria-label="{{ cname }}" title="{{ cname }}" style="background:{{ bg }};color:{{ fg }}"><span style="background:{{ fg }}"></span></button>
+          {% endfor %}
+        </div>
+        <div class="lw-preview">Preview <span class="lbl-chip" id="lwPreview">Label</span></div>
+      </div>
+      <div class="lw-field"><label for="lwDesc">Meaning <span class="lw-hint">(shown when staff hover over the label)</span></label>
+        <input type="text" class="finp" id="lwDesc" maxlength="200" autocomplete="off"></div>
+      <div class="lw-field" id="lwWhoBox">
+        <span class="lw-lbl">Who can see this label</span>
+        <label class="lw-radio"><input type="radio" name="lwVis" value="private"><span><b>🔒 Only me</b><br><span class="lw-hint">Nobody else sees it on any lead, list, filter or count.</span></span></label>
+        <label class="lw-radio"><input type="radio" name="lwVis" value="group"><span><b>👥 A group</b><br><span class="lw-hint">Only the departments and staff you pick, plus you.</span></span></label>
+        <div id="lwGroup" class="lw-group" hidden>
+          <span class="lw-lbl">Departments</span>
+          {% if departments %}
+          <div class="lw-checks">{% for d in departments %}<label><input type="checkbox" name="lwDept" value="{{ d.id }}"> {{ d.name }}</label>{% endfor %}</div>
+          {% else %}<span class="lw-hint">No departments set up yet. Create them in Team › Departments and they'll appear here.</span>{% endif %}
+          <span class="lw-lbl">Staff</span>
+          <div class="lw-checks">{% for p in staff if p.id != my_team_id %}<label><input type="checkbox" name="lwMember" value="{{ p.id }}"> {{ p.name }}</label>{% endfor %}</div>
+          <span class="lw-hint">Anyone who joins a picked department later sees the label too.</span>
+        </div>
+        <label class="lw-radio" id="lwBizOpt"><input type="radio" name="lwVis" value="business"><span><b>Everyone in the business</b><br><span class="lw-hint">Shows on leads for all staff.</span></span></label>
+      </div>
+      <p class="lw-hint" id="lwWhoFixed" hidden></p>
+      <div class="lw-err" id="lwErr" role="alert"></div>
+      <div class="lw-confirm" id="lwConfirm" hidden>
+        <span id="lwConfirmText"></span>
+        <form method="POST" id="lwDeleteForm" style="margin:0"><input type="hidden" name="redirect" value="1">
+          <button type="submit" class="btn btn-sm btn-danger">Yes, delete</button></form>
+      </div>
+    </div>
+    <div class="modal-actions" style="justify-content:space-between">
+      <button type="button" class="btn btn-danger" id="lwDeleteBtn" onclick="document.getElementById('lwConfirm').hidden=false" hidden>Delete label</button>
+      <span style="display:flex;gap:8px;margin-left:auto">
+        <button type="button" class="modal-cancel" onclick="closeLabelWindow()">Cancel</button>
+        <button type="button" class="btn btn-primary" id="lwSave" onclick="saveLabelWindow()">Save</button>
+      </span>
     </div>
   </div>
 </div>
 
 <script>
-var CAN_EDIT_LABEL = {{ can_edit_lbl|tojson }};
-function submitCreateLabel(ev) {
-  ev.preventDefault();
-  var input = document.getElementById('newLabelName');
-  var name = input.value.trim();
-  if (!name) return false;
+var CAN_EDIT_LABEL = {{ can_assign|tojson }};
+var LABELS = {{ labels|tojson }};
+var CAN_BUSINESS = {{ can_create_business|tojson }};
+var CAN_ASSIGN = {{ can_assign|tojson }};
+var lwId = null, lwColour = null;
+function lwFind(id){ return LABELS.filter(function(l){ return l.id === id; })[0]; }
+function lwSetColour(key){
+  lwColour = key;
+  document.querySelectorAll('.lw-swatch').forEach(function(b){ b.setAttribute('aria-pressed', String(b.dataset.colour === key)); });
+  var sw = document.querySelector('.lw-swatch[data-colour="' + key + '"]');
+  var pv = document.getElementById('lwPreview');
+  pv.style.cssText = sw ? 'background:' + sw.style.background + ';color:' + sw.style.color : 'background:#fee2e2;color:#991b1b';
+}
+function lwVis(){ var r = document.querySelector('input[name=lwVis]:checked'); return r ? r.value : null; }
+function lwShowGroup(){ document.getElementById('lwGroup').hidden = lwVis() !== 'group'; }
+function openLabelWindow(id){
+  var l = id ? lwFind(id) : null;
+  lwId = id;
+  document.getElementById('lwTitle').textContent = l ? 'Edit label' : 'New label';
+  document.getElementById('lwName').value = l ? l.name : '';
+  document.getElementById('lwDesc').value = l ? (l.description || '') : '';
+  document.getElementById('lwErr').textContent = '';
+  document.getElementById('lwConfirm').hidden = true;
+  lwSetColour(l ? l.colour : 'grey');
+  document.getElementById('lwPreview').textContent = l ? l.name : 'Label';
+  var editable = !l || l.can_change;
+  ['lwName', 'lwDesc'].forEach(function(f){ document.getElementById(f).disabled = !editable; });
+  document.querySelectorAll('.lw-swatch').forEach(function(b){ b.disabled = !editable; });
+  document.getElementById('lwSave').hidden = !editable;
+  // Who sees it: chosen when making a label; afterwards only by whoever made it.
+  var canWho = !l || l.mine;
+  document.getElementById('lwWhoBox').hidden = !canWho;
+  var fixed = document.getElementById('lwWhoFixed');
+  fixed.hidden = canWho;
+  if (!canWho) fixed.textContent = 'Who sees it: ' + l.who + '.' + (l.visibility === 'business' ? '' : ' Only the person who made it can change this.');
+  document.getElementById('lwBizOpt').hidden = !CAN_BUSINESS && !(l && l.visibility === 'business');
+  var vis = l ? l.visibility : (CAN_BUSINESS ? 'business' : 'private');
+  document.querySelectorAll('input[name=lwVis]').forEach(function(r){ r.checked = r.value === vis; });
+  document.querySelectorAll('input[name=lwDept]').forEach(function(c){ c.checked = !!l && l.dept_ids.indexOf(Number(c.value)) >= 0; });
+  document.querySelectorAll('input[name=lwMember]').forEach(function(c){ c.checked = !!l && l.member_ids.indexOf(Number(c.value)) >= 0; });
+  lwShowGroup();
+  var del = document.getElementById('lwDeleteBtn');
+  del.hidden = !(l && l.can_delete);
+  if (l) {
+    document.getElementById('lwDeleteForm').action = '/labels/' + l.id + '/delete';
+    document.getElementById('lwConfirmText').textContent = 'Delete "' + l.name + '"? It comes off ' + l.member_count + ' deal(s) and '
+      + l.contact_count + ' contact(s). The leads and contacts themselves stay.';
+  }
+  document.getElementById('labelWindow').classList.add('open');
+  setTimeout(function(){ document.getElementById('lwName').focus(); }, 0);
+}
+function closeLabelWindow(){ document.getElementById('labelWindow').classList.remove('open'); lwId = null; }
+function saveLabelWindow(){
+  var err = document.getElementById('lwErr');
+  var name = document.getElementById('lwName').value.trim();
+  if (!name) { err.textContent = 'Give the label a name.'; return; }
   var fd = new FormData();
   fd.append('name', name);
-  fetch('{{ url_for("portal.lead_labels_create") }}', { method: 'POST', body: fd })
+  fd.append('colour', lwColour || '');
+  fd.append('description', document.getElementById('lwDesc').value.trim());
+  if (!document.getElementById('lwWhoBox').hidden) {
+    fd.append('visibility', lwVis() || 'private');
+    if (lwVis() === 'group') {
+      document.querySelectorAll('input[name=lwDept]:checked').forEach(function(c){ fd.append('dept_ids', c.value); });
+      document.querySelectorAll('input[name=lwMember]:checked').forEach(function(c){ fd.append('member_ids', c.value); });
+    }
+  }
+  fetch(lwId ? '/labels/' + lwId + '/rename' : '/labels/create', { method: 'POST', body: fd, credentials: 'same-origin' })
     .then(function(r){ return r.json(); })
-    .then(function(data){
-      if (data.error) { alert(data.error); return; }
-      window.location.reload();
-    })
-    .catch(function(){ alert('Could not create label — check your connection'); });
-  return false;
+    .then(function(d){ if (d.error) { err.textContent = d.error; return; } window.location.reload(); })
+    .catch(function(){ err.textContent = 'Could not save. Check your connection and try again.'; });
 }
-
-function openRenameModal(labelId, labelName) {
-  renameLabelId = labelId;
-  document.getElementById('renameLabelInput').value = labelName;
-  document.getElementById('renameLabelError').textContent = '';
-  document.getElementById('renameLabelModal').classList.add('open');
-  setTimeout(function(){ document.getElementById('renameLabelInput').focus(); }, 0);
-}
-function closeRenameModal() {
-  document.getElementById('renameLabelModal').classList.remove('open');
-  renameLabelId = null;
-}
-function submitRenameLabel() {
-  var input = document.getElementById('renameLabelInput');
-  var errBox = document.getElementById('renameLabelError');
-  var name = input.value.trim();
-  if (!name) { errBox.textContent = 'Label name is required.'; return; }
-  var fd = new FormData();
-  fd.append('name', name);
-  fetch('/labels/' + renameLabelId + '/rename', { method: 'POST', body: fd })
-    .then(function(r){ return r.json(); })
-    .then(function(data){
-      if (data.error) { errBox.textContent = data.error; return; }
-      window.location.reload();
-    })
-    .catch(function(){ errBox.textContent = 'Could not rename — check your connection'; });
-}
+document.addEventListener('DOMContentLoaded', function(){
+  document.querySelectorAll('.lw-swatch').forEach(function(b){ b.addEventListener('click', function(){ lwSetColour(b.dataset.colour); }); });
+  document.querySelectorAll('input[name=lwVis]').forEach(function(r){ r.addEventListener('change', lwShowGroup); });
+  document.getElementById('lwName').addEventListener('input', function(){ document.getElementById('lwPreview').textContent = this.value || 'Label'; });
+});
 
 /* People (Contacts) and Deals (Sales Pipeline leads) share this same modal,
    each wired to its own pair of endpoints — tags unification, 2026-09-09. */
@@ -375,18 +452,6 @@ function escapeHtmlLm(s) {
 /* Duplicate-name warning on the "+ Create Label" box, and the full label
    list used to build each member row's "Move to" dropdown above. */
 var DEDUPE_TAGS = {{ dedupe_tags|tojson }};
-document.addEventListener('DOMContentLoaded', function () {
-  crmDedupeWatch({
-    input: document.getElementById('newLabelName'),
-    warnBox: document.getElementById('newTagDedupe'),
-    label: 'Similar label already exists — did you mean:',
-    getItems: function () { return DEDUPE_TAGS; },
-    onUse: function (tag) {
-      document.getElementById('newLabelName').value = '';
-      openMembersModal(tag.id, tag.name);
-    }
-  });
-});
 </script>
 
 {% endblock %}

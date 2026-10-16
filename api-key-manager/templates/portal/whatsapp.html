@@ -7,7 +7,7 @@
 <!-- Meta FB JS SDK — loaded async, does NOT block page render -->
 <script>
   window.fbAsyncInit = function() {
-    FB.init({ appId: '{{ meta_app_id }}', autoLogAppEvents: true, xfbml: true, version: 'v19.0' });
+    FB.init({ appId: '{{ meta_app_id }}', autoLogAppEvents: true, xfbml: true, version: 'v25.0' });
   };
 </script>
 <script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
@@ -369,9 +369,30 @@
 <div class="card" style="margin-bottom:20px">
   <div class="card-title">Add a WhatsApp Number</div>
   <p class="muted" style="margin-bottom:20px;font-size:13px">
-    Click the button below to connect your WhatsApp Business Account.
-    A Meta popup will guide you through selecting your phone number — no copy-pasting required.
+    Pick the option that matches your number. A Meta window opens and walks you through it — it takes about 5 minutes.
   </p>
+
+  <div class="wa-choice">
+    <div class="wa-choice-title">My number is on the WhatsApp Business app</div>
+    <div class="wa-choice-sub">
+      Keep your number <strong>and</strong> keep using the app on your phone. You scan a QR code with the app,
+      and new customer messages show here as well as on your phone.
+    </div>
+    <button class="wa-signup-btn" onclick="launchWhatsAppSignup('coexist')" id="signupBtnCoexist">
+      Connect and keep my phone app
+    </button>
+    <div class="wa-choice-note">
+      <strong>Important:</strong> Meta should show you a QR code to scan with the app. If it asks for an SMS or call code instead,
+      stop and close the window — Meta is not allowing this for your number yet, and carrying on will take the number off your phone app.
+      Meta may not allow this for Nigerian numbers yet. Once connected, open the app at least once every 14 days.
+    </div>
+  </div>
+
+  <div class="wa-choice">
+    <div class="wa-choice-title">A new number, or one not on the WhatsApp Business app</div>
+    <div class="wa-choice-sub">
+      The number will only work through PhiXtra, not in a WhatsApp app on a phone.
+    </div>
 
   <button class="wa-signup-btn" onclick="launchWhatsAppSignup()" id="signupBtn">
     <svg viewBox="0 0 24 24" fill="currentColor">
@@ -380,6 +401,7 @@
     </svg>
     Connect with WhatsApp
   </button>
+  </div>
 
   <div id="signupStatus">
     <div style="width:18px;height:18px;border:2px solid var(--muted);border-top-color:var(--ink);
@@ -412,6 +434,10 @@
 
 <style>
   @keyframes spin { to { transform: rotate(360deg); } }
+  .wa-choice { border:1.5px solid var(--line); border-radius:14px; padding:16px 18px; margin-bottom:12px }
+  .wa-choice-title { font-size:15px; font-weight:700; color:var(--txt); margin-bottom:4px }
+  .wa-choice-sub { font-size:13px; color:var(--muted); line-height:1.55; margin-bottom:12px }
+  .wa-choice-note { font-size:12px; color:var(--muted); line-height:1.5; margin-top:10px }
 </style>
 
 <script>
@@ -424,14 +450,17 @@
     try {
       var data = JSON.parse(event.data);
       if (data.type === 'WA_EMBEDDED_SIGNUP') {
-        if (data.event === 'FINISH') {
+        if (String(data.event || '').indexOf('FINISH') === 0) {
           _sessionInfo = data.data || {};
+          _sessionInfo._event = data.event;
         }
       }
     } catch(e) {}
   });
 
-  function launchWhatsAppSignup() {
+  var _signupMode = '';
+  function launchWhatsAppSignup(mode) {
+    _signupMode = mode || 'standard';
     _sessionInfo = {};
     setStatus('connecting', 'Opening WhatsApp signup...');
     clearError();
@@ -452,7 +481,7 @@
       override_default_response_type: true,
       extras: {
         setup: {},
-        featureType: 'whatsapp_embedded_signup',
+        featureType: mode === 'coexist' ? 'whatsapp_business_app_onboarding' : 'whatsapp_embedded_signup',
         sessionInfoVersion: '3',
       }
     });
@@ -466,6 +495,8 @@
         code: code,
         phone_number_id: _sessionInfo.phone_number_id || '',
         waba_id: _sessionInfo.waba_id || '',
+        mode: _signupMode,
+        meta_event: _sessionInfo._event || '',
       })
     })
     .then(function(r) { return r.json(); })
@@ -490,14 +521,14 @@
   }
 
   function setStatus(state, text) {
-    var btn    = document.getElementById('signupBtn');
+    var btns   = [document.getElementById('signupBtn'), document.getElementById('signupBtnCoexist')];
     var status = document.getElementById('signupStatus');
     var stxt   = document.getElementById('signupStatusText');
     if (state === 'idle') {
-      btn.disabled = false;
+      btns.forEach(function(b){ if (b) b.disabled = false; });
       status.style.display = 'none';
     } else {
-      btn.disabled = true;
+      btns.forEach(function(b){ if (b) b.disabled = true; });
       if (text) stxt.textContent = text;
       status.style.display = 'flex';
     }

@@ -660,6 +660,164 @@ def ensure_portal_tables():
             )
         """)
 
+        # ── lead_website_checks: record of the one-off website check of 16 Oct
+        # 2026 (why each lead's saved website failed). Not read by the portal;
+        # labels are manual. No FK on purpose: one would lock merchant_pipeline_leads. ──
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS lead_website_checks (
+                lead_id    INTEGER PRIMARY KEY,
+                tenant_id  INTEGER     NOT NULL,
+                website    TEXT,
+                reason     TEXT        NOT NULL,
+                checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # ── Labels for every business, 2026-10-16: colour, meaning, and who can
+        # see each label — business (everyone), private (only whoever made it)
+        # or group (chosen departments/staff + whoever made it). Business label
+        # names stay unique per business; private/group names may repeat.
+        # label_visible(id) is the ONE rule every page uses to hide labels a
+        # person may not see — it reads who is asking from phixtra.actor_*
+        # (set per connection by db.get_db_connection). Owners don't see staff's
+        # private/group labels either (user, 2026-10-16). ──────────────────────
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='lead_labels'")
+        _ll_cols = {r[0] for r in cur.fetchall()}
+        for _col, _ddl in (("colour", "VARCHAR(12)"), ("description", "VARCHAR(200)"),
+                           ("visibility", "VARCHAR(10) NOT NULL DEFAULT 'business'"),
+                           ("created_by_key", "VARCHAR(40)")):
+            if _col not in _ll_cols:
+                cur.execute("SET LOCAL lock_timeout = '5s'")
+                cur.execute(f"ALTER TABLE lead_labels ADD COLUMN IF NOT EXISTS {_col} {_ddl}")
+        cur.execute("SELECT 1 FROM pg_constraint WHERE conname='lead_labels_tenant_id_name_key'")
+        if cur.fetchone():
+            cur.execute("SET LOCAL lock_timeout = '5s'")
+            cur.execute("ALTER TABLE lead_labels DROP CONSTRAINT IF EXISTS lead_labels_tenant_id_name_key")
+        cur.execute("SELECT to_regclass('lead_labels_business_name_uq')")
+        if cur.fetchone()[0] is None:
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS lead_labels_business_name_uq "
+                        "ON lead_labels (tenant_id, name) WHERE visibility='business'")
+        if not _table_exists(cur, "lead_label_access"):
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS lead_label_access (
+                    label_id INTEGER    NOT NULL REFERENCES lead_labels(id) ON DELETE CASCADE,
+                    kind     VARCHAR(6) NOT NULL,          -- 'dept' or 'member'
+                    ref_id   INTEGER    NOT NULL,          -- tenant_departments.id / team_members.id
+                    PRIMARY KEY (label_id, kind, ref_id)
+                )
+            """)
+        cur.execute("SELECT 1 FROM pg_proc WHERE proname='label_visible'")
+        if not cur.fetchone():
+            cur.execute("""
+                CREATE OR REPLACE FUNCTION label_visible(p_id INTEGER) RETURNS BOOLEAN
+                LANGUAGE sql STABLE AS $$
+                    SELECT EXISTS (
+                        SELECT 1 FROM lead_labels l WHERE l.id = p_id AND (
+                            l.visibility = 'business'
+                            OR l.created_by_key = current_setting('phixtra.actor_key', true)
+                            OR (l.visibility = 'group' AND EXISTS (
+                                SELECT 1 FROM lead_label_access a WHERE a.label_id = l.id AND (
+                                    (a.kind = 'member' AND a.ref_id::text = current_setting('phixtra.actor_member', true))
+                                 OR (a.kind = 'dept'   AND a.ref_id::text = current_setting('phixtra.actor_dept', true))))))
+                    )
+                $$
+            """)
+        # New tick "Add and remove labels on leads" — starts ON only for roles
+        # that already had "Edit a Label" (user, 2026-10-16); plans that grant
+        # Edit a Label grant it too. Set once.
+        cur.execute("CREATE TABLE IF NOT EXISTS role_key_backfill_seen (feature_key TEXT PRIMARY KEY)")
+        cur.execute("SELECT 1 FROM role_key_backfill_seen WHERE feature_key='crm.tags_assign'")
+        if not cur.fetchone() and _table_exists(cur, "tenant_roles") and _table_exists(cur, "plan_feature_grants"):
+            cur.execute("""UPDATE tenant_roles SET permissions = permissions || jsonb_build_object('crm.tags_assign', true)
+                           WHERE (permissions->>'crm.tags_edit') = 'true'""")
+            cur.execute("SELECT plan_id FROM plan_feature_grants WHERE feature_key='crm.tags_edit'")
+            for (_pid,) in cur.fetchall():
+                cur.execute(_GRANT_ONCE_SQL, (_pid, "crm.tags_assign"))
+            cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('crm.tags_assign') ON CONFLICT DO NOTHING")
+            cur.execute("INSERT INTO role_key_backfill_seen (feature_key) VALUES ('crm.tags_assign')")
+
+        # ── Your own columns on Leads + Sales Pipeline (2026-10-16). Anyone may
+        # make a private or group column; a column for everyone needs a role tick.
+        # Values of a private column are only seen by whoever made it. Types:
+        # text, number, date, yesno, choice, multi. Choices are [{id,name,colour}]
+        # and values store choice ids, so renaming a choice never touches values.
+        # column_visible(id) = the ONE rule, same as label_visible(). ───────────
+        if not _table_exists(cur, "lead_columns"):
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS lead_columns (
+                    id             SERIAL PRIMARY KEY,
+                    tenant_id      INTEGER      NOT NULL,
+                    name           VARCHAR(60)  NOT NULL,
+                    col_type       VARCHAR(10)  NOT NULL,
+                    choices        JSONB        NOT NULL DEFAULT '[]'::jsonb,
+                    visibility     VARCHAR(10)  NOT NULL DEFAULT 'private',
+                    created_by_key VARCHAR(40),
+                    created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS lead_columns_tenant_idx ON lead_columns (tenant_id)")
+        if not _table_exists(cur, "lead_column_access"):
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS lead_column_access (
+                    column_id INTEGER    NOT NULL REFERENCES lead_columns(id) ON DELETE CASCADE,
+                    kind      VARCHAR(6) NOT NULL,
+                    ref_id    INTEGER    NOT NULL,
+                    PRIMARY KEY (column_id, kind, ref_id)
+                )
+            """)
+        # No FK to merchant_pipeline_leads on purpose (would lock that busy table).
+        if not _table_exists(cur, "lead_column_values"):
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS lead_column_values (
+                    column_id      INTEGER     NOT NULL REFERENCES lead_columns(id) ON DELETE CASCADE,
+                    lead_id        INTEGER     NOT NULL,
+                    value          JSONB       NOT NULL,
+                    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_by_key VARCHAR(40),
+                    PRIMARY KEY (column_id, lead_id)
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS lead_column_values_lead_idx ON lead_column_values (lead_id)")
+        if not _table_exists(cur, "lead_column_hidden"):
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS lead_column_hidden (
+                    column_id INTEGER     NOT NULL REFERENCES lead_columns(id) ON DELETE CASCADE,
+                    actor_key VARCHAR(40) NOT NULL,
+                    PRIMARY KEY (column_id, actor_key)
+                )
+            """)
+        cur.execute("SELECT 1 FROM pg_proc WHERE proname='column_visible'")
+        if not cur.fetchone():
+            cur.execute("""
+                CREATE OR REPLACE FUNCTION column_visible(p_id INTEGER) RETURNS BOOLEAN
+                LANGUAGE sql STABLE AS $$
+                    SELECT EXISTS (
+                        SELECT 1 FROM lead_columns c WHERE c.id = p_id AND (
+                            c.visibility = 'business'
+                            OR c.created_by_key = current_setting('phixtra.actor_key', true)
+                            OR (c.visibility = 'group' AND EXISTS (
+                                SELECT 1 FROM lead_column_access a WHERE a.column_id = c.id AND (
+                                    (a.kind = 'member' AND a.ref_id::text = current_setting('phixtra.actor_member', true))
+                                 OR (a.kind = 'dept'   AND a.ref_id::text = current_setting('phixtra.actor_dept', true))))))
+                    )
+                $$
+            """)
+        # Ticks: "Make my own columns" ON for every role that can open Leads
+        # (user, 2026-10-16); the three "for everyone" ticks start off for roles
+        # (the owner always has them). Plans that include Leads get all four.
+        cur.execute("CREATE TABLE IF NOT EXISTS role_key_backfill_seen (feature_key TEXT PRIMARY KEY)")
+        cur.execute("SELECT 1 FROM role_key_backfill_seen WHERE feature_key='crm.columns_own'")
+        if not cur.fetchone() and _table_exists(cur, "tenant_roles") and _table_exists(cur, "plan_feature_grants"):
+            cur.execute("""UPDATE tenant_roles SET permissions = permissions || jsonb_build_object('crm.columns_own', true)
+                           WHERE (permissions->>'leads.page') = 'true'""")
+            cur.execute("SELECT plan_id FROM plan_feature_grants WHERE feature_key='leads.page'")
+            _lp = [r[0] for r in cur.fetchall()]
+            for _k in ("crm.columns_own", "crm.columns_create", "crm.columns_edit", "crm.columns_delete"):
+                for _pid in _lp:
+                    cur.execute(_GRANT_ONCE_SQL, (_pid, _k))
+                cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES (%s) ON CONFLICT DO NOTHING", (_k,))
+            cur.execute("INSERT INTO role_key_backfill_seen (feature_key) VALUES ('crm.columns_own')")
+
         # ── The Comeback Sequence: automatic onboarding win-back emails ───────────
         # onboarding_nudge_log's UNIQUE(customer_id, email_key) is the concurrency
         # guard — two gunicorn workers scanning at the same moment both try the

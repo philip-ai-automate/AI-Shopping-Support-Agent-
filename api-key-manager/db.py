@@ -6,6 +6,26 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+def _label_actor_options():
+    """Tells the database who is asking, so label_visible() (see
+    portal_migrations) only lets a person see business labels, their own
+    private labels and group labels they're in. None outside a web request
+    (background jobs never list labels by visibility)."""
+    try:
+        from flask import has_request_context, session
+        if not has_request_context():
+            return None
+        tm = session.get("team_member_id")
+        if tm:
+            opts = f"-c phixtra.actor_key=team:{int(tm)} -c phixtra.actor_member={int(tm)}"
+            dept = session.get("team_member_dept_id")
+            return opts + (f" -c phixtra.actor_dept={int(dept)}" if dept else "")
+        cid = session.get("impersonate_customer_id") or session.get("customer_id")
+        return f"-c phixtra.actor_key=owner:{int(cid)}" if cid else None
+    except Exception:
+        return None
+
+
 def get_db_connection():
     try:
         conn = psycopg2.connect(
@@ -14,6 +34,7 @@ def get_db_connection():
             user=os.getenv("PG_USER"),
             password=os.getenv("PG_PASSWORD"),
             dbname=os.getenv("PG_DB"),
+            options=_label_actor_options(),
         )
         return conn
     except Exception as e:

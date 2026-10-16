@@ -144,6 +144,8 @@ FOUNDER_SPOTS_LIMIT   = 50
 FOUNDER_DISPLAY_OFFSET = 27  # pre-claimed spots shown for urgency; real sign-ups add on top
 
 from ai_default_instruction import DEFAULT_SYSTEM_PROMPT, default_instruction  # shared with ai-backend
+import labels_core as _lbl  # private / group / business labels
+import columns_core as _cols  # people's own columns on Leads + Pipeline
 
 _WIZARD_MARKER = "\n\n[Wizard customisation]\n"
 
@@ -380,9 +382,10 @@ PLAN_FEATURE_CATALOG = {
         ("crm.segments_edit",          "Edit a Segment (incl. members)"),
         ("crm.segments_delete",        "Delete a Segment"),
         ("crm.tags_view",              "Labels — view"),
-        ("crm.tags_create",            "Create a Label / import bounces"),
-        ("crm.tags_edit",              "Edit a Label — rename it, or move/remove records on it"),
-        ("crm.tags_delete",            "Delete a Label"),
+        ("crm.tags_assign",            "Add and remove labels on leads (and make their own private or group labels)"),
+        ("crm.tags_create",            "Create a label for everyone / import bounces"),
+        ("crm.tags_edit",              "Edit a label for everyone — rename, colour, meaning"),
+        ("crm.tags_delete",            "Delete a label for everyone"),
         ("crm.merge_review_view",      "Duplicate Merge Review — view"),
         ("crm.merge_review_confirm",   "Confirm a merge (permanently merges the duplicate)"),
         ("crm.merge_review_reject",    "Reject a merge suggestion"),
@@ -391,6 +394,10 @@ PLAN_FEATURE_CATALOG = {
     ],
     "Leads": [
         ("leads.page",   "Leads — view"),
+        ("crm.columns_own",    "Make my own columns on Leads and Pipeline (private or group)"),
+        ("crm.columns_create", "Create a column for everyone"),
+        ("crm.columns_edit",   "Edit a column for everyone — rename, choices, who sees it"),
+        ("crm.columns_delete", "Delete a column for everyone"),
         ("leads.create", "Create a Lead (manually or from a Hot Conversation)"),
         ("leads.qualify", "Qualify a Lead into an Opportunity / mark it Not a Fit"),
         ("leads.assign",  "Assign Leads and Opportunities to team members"),
@@ -632,12 +639,15 @@ ROLE_FORM_GRID = {
         {"label": "Pipeline Board", "view": "crm.pipeline_board_view",  "edit": "crm.pipeline_board_edit",
          "other": ["crm.pipeline_board_export"]},
         {"label": "Segment",        "view": "crm.segments_view",        "create": "crm.segments_create",  "edit": "crm.segments_edit",  "delete": "crm.segments_delete"},
-        {"label": "Label",          "view": "crm.tags_view",            "create": "crm.tags_create",      "edit": "crm.tags_edit",      "delete": "crm.tags_delete"},
+        {"label": "Label",          "view": "crm.tags_view",            "create": "crm.tags_create",      "edit": "crm.tags_edit",      "delete": "crm.tags_delete",
+         "other": ["crm.tags_assign"]},
         {"label": "Duplicate Merge Review", "view": "crm.merge_review_view", "other": ["crm.merge_review_confirm", "crm.merge_review_reject"]},
         {"label": "Pipeline Settings", "view": "crm.pipeline_settings_view", "edit": "crm.pipeline_settings_edit"},
     ],
     "Leads": [
         {"label": "Leads", "view": "leads.page", "create": "leads.create", "other": ["leads.qualify", "leads.assign", "leads.see_all"]},
+        {"label": "Columns", "create": "crm.columns_create", "edit": "crm.columns_edit", "delete": "crm.columns_delete",
+         "other": ["crm.columns_own"]},
         {"label": "Team performance", "view": "leads.team_performance"},
     ],
     "Accounts": [
@@ -1538,6 +1548,7 @@ DESTRUCTIVE_FEATURE_KEYS = {
     "crm.companies_delete",
     "crm.segments_delete",
     "crm.tags_delete",
+    "crm.columns_delete",
     "crm.merge_review_confirm",
     "ecom.products_delete",
     "ecom.woo_sync_delete",
@@ -9599,7 +9610,7 @@ CUSTOM_REPORT_ENTITIES = {
             {"key": "employees",      "label": "Number of Employees", "expr": "c.employees"},
             {"key": "tags",           "label": "Tags",
              "expr": "(SELECT string_agg(ll.name, ', ') FROM lead_label_contacts llc "
-                      "JOIN lead_labels ll ON ll.id = llc.label_id WHERE llc.contact_id = c.id)"},
+                      "JOIN lead_labels ll ON ll.id = llc.label_id WHERE llc.contact_id = c.id AND label_visible(ll.id))"},
             {"key": "created_at",     "label": "Created Date",   "expr": "c.created_at",  "fmt": "date"},
         ],
         "default_columns": ["display_name", "phone", "whatsapp_number", "status", "created_at"],
@@ -10106,7 +10117,6 @@ def _get_not_a_fit_report_data(tenant_id: int, date_from, date_to, who: str = ""
         cur_list_sql = " AND l.import_id IS NULL"
     elif list_key.isdigit():
         cur_list_sql, list_params = " AND l.import_id = %s", [int(list_key)]
-    who_calls_sql, who_calls_p = (" AND c.actor_name = %s", [who]) if who else ("", [])
     who_naf_sql, who_naf_p = (" AND n.changed_by = %s", [who]) if who else ("", [])
 
     naf_cte = """
@@ -10122,11 +10132,24 @@ def _get_not_a_fit_report_data(tenant_id: int, date_from, date_to, who: str = ""
     try:
         # Calls (one row per call) in the period
         cur.execute(f"""
-            SELECT c.actor_name, c.outcome, c.lead_id
+            SELECT c.actor_key, c.actor_name, c.outcome, c.lead_id
               FROM lead_calls c JOIN merchant_pipeline_leads l ON l.id = c.lead_id
-             WHERE c.tenant_id = %s AND c.created_at::date BETWEEN %s AND %s{who_calls_sql}{cur_list_sql}
-        """, [tenant_id, date_from, date_to] + who_calls_p + list_params)
+             WHERE c.tenant_id = %s AND c.created_at::date BETWEEN %s AND %s{cur_list_sql}
+        """, [tenant_id, date_from, date_to] + list_params)
         calls = cur.fetchall()
+        # One name per person: older calls saved an owner's first name only,
+        # stage history saves the full name — use the full one Team
+        # performance keeps for that person.
+        cur.execute("""
+            SELECT DISTINCT ON (actor_key) actor_key, actor_name FROM staff_activity
+             WHERE tenant_id = %s AND actor_name IS NOT NULL AND actor_name <> ''
+             ORDER BY actor_key, created_at DESC
+        """, (tenant_id,))
+        full_name = {r["actor_key"]: r["actor_name"] for r in cur.fetchall()}
+        for c in calls:
+            c["actor_name"] = full_name.get(c["actor_key"]) or c["actor_name"]
+        if who:
+            calls = [c for c in calls if c["actor_name"] == who]
 
         # Leads marked Not a Fit in the period
         cur.execute(naf_cte + f"""
@@ -10155,12 +10178,15 @@ def _get_not_a_fit_report_data(tenant_id: int, date_from, date_to, who: str = ""
 
         # Everyone who has logged a call or marked Not a Fit (for the filter)
         cur.execute(naf_cte + """
-            SELECT name FROM (
-                SELECT DISTINCT actor_name AS name FROM lead_calls WHERE tenant_id = %s AND actor_name IS NOT NULL
-                UNION SELECT DISTINCT changed_by FROM naf WHERE changed_by IS NOT NULL
-            ) x WHERE name <> '' ORDER BY name
+            SELECT DISTINCT actor_key, actor_name, NULL AS changed_by FROM lead_calls WHERE tenant_id = %s
+            UNION SELECT DISTINCT NULL, NULL, changed_by FROM naf
         """, (tenant_id, tenant_id))
-        people = [r["name"] for r in cur.fetchall()]
+        names = set()
+        for r in cur.fetchall():
+            n = (full_name.get(r["actor_key"]) or r["actor_name"]) if r["actor_key"] else r["changed_by"]
+            if n:
+                names.add(n)
+        people = sorted(names)
     finally:
         cur.close(); conn.close()
 
@@ -10382,7 +10408,7 @@ def _run_custom_report_grouped(tenant_id: int, entity: str, group_by: str, filte
             _ls_exec(cur, f"""
                 SELECT COALESCE(ll.name, 'No tag') AS grp, COUNT(DISTINCT c.id) AS n
                 FROM {from_clause}
-                LEFT JOIN lead_label_contacts llc ON llc.contact_id = c.id
+                LEFT JOIN lead_label_contacts llc ON llc.contact_id = c.id AND label_visible(llc.label_id)
                 LEFT JOIN lead_labels ll ON ll.id = llc.label_id
                 WHERE {where}
                 GROUP BY COALESCE(ll.name, 'No tag')
@@ -14512,7 +14538,8 @@ def whatsapp_connect():
     token_expiry_status = None  # None | 'ok' | 'expiring' | 'expired'
     if connection and connection.get("active") and connection.get("token_expires_at"):
         exp = connection["token_expires_at"]
-        delta = exp - datetime.utcnow() if hasattr(exp, "year") else None
+        _now = datetime.now(timezone.utc) if getattr(exp, "tzinfo", None) else datetime.utcnow()
+        delta = exp - _now if hasattr(exp, "year") else None
         if delta is not None:
             if delta.total_seconds() <= 0:
                 token_expiry_status = "expired"
@@ -15451,6 +15478,9 @@ def whatsapp_embedded_callback():
     code            = (data.get("code")            or "").strip()
     phone_number_id = (data.get("phone_number_id") or "").strip()
     waba_id         = (data.get("waba_id")         or "").strip()
+    signup_mode     = (data.get("mode")            or "")[:20]
+    meta_event      = (data.get("meta_event")      or "")[:60]
+    print(f"ℹ️ wa embedded callback tenant={tenant_id} mode={signup_mode} meta_event={meta_event}")
 
     if not code:
         return jsonify({"error": "No auth code received. Please try again."}), 400
@@ -15505,7 +15535,8 @@ def whatsapp_embedded_callback():
             return jsonify({"error": "Could not save connection to database. Please try again."}), 500
         insert_audit_log(action="wa_embedded_connected", tenant_id=tenant_id,
                          details={"phone_number_id": pn["phone_number_id"],
-                                  "waba_id": pn["waba_id"], "via": "embedded_signup"})
+                                  "waba_id": pn["waba_id"], "via": "embedded_signup",
+                                  "mode": signup_mode, "meta_event": meta_event})
         return jsonify({
             "status": "connected",
             "display_phone": pn["display_phone_number"],
@@ -16668,19 +16699,10 @@ def _sync_contact_tags(cur, tenant_id: int, contact_id: int, tags_csv: str):
     2026-09-09: this is now the only place wa_contacts get tagged from —
     wa_contacts.tags (the old free-text array column) is no longer written."""
     names = [t.strip()[:50] for t in (tags_csv or "").split(",") if t.strip()]
-    label_ids = []
-    for name in names:
-        cur.execute("SELECT id FROM lead_labels WHERE tenant_id=%s AND lower(name)=lower(%s)",
-                    (tenant_id, name))
-        row = cur.fetchone()
-        if row:
-            label_ids.append(row[0] if not isinstance(row, dict) else row["id"])
-        else:
-            cur.execute("INSERT INTO lead_labels (tenant_id, name) VALUES (%s,%s) RETURNING id",
-                        (tenant_id, name))
-            row = cur.fetchone()
-            label_ids.append(row[0] if not isinstance(row, dict) else row["id"])
-    cur.execute("DELETE FROM lead_label_contacts WHERE contact_id=%s", (contact_id,))
+    label_ids = [_lbl.find_or_create(cur, tenant_id, name) for name in names]
+    # Only replaces labels this person can see — someone else's private or
+    # group label on the same contact stays (labels, 2026-10-16).
+    cur.execute("DELETE FROM lead_label_contacts WHERE contact_id=%s AND label_visible(label_id)", (contact_id,))
     for lid in label_ids:
         cur.execute(
             "INSERT INTO lead_label_contacts (label_id, contact_id) VALUES (%s,%s) "
@@ -16697,12 +16719,7 @@ def _add_contact_labels(cur, tenant_id: int, contact_id: int, names):
         name = (name or "").strip()[:50]
         if not name:
             continue
-        cur.execute("SELECT id FROM lead_labels WHERE tenant_id=%s AND lower(name)=lower(%s)", (tenant_id, name))
-        row = cur.fetchone()
-        if not row:
-            cur.execute("INSERT INTO lead_labels (tenant_id, name) VALUES (%s,%s) RETURNING id", (tenant_id, name))
-            row = cur.fetchone()
-        label_id = row["id"] if isinstance(row, dict) else row[0]
+        label_id = _lbl.find_or_create(cur, tenant_id, name)
         cur.execute("INSERT INTO lead_label_contacts (label_id, contact_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
                     (label_id, contact_id))
 
@@ -17190,7 +17207,7 @@ def whatsapp_contacts():
                    (pl.id IS NOT NULL) AS in_pipeline,
                    COALESCE(pl_count.deal_count, 0) AS active_deal_count,
                    (SELECT array_agg(lb.name ORDER BY lb.name) FROM lead_label_contacts lc
-                    JOIN lead_labels lb ON lb.id = lc.label_id WHERE lc.contact_id = c.id) AS tags_list
+                    JOIN lead_labels lb ON lb.id = lc.label_id WHERE lc.contact_id = c.id AND label_visible(lb.id)) AS tags_list
             FROM wa_contacts c
             LEFT JOIN LATERAL (
                 SELECT id, stage, deal_value FROM merchant_pipeline_leads
@@ -17238,7 +17255,7 @@ def whatsapp_contacts():
             FROM lead_labels lb
             JOIN lead_label_contacts lc ON lc.label_id = lb.id
             JOIN wa_contacts c ON c.id = lc.contact_id
-            WHERE lb.tenant_id=%s
+            WHERE lb.tenant_id=%s AND label_visible(lb.id)
             GROUP BY lb.id, lb.name
             ORDER BY lb.name
         """, (tenant_id,))
@@ -17301,7 +17318,7 @@ def whatsapp_contacts():
         # Every tag this tenant has (not just ones already on a contact, unlike
         # all_tags above) — for the Tags field's client-side duplicate-name
         # check on Add/Edit Contact and the bulk "Add Tag" modal.
-        _ls_exec(cur, "SELECT id, name FROM lead_labels WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+        _ls_exec(cur, "SELECT id, name FROM lead_labels WHERE tenant_id=%s AND label_visible(id) ORDER BY lower(name)", (tenant_id,))
         dedupe_tags = cur.fetchall()
 
         # Every label with how many contacts carry it, for the label picker
@@ -17310,7 +17327,7 @@ def whatsapp_contacts():
             SELECT lb.name, COUNT(c.id) AS count
             FROM lead_labels lb LEFT JOIN lead_label_contacts lc ON lc.label_id = lb.id
             LEFT JOIN wa_contacts c ON c.id = lc.contact_id
-            WHERE lb.tenant_id=%s GROUP BY lb.id, lb.name ORDER BY lb.name
+            WHERE lb.tenant_id=%s AND label_visible(lb.id) GROUP BY lb.id, lb.name ORDER BY lb.name
         """, (tenant_id,))
         label_options = [{"name": r_["name"], "count": r_["count"]} for r_ in cur.fetchall()]
 
@@ -17853,7 +17870,7 @@ def whatsapp_contacts_export():
                    c.addr_street, c.addr_city, c.addr_state, c.addr_country, c.addr_postcode, c.other_emails,
                    c.business_category, c.employees,
                    (SELECT string_agg(lb.name, ', ' ORDER BY lb.name) FROM lead_label_contacts lc
-                    JOIN lead_labels lb ON lb.id = lc.label_id WHERE lc.contact_id = c.id) AS labels
+                    JOIN lead_labels lb ON lb.id = lc.label_id WHERE lc.contact_id = c.id AND label_visible(lb.id)) AS labels
             FROM wa_contacts c
             WHERE {where}
             ORDER BY c.display_name ASC NULLS LAST
@@ -18003,7 +18020,7 @@ def whatsapp_contact_detail(contact_id: int):
         _ls_exec(cur, """
             SELECT c.*, co.name AS company_name, co.website AS company_website,
                    (SELECT array_agg(lb.name ORDER BY lb.name) FROM lead_label_contacts lc
-                    JOIN lead_labels lb ON lb.id = lc.label_id WHERE lc.contact_id = c.id) AS tags_list
+                    JOIN lead_labels lb ON lb.id = lc.label_id WHERE lc.contact_id = c.id AND label_visible(lb.id)) AS tags_list
             FROM wa_contacts c
             LEFT JOIN crm_companies co ON co.id = c.company_id
             WHERE c.id=%s AND c.tenant_id=%s
@@ -18135,7 +18152,7 @@ def whatsapp_contact_detail(contact_id: int):
 
         # Every tag this tenant has, for the Tags field's client-side
         # duplicate-name check on the Edit Profile panel.
-        _ls_exec(cur, "SELECT id, name FROM lead_labels WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+        _ls_exec(cur, "SELECT id, name FROM lead_labels WHERE tenant_id=%s AND label_visible(id) ORDER BY lower(name)", (tenant_id,))
         dedupe_tags = cur.fetchall()
 
         # Every label with how many contacts carry it, for the label picker
@@ -18144,7 +18161,7 @@ def whatsapp_contact_detail(contact_id: int):
             SELECT lb.name, COUNT(c.id) AS count
             FROM lead_labels lb LEFT JOIN lead_label_contacts lc ON lc.label_id = lb.id
             LEFT JOIN wa_contacts c ON c.id = lc.contact_id
-            WHERE lb.tenant_id=%s GROUP BY lb.id, lb.name ORDER BY lb.name
+            WHERE lb.tenant_id=%s AND label_visible(lb.id) GROUP BY lb.id, lb.name ORDER BY lb.name
         """, (tenant_id,))
         label_options = [{"name": r_["name"], "count": r_["count"]} for r_ in cur.fetchall()]
 
@@ -18858,15 +18875,7 @@ def whatsapp_contacts_bulk_action():
             if not new_tag:
                 flash("Please enter a label name.", "warning")
             else:
-                cur.execute("SELECT id FROM lead_labels WHERE tenant_id=%s AND lower(name)=lower(%s)",
-                            (tenant_id, new_tag))
-                row = cur.fetchone()
-                if row:
-                    label_id = row[0]
-                else:
-                    cur.execute("INSERT INTO lead_labels (tenant_id, name) VALUES (%s,%s) RETURNING id",
-                                (tenant_id, new_tag))
-                    label_id = cur.fetchone()[0]
+                label_id = _lbl.find_or_create(cur, tenant_id, new_tag)
                 cur.execute(
                     "INSERT INTO lead_label_contacts (label_id, contact_id) "
                     "SELECT %s, id FROM wa_contacts WHERE id = ANY(%s) AND tenant_id=%s "
@@ -18880,8 +18889,8 @@ def whatsapp_contacts_bulk_action():
             # yet), kept correct against the shared tag table for when it is.
             rem_tag = (request.form.get("rem_tag") or "").strip()
             if rem_tag:
-                cur.execute("SELECT id FROM lead_labels WHERE tenant_id=%s AND lower(name)=lower(%s)",
-                            (tenant_id, rem_tag))
+                cur.execute("SELECT id FROM lead_labels WHERE tenant_id=%s AND lower(name)=lower(%s) "
+                            "AND label_visible(id) LIMIT 1", (tenant_id, rem_tag))
                 row = cur.fetchone()
                 if row:
                     cur.execute(
@@ -23642,6 +23651,9 @@ def email_csegments_bulk_add_members(segment_id: int):
 @portal_bp.route("/labels")
 @team_feature("crm.tags_view")
 def lead_labels_page():
+    """Labels page (redesigned 2026-10-16): My labels (private), Group labels
+    and Business labels — each person sees only the labels label_visible()
+    lets them. Colour, meaning and who-sees-it are edited in one window."""
     r = _require_login()
     if r: return r
     _rperm = _require_team_permission("crm.tags_view")
@@ -23652,39 +23664,61 @@ def lead_labels_page():
     if r2: return r2
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    # Tags unification (2026-09-09): a tag can now be on a Deal (lead_label_leads)
-    # and/or a Contact (lead_label_contacts) — counted separately (two LEFT
-    # JOINs would fan out and double-count if combined in one COUNT).
+    # Deals and People counted separately (two LEFT JOINs would fan out).
     cur.execute(
-        """
-        SELECT lb.id, lb.name, lb.created_at,
-               count(DISTINCT ll.lead_id)    AS member_count,
-               count(DISTINCT lc.contact_id) AS contact_count
+        f"""
+        SELECT {_lbl.LABEL_COLS}, lb.created_at,
+               (SELECT count(*) FROM lead_label_leads ll WHERE ll.label_id = lb.id)    AS member_count,
+               (SELECT count(*) FROM lead_label_contacts lc WHERE lc.label_id = lb.id) AS contact_count
         FROM lead_labels lb
-        LEFT JOIN lead_label_leads    ll ON ll.label_id = lb.id
-        LEFT JOIN lead_label_contacts lc ON lc.label_id = lb.id
-        WHERE lb.tenant_id=%s
-        GROUP BY lb.id, lb.name, lb.created_at
-        ORDER BY lb.name
+        WHERE lb.tenant_id=%s AND {_lbl.vis()}
+        ORDER BY lower(lb.name)
         """,
         (tenant_id,),
     )
-    labels = cur.fetchall()
-    # Lean id/name-only list for the "+ Create Tag" box's client-side
-    # duplicate-name check (see static/portal/crm-dedupe.js).
+    labels = [_lbl.decorate(l) for l in cur.fetchall()]
+    departments = [dict(d) for d in _get_tenant_departments(tenant_id)]
+    cur.execute("""SELECT id, COALESCE(NULLIF(TRIM(COALESCE(first_name,'') || ' ' || COALESCE(last_name,'')), ''), name) AS name
+                   FROM team_members WHERE tenant_id=%s AND is_active ORDER BY 2""", (tenant_id,))
+    staff = [dict(s) for s in cur.fetchall()]
+    dept_names = {d["id"]: d["name"] for d in departments}
+    staff_names = {s["id"]: s["name"] for s in staff}
+    for l in labels:
+        l["can_change"] = _lbl.can_change(l, _team_member_has_permission)
+        l["can_delete"] = _lbl.can_delete(l, _team_member_has_permission)
+        if l["visibility"] == "group":
+            acc = _lbl.access_of(cur, l["id"])
+            l["dept_ids"], l["member_ids"] = acc["dept"], acc["member"]
+            names = [dept_names[d] for d in acc["dept"] if d in dept_names] + \
+                    [staff_names[m] for m in acc["member"] if m in staff_names]
+            l["who"] = ", ".join(names) or "Only you so far"
+        else:
+            l["dept_ids"], l["member_ids"] = [], []
+            l["who"] = "Only you" if l["visibility"] == "private" else "Everyone"
+    sections = [
+        ("private",  "My labels",       "Only you see these."),
+        ("group",    "Group labels",    "Only the people in the group see these."),
+        ("business", "Business labels", "Everyone in the business sees these."),
+    ]
+    # id/name list for the "Move to" picker and the duplicate-name check.
     dedupe_tags = [{"id": l["id"], "name": l["name"]} for l in labels]
     cur.close(); conn.close()
-    return render_template("portal/lead_labels.html", customer=customer, labels=labels, dedupe_tags=dedupe_tags)
+    return render_template("portal/lead_labels.html", customer=customer, labels=labels, sections=sections,
+                           dedupe_tags=dedupe_tags, departments=departments, staff=staff,
+                           colours=_lbl.COLOURS, my_team_id=session.get("team_member_id"),
+                           can_create_business=_team_member_has_permission("crm.tags_create"),
+                           can_assign=_team_member_has_permission("crm.tags_assign"))
 
 
 @portal_bp.route("/labels/list")
-@team_feature("crm.tags_view")
+@team_feature("crm.tags_view", "crm.tags_assign")
 def lead_labels_list_json():
-    """Same shape as /email/segments — used by the Sales Pipeline bulk 'Add to
-    Label' modal and the campaign compose page's 'Exclude label' picker."""
+    """Every label this person may see, with colours — for the label pickers
+    (lead page, Leads/Pipeline lists and bulk bars) and the campaign compose
+    page's 'Exclude label' picker."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags_view"):
+    if not (_team_member_has_permission("crm.tags_view") or _team_member_has_permission("crm.tags_assign")):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -23692,102 +23726,155 @@ def lead_labels_list_json():
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
-            """
-            SELECT lb.id, lb.name, count(ll.lead_id) AS member_count
+            f"""
+            SELECT {_lbl.LABEL_COLS},
+                   (SELECT count(*) FROM lead_label_leads ll WHERE ll.label_id = lb.id) AS member_count
             FROM lead_labels lb
-            LEFT JOIN lead_label_leads ll ON ll.label_id = lb.id
-            WHERE lb.tenant_id=%s
-            GROUP BY lb.id, lb.name
-            ORDER BY lb.name
+            WHERE lb.tenant_id=%s AND {_lbl.vis()}
+            ORDER BY lower(lb.name)
             """,
             (tenant_id,),
         )
-        labels = cur.fetchall()
+        labels = [_lbl.decorate(l) for l in cur.fetchall()]
         cur.close(); conn.close()
-        return jsonify({"labels": labels})
+        return jsonify({"labels": labels,
+                        "can_create_business": _team_member_has_permission("crm.tags_create")})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
+def _label_form_fields():
+    """name, colour, description, visibility, dept_ids, member_ids from a
+    create/edit form, cleaned. visibility None = not sent."""
+    f = request.form
+    colour = (f.get("colour") or "").strip()
+    vis_ = (f.get("visibility") or "").strip() or None
+    return {
+        "name":        (f.get("name") or "").strip()[:60],
+        "colour":      colour if colour in {c[0] for c in _lbl.COLOURS} else None,
+        "description": (f.get("description") or "").strip()[:200] or None,
+        "visibility":  vis_ if vis_ in _lbl.KINDS else None,
+        "dept_ids":    [int(v) for v in f.getlist("dept_ids") if v.isdigit()],
+        "member_ids":  [int(v) for v in f.getlist("member_ids") if v.isdigit()],
+    }
+
+
 @portal_bp.route("/labels/create", methods=["POST"])
-@team_feature("crm.tags_create")
+@team_feature("crm.tags_create", "crm.tags_assign")
 def lead_labels_create():
+    """New label. A business label needs 'Create a Label'; anyone who may
+    add labels to leads can make their own private or group label."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags_create"):
-        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    name = (request.form.get("name") or "").strip()
-    if not name:
+    d = _label_form_fields()
+    vis_ = d["visibility"] or "business"
+    if vis_ == "business" and not _team_member_has_permission("crm.tags_create"):
+        return jsonify({"error": "Your role can't create labels for everyone. Choose 'Only me' or 'A group'."}), 403
+    if vis_ != "business" and not (_team_member_has_permission("crm.tags_assign")
+                                   or _team_member_has_permission("crm.tags_create")):
+        return jsonify({"error": "forbidden"}), 403
+    if not d["name"]:
         return jsonify({"error": "Label name is required."}), 400
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
+        if _lbl.name_taken(cur, tenant_id, d["name"], vis_):
+            cur.close(); conn.close()
+            return jsonify({"error": f"You already have a label called '{d['name']}'."}), 400
         cur.execute(
-            "INSERT INTO lead_labels (tenant_id, name) VALUES (%s, %s) "
-            "ON CONFLICT (tenant_id, name) DO UPDATE SET name=EXCLUDED.name "
-            "RETURNING id",
-            (tenant_id, name),
+            "INSERT INTO lead_labels (tenant_id, name, colour, description, visibility, created_by_key) "
+            "VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
+            (tenant_id, d["name"], d["colour"], d["description"], vis_, _lbl.actor_key() or None),
         )
         label_id = cur.fetchone()[0]
+        _lbl.save_access(cur, label_id, vis_, d["dept_ids"], d["member_ids"])
         conn.commit()
         cur.close(); conn.close()
-        return jsonify({"ok": True, "id": label_id, "name": name, "member_count": 0})
+        return jsonify({"ok": True, "id": label_id, "name": d["name"], "member_count": 0,
+                        "visibility": vis_, "style": _lbl.chip_style(d["colour"])})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 @portal_bp.route("/labels/<int:label_id>/rename", methods=["POST"])
-@team_feature("crm.tags_edit")
+@team_feature("crm.tags_edit", "crm.tags_assign")
 def lead_labels_rename(label_id: int):
-    """Rename a label in place — since every page that shows a label (Sales
-    Pipeline, Contacts, campaign pickers) reads the name live via a JOIN on
-    lead_labels.name rather than storing a copy of it, one UPDATE here is all
-    it takes for the new name to show up everywhere the label appears."""
+    """Edit a label: name, colour, meaning and (own private/group labels only)
+    who sees it. Every page reads the label live, so one UPDATE shows
+    everywhere. Business labels need 'Edit a Label'; private and group labels
+    can only be changed by whoever made them (user, 2026-10-16)."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags_edit"):
-        return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    name = (request.form.get("name") or "").strip()
-    if not name:
+    d = _label_form_fields()
+    if not d["name"]:
         return jsonify({"error": "Label name is required."}), 400
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute(
-            "UPDATE lead_labels SET name=%s WHERE id=%s AND tenant_id=%s RETURNING id",
-            (name, label_id, tenant_id),
-        )
-        row = cur.fetchone()
+        label = _lbl.get_label(cur, tenant_id, label_id)
+        if not label:
+            cur.close(); conn.close()
+            return jsonify({"error": "Label not found."}), 404
+        if not _lbl.can_change(label, _team_member_has_permission):
+            cur.close(); conn.close()
+            return jsonify({"error": "You can't change this label."}), 403
+        vis_ = label["visibility"]
+        if d["visibility"] and d["visibility"] != vis_:
+            # Only whoever made it may change who sees it; business labels
+            # without a maker (all labels from before today) stay business.
+            if not label["mine"]:
+                cur.close(); conn.close()
+                return jsonify({"error": "Only the person who made this label can change who sees it."}), 403
+            if d["visibility"] == "business" and not _team_member_has_permission("crm.tags_create"):
+                cur.close(); conn.close()
+                return jsonify({"error": "Your role can't make labels for everyone."}), 403
+            vis_ = d["visibility"]
+        if _lbl.name_taken(cur, tenant_id, d["name"], vis_, skip_id=label_id):
+            cur.close(); conn.close()
+            return jsonify({"error": f"A label called '{d['name']}' already exists."}), 400
+        if "colour" in request.form or "description" in request.form:
+            cur.execute("UPDATE lead_labels SET name=%s, colour=%s, description=%s, visibility=%s "
+                        "WHERE id=%s AND tenant_id=%s",
+                        (d["name"], d["colour"], d["description"], vis_, label_id, tenant_id))
+        else:  # name-only callers
+            cur.execute("UPDATE lead_labels SET name=%s, visibility=%s WHERE id=%s AND tenant_id=%s",
+                        (d["name"], vis_, label_id, tenant_id))
+        if label["mine"] and "visibility" in request.form:
+            _lbl.save_access(cur, label_id, vis_, d["dept_ids"], d["member_ids"])
         conn.commit()
         cur.close(); conn.close()
-        if not row:
-            return jsonify({"error": "Label not found."}), 404
-        return jsonify({"ok": True, "id": label_id, "name": name})
+        return jsonify({"ok": True, "id": label_id, "name": d["name"]})
     except psycopg2.errors.UniqueViolation:
         conn.rollback(); cur.close(); conn.close()
-        return jsonify({"error": f"A label named '{name}' already exists."}), 400
+        return jsonify({"error": f"A label called '{d['name']}' already exists."}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 @portal_bp.route("/labels/<int:label_id>/delete", methods=["POST"])
-@team_feature("crm.tags_delete")
+@team_feature("crm.tags_delete", "crm.tags_assign")
 def lead_labels_delete(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags_delete"):
+    if not (_team_member_has_permission("crm.tags_delete") or _team_member_has_permission("crm.tags_assign")):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute("DELETE FROM lead_labels WHERE id=%s AND tenant_id=%s", (label_id, tenant_id))
-        deleted = cur.rowcount > 0
+        label = _lbl.get_label(cur, tenant_id, label_id)
+        if label and not _lbl.can_delete(label, _team_member_has_permission):
+            cur.close(); conn.close()
+            return jsonify({"error": "You can't delete this label."}), 403
+        deleted = False
+        if label:
+            cur.execute("DELETE FROM lead_labels WHERE id=%s AND tenant_id=%s", (label_id, tenant_id))
+            deleted = cur.rowcount > 0
         conn.commit()
         cur.close(); conn.close()
         if request.form.get("redirect") == "1":
@@ -23796,6 +23883,392 @@ def lead_labels_delete(label_id: int):
         return jsonify({"ok": deleted})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@portal_bp.route("/leads/<int:lead_id>/labels", methods=["POST"])
+@team_feature("crm.tags_assign")
+def lead_set_label(lead_id: int):
+    """Tick / untick one label on one lead — the lead page and the Label
+    column's picker. action=add|remove."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.tags_assign"):
+        return jsonify({"error": "Your role can't add or remove labels."}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    lid = request.form.get("label_id") or ""
+    action = request.form.get("action")
+    if not lid.isdigit() or action not in ("add", "remove"):
+        return jsonify({"error": "Invalid request."}), 400
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    try:
+        if not _lbl.get_label(cur, tenant_id, int(lid)):
+            return jsonify({"error": "Label not found."}), 404
+        _ssql, _sparams = _lead_scope("l")
+        cur.execute("SELECT 1 FROM merchant_pipeline_leads l WHERE l.id=%s AND l.tenant_id=%s" + _ssql,
+                    [lead_id, tenant_id] + _sparams)
+        if not cur.fetchone():
+            return jsonify({"error": "Lead not found."}), 404
+        if action == "add":
+            cur.execute("INSERT INTO lead_label_leads (label_id, lead_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                        (int(lid), lead_id))
+        else:
+            cur.execute("DELETE FROM lead_label_leads WHERE label_id=%s AND lead_id=%s", (int(lid), lead_id))
+        conn.commit()
+        labels = _lbl.labels_on(cur, tenant_id, [lead_id]).get(lead_id, [])
+        return jsonify({"ok": True, "labels": labels})
+    finally:
+        cur.close(); conn.close()
+
+
+def _label_bulk_lead_ids(cur, tenant_id: int) -> list:
+    """Leads a bulk label action applies to: ticked ids (Pipeline sends
+    lead_ids; Leads sends lead_ids_csv) or every lead matching the Leads
+    filters ("Select all matching")."""
+    f = request.form
+    if f.get("all_matching") == "1" or f.get("lead_ids_csv"):
+        return _bulk_selected_lead_ids(cur, tenant_id, f, "leads", _current_actor()["key"])
+    ids = list({int(v) for v in f.getlist("lead_ids") if v.isdigit()})
+    if not ids:
+        return []
+    # Only leads this person may see (staff without "See all leads" = their own).
+    _ssql, _sparams = _lead_scope("l")
+    cur.execute("SELECT l.id FROM merchant_pipeline_leads l WHERE l.tenant_id=%s AND l.id = ANY(%s)" + _ssql,
+                [tenant_id, ids] + _sparams)
+    return [r[0] for r in cur.fetchall()]
+
+
+@portal_bp.route("/labels/<int:label_id>/members/bulk-remove", methods=["POST"])
+@team_feature("crm.tags_assign")
+def lead_labels_bulk_remove_members(label_id: int):
+    """Take one label off many leads — Leads and Pipeline bulk bars."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not _team_member_has_permission("crm.tags_assign"):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection()
+    cur  = conn.cursor()
+    try:
+        lead_ids = _label_bulk_lead_ids(cur, tenant_id)
+        if not lead_ids:
+            return jsonify({"error": "No leads selected."}), 400
+        if not _lbl.get_label(cur, tenant_id, label_id):
+            return jsonify({"error": "Label not found."}), 404
+        cur.execute("DELETE FROM lead_label_leads ll USING merchant_pipeline_leads l "
+                    "WHERE ll.label_id=%s AND ll.lead_id = l.id AND l.id = ANY(%s) AND l.tenant_id=%s",
+                    (label_id, lead_ids, tenant_id))
+        removed = cur.rowcount
+        conn.commit()
+        return jsonify({"ok": True, "removed": removed})
+    finally:
+        cur.close(); conn.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# YOUR OWN COLUMNS on Leads + Sales Pipeline (2026-10-16) — see columns_core.py.
+# Private / group / business like labels; six types; no limit on how many.
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.app_template_filter("cc_date")
+def _cc_date_filter(v):
+    try:
+        return datetime.strptime(str(v)[:10], "%Y-%m-%d").strftime("%-d %b %Y")
+    except ValueError:
+        return v
+
+
+@portal_bp.app_template_filter("cc_number")
+def _cc_number_filter(v):
+    try:
+        return f"{v:,}"
+    except (TypeError, ValueError):
+        return v
+
+
+def _cc_filter_chips(cols: list, state: dict) -> list:
+    """[{text, url}] for each active filter on someone's own column; url = this
+    page without that filter (so a filter can always be removed, even when
+    nothing matches and the column heading isn't on screen)."""
+    chips = []
+    for c in cols:
+        st = state.get(c["id"])
+        if not st:
+            continue
+        vals = st.get("values") or []
+        names = {ch["id"]: ch["name"] for ch in c["choices"]}
+        if vals == ["__any__"]:
+            txt = "has a value"
+        elif vals == ["__empty__"]:
+            txt = "empty"
+        elif "values" in st:
+            txt = ", ".join(names.get(v, {"yes": "Yes", "no": "No"}.get(v, v)) for v in vals)
+        else:
+            txt = " – ".join(x for x in (st.get("from") or "…", st.get("to") or "…"))
+        drop = {f"cf{c['id']}", f"cf{c['id']}_from", f"cf{c['id']}_to", "page"}
+        kept = {k: request.args.getlist(k) for k in request.args.keys() if k not in drop}
+        chips.append({"text": f"{c['name']}: {txt}", "url": url_for(request.endpoint, **kept)})
+    return chips
+
+
+def _col_people(cur, tenant_id: int):
+    """Departments and active staff, for the column window's group picker."""
+    departments = [{"id": d["id"], "name": d["name"]} for d in _get_tenant_departments(tenant_id)]
+    c = cur.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    c.execute("""SELECT id, COALESCE(NULLIF(TRIM(COALESCE(first_name,'') || ' ' || COALESCE(last_name,'')), ''), name) AS name
+                 FROM team_members WHERE tenant_id=%s AND is_active ORDER BY 2""", (tenant_id,))
+    staff = [dict(r) for r in c.fetchall()]
+    c.close()
+    return departments, staff
+
+
+def _col_json(cur, col):
+    col = dict(col)
+    col["can_change"] = _cols.can_change(col, _team_member_has_permission)
+    col["can_delete"] = _cols.can_delete(col, _team_member_has_permission)
+    col["can_fill"]   = _cols.can_fill(col, _team_member_has_permission)
+    acc = _cols.access_of(cur, col["id"]) if col["visibility"] == "group" else {"dept": [], "member": []}
+    col["dept_ids"], col["member_ids"] = acc["dept"], acc["member"]
+    return col
+
+
+@portal_bp.route("/columns/list")
+@team_feature("leads.page", "crm.pipeline_board_view")
+def lead_columns_list_json():
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not (_team_member_has_permission("leads.page") or _team_member_has_permission("crm.pipeline_board_view")):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cols = [_col_json(cur, c) for c in _cols.visible_columns(cur, tenant_id)]
+        departments, staff = _col_people(cur, tenant_id)
+        return jsonify({"columns": cols, "departments": departments, "staff": staff,
+                        "me": session.get("team_member_id"),
+                        "types": [{"key": k, "name": n, "example": e} for k, n, e in _cols.TYPES],
+                        "can_own": _team_member_has_permission("crm.columns_own") or _team_member_has_permission("crm.columns_create"),
+                        "can_business": _team_member_has_permission("crm.columns_create")})
+    finally:
+        cur.close(); conn.close()
+
+
+def _col_form():
+    f = request.form
+    vis_ = (f.get("visibility") or "").strip()
+    return {
+        "name": (f.get("name") or "").strip()[:60],
+        "col_type": (f.get("col_type") or "").strip(),
+        "choices_json": f.get("choices") or "[]",
+        "visibility": vis_ if vis_ in ("private", "group", "business") else None,
+        "dept_ids": [int(v) for v in f.getlist("dept_ids") if v.isdigit()],
+        "member_ids": [int(v) for v in f.getlist("member_ids") if v.isdigit()],
+    }
+
+
+@portal_bp.route("/columns/create", methods=["POST"])
+@team_feature("crm.columns_own", "crm.columns_create")
+def lead_columns_create():
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    d = _col_form()
+    vis_ = d["visibility"] or "private"
+    if vis_ == "business" and not _team_member_has_permission("crm.columns_create"):
+        return jsonify({"error": "Your role can't create columns for everyone. Choose 'Only me' or 'A group'."}), 403
+    if not (_team_member_has_permission("crm.columns_own") or _team_member_has_permission("crm.columns_create")):
+        return jsonify({"error": "Your role can't make columns."}), 403
+    if not d["name"]:
+        return jsonify({"error": "Give the column a name."}), 400
+    if d["col_type"] not in _cols.TYPE_KEYS:
+        return jsonify({"error": "Choose what goes in the column."}), 400
+    choices = _cols.clean_choices(d["choices_json"]) if d["col_type"] in ("choice", "multi") else []
+    if d["col_type"] in ("choice", "multi") and not choices:
+        return jsonify({"error": "Add at least one choice."}), 400
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("INSERT INTO lead_columns (tenant_id, name, col_type, choices, visibility, created_by_key) "
+                    "VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
+                    (tenant_id, d["name"], d["col_type"], _json.dumps(choices), vis_, _lbl.actor_key() or None))
+        cid = cur.fetchone()[0]
+        _cols.save_access(cur, cid, vis_, d["dept_ids"], d["member_ids"])
+        conn.commit()
+        return jsonify({"ok": True, "id": cid})
+    finally:
+        cur.close(); conn.close()
+
+
+@portal_bp.route("/columns/<int:column_id>/update", methods=["POST"])
+@team_feature("crm.columns_own", "crm.columns_edit")
+def lead_columns_update(column_id: int):
+    """Rename, change choices, or (whoever made it) change who sees it. The
+    type can't change once made — existing values would no longer fit."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not (_team_member_has_permission("crm.columns_own") or _team_member_has_permission("crm.columns_edit")):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    d = _col_form()
+    if not d["name"]:
+        return jsonify({"error": "Give the column a name."}), 400
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        col = _cols.get_column(cur, tenant_id, column_id)
+        if not col:
+            return jsonify({"error": "Column not found."}), 404
+        if not _cols.can_change(col, _team_member_has_permission):
+            return jsonify({"error": "You can't change this column."}), 403
+        vis_ = col["visibility"]
+        if d["visibility"] and d["visibility"] != vis_:
+            if not col["mine"]:
+                return jsonify({"error": "Only the person who made this column can change who sees it."}), 403
+            if d["visibility"] == "business" and not _team_member_has_permission("crm.columns_create"):
+                return jsonify({"error": "Your role can't make columns for everyone."}), 403
+            vis_ = d["visibility"]
+        choices = col["choices"]
+        if col["col_type"] in ("choice", "multi"):
+            choices = _cols.clean_choices(d["choices_json"], old=col["choices"])
+            if not choices:
+                return jsonify({"error": "Keep at least one choice."}), 400
+        choices = [{k: ch[k] for k in ("id", "name", "colour")} for ch in choices]
+        cur.execute("UPDATE lead_columns SET name=%s, choices=%s, visibility=%s WHERE id=%s AND tenant_id=%s",
+                    (d["name"], _json.dumps(choices), vis_, column_id, tenant_id))
+        if col["mine"] and "visibility" in request.form:
+            _cols.save_access(cur, column_id, vis_, d["dept_ids"], d["member_ids"])
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        cur.close(); conn.close()
+
+
+@portal_bp.route("/columns/<int:column_id>/delete", methods=["POST"])
+@team_feature("crm.columns_own", "crm.columns_delete")
+def lead_columns_delete(column_id: int):
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not (_team_member_has_permission("crm.columns_own") or _team_member_has_permission("crm.columns_delete")):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        col = _cols.get_column(cur, tenant_id, column_id)
+        if not col:
+            return jsonify({"error": "Column not found."}), 404
+        if not _cols.can_delete(col, _team_member_has_permission):
+            return jsonify({"error": "You can't delete this column."}), 403
+        cur.execute("DELETE FROM lead_columns WHERE id=%s AND tenant_id=%s", (column_id, tenant_id))
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        cur.close(); conn.close()
+
+
+@portal_bp.route("/columns/<int:column_id>/hide", methods=["POST"])
+@team_feature("leads.page", "crm.pipeline_board_view")
+def lead_columns_hide(column_id: int):
+    """Hide / show a column for this person only."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not (_team_member_has_permission("leads.page") or _team_member_has_permission("crm.pipeline_board_view")):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        if not _cols.get_column(cur, tenant_id, column_id):
+            return jsonify({"error": "Column not found."}), 404
+        if request.form.get("hidden") == "1":
+            cur.execute("INSERT INTO lead_column_hidden VALUES (%s,%s) ON CONFLICT DO NOTHING", (column_id, _lbl.actor_key()))
+        else:
+            cur.execute("DELETE FROM lead_column_hidden WHERE column_id=%s AND actor_key=%s", (column_id, _lbl.actor_key()))
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        cur.close(); conn.close()
+
+
+def _col_store(cur, col, lead_ids, value):
+    if value is None:
+        cur.execute("DELETE FROM lead_column_values WHERE column_id=%s AND lead_id = ANY(%s)", (col["id"], list(lead_ids)))
+    else:
+        cur.execute("INSERT INTO lead_column_values (column_id, lead_id, value, updated_by_key) "
+                    "SELECT %s, x, %s::jsonb, %s FROM unnest(%s::int[]) x "
+                    "ON CONFLICT (column_id, lead_id) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW(), "
+                    "updated_by_key=EXCLUDED.updated_by_key",
+                    (col["id"], _json.dumps(value), _lbl.actor_key() or None, list(lead_ids)))
+
+
+def _col_raw_value(col):
+    return request.form.getlist("value") if col["col_type"] == "multi" else request.form.get("value")
+
+
+@portal_bp.route("/leads/<int:lead_id>/columns/<int:column_id>", methods=["POST"])
+@team_feature("crm.columns_own", "crm.pipeline_board_edit")
+def lead_column_set_value(lead_id: int, column_id: int):
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not (_team_member_has_permission("crm.columns_own") or _team_member_has_permission("crm.pipeline_board_edit")):
+        return jsonify({"error": "Your role can't fill in columns."}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        col = _cols.get_column(cur, tenant_id, column_id)
+        if not col:
+            return jsonify({"error": "Column not found."}), 404
+        if not _cols.can_fill(col, _team_member_has_permission):
+            return jsonify({"error": "Your role can't fill in this column."}), 403
+        _ssql, _sparams = _lead_scope("l")
+        cur.execute("SELECT 1 FROM merchant_pipeline_leads l WHERE l.id=%s AND l.tenant_id=%s" + _ssql,
+                    [lead_id, tenant_id] + _sparams)
+        if not cur.fetchone():
+            return jsonify({"error": "Lead not found."}), 404
+        try:
+            value = _cols.clean_value(col, _col_raw_value(col))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        _col_store(cur, col, [lead_id], value)
+        conn.commit()
+        return jsonify({"ok": True, "value": value})
+    finally:
+        cur.close(); conn.close()
+
+
+@portal_bp.route("/columns/<int:column_id>/bulk-fill", methods=["POST"])
+@team_feature("crm.columns_own", "crm.pipeline_board_edit")
+def lead_columns_bulk_fill(column_id: int):
+    """Same value on many ticked leads (Leads and Pipeline bulk bars)."""
+    r = _require_login()
+    if r: return jsonify({"error": "unauthorised"}), 401
+    if not (_team_member_has_permission("crm.columns_own") or _team_member_has_permission("crm.pipeline_board_edit")):
+        return jsonify({"error": "Your role can't fill in columns."}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        col = _cols.get_column(cur, tenant_id, column_id)
+        if not col:
+            return jsonify({"error": "Column not found."}), 404
+        if not _cols.can_fill(col, _team_member_has_permission):
+            return jsonify({"error": "Your role can't fill in this column."}), 403
+        lead_ids = _label_bulk_lead_ids(cur, tenant_id)
+        if not lead_ids:
+            return jsonify({"error": "No leads selected."}), 400
+        try:
+            value = _cols.clean_value(col, _col_raw_value(col))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        _col_store(cur, col, lead_ids, value)
+        conn.commit()
+        return jsonify({"ok": True, "count": len(lead_ids)})
+    finally:
+        cur.close(); conn.close()
 
 
 @portal_bp.route("/labels/<int:label_id>/members")
@@ -23810,7 +24283,7 @@ def lead_labels_members(label_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT id, name FROM lead_labels WHERE id=%s AND tenant_id=%s", (label_id, tenant_id))
+        cur.execute("SELECT id, name FROM lead_labels WHERE id=%s AND tenant_id=%s AND label_visible(id)", (label_id, tenant_id))
         label = cur.fetchone()
         if not label:
             cur.close(); conn.close()
@@ -23832,11 +24305,11 @@ def lead_labels_members(label_id: int):
 
 
 @portal_bp.route("/labels/<int:label_id>/members/remove", methods=["POST"])
-@team_feature("crm.tags_edit")
+@team_feature("crm.tags_assign")
 def lead_labels_remove_member(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags_edit"):
+    if not _team_member_has_permission("crm.tags_assign"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -23847,7 +24320,7 @@ def lead_labels_remove_member(label_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute("SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s", (label_id, tenant_id))
+        cur.execute("SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s AND label_visible(id)", (label_id, tenant_id))
         if not cur.fetchone():
             cur.close(); conn.close()
             return jsonify({"error": "Label not found."}), 404
@@ -23860,7 +24333,7 @@ def lead_labels_remove_member(label_id: int):
 
 
 @portal_bp.route("/labels/<int:label_id>/members/move", methods=["POST"])
-@team_feature("crm.tags_edit")
+@team_feature("crm.tags_assign")
 def lead_labels_move_member(label_id: int):
     """Move a Sales Pipeline lead off this label and onto a different one in
     one action — takes it off the source label even if it was already on the
@@ -23868,7 +24341,7 @@ def lead_labels_move_member(label_id: int):
     rather than just adding a second label."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags_edit"):
+    if not _team_member_has_permission("crm.tags_assign"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -23882,11 +24355,11 @@ def lead_labels_move_member(label_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute("SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s", (label_id, tenant_id))
+        cur.execute("SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s AND label_visible(id)", (label_id, tenant_id))
         if not cur.fetchone():
             cur.close(); conn.close()
             return jsonify({"error": "Label not found."}), 404
-        cur.execute("SELECT name FROM lead_labels WHERE id=%s AND tenant_id=%s", (target_label_id, tenant_id))
+        cur.execute("SELECT name FROM lead_labels WHERE id=%s AND tenant_id=%s AND label_visible(id)", (target_label_id, tenant_id))
         target = cur.fetchone()
         if not target:
             cur.close(); conn.close()
@@ -23905,7 +24378,7 @@ def lead_labels_move_member(label_id: int):
 
 
 @portal_bp.route("/labels/<int:label_id>/members/bulk-add", methods=["POST"])
-@team_feature("crm.tags_edit")
+@team_feature("crm.tags_assign")
 def lead_labels_bulk_add_members(label_id: int):
     """Add many Sales Pipeline leads to a label in one call — used by the Sales
     Pipeline page's multi-select 'Add to Label' bulk action. Unlike segments,
@@ -23913,19 +24386,19 @@ def lead_labels_bulk_add_members(label_id: int):
     not an email-campaign audience)."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags_edit"):
+    if not _team_member_has_permission("crm.tags_assign"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
 
-    lead_ids = list({int(v) for v in request.form.getlist("lead_ids") if v.isdigit()})
-    if not lead_ids:
-        return jsonify({"error": "No contacts selected."}), 400
-
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute("SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s", (label_id, tenant_id))
+        lead_ids = _label_bulk_lead_ids(cur, tenant_id)
+        if not lead_ids:
+            cur.close(); conn.close()
+            return jsonify({"error": "No leads selected."}), 400
+        cur.execute("SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s AND label_visible(id)", (label_id, tenant_id))
         if not cur.fetchone():
             cur.close(); conn.close()
             return jsonify({"error": "Label not found."}), 404
@@ -24012,7 +24485,7 @@ def lead_labels_contact_members(label_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        _ls_exec(cur, "SELECT id, name FROM lead_labels WHERE id=%s AND tenant_id=%s", (label_id, tenant_id))
+        _ls_exec(cur, "SELECT id, name FROM lead_labels WHERE id=%s AND tenant_id=%s AND label_visible(id)", (label_id, tenant_id))
         label = cur.fetchone()
         if not label:
             cur.close(); conn.close()
@@ -24035,11 +24508,11 @@ def lead_labels_contact_members(label_id: int):
 
 
 @portal_bp.route("/labels/<int:label_id>/contacts/remove", methods=["POST"])
-@team_feature("crm.tags_edit")
+@team_feature("crm.tags_assign")
 def lead_labels_remove_contact_member(label_id: int):
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags_edit"):
+    if not _team_member_has_permission("crm.tags_assign"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -24049,7 +24522,7 @@ def lead_labels_remove_contact_member(label_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute("SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s", (label_id, tenant_id))
+        cur.execute("SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s AND label_visible(id)", (label_id, tenant_id))
         if not cur.fetchone():
             cur.close(); conn.close()
             return jsonify({"error": "Label not found."}), 404
@@ -24063,13 +24536,13 @@ def lead_labels_remove_contact_member(label_id: int):
 
 
 @portal_bp.route("/labels/<int:label_id>/contacts/move", methods=["POST"])
-@team_feature("crm.tags_edit")
+@team_feature("crm.tags_assign")
 def lead_labels_move_contact_member(label_id: int):
     """Move a WhatsApp Contact off this label and onto a different one in one
     action — mirrors lead_labels_move_member() for Sales Pipeline leads."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags_edit"):
+    if not _team_member_has_permission("crm.tags_assign"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -24083,11 +24556,11 @@ def lead_labels_move_contact_member(label_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        cur.execute("SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s", (label_id, tenant_id))
+        cur.execute("SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s AND label_visible(id)", (label_id, tenant_id))
         if not cur.fetchone():
             cur.close(); conn.close()
             return jsonify({"error": "Label not found."}), 404
-        cur.execute("SELECT name FROM lead_labels WHERE id=%s AND tenant_id=%s", (target_label_id, tenant_id))
+        cur.execute("SELECT name FROM lead_labels WHERE id=%s AND tenant_id=%s AND label_visible(id)", (target_label_id, tenant_id))
         target = cur.fetchone()
         if not target:
             cur.close(); conn.close()
@@ -24106,13 +24579,13 @@ def lead_labels_move_contact_member(label_id: int):
 
 
 @portal_bp.route("/labels/<int:label_id>/contacts/bulk-add", methods=["POST"])
-@team_feature("crm.tags_edit")
+@team_feature("crm.tags_assign")
 def lead_labels_bulk_add_contacts(label_id: int):
     """Add many WhatsApp Contacts to a tag in one call — mirrors
     lead_labels_bulk_add_members() for Sales Pipeline leads."""
     r = _require_login()
     if r: return jsonify({"error": "unauthorised"}), 401
-    if not _team_member_has_permission("crm.tags_edit"):
+    if not _team_member_has_permission("crm.tags_assign"):
         return jsonify({"error": "forbidden"}), 403
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
@@ -24124,7 +24597,7 @@ def lead_labels_bulk_add_contacts(label_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
-        _ls_exec(cur, "SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s", (label_id, tenant_id))
+        _ls_exec(cur, "SELECT id FROM lead_labels WHERE id=%s AND tenant_id=%s AND label_visible(id)", (label_id, tenant_id))
         if not cur.fetchone():
             cur.close(); conn.close()
             return jsonify({"error": "Label not found."}), 404
@@ -24235,8 +24708,8 @@ def lead_labels_import_bounces():
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cur.execute(
-        "INSERT INTO lead_labels (tenant_id, name) VALUES (%s, %s) "
-        "ON CONFLICT (tenant_id, name) DO UPDATE SET name=EXCLUDED.name RETURNING id",
+        "INSERT INTO lead_labels (tenant_id, name, visibility) VALUES (%s, %s, 'business') "
+        "ON CONFLICT (tenant_id, name) WHERE visibility='business' DO UPDATE SET name=EXCLUDED.name RETURNING id",
         (tenant_id, BOUNCED_LABEL_NAME),
     )
     label_id = cur.fetchone()["id"]
@@ -33753,7 +34226,7 @@ def leads_page():
     _lf_clauses, _lf_params, lf = _leads_list_filters(tenant_id, request.args, actor["key"])
     search, tier_filter = lf["search"], lf["tier"]
     sort_by = (request.args.get("sort") or "").strip().lower()
-    if sort_by not in ("score",):
+    if sort_by not in ("score",) and not _re.match(r"^cc\d+_(asc|desc)$", sort_by):
         sort_by = ""
     per_page_raw = _remembered_per_page("leads", PIPELINE_PER_PAGE_OPTIONS, "50")
     page = request.args.get("page", "1")
@@ -33770,6 +34243,9 @@ def leads_page():
 
     real_leads, filtered_total, total_pages = [], 0, 1
     board_columns, hot_leads_smart, tier_counts = [], [], {}
+    lead_cols = _cols.visible_columns(cur, tenant_id)          # people's own columns
+    for _c in lead_cols:
+        _c["can_fill"] = _cols.can_fill(_c, _team_member_has_permission)
 
     # Lead → Opportunity redesign, rebuilt 2026-09-21 with a grandfathering
     # backfill this time (see portal_migrations.py's general stage-based rule,
@@ -33805,11 +34281,19 @@ def leads_page():
 
         order_sql = "mpl.lead_score DESC, mpl.created_at DESC, mpl.id DESC" if sort_by == "score" \
                     else "mpl.created_at DESC, mpl.id DESC"
+        _cc_sort = _cols.sort_sql(sort_by, "mpl", lead_cols)
+        if _cc_sort:
+            order_sql = _cc_sort + ", mpl.created_at DESC, mpl.id DESC"
         cur.execute(
             f"SELECT mpl.* FROM {scored_from} mpl WHERE {where} ORDER BY {order_sql} {limit_clause}",
             [tenant_id] + params + limit_params,
         )
         real_leads = [dict(r) for r in cur.fetchall()]
+        _lmap = _lbl.labels_on(cur, tenant_id, [l["id"] for l in real_leads])
+        _cv = _cols.values_for(cur, [c["id"] for c in lead_cols], [l["id"] for l in real_leads])
+        for l in real_leads:
+            l["labels"] = _lmap.get(l["id"], [])
+            l["cc"] = _cv.get(l["id"], {})
 
         cur.execute(
             f"SELECT lead_tier, count(*) AS c FROM {scored_from} mpl WHERE mpl.is_opportunity=FALSE GROUP BY lead_tier",
@@ -33836,6 +34320,9 @@ def leads_page():
         stage_order=PIPELINE_STAGE_ORDER,
         lf=lf, fargs=lf["fargs"], assignees=_lead_assignees(tenant_id, customer),
         actor_key=actor["key"], not_a_fit_reasons=PIPELINE_NOT_A_FIT_REASONS,
+        lead_cols=[c for c in lead_cols if not c["hidden"]], all_lead_cols=lead_cols,
+        col_filter_state=lf["biz"].get("cols", {}),
+        col_filter_chips=_cc_filter_chips(lead_cols, lf["biz"].get("cols", {})),
     )
 
 
@@ -34101,7 +34588,16 @@ def _biz_filter_clauses(alias: str, args, tenant_id: int, label_link: str = "lea
     import_id = int(imp) if imp.isdigit() else None
     if import_id:
         clauses.append(f"{alias}.import_id=%s"); params.append(import_id); fargs["import"] = str(import_id)
-    state = {"biz_category": cat, "employees": emp, "label": label_id, "import": import_id}
+    state = {"biz_category": cat, "employees": emp, "label": label_id, "import": import_id, "cols": {}}
+    # People's own columns (cf<id>=…, 2026-10-16) — Leads + Sales Pipeline only.
+    if label_link == "lead" and any(k.startswith("cf") for k in args.keys()):
+        _c = get_db_connection(); _cc = _c.cursor()
+        try:
+            _vis_cols = _cols.visible_columns(_cc, tenant_id)
+        finally:
+            _cc.close(); _c.close()
+        c_cl, c_pa, c_fa, state["cols"] = _cols.filter_clauses(alias, args, _vis_cols)
+        clauses += c_cl; params += c_pa; fargs.update(c_fa)
     return clauses, params, state, fargs
 
 
@@ -34205,7 +34701,7 @@ def _inject_biz_fields():
             rows = []
             if cust:
                 conn = get_db_connection(); cur = conn.cursor()
-                cur.execute("SELECT id, name FROM lead_labels WHERE tenant_id=%s ORDER BY lower(name)",
+                cur.execute("SELECT id, name FROM lead_labels WHERE tenant_id=%s AND label_visible(id) ORDER BY lower(name)",
                             (int(cust["tenant_id"]),))
                 rows = [{"id": r[0], "name": r[1]} for r in cur.fetchall()]
                 cur.close(); conn.close()
@@ -35314,14 +35810,8 @@ def _build_pipeline_kanban_board(cur, tenant_id, search, tier_filter,
         for row in cur.fetchall():
             board_wa_map.setdefault(row["lead_id"], []).append(row["name"])
 
-        cur.execute(
-            "SELECT ll.lead_id, lb.name FROM lead_label_leads ll "
-            "JOIN lead_labels lb ON lb.id = ll.label_id "
-            "WHERE ll.lead_id = ANY(%s) AND lb.tenant_id=%s",
-            (board_lead_ids, tenant_id),
-        )
-        for row in cur.fetchall():
-            board_label_map.setdefault(row["lead_id"], []).append(row["name"])
+        for _lid, _ls in _lbl.labels_on(cur, tenant_id, board_lead_ids).items():
+            board_label_map[_lid] = [x["name"] for x in _ls]
 
     for r in board_rows + hot_leads_smart:
         r["segment_names"]    = board_seg_map.get(r["id"], [])
@@ -35438,14 +35928,8 @@ def _build_leads_tier_board(cur, tenant_id, search):
         for row in cur.fetchall():
             board_wa_map.setdefault(row["lead_id"], []).append(row["name"])
 
-        cur.execute(
-            "SELECT ll.lead_id, lb.name FROM lead_label_leads ll "
-            "JOIN lead_labels lb ON lb.id = ll.label_id "
-            "WHERE ll.lead_id = ANY(%s) AND lb.tenant_id=%s",
-            (board_lead_ids, tenant_id),
-        )
-        for row in cur.fetchall():
-            board_label_map.setdefault(row["lead_id"], []).append(row["name"])
+        for _lid, _ls in _lbl.labels_on(cur, tenant_id, board_lead_ids).items():
+            board_label_map[_lid] = [x["name"] for x in _ls]
 
     for r in board_rows:
         r["segment_names"]    = board_seg_map.get(r["id"], [])
@@ -35562,6 +36046,15 @@ def sales_pipeline():
 
     _ls_exec(cur, f"SELECT count(*) AS c FROM {scored_from} mpl WHERE {where}", [tenant_id] + params)
     filtered_total = cur.fetchone()["c"]
+    # People's own columns (2026-10-16): shown, sortable (sort=cc<id>_asc|desc).
+    lead_cols = _cols.visible_columns(cur, tenant_id)
+    for _c in lead_cols:
+        _c["can_fill"] = _cols.can_fill(_c, _team_member_has_permission)
+    sort_by = (request.args.get("sort") or "").strip().lower()
+    _cc_sort = _cols.sort_sql(sort_by, "mpl", lead_cols)
+    if not _cc_sort:
+        sort_by = ""
+    pipe_order = (_cc_sort + ", " if _cc_sort else "") + "mpl.created_at DESC, mpl.id DESC"
 
     if per_page_raw == "all":
         total_pages   = 1
@@ -35584,7 +36077,7 @@ def sales_pipeline():
                    a.last_name AS assigned_ambassador_last_name
               FROM {scored_from} mpl
               LEFT JOIN ambassadors a ON a.id = mpl.assigned_ambassador_id
-             WHERE {where} ORDER BY mpl.created_at DESC, mpl.id DESC {limit_clause}""",
+             WHERE {where} ORDER BY {pipe_order} {limit_clause}""",
         [tenant_id] + params + limit_params,
     )
     leads = [dict(r) for r in cur.fetchall()]
@@ -35682,20 +36175,14 @@ def sales_pipeline():
     # Which label(s), if any, each lead on this page has — same pattern as segments
     # above, but a separate table since labels are a lead status, not a campaign
     # audience.
-    lead_label_map = {}
-    if lead_ids_on_page:
-        _ls_exec(cur, 
-            "SELECT ll.lead_id, lb.name FROM lead_label_leads ll "
-            "JOIN lead_labels lb ON lb.id = ll.label_id "
-            "WHERE ll.lead_id = ANY(%s) AND lb.tenant_id=%s",
-            (lead_ids_on_page, tenant_id),
-        )
-        for row in cur.fetchall():
-            lead_label_map.setdefault(row["lead_id"], []).append(row["name"])
+    lead_label_map = _lbl.labels_on(cur, tenant_id, lead_ids_on_page)
+    _cv = _cols.values_for(cur, [c["id"] for c in lead_cols], lead_ids_on_page)
     for l in leads:
-        l["label_names"] = lead_label_map.get(l["id"], [])
+        l["labels"] = lead_label_map.get(l["id"], [])
+        l["label_names"] = [x["name"] for x in l["labels"]]
+        l["cc"] = _cv.get(l["id"], {})
 
-    _ls_exec(cur, "SELECT id, name FROM lead_labels WHERE tenant_id=%s ORDER BY name", (tenant_id,))
+    _ls_exec(cur, "SELECT id, name FROM lead_labels WHERE tenant_id=%s AND label_visible(id) ORDER BY lower(name)", (tenant_id,))
     all_labels = cur.fetchall()
 
     # Stage tallies and pipeline value are always over the FULL active (non-dropped)
@@ -35788,11 +36275,12 @@ def sales_pipeline():
     total_pipeline_value = float(totals["pv"] or 0)
     won_value            = float(totals["wv"] or 0)
 
-    # Closed: Lost & Not a Fit (2026-10-15) — every closed lead or deal, since
-    # the Sales Pipeline lists every open lead too (plus any old Dropped ones).
+    # Closed: Lost & Not a Fit (2026-10-15) — Qualified deals only, like the
+    # rest of the Sales Pipeline (Not a Fit Leads that were never qualified
+    # stay in the Leads page's own history), plus any old Dropped ones.
     _ls_exec(cur, """
         SELECT * FROM merchant_pipeline_leads
-        WHERE tenant_id=%s AND dropped_at IS NOT NULL AND outcome IS DISTINCT FROM 'won'
+        WHERE tenant_id=%s AND dropped_at IS NOT NULL AND is_opportunity
         ORDER BY dropped_at DESC
     """, (tenant_id,))
     dropped_leads = [dict(r) for r in cur.fetchall()]
@@ -35828,6 +36316,11 @@ def sales_pipeline():
 
     return render_template(
         "portal/sales_pipeline.html",
+        lead_cols             = [c for c in lead_cols if not c["hidden"]],
+        all_lead_cols         = lead_cols,
+        col_filter_state      = biz_state.get("cols", {}),
+        col_filter_chips      = _cc_filter_chips(lead_cols, biz_state.get("cols", {})),
+        sort_by               = sort_by,
         addr_state            = addr_state,
         addr_fargs            = addr_fargs,
         biz_state             = biz_state,
@@ -35934,6 +36427,9 @@ def sales_pipeline_export():
         [tenant_id] + params,
     )
     leads = cur.fetchall()
+    # People's own columns this person can see go on the end (2026-10-16).
+    _xcols = _cols.visible_columns(cur, tenant_id)
+    _xvals = _cols.values_for(cur, [c["id"] for c in _xcols], [l["id"] for l in leads])
     cur.close(); conn.close()
 
     import csv as _csv, io as _io
@@ -35944,7 +36440,7 @@ def sales_pipeline_export():
     writer = _csv.writer(buf)
     writer.writerow(['Customer', 'Contact Person', 'Phone', 'WhatsApp Number', 'Email',
                      'Business Category', 'Number of Employees', 'Deal Value', 'Stage', 'Added',
-                     'Assigned To'])
+                     'Assigned To'] + [c["name"] for c in _xcols])
     for l in leads:
         writer.writerow([
             l["customer_name"] or "", l["contact_person"] or "", l["phone"] or "",
@@ -35954,7 +36450,7 @@ def sales_pipeline_export():
             _export_stage_labels.get(l["stage"], l["stage"]),
             l["created_at"].strftime("%Y-%m-%d") if l["created_at"] else "",
             display_actor(l["assigned_to"], l.get("assigned_key")) if l.get("assigned_to") else "",
-        ])
+        ] + [_cols.display(c, _xvals.get(l["id"], {}).get(c["id"])) or "" for c in _xcols])
 
     return Response(
         buf.getvalue(),
@@ -36716,12 +37212,20 @@ def lead_detail(lead_id: int):
     # Lead's own notes field, editable via the existing Edit Deal modal.
     stage_history = pipeline_get_stage_history(lead_id)
     last_worked_by = stage_history[0]["changed_by"] if stage_history else None
+    lead_labels = _lbl.labels_on(cur, tenant_id, [lead_id]).get(lead_id, [])
+    lead_cols = _cols.visible_columns(cur, tenant_id)
+    lead_col_values = _cols.values_for(cur, [c["id"] for c in lead_cols], [lead_id]).get(lead_id, {})
+    for _c in lead_cols:
+        _c["can_fill"] = _cols.can_fill(_c, _team_member_has_permission)
 
     cur.close(); conn.close()
 
     return render_template(
         "portal/lead_detail.html",
         lead=lead,
+        lead_labels=lead_labels,
+        lead_cols=lead_cols, lead_col_values=lead_col_values,
+        can_assign_labels=_team_member_has_permission("crm.tags_assign"),
         lead_score=score_row["lead_score"],
         lead_tier=score_row["lead_tier"],
         score_breakdown=score_breakdown,
@@ -37915,14 +38419,7 @@ def _crm_import_execute(import_id, tenant_id, opts, items, actor_label, assign_p
     label_id = None
     try:
         if opts.get("label"):
-            cur.execute("SELECT id FROM lead_labels WHERE tenant_id=%s AND lower(name)=lower(%s)",
-                        (tenant_id, opts["label"]))
-            r = cur.fetchone()
-            if not r:
-                cur.execute("INSERT INTO lead_labels (tenant_id, name) VALUES (%s,%s) RETURNING id",
-                            (tenant_id, opts["label"]))
-                r = cur.fetchone()
-            label_id = r[0]
+            label_id = _lbl.find_or_create(cur, tenant_id, opts["label"])
             conn.commit()
         turn = 0
         for n, rec in enumerate(items, 1):
@@ -38024,10 +38521,8 @@ def _crm_import_execute(import_id, tenant_id, opts, items, actor_label, assign_p
                         _add_contact_labels(cur, tenant_id, contact_id, labels)
                     if opts["create"] == "both" and rec["labels"]:
                         for lb in rec["labels"]:
-                            cur.execute("SELECT id FROM lead_labels WHERE tenant_id=%s AND lower(name)=lower(%s)",
-                                        (tenant_id, lb))
-                            r = cur.fetchone()
-                            if r:
+                            r = [_lbl.find_or_create(cur, tenant_id, lb)]
+                            if r[0]:
                                 cur.execute("INSERT INTO lead_label_leads (label_id, lead_id) VALUES (%s,%s) "
                                             "ON CONFLICT DO NOTHING", (r[0], lead_id))
                 cur.execute("RELEASE SAVEPOINT imp_row")

@@ -5,7 +5,10 @@
 {% block title %}Leads — PhiXtra Portal{% endblock %}
 {% block wrap_class %}page-wide{% endblock %}
 {% block content %}
-{% set can_bulk = staff_can('leads.qualify') or staff_can('leads.assign') %}
+{% from "portal/_labels_ui.html" import label_chip %}
+{% from "portal/_columns_ui.html" import cc_head, cc_cell, cc_filter_bar %}
+{% set can_label = staff_can('crm.tags_assign') %}
+{% set can_bulk = staff_can('leads.qualify') or staff_can('leads.assign') or can_label or (all_lead_cols|selectattr('can_fill')|list|length > 0) %}
 
 <style>
 .leads-hero {
@@ -618,9 +621,10 @@
 </div>
 
 {% elif not real_leads %}
+{{ cc_filter_bar(col_filter_chips) }}
 <div class="empty-leads">
   <div class="empty-leads-icon">📇</div>
-  <div style="font-size:17px;font-weight:700;margin-bottom:8px">No Leads yet</div>
+  <div style="font-size:17px;font-weight:700;margin-bottom:8px">{{ 'No leads match these filters' if col_filter_chips else 'No Leads yet' }}</div>
   <p style="max-width:380px;margin:0 auto">Add one by hand above, or create one from a Hot Conversation.</p>
 </div>
 {% else %}
@@ -633,17 +637,25 @@
   {% if staff_can('leads.qualify') %}<button type="button" class="lb-btn lb-white" onclick="lbOpenQualify()">✓ Qualify</button>{% endif %}
   {% if staff_can('leads.assign') %}<button type="button" class="lb-btn lb-ghost" onclick="lbOpenAssign()">👤 Assign to</button>{% endif %}
   {% if staff_can('crm.pipeline_board_edit') %}<button type="button" class="lb-btn lb-ghost" onclick="lbOpenAddr()">📍 Set address</button>{% endif %}
+  {% if can_label %}<button type="button" class="lb-btn lb-ghost" onclick="LabelUI.bulk(this, 'add', lbForm, lbLabelDone)">🏷️ Add label</button>
+  <button type="button" class="lb-btn lb-ghost" onclick="LabelUI.bulk(this, 'remove', lbForm, lbLabelDone)">Remove label</button>{% endif %}
+  {% if all_lead_cols %}<button type="button" class="lb-btn lb-ghost" onclick="ColumnUI.bulkFill(this, lbForm, lbLabelDone)">▦ Fill a column</button>{% endif %}
   {% if staff_can('leads.qualify') %}<button type="button" class="lb-btn lb-red" onclick="lbOpenNaf()">Not a Fit</button>{% endif %}
   <button type="button" class="lb-btn lb-ghost" onclick="lbClear()">Clear</button>
 </div>
 {% endif %}
+{{ cc_filter_bar(col_filter_chips) }}
+<div class="cc-toolbar">
+  <button type="button" class="btn btn-sm" onclick="ColumnUI.columnsMenu(this)">▦ Columns{% if all_lead_cols %} ({{ all_lead_cols|length }}){% endif %}</button>
+  {% if staff_can('crm.columns_own') or staff_can('crm.columns_create') %}<button type="button" class="btn btn-sm btn-primary" onclick="ColumnUI.openWindow(null)">+ Add column</button>{% endif %}
+</div>
 <div class="card" style="padding:0">
   <div class="table-wrap">
     <table class="rpt-table">
       <thead>
         <tr>
           {% if can_bulk %}<th style="width:34px"><input type="checkbox" id="lbSelectPage" class="lb-ck" onchange="lbTogglePage(this)" aria-label="Select all leads on this page"></th>{% endif %}
-          <th>Company</th><th>Business category</th><th>Employees</th><th>Website</th><th>Location</th><th>Contact</th><th>Phone Number</th><th>WhatsApp Number</th><th>Email</th><th>Source</th>
+          <th>Company</th><th>Business category</th><th>Employees</th><th>Website</th><th>Label</th>{% for c in lead_cols %}{{ cc_head(c, sort_by, c.id in col_filter_state) }}{% endfor %}<th>Location</th><th>Contact</th><th>Phone Number</th><th>WhatsApp Number</th><th>Email</th><th>Source</th>
           <th>Product / Service</th><th>Deal Value</th><th>Assigned To</th><th>Stage</th><th>Score</th><th>Added</th>
         </tr>
       </thead>
@@ -659,6 +671,8 @@
           <td class="muted" style="white-space:nowrap">{{ l.business_category or '—' }}</td>
           <td class="muted" style="white-space:nowrap">{{ l.employees or '—' }}</td>
           <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{% set _w = (l.website or '')|replace('https://','')|replace('http://','') %}{% if _w %}<a href="{{ l.website }}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:none" title="{{ l.website }}">{{ _w.rstrip('/') }}</a>{% else %}—{% endif %}</td>
+          <td style="font-size:11px" data-lbl-lead="{{ l.id }}" data-ids="{{ l.labels|map(attribute='id')|join(',') }}"><div class="lbl-cell"><span class="lbl-chips">{% for lb in l.labels %}{{ label_chip(lb) }}{% else %}<span class="muted">—</span>{% endfor %}</span>{% if can_label %}<button type="button" class="lbl-edit" onclick="LabelUI.editLead(this, {{ l.id }})" aria-label="Edit labels on {{ l.customer_name }}">Edit</button>{% endif %}</div></td>
+          {% for c in lead_cols %}{{ cc_cell(c, l.id, l.cc.get(c.id)) }}{% endfor %}
           <td class="muted" style="max-width:220px">{{ location_cell(l) }}</td>
           <td class="muted">{{ l.contact_person or '—' }}</td>
           <td class="muted" style="font-family:'SF Mono','Fira Code',monospace">{{ (l.phone|phone_display) or '—' }}{{ phone_flag(l.phone) }}</td>
@@ -922,12 +936,13 @@ function lbForm(){
   fd.append('scope', 'leads');
   if (LB.all) {
     fd.append('all_matching', '1');
-    new URLSearchParams(location.search).forEach(function(v, k){ if (LB.filterKeys.indexOf(k) >= 0) fd.append(k, v); });
+    new URLSearchParams(location.search).forEach(function(v, k){ if (LB.filterKeys.indexOf(k) >= 0 || /^cf\d+(_from|_to)?$/.test(k)) fd.append(k, v); });
   } else {
     fd.append('lead_ids_csv', lbIds().join(','));   // one field, however many are ticked
   }
   return fd;
 }
+function lbLabelDone(msg){ alert(msg); location.reload(); }
 function lbPost(url, fd){
   return fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' })
     .then(function(r){ return r.json().catch(function(){ return { error: 'Something went wrong (' + r.status + ').' }; }); });
@@ -1075,4 +1090,7 @@ document.addEventListener('click', function(e){
 });
 </script>
 
+{% include "portal/_labels_ui.html" %}
+{% include "portal/_columns_ui.html" %}
+<style>.cc-toolbar{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin:0 0 10px}</style>
 {% endblock %}

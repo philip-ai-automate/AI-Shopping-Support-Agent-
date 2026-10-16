@@ -1,0 +1,203 @@
+{#- Labels on leads (2026-10-16): one chip look and one picker, shared by the
+    lead page, the Leads / Sales Pipeline Label column and both bulk bars.
+    Import the chip with {% from "portal/_labels_ui.html" import label_chip %}
+    and {% include "portal/_labels_ui.html" %} once per page for the picker. -#}
+{% macro label_chip(lb, lead_id=none, removable=false) -%}
+<span class="lbl-chip" style="{{ lb.style }}" title="{{ lb.description or ('Only you see this label' if lb.visibility == 'private' else ('Shared with a group' if lb.visibility == 'group' else '')) }}">{{ lb.icon }}{{ lb.name }}{% if removable %}<button type="button" class="lbl-x" aria-label="Remove {{ lb.name }}" onclick="LabelUI.toggleOnLead({{ lead_id }}, {{ lb.id }}, false, this)">×</button>{% endif %}</span>
+{%- endmacro %}
+
+{% if not _labels_ui_done %}
+<style>
+  .lbl-chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:600;
+            white-space:nowrap;line-height:1.6;margin:1px 3px 1px 0}
+  .lbl-x{border:0;background:none;color:inherit;cursor:pointer;font-size:13px;line-height:1;padding:0 0 0 2px;opacity:.65}
+  .lbl-x:hover,.lbl-x:focus-visible{opacity:1}
+  .lbl-cell{display:flex;flex-wrap:wrap;align-items:center;gap:2px}
+  .lbl-edit{border:0;background:none;color:var(--muted);cursor:pointer;font-size:11.5px;font-weight:600;padding:2px 4px;opacity:0}
+  tr:hover .lbl-edit,.lbl-edit:focus-visible{opacity:1}
+  .lbl-add{border:1px dashed #9DB8E8;color:#0B1D40;background:none;border-radius:999px;padding:2px 10px;font-size:11.5px;font-weight:600;cursor:pointer}
+  .lblp{position:fixed;z-index:600;overflow:hidden;background:#fff;border:1px solid rgba(3,12,24,.12);border-radius:12px;
+        box-shadow:0 14px 36px rgba(3,12,24,.18);width:300px;max-width:calc(100vw - 32px);padding:10px;display:flex;flex-direction:column;gap:4px}
+  .lblp input[type=text]{width:100%;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:9px;font-size:13px;font-family:inherit}
+  .lblp-list{flex:1 1 auto;min-height:48px;overflow-y:auto;display:flex;flex-direction:column}
+  .lblp-h{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:8px 6px 3px}
+  .lblp-opt{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:7px;cursor:pointer;font-size:13px}
+  .lblp-opt:hover{background:#f1f5f9}
+  .lblp-opt .n{margin-left:auto;font-size:11.5px;color:var(--muted)}
+  /* the portal's general form styles must not reach inside the picker */
+  .lblp [hidden]{display:none !important}
+  /* label left, count, then the tick boxes in one straight column on the right */
+  .lblp .lblp-opt{display:grid;grid-template-columns:minmax(0,1fr) auto 16px;column-gap:10px;align-items:center;
+                  text-align:left;width:auto;margin:0;font-weight:400}
+  .lblp .lblp-opt.nock{grid-template-columns:minmax(0,1fr) auto}
+  .lblp .lblp-opt .c{min-width:0;display:flex}
+  .lblp .lblp-opt .c .lbl-chip{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .lblp .lblp-opt .n{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+  .lblp .lblp-opt input[type=checkbox]{width:16px;height:16px;flex:0 0 16px;margin:0;padding:0;accent-color:#0B1D40}
+  .lblp .lblp-opt .lbl-chip{margin:0}
+  .lblp .lblp-new label{justify-content:flex-start;width:auto;margin:0;font-weight:400}
+  .lblp .lblp-new input[type=radio]{width:auto;margin:0;flex:0 0 auto}
+  .lblp-new{border-top:1px solid rgba(3,12,24,.08);margin-top:4px;padding-top:8px;display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+  .lblp-new label{display:flex;gap:6px;align-items:center}
+  .lblp-msg{font-size:12px;color:var(--bad);min-height:0}
+  .lblp-title{font-size:12.5px;font-weight:700;padding:2px 4px 4px}
+</style>
+<script>
+/* LabelUI — the label picker. Labels come from /labels/list, which only
+   returns labels this person may see (private / group / business). */
+var LabelUI = (function(){
+  var cache = null, canBusiness = false, pop = null;
+  function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function load(){
+    if (cache) return Promise.resolve(cache);
+    return fetch('/labels/list', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
+      if (d.error) throw new Error(d.error);
+      cache = d.labels || []; canBusiness = !!d.can_create_business; return cache;
+    });
+  }
+  function chip(lb, leadId, removable){
+    var t = lb.description || (lb.visibility === 'private' ? 'Only you see this label' : (lb.visibility === 'group' ? 'Shared with a group' : ''));
+    return '<span class="lbl-chip" style="' + esc(lb.style) + '" title="' + esc(t) + '">' + esc(lb.icon) + esc(lb.name)
+      + (removable ? '<button type="button" class="lbl-x" aria-label="Remove ' + esc(lb.name) + '" onclick="LabelUI.toggleOnLead(' + leadId + ',' + lb.id + ',false,this)">×</button>' : '')
+      + '</span>';
+  }
+  var anchorEl = null;
+  function close(){
+    if (!pop) return;
+    pop.remove(); pop = null; anchorEl = null;
+    document.removeEventListener('mousedown', outside, true);
+    window.removeEventListener('scroll', reposition, true);
+    window.removeEventListener('resize', reposition);
+  }
+  function outside(e){ if (pop && !pop.contains(e.target)) close(); }
+  function reposition(){ if (pop && anchorEl) place(anchorEl); }
+  /* Keep the whole picker on screen: open below the button, or above it when
+     there's more room there; never past the left/right edge; shrink to the
+     space available (the list scrolls inside). */
+  function place(anchor){
+    var m = 12, gap = 6, r = anchor.getBoundingClientRect();
+    var vw = document.documentElement.clientWidth, vh = window.innerHeight;
+    if (r.bottom < 0 || r.top > vh) { close(); return; }        // button scrolled away
+    pop.style.maxHeight = 'none';
+    var w = pop.offsetWidth, natural = Math.min(pop.scrollHeight, 420);
+    pop.style.left = Math.max(m, Math.min(r.left, vw - w - m)) + 'px';
+    var below = vh - r.bottom - gap - m, above = r.top - gap - m;
+    if (below >= Math.min(natural, 260) || below >= above) {
+      var h = Math.min(natural, below);
+      pop.style.maxHeight = h + 'px'; pop.style.top = (r.bottom + gap) + 'px';
+    } else {
+      var h2 = Math.min(natural, above);
+      pop.style.maxHeight = h2 + 'px'; pop.style.top = (r.top - gap - h2) + 'px';
+    }
+  }
+  /* opts: title, selected (ids), checkboxes (bool), onChoose(label, checked) */
+  function open(anchor, opts){
+    close();
+    pop = document.createElement('div'); pop.className = 'lblp'; pop.setAttribute('role', 'dialog');
+    pop.innerHTML = (opts.title ? '<div class="lblp-title">' + esc(opts.title) + '</div>' : '')
+      + '<input type="text" placeholder="Find or create a label" aria-label="Find or create a label">'
+      + '<div class="lblp-list"><div class="lblp-h">Loading…</div></div><div class="lblp-msg"></div><div class="lblp-new" hidden></div>';
+    document.body.appendChild(pop); anchorEl = anchor; place(anchor);
+    setTimeout(function(){ document.addEventListener('mousedown', outside, true); }, 0);
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    var input = pop.querySelector('input'), list = pop.querySelector('.lblp-list'), msg = pop.querySelector('.lblp-msg'),
+        box = pop.querySelector('.lblp-new');
+    var selected = (opts.selected || []).map(Number);
+    function render(){
+      var q = input.value.trim().toLowerCase(), html = '', exact = false;
+      [['private','My labels'],['group','Group labels'],['business','Business labels']].forEach(function(sec){
+        var items = cache.filter(function(l){ return l.visibility === sec[0] && (!q || l.name.toLowerCase().indexOf(q) >= 0); });
+        if (!items.length) return;
+        html += '<div class="lblp-h">' + sec[1] + '</div>';
+        items.forEach(function(l){
+          if (l.name.toLowerCase() === q) exact = true;
+          var on = selected.indexOf(l.id) >= 0;
+          html += '<label class="lblp-opt' + (opts.checkboxes ? '' : ' nock') + '" data-id="' + l.id + '">'
+            + '<span class="c">' + chip(l) + '</span><span class="n">' + (l.member_count || 0) + '</span>'
+            + (opts.checkboxes ? '<input type="checkbox"' + (on ? ' checked' : '') + ' aria-label="' + esc(l.name) + '">' : '')
+            + '</label>';
+        });
+      });
+      list.innerHTML = html || '<div class="lblp-h">No labels match</div>';
+      list.querySelectorAll('.lblp-opt').forEach(function(el){
+        el.addEventListener('click', function(ev){
+          ev.preventDefault();
+          var id = Number(el.dataset.id), l = cache.filter(function(x){ return x.id === id; })[0];
+          var on = selected.indexOf(id) < 0;
+          Promise.resolve(opts.onChoose(l, on)).then(function(ok){
+            if (ok === false) return;
+            if (on) selected.push(id); else selected = selected.filter(function(x){ return x !== id; });
+            if (opts.checkboxes) { var cb = el.querySelector('input'); if (cb) cb.checked = on; } else close();
+          });
+        });
+      });
+      box.hidden = !q || exact;
+      if (!box.hidden) {
+        box.innerHTML = '<label><input type="radio" name="lblpVis" value="private" checked> 🔒 Only me</label>'
+          + (canBusiness ? '<label><input type="radio" name="lblpVis" value="business"> Everyone in the business</label>' : '')
+          + '<button type="button" class="btn btn-sm btn-primary">+ Create "' + esc(input.value.trim()) + '"</button>'
+          + '<span class="hint" style="font-size:11.5px;color:var(--muted)">Group labels are made on the Labels page.</span>';
+        box.querySelector('button').onclick = create;
+      }
+      place(anchor);
+    }
+    function create(){
+      var fd = new FormData(); fd.append('name', input.value.trim());
+      fd.append('visibility', (box.querySelector('input[name=lblpVis]:checked') || {}).value || 'private');
+      fetch('/labels/create', {method:'POST', body:fd, credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
+        if (d.error) { msg.textContent = d.error; return; }
+        cache = null;
+        return load().then(function(){
+          var l = cache.filter(function(x){ return x.id === d.id; })[0];
+          input.value = ''; render();
+          if (l) { var el = list.querySelector('[data-id="' + l.id + '"]'); if (el) el.click(); }
+        });
+      }).catch(function(){ msg.textContent = 'Could not create the label. Check your connection and try again.'; });
+    }
+    input.addEventListener('input', render);
+    input.addEventListener('keydown', function(e){ if (e.key === 'Escape') close(); if (e.key === 'Enter' && !box.hidden) { e.preventDefault(); create(); } });
+    load().then(function(){ render(); place(anchor); input.focus(); })
+      .catch(function(e){ list.innerHTML = '<div class="lblp-h">' + esc(e.message || 'Could not load labels') + '</div>'; });
+  }
+  function post(url, fd){
+    return fetch(url, {method:'POST', body:fd, credentials:'same-origin'})
+      .then(function(r){ return r.json().catch(function(){ return {error:'Something went wrong (' + r.status + ').'}; }); });
+  }
+  /* Tick / untick a label on one lead; redraws that lead's chips. */
+  function toggleOnLead(leadId, labelId, on, el){
+    var fd = new FormData(); fd.append('label_id', labelId); fd.append('action', on ? 'add' : 'remove');
+    return post('/leads/' + leadId + '/labels', fd).then(function(d){
+      if (d.error) { alert(d.error); return false; }
+      cache = null;
+      document.querySelectorAll('[data-lbl-lead="' + leadId + '"]').forEach(function(box){
+        var removable = box.dataset.removable === '1';
+        box.querySelector('.lbl-chips').innerHTML = d.labels.map(function(l){ return chip(l, leadId, removable); }).join('')
+          || (removable ? '' : '<span class="muted">—</span>');
+        box.dataset.ids = d.labels.map(function(l){ return l.id; }).join(',');
+      });
+      return true;
+    });
+  }
+  function editLead(anchor, leadId){
+    var box = anchor.closest('[data-lbl-lead]');
+    var ids = (box.dataset.ids || '').split(',').filter(Boolean);
+    open(anchor, {title: 'Labels on this lead', selected: ids, checkboxes: true,
+                  onChoose: function(l, on){ return toggleOnLead(leadId, l.id, on); }});
+  }
+  /* Bulk: formFn() returns the FormData naming the leads (ids or "all matching"). */
+  function bulk(anchor, mode, formFn, done){
+    open(anchor, {title: mode === 'add' ? 'Add a label to the selected leads' : 'Remove a label from the selected leads',
+      checkboxes: false,
+      onChoose: function(l){
+        return post('/labels/' + l.id + '/members/' + (mode === 'add' ? 'bulk-add' : 'bulk-remove'), formFn()).then(function(d){
+          if (d.error) { alert(d.error); return false; }
+          if (done) done(mode === 'add' ? (d.added + ' lead(s) labelled "' + l.name + '".') : (d.removed + ' lead(s) no longer labelled "' + l.name + '".'));
+          return true;
+        });
+      }});
+  }
+  return {open: open, close: close, chip: chip, toggleOnLead: toggleOnLead, editLead: editLead, bulk: bulk};
+})();
+</script>
+{% endif %}
