@@ -403,45 +403,73 @@ def ask_llm(system_prompt, user_message, context_chunks, history=None, structure
     _effort = getattr(STREAM_CTX, "reasoning_effort", None)
     if _effort:
         create_kwargs["reasoning_effort"] = _effort
-    _sink = getattr(STREAM_CTX, "sink", None)
-    if _sink is None:
-        response = _get_client().chat.completions.create(**create_kwargs)
-        raw_content = response.choices[0].message.content
-    else:
-        _streamer = ReplyStreamer(_sink) if structured_handoff else _PlainStreamer(_sink)
-        _parts, response = [], None
-        for _chunk in _get_client().chat.completions.create(
-            stream=True, stream_options={"include_usage": True}, **create_kwargs
-        ):
-            if _chunk.choices and _chunk.choices[0].delta and _chunk.choices[0].delta.content:
-                _parts.append(_chunk.choices[0].delta.content)
-                _streamer.feed(_chunk.choices[0].delta.content)
-            if getattr(_chunk, "usage", None):
-                response = _chunk
-        raw_content = "".join(_parts)
-    needs_handoff = None
-    if structured_handoff:
-        try:
-            parsed = json.loads(raw_content)
-            answer = parsed.get("reply", "") or ""
-            needs_handoff = bool(parsed.get("needs_handoff", False))
-        except Exception as e:
-            print(f"⚠️ ask_llm: failed to parse structured JSON reply, falling back to raw text: {e}")
-            answer = raw_content
-            needs_handoff = False
-    else:
-        answer = raw_content
 
-    usage = {}
-    try:
-        if getattr(response, "usage", None):
-            usage = {
-                "prompt_tokens": int(getattr(response.usage, "prompt_tokens", 0) or 0),
-                "completion_tokens": int(getattr(response.usage, "completion_tokens", 0) or 0),
-                "total_tokens": int(getattr(response.usage, "total_tokens", 0) or 0),
-            }
-    except Exception:
-        usage = {}
+    def _generate(kwargs):
+        """One call to the model → (answer, needs_handoff, response, streamed)."""
+        _sink = getattr(STREAM_CTX, "sink", None)
+        streamed = False
+        if _sink is None:
+            response = _get_client().chat.completions.create(**kwargs)
+            raw_content = response.choices[0].message.content or ""
+        else:
+            _streamer = ReplyStreamer(_sink) if structured_handoff else _PlainStreamer(_sink)
+            _parts, response = [], None
+            for _chunk in _get_client().chat.completions.create(
+                stream=True, stream_options={"include_usage": True}, **kwargs
+            ):
+                if _chunk.choices and _chunk.choices[0].delta and _chunk.choices[0].delta.content:
+                    _parts.append(_chunk.choices[0].delta.content)
+                    _streamer.feed(_chunk.choices[0].delta.content)
+                    streamed = True
+                if getattr(_chunk, "usage", None):
+                    response = _chunk
+            raw_content = "".join(_parts)
+        needs_handoff = None
+        if structured_handoff:
+            try:
+                parsed = json.loads(raw_content)
+                answer = parsed.get("reply", "") or ""
+                needs_handoff = bool(parsed.get("needs_handoff", False))
+            except Exception as e:
+                print(f"⚠️ ask_llm: failed to parse structured JSON reply, falling back to raw text: {e}")
+                answer = raw_content
+                needs_handoff = False
+        else:
+            answer = raw_content
+        return answer, needs_handoff, response, streamed
+
+    def _usage_of(response):
+        try:
+            if getattr(response, "usage", None):
+                return {
+                    "prompt_tokens": int(getattr(response.usage, "prompt_tokens", 0) or 0),
+                    "completion_tokens": int(getattr(response.usage, "completion_tokens", 0) or 0),
+                    "total_tokens": int(getattr(response.usage, "total_tokens", 0) or 0),
+                }
+        except Exception:
+            pass
+        return {}
+
+    answer, needs_handoff, response, streamed = _generate(create_kwargs)
+    usage = _usage_of(response)
+
+    # Blank answer (2026-10-17): the token limit includes the model's
+    # thinking, so a question that needs more thought can use it all and
+    # leave no text. Ask once more with light thinking and more room; the
+    # caller hands a still-blank answer to the team. Never retried after
+    # words already reached the visitor.
+    if not (answer or "").strip() and not streamed:
+        retry_kwargs = dict(create_kwargs, reasoning_effort="low",
+                            max_completion_tokens=max(max_out * 2, 1500))
+        print(f"⚠️ ask_llm: blank answer ({usage.get('completion_tokens', '?')} answer tokens used) — asking once more")
+        try:
+            answer, needs_handoff, response, streamed = _generate(retry_kwargs)
+            u2 = _usage_of(response)
+            usage = {k: int(usage.get(k, 0)) + int(u2.get(k, 0)) for k in ("prompt_tokens", "completion_tokens", "total_tokens")}
+        except Exception as e:
+            print(f"⚠️ ask_llm: retry after blank answer failed: {e}")
+        if not (answer or "").strip():
+            print("⚠️ ask_llm: answer still blank after retry")
 
     return answer, needs_handoff, usage
 

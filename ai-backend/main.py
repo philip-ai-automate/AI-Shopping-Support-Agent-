@@ -557,8 +557,13 @@ def chat(req: ChatRequest):
     chat (2026-10-03). Everything else is unchanged. The setting is per request
     thread and always cleared afterwards."""
     import llm as _llm
-    if req.channel == "whatsapp" and getattr(_llm.STREAM_CTX, "reasoning_effort", None) is None:
-        _llm.STREAM_CTX.reasoning_effort = (os.getenv("WHATSAPP_REASONING_EFFORT", "low") or "").strip() or None
+    if getattr(_llm.STREAM_CTX, "reasoning_effort", None) is None:
+        # Every other /chat caller (website chat when word-by-word fails,
+        # Chatwoot, …) uses the website chat's thinking level (2026-10-17):
+        # with no level set, a harder question could think through the whole
+        # answer allowance and come back blank.
+        _var = "WHATSAPP_REASONING_EFFORT" if req.channel == "whatsapp" else "STREAM_REASONING_EFFORT"
+        _llm.STREAM_CTX.reasoning_effort = (os.getenv(_var, "low") or "").strip() or None
         try:
             return _chat(req)
         finally:
@@ -936,6 +941,13 @@ def _chat(req: ChatRequest):
         system_prompt, req.message, gen_chunks, history=history, structured_handoff=True,
         max_output_tokens=_max_out,
     )
+    # Never send a blank answer (2026-10-17): ask_llm already asked once
+    # more; still blank → the team takes over (same handoff as when the
+    # customer asks for a person) with a polite reply.
+    if not (answer or "").strip():
+        print(f"⚠️ blank AI answer for session={session_id} — handing to the team")
+        answer = "Sorry, I couldn't answer that just now. A member of our team will get back to you shortly."
+        needs_handoff = True
 
     # Fold the relevance-classification call's token cost (if any) into the
     # usage this turn bills/meters — it's a real API call even on turns that
