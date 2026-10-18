@@ -9,6 +9,7 @@ import psycopg2.errors
 import os, secrets, string, json as _json
 import zeptomail_api
 import email_outreach
+import bookings_crm
 import email_ai_writer
 import ai_designer
 import bulksmsng_api
@@ -383,6 +384,7 @@ PLAN_FEATURE_CATALOG = {
         ("crm.segments_delete",        "Delete a Segment"),
         ("crm.tags_view",              "Labels — view"),
         ("crm.tags_assign",            "Add and remove labels on leads (and make their own private or group labels)"),
+        ("crm.bookings_connect",       "Connect Microsoft Bookings so booked demos show on leads automatically"),
         ("crm.tags_create",            "Create a label for everyone / import bounces"),
         ("crm.tags_edit",              "Edit a label for everyone — rename, colour, meaning"),
         ("crm.tags_delete",            "Delete a label for everyone"),
@@ -643,6 +645,7 @@ ROLE_FORM_GRID = {
          "other": ["crm.tags_assign"]},
         {"label": "Duplicate Merge Review", "view": "crm.merge_review_view", "other": ["crm.merge_review_confirm", "crm.merge_review_reject"]},
         {"label": "Pipeline Settings", "view": "crm.pipeline_settings_view", "edit": "crm.pipeline_settings_edit"},
+        {"label": "Microsoft Bookings (demos)", "other": ["crm.bookings_connect"]},
     ],
     "Leads": [
         {"label": "Leads", "view": "leads.page", "create": "leads.create", "other": ["leads.qualify", "leads.assign", "leads.see_all"]},
@@ -25262,6 +25265,7 @@ def email_campaign_report(campaign_id: int):
             (campaign_id,),
         )
         recipients = cur.fetchall()
+        demo_bookings = bookings_crm.report_bookings(cur, tenant_id, recipients)
         cur.close(); conn.close()
 
         total  = campaign["total_count"]  or 0
@@ -25277,6 +25281,7 @@ def email_campaign_report(campaign_id: int):
             sent=sent,
             failed=failed,
             rate=rate,
+            demo_bookings=demo_bookings,
         )
     except Exception as e:
         print("⚠️ email_campaign_report error:", e)
@@ -32332,7 +32337,7 @@ def _get_inbox_messages(tenant_id: int, phone: str, limit: int = 100) -> list:
 
 
 @portal_bp.route("/channels")
-@team_feature("channels.page", "campaigns_email.mailbox_connect")
+@team_feature("channels.page", "campaigns_email.mailbox_connect", "crm.bookings_connect")
 def channels_page():
     """Unified hub — every connected (or connectable) social channel in
     one place, each with its real brand logo, not scattered across separate
@@ -32346,15 +32351,26 @@ def channels_page():
     tenant_id = int(customer["tenant_id"])
     can_full = _team_member_has_permission("channels.page")
     can_mailbox = _team_member_has_permission("campaigns_email.mailbox_connect")
-    if not can_full and not can_mailbox:
+    can_bookings = _team_member_has_permission("crm.bookings_connect")
+    if not can_full and not can_mailbox and not can_bookings:
         return _require_team_permission("channels.page")
     mailbox_only = not can_full
     if not mailbox_only:
         r2 = _require_plan_sub_feature(customer, "channels.page", "Channels")
         if r2:
-            if not (can_mailbox and _plan_grants_feature(_get_tenant_plan(tenant_id), "campaigns_email.mailbox_connect")):
+            _plan = _get_tenant_plan(tenant_id)
+            if not ((can_mailbox and _plan_grants_feature(_plan, "campaigns_email.mailbox_connect"))
+                    or (can_bookings and _plan_grants_feature(_plan, "crm.bookings_connect"))):
                 return r2
             mailbox_only = True
+
+    bookings_card = None
+    if can_bookings:
+        try:
+            from bookings_routes import card_summary as _bookings_card
+            bookings_card = _bookings_card(customer)
+        except Exception as e:
+            print("⚠️ channels_page bookings lookup error:", e)
 
     mailbox_card = None
     if can_mailbox:
@@ -32365,7 +32381,7 @@ def channels_page():
             print("⚠️ channels_page mailbox lookup error:", e)
     if mailbox_only:
         return render_template("portal/channels.html", customer=customer, mailbox_only=True,
-                               mailbox_card=mailbox_card)
+                               mailbox_card=mailbox_card, bookings_card=bookings_card)
 
     wa_connection = _get_wa_connection(tenant_id)
 
@@ -32410,6 +32426,7 @@ def channels_page():
         buffer_channel_count=buffer_channel_count,
         mailbox_only=False,
         mailbox_card=mailbox_card,
+        bookings_card=bookings_card,
     )
 
 
@@ -34965,6 +34982,7 @@ def leads_page():
         lf["has_phone"], lf["has_whatsapp"], lf["has_email"], lf["addr"], addr_opts, lf["biz"],
         lf["biz"].get("labels") or [], lf["biz"].get("hide_labels") or [], all_labels,
         [], [], [], [], [], [], {}, endpoint="portal.leads_page", cols=lead_cols, extra=_extra)
+    bookings_crm.attach(cur, tenant_id, real_leads)
     cur.close(); conn.close()
 
     return render_template(
@@ -35221,7 +35239,7 @@ def leads_reopen(lead_id: int):
 
 LEADS_LIST_FILTER_ARGS = ("q", "tier", "has_phone", "has_email", "has_whatsapp", "check_numbers",
                           "has_company", "assigned", "added_from", "added_to",
-                          "biz_category", "employees", "label", "import")
+                          "biz_category", "employees", "label", "import", "demo")
 
 
 def _biz_filter_clauses(alias: str, args, tenant_id: int, label_link: str = "lead", with_label: bool = True):
@@ -35238,6 +35256,7 @@ def _biz_filter_clauses(alias: str, args, tenant_id: int, label_link: str = "lea
     labs = [int(v) for v in args.getlist("label") if v.isdigit()] if with_label else []
     hide_labs = [int(v) for v in args.getlist("hide_label") if v.isdigit()] if (with_label and label_link == "lead") else []
     imp = (args.get("import") or "").strip()
+    demos = [v for v in args.getlist("demo") if v in dict(bookings_crm.DEMO_FILTER_OPTIONS)] if label_link == "lead" else []
     cat, emp = (cats[0] if cats else ""), (emps[0] if emps else "")   # single-value callers (Contacts)
     def _one_or_many(key, vals):
         if vals:
@@ -35267,8 +35286,11 @@ def _biz_filter_clauses(alias: str, args, tenant_id: int, label_link: str = "lea
     import_id = int(imp) if imp.isdigit() else None
     if import_id:
         clauses.append(f"{alias}.import_id=%s"); params.append(import_id); fargs["import"] = str(import_id)
+    if demos:   # "Demo booking" (Microsoft Bookings, 2026-10-18)
+        clauses.append(bookings_crm.filter_clause(alias, demos)); _one_or_many("demo", demos)
     state = {"biz_category": cat, "employees": emp, "label": label_id, "import": import_id, "cols": {},
-             "biz_categories": cats, "employees_list": emps, "labels": labs, "hide_labels": hide_labs}
+             "biz_categories": cats, "employees_list": emps, "labels": labs, "hide_labels": hide_labs,
+             "demo_list": demos}
     # People's own columns (cf<id>=…, 2026-10-16) — Leads + Sales Pipeline only.
     if label_link == "lead" and any(k.startswith("cf") for k in args.keys()):
         _c = get_db_connection(); _cc = _c.cursor()
@@ -36333,6 +36355,7 @@ def _filter_option_counts(cur, where_sql: str, params: list, cols: list) -> dict
                      count(*) {base}""")[0]
     out["contact"] = {"has_phone": r[0], "has_email": r[1], "has_whatsapp": r[2], "has_company": r[3]}
     out["total"] = r[4]
+    out["demo"] = bookings_crm.option_counts(cur, where_sql, params)
     out["labels"] = dict(q(f"""SELECT ll.label_id, count(*) FROM lead_label_leads ll
                                 JOIN merchant_pipeline_leads mpl ON mpl.id = ll.lead_id
                                WHERE {where_sql} AND label_visible(ll.label_id) GROUP BY 1"""))
@@ -36400,6 +36423,8 @@ def _pipeline_filter_chips(stage_filter, search, assigned, assignee_options, tie
         add("Category", "Not filled in" if v == "__none__" else v, without("biz_category", value=v))
     for v in biz_state.get("employees_list") or []:
         add("Employees", "Not filled in" if v == "__none__" else v, without("employees", value=v))
+    for v in biz_state.get("demo_list") or []:
+        add("Demo booking", dict(bookings_crm.DEMO_FILTER_OPTIONS).get(v, v), without("demo", value=v))
     for label, value, key in (extra or []):
         add(label, value, without(key))
     for cc in _cc_filter_chips(cols or [], biz_state.get("cols") or {}):
@@ -37043,6 +37068,7 @@ def sales_pipeline():
         hide_segment_ids, all_segments, hide_wa_segment_ids, all_wa_segments,
         hide_sms_segment_ids, all_sms_segments,
         pipeline_effective_stage_labels(tenant_id), cols=lead_cols)
+    bookings_crm.attach(cur, tenant_id, leads)
 
     cur.close(); conn.close()
 
@@ -37949,11 +37975,13 @@ def lead_detail(lead_id: int):
     lead_col_values = _cols.values_for(cur, [c["id"] for c in lead_cols], [lead_id]).get(lead_id, {})
     for _c in lead_cols:
         _c["can_fill"] = _cols.can_fill(_c, _team_member_has_permission)
+    demo = bookings_crm.lead_view(cur, tenant_id, lead_id)
 
     cur.close(); conn.close()
 
     return render_template(
         "portal/lead_detail.html",
+        demo=demo, demo_seq_stopped=any(e["kind"] == "sequence_stopped" for e in demo["events"]),
         lead=lead,
         lead_labels=lead_labels,
         lead_cols=lead_cols, lead_col_values=lead_col_values,

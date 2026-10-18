@@ -1,0 +1,162 @@
+{% extends "portal/base.html" %}
+{% block title %}Microsoft Bookings — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .mb-row { display:flex; align-items:center; gap:12px; padding:4px 0 14px; border-bottom:1px solid var(--line); margin-bottom:16px }
+  .mb-logo { width:44px; height:44px; border-radius:12px; background:#0B1D40; display:flex; align-items:center; justify-content:center; flex-shrink:0 }
+  .mb-logo svg { width:24px; height:24px }
+  .mb-title { font-weight:800; color:var(--ink) }
+  .mb-sub { font-size:12.5px; color:var(--muted); margin-top:2px }
+  .mb-ok { color:#027A48; font-weight:700 }
+  .mb-warn { color:#B54708; font-weight:700 }
+  .mb-note { font-size:13px; line-height:1.55; border-radius:12px; padding:12px 14px; margin-bottom:14px }
+  .mb-note.warn { background:#FFFAEB; border:1px solid #FEDF89; color:#7A2E0E }
+  .mb-note.info { background:#F5F8FF; border:1px solid #D1E0FF; color:#1D2939 }
+  .mb-acts { display:flex; gap:10px; flex-wrap:wrap; align-items:center }
+  .mb-acts form { margin:0 }
+  .mb-how { margin:0; padding-left:18px; font-size:13px; line-height:1.7; color:var(--txt) }
+  .mb-table { width:100%; border-collapse:collapse; font-size:13px }
+  .mb-table th { text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); font-weight:700; padding:8px 10px; border-bottom:1px solid var(--line) }
+  .mb-table td { padding:10px; border-bottom:1px solid var(--line); vertical-align:middle }
+  .mb-table tr:last-child td { border-bottom:0 }
+  .mb-wrap { overflow-x:auto }
+  .mb-copy { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px }
+  .mb-copy input { flex:1; min-width:220px; padding:9px 12px; border:1.5px solid var(--line); border-radius:9px; font-size:12px; font-family:inherit }
+  .bk-stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; margin-bottom:16px }
+  .bk-stat { border:1px solid var(--line); border-radius:12px; padding:12px 14px }
+  .bk-stat b { display:block; font-size:24px; font-weight:800; color:var(--ink) }
+  .bk-stat span { font-size:12.5px; color:var(--muted) }
+  .bk-pill { display:inline-block; font-size:11.5px; font-weight:700; border-radius:999px; padding:3px 10px; background:#E8EEF8; color:#0B1D40 }
+  .bk-pill.off { background:#FDECEC; color:#B91C1C }
+  .bk-pick { display:flex; flex-direction:column; gap:8px; margin:0 0 14px }
+  .bk-pick label { display:flex; gap:10px; align-items:center; border:1.5px solid var(--line); border-radius:10px; padding:10px 12px; font-size:13.5px; cursor:pointer }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="wizard-header">
+  <div>
+    <div class="wizard-title">Microsoft Bookings</div>
+    <div class="wizard-sub">Connect your Bookings page, and demos people book there show on their lead by themselves, with follow-up emails stopped for them.</div>
+  </div>
+</div>
+
+{% if not configured %}
+<div class="mb-note warn">The Microsoft connection is being set up by PhiXtra. You'll be able to connect Bookings here shortly.</div>
+{% elif expired %}
+<div class="mb-note warn">Bookings is paused while PhiXtra renews its Microsoft connection. Nothing is lost, and you don't need to do anything.</div>
+{% endif %}
+
+<div class="card" style="margin-bottom:20px">
+  <div class="mb-row">
+    <div class="mb-logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+    <div>
+      <div class="mb-title">Your Bookings page</div>
+      {% if bc and bc.status == 'active' %}
+      <div class="mb-sub"><span class="mb-ok">Connected: {{ bc.business_name }}</span>
+        · by {{ bc.owner_label or bc.email }} · last checked {{ last_checked or 'in a moment' }}</div>
+      {% elif bc and bc.status == 'choose' %}
+      <div class="mb-sub"><span class="mb-warn">Choose which Bookings page to follow</span></div>
+      {% elif bc %}
+      <div class="mb-sub"><span class="mb-warn">Needs reconnecting: {{ bc.business_name or bc.email }}</span></div>
+      {% else %}
+      <div class="mb-sub">Not connected</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if bc and bc.last_error %}
+  <div class="mb-note warn">{{ bc.last_error }}</div>
+  {% endif %}
+
+  {% if session.get('bk_needs_consent') or (bc and bc.last_error and 'IT admin' in bc.last_error) %}
+  <div class="mb-note info">
+    <b>Your organisation's IT admin needs to approve PhiXtra once.</b> Send them this link. After they approve, press Connect again.
+    <div class="mb-copy"><input type="text" readonly value="{{ consent_url }}" id="bkConsent" onclick="this.select()" aria-label="Approval link for your IT admin">
+      <button type="button" class="btn btn-sm" onclick="var i=document.getElementById('bkConsent');i.select();navigator.clipboard&&navigator.clipboard.writeText(i.value);this.textContent='Copied'">Copy link</button></div>
+  </div>
+  {% endif %}
+
+  {% if bc and bc.status == 'choose' %}
+  <form method="POST" action="{{ url_for('bookings.choose') }}">
+    <div class="bk-pick">
+      {% for b in bc.businesses or [] %}
+      <label><input type="radio" name="business_id" value="{{ b.id }}" {% if loop.first %}checked{% endif %}> <span><b>{{ b.name }}</b> <span style="color:var(--muted)">{{ b.id }}</span></span></label>
+      {% endfor %}
+    </div>
+    <button type="submit" class="btn btn-primary">Follow this Bookings page →</button>
+  </form>
+  {% endif %}
+
+  <div class="mb-acts" style="margin-top:4px">
+    {% if configured and not expired %}
+      {% if not bc %}
+      <a href="{{ url_for('bookings.connect') }}" class="btn btn-primary">Connect Bookings →</a>
+      {% elif bc.status == 'needs_reconnect' %}
+      <a href="{{ url_for('bookings.connect') }}" class="btn btn-primary">Reconnect →</a>
+      {% elif bc.status == 'active' %}
+      <form method="POST" action="{{ url_for('bookings.check_now') }}"><button type="submit" class="btn">Check now</button></form>
+      <a href="{{ url_for('bookings.connect') }}" class="btn">Connect a different Bookings page</a>
+      {% endif %}
+    {% endif %}
+    {% if bc %}
+    <form method="POST" action="{{ url_for('bookings.disconnect') }}" onsubmit="return confirm('Disconnect Bookings? PhiXtra stops reading it. Demos already on leads stay there.');">
+      <button type="submit" class="btn btn-danger">Disconnect</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if bc and bc.status == 'active' %}
+<div class="card" style="margin-bottom:20px">
+  <div class="mb-title" style="margin-bottom:12px">Demos</div>
+  <div class="bk-stats">
+    <div class="bk-stat"><b>{{ stats.upcoming or 0 }}</b><span>Upcoming demos</span></div>
+    <div class="bk-stat"><b>{{ stats.matched or 0 }}</b><span>Matched to a lead</span></div>
+    <div class="bk-stat"><b>{{ stats.created or 0 }}</b><span>New lead created</span></div>
+    <div class="bk-stat"><b>{{ stats.cancelled or 0 }}</b><span>Cancelled this week</span></div>
+  </div>
+  {% if upcoming %}
+  <div class="mb-wrap">
+  <table class="mb-table">
+    <thead><tr><th>Demo</th><th>Booked by</th><th>Lead</th><th>Assigned To</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for a in upcoming %}
+    <tr>
+      <td style="font-weight:700;white-space:nowrap{% if a.status == 'cancelled' %};text-decoration:line-through;color:var(--muted){% endif %}">{{ a.when }}</td>
+      <td>{{ a.customer_name or '—' }}{% if a.email %} · {{ a.email }}{% endif %}</td>
+      <td>{% if a.lead_id %}<a href="{{ url_for('portal.lead_detail', lead_id=a.lead_id) }}">{{ a.lead_name or 'Open lead' }} →</a>{% if a.created_lead %} <span style="font-size:12px;color:var(--muted)">new lead</span>{% endif %}{% else %}—{% endif %}</td>
+      <td>{{ a.assigned_to or 'Unassigned' }}</td>
+      <td>
+        {% if a.status == 'cancelled' %}<span class="bk-pill off">Cancelled</span>
+        {% elif a.status == 'done' %}<span class="bk-pill">Done</span>
+        {% elif a.status == 'no_show' %}<span class="bk-pill off">Didn't show up</span>
+        {% elif a.was %}<span class="bk-pill">Moved</span> <span style="font-size:12px;color:var(--muted)">was {{ a.was }}</span>
+        {% else %}<span class="bk-pill">Booked</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="mb-sub">No upcoming demos yet.</div>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="mb-title" style="margin-bottom:8px">How it works</div>
+  <ul class="mb-how">
+    <li>Sign in once with the Microsoft login that manages your Bookings page. PhiXtra can only <b>read</b> your bookings. It never books, changes or cancels anything.</li>
+    <li>Every 5 minutes it looks for new, moved and cancelled demos.</li>
+    <li>A new booking finds its lead by email, then by phone number. If nobody in your CRM has either, a new lead is made (source "Demo booking", unassigned).</li>
+    <li>The lead shows "📅 Demo booked" with the date, any email sequence they're in stops, and a New lead moves to Contacted.</li>
+    <li>Moved or cancelled on the Bookings page? The lead updates by itself within a few minutes.</li>
+    <li>After the demo time, the lead asks "Demo done?" so your pipeline stays accurate.</li>
+  </ul>
+</div>
+
+{% endblock %}

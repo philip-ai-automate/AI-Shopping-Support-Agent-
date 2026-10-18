@@ -97,6 +97,37 @@
     </div>
   </div>
 
+  {# Microsoft Bookings demo (2026-10-18): booked / due / cancelled #}
+  {% set dc = demo.current %}
+  {% if dc and dc.state == 'booked' %}
+  <div style="margin:0 24px 18px;background:#0B1D40;color:#fff;border-radius:12px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+    <div style="display:flex;gap:12px;align-items:center">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <div>
+        <div style="font-weight:800;font-size:15px">Demo booked · {{ dc.when }}{% if dc.until %} – {{ dc.until }}{% endif %}</div>
+        <div style="font-size:12.5px;color:#C9D6EE">Booked by {{ dc.customer_name or dc.email or 'them' }} on your Bookings page{% if demo_seq_stopped %} · follow-up emails stopped{% endif %}</div>
+      </div>
+    </div>
+    {% if dc.join_url %}<a href="{{ dc.join_url }}" target="_blank" rel="noopener" style="color:#fff;font-weight:700;font-size:13px">Join link</a>{% endif %}
+  </div>
+  {% elif dc and dc.state == 'due' %}
+  <div style="margin:0 24px 18px;background:#FFF4E5;border:1px solid #F5C98B;border-radius:12px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+    <div><div style="font-weight:800;font-size:15px;color:#7C2D12">Demo was due · {{ dc.when }}</div>
+      <div style="font-size:12.5px;color:#92400E">Did it happen? Marking it keeps the pipeline accurate.</div></div>
+    {% if staff_can_open('bookings.mark') %}
+    <div style="display:flex;gap:8px">
+      <form method="POST" action="{{ url_for('bookings.mark', lead_id=lead.id, appt_id=dc.id) }}" style="margin:0"><input type="hidden" name="outcome" value="done"><button type="submit" class="lc-edit-btn" style="background:#030C18;color:#fff;border-color:#030C18">Demo done</button></form>
+      <form method="POST" action="{{ url_for('bookings.mark', lead_id=lead.id, appt_id=dc.id) }}" style="margin:0"><input type="hidden" name="outcome" value="no_show"><button type="submit" class="lc-edit-btn">They didn't show up</button></form>
+    </div>
+    {% endif %}
+  </div>
+  {% elif dc and dc.state == 'cancelled' %}
+  <div style="margin:0 24px 18px;background:#fff;border:1px solid #F3C2C2;border-radius:12px;padding:14px 18px">
+    <div style="font-weight:800;font-size:15px;color:#B91C1C">Demo cancelled · was {{ dc.when }}</div>
+    <div style="font-size:12.5px;color:var(--ink)">Cancelled on the Bookings page{% if dc.cancelled_at %} on {{ dc.cancelled_at.strftime('%-d %b') }}{% endif %}. This lead is back on the follow-up list{% if demo_seq_stopped %} — follow-up emails stay stopped until you restart them{% endif %}.</div>
+  </div>
+  {% endif %}
+
   <!-- Activity — moved to the top, under the header (2026-10-15), so the team sees calls and notes first -->
   <div class="lc-sec-head">Activity</div>
   <div style="padding:16px 24px 22px;border-bottom:1px solid var(--line)">
@@ -106,6 +137,7 @@
       <button type="button" class="lc-tab" onclick="lcShowTab('calls')" id="lcCallsTab">📞 Calls{% if lead_calls %} ({{ lead_calls|length }}){% endif %}</button>
       <button type="button" class="lc-tab" onclick="lcShowTab('history')" id="lcHistoryTab">🕒 Stage History</button>
       <button type="button" class="lc-tab" onclick="lcShowTab('emails')" id="lcEmailsTab">✉️ Emails{% if email_history %} ({{ email_history|length }}){% endif %}</button>
+      {% if demo.events %}<button type="button" class="lc-tab" onclick="lcShowTab('demos')" id="lcDemosTab">📅 Demo bookings ({{ demo.events|length }})</button>{% endif %}
     </div>
     <div id="lcNotesPane">
       {% if lead.notes %}
@@ -183,6 +215,18 @@
       <div style="font-size:12.5px;color:var(--muted)">No stage moves recorded yet.</div>
       {% endif %}
     </div>
+    {% if demo.events %}
+    <div id="lcDemosPane" style="display:none">
+      {% set _dk = {'booked': 'Demo booked', 'moved': 'Demo moved', 'cancelled': 'Demo cancelled', 'done': 'Demo done',
+                    'no_show': "Didn't show up", 'sequence_stopped': 'Follow-up emails stopped', 'lead_created': 'New lead made'} %}
+      {% for ev in demo.events %}
+      <div style="display:flex;gap:14px;padding:10px 0;{% if not loop.last %}border-bottom:1px solid var(--line);{% endif %}font-size:12.5px">
+        <div style="width:110px;flex-shrink:0;color:var(--muted)">{{ ev.at }}</div>
+        <div><div style="font-weight:700;color:var(--ink)">{{ _dk.get(ev.kind, ev.kind) }}</div><div style="color:var(--ink)">{{ ev.detail }}{% if ev.actor and ev.actor != 'Microsoft Bookings' %} <span style="color:var(--muted)">— {{ ev.actor }}</span>{% endif %}</div></div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
     <div id="lcEmailsPane" style="display:none">
       {% if lead.email %}
       <form method="POST" action="{{ url_for('portal.lead_email_replied', lead_id=lead.id) }}" style="margin:0 0 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -278,7 +322,7 @@
       <div class="lc-field-label">Source</div>
       {% set src_meta = {'whatsapp': ('#dcfce7','#15803d','WhatsApp'), 'facebook': ('#dbeafe','#1d4ed8','Facebook'),
                           'instagram': ('#fce7f3','#be185d','Instagram'), 'manual': ('#f1f5f9','#64748b','Manual'),
-                          'import': ('#eef2ff','#3730a3','Import')} %}
+                          'import': ('#eef2ff','#3730a3','Import'), 'demo_booking': ('#E8EEF8','#0B1D40','Demo booking')} %}
       {% if lead.source and lead.source in src_meta %}
       {% set s_bg, s_fg, s_label = src_meta[lead.source] %}
       <span class="stage-pill" style="background:{{ s_bg }};color:{{ s_fg }}">{{ s_label }}</span>
@@ -578,12 +622,15 @@
 
 <script>
 function lcShowTab(which) {
-  ['notes', 'calls', 'history', 'emails'].forEach(function (t) {
+  ['notes', 'calls', 'history', 'emails', 'demos'].forEach(function (t) {
     var cap = t.charAt(0).toUpperCase() + t.slice(1);
-    document.getElementById('lc' + cap + 'Pane').style.display = which === t ? 'block' : 'none';
-    document.getElementById('lc' + cap + 'Tab').classList.toggle('active', which === t);
+    var pane = document.getElementById('lc' + cap + 'Pane'), tab = document.getElementById('lc' + cap + 'Tab');
+    if (!pane || !tab) return;
+    pane.style.display = which === t ? 'block' : 'none';
+    tab.classList.toggle('active', which === t);
   });
 }
+if (location.hash === '#demos') lcShowTab('demos');
 if (location.hash === '#emails') lcShowTab('emails');
 if (location.hash === '#calls') lcShowTab('calls');
 (function () {

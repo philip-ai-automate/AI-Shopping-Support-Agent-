@@ -4472,6 +4472,76 @@ def ensure_portal_tables():
             cur.execute(_GRANT_ONCE_SQL, (pid, "campaigns_email.mailbox_connect"))
         cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('campaigns_email.mailbox_connect') ON CONFLICT DO NOTHING")
 
+        # ── Microsoft Bookings (2026-10-18, bookings_routes.py): a business
+        # connects its Bookings page; demos booked there land on the lead.
+        # Plans: the same as Outlook reply tracking. No role auto-ticked. ──
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS booking_connections (
+                id                BIGSERIAL PRIMARY KEY,
+                tenant_id         INTEGER      NOT NULL UNIQUE,
+                owner_key         VARCHAR(40),
+                owner_label       VARCHAR(160),
+                email             VARCHAR(255),
+                provider_user_id  VARCHAR(80),
+                refresh_token_enc TEXT,
+                access_token_enc  TEXT,
+                access_expires_at TIMESTAMPTZ,
+                business_id       VARCHAR(255),
+                business_name     VARCHAR(255),
+                businesses        JSONB,
+                status            VARCHAR(20)  NOT NULL DEFAULT 'active',
+                last_error        TEXT,
+                last_checked_at   TIMESTAMPTZ,
+                next_check_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                found_count       INTEGER      NOT NULL DEFAULT 0,
+                connected_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS booking_appointments (
+                id             BIGSERIAL PRIMARY KEY,
+                tenant_id      INTEGER      NOT NULL,
+                connection_id  BIGINT,
+                business_id    VARCHAR(255),
+                appointment_id VARCHAR(255) NOT NULL,
+                customer_name  VARCHAR(200),
+                email          VARCHAR(255),
+                phone          VARCHAR(60),
+                notes          TEXT,
+                service_name   VARCHAR(200),
+                start_at       TIMESTAMPTZ  NOT NULL,
+                end_at         TIMESTAMPTZ,
+                moved_from     TIMESTAMPTZ,
+                join_url       TEXT,
+                booked_at      TIMESTAMPTZ,
+                lead_id        BIGINT,
+                created_lead   BOOLEAN      NOT NULL DEFAULT FALSE,
+                status         VARCHAR(16)  NOT NULL DEFAULT 'booked',
+                marked_by      VARCHAR(160),
+                cancelled_at   TIMESTAMPTZ,
+                first_seen_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                UNIQUE (tenant_id, appointment_id)
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS booking_appointments_lead_idx ON booking_appointments (tenant_id, lead_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS booking_appointments_email_idx ON booking_appointments (tenant_id, lower(email))")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS booking_events (
+                id             BIGSERIAL PRIMARY KEY,
+                tenant_id      INTEGER      NOT NULL,
+                appointment_id BIGINT,
+                lead_id        BIGINT,
+                kind           VARCHAR(20)  NOT NULL,
+                detail         TEXT,
+                actor          VARCHAR(160),
+                created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS booking_events_lead_idx ON booking_events (tenant_id, lead_id)")
+        cur.execute("SELECT id FROM plans WHERE COALESCE(feat_email_campaigns, FALSE)")
+        for (pid,) in cur.fetchall():
+            cur.execute(_GRANT_ONCE_SQL, (pid, "crm.bookings_connect"))
+        cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('crm.bookings_connect') ON CONFLICT DO NOTHING")
+
         # ── Selling currency (2026-10-11) ────────────────────────────────────
         # The currency a business's customers see (AI, WhatsApp, website chat)
         # and its CRM/reports use. Separate from plan payments (₦/£ only).

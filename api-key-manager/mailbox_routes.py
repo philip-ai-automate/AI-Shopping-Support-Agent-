@@ -159,6 +159,9 @@ def callback():
         ok = request.args.get("admin_consent", "").lower() == "true"
         return render_template("portal/mailbox_consent_done.html", ok=ok,
                                error=request.args.get("error_description", "")[:300])
+    if session.get("ms_oauth_purpose") == "bookings":   # Microsoft Bookings sign-in (bookings_routes.py)
+        from bookings_routes import finish_connect
+        return finish_connect()
     r = _require_login()
     if r:
         return r

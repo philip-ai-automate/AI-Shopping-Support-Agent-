@@ -25,6 +25,9 @@ TIMEOUT = 20
 AUTHORITY = "https://login.microsoftonline.com/organizations"
 GRAPH = "https://graph.microsoft.com/v1.0"
 SCOPES = "openid email profile offline_access User.Read Mail.Read"
+# Microsoft Bookings (2026-10-18, bookings_routes.py): a separate sign-in that
+# can only read a business's Bookings appointments, never its mail.
+BOOKINGS_SCOPES = "openid email profile offline_access User.Read Bookings.Read.All"
 REDIRECT_URI = os.getenv("MS_REDIRECT_URI", "https://portal.phixtra.com/integrations/microsoft/callback")
 
 
@@ -62,19 +65,21 @@ def secret_expired() -> bool:
     return bool(exp and date.today() >= exp)
 
 
-def auth_url(state: str) -> str:
+def auth_url(state: str, scopes: str = SCOPES) -> str:
     return f"{AUTHORITY}/oauth2/v2.0/authorize?" + urlencode({
         "client_id": client_id(), "response_type": "code", "redirect_uri": REDIRECT_URI,
-        "response_mode": "query", "scope": SCOPES, "state": state, "prompt": "select_account",
+        "response_mode": "query", "scope": scopes, "state": state, "prompt": "select_account",
     })
 
 
-def admin_consent_url() -> str:
+def admin_consent_url(scopes: str = SCOPES) -> str:
     """Link a business's IT admin opens once to approve PhiXtra for their
     whole organisation (needed until PhiXtra's publisher is verified)."""
+    graph = " ".join(f"https://graph.microsoft.com/{s}" for s in scopes.split()
+                     if s not in ("openid", "email", "profile", "offline_access"))
     return f"{AUTHORITY}/v2.0/adminconsent?" + urlencode({
         "client_id": client_id(), "redirect_uri": REDIRECT_URI, "state": "adminconsent",
-        "scope": "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/User.Read offline_access",
+        "scope": graph + " offline_access",
     })
 
 
@@ -91,8 +96,8 @@ def _token_error(data: dict) -> GraphError:
     return GraphError("temporary", f"Microsoft said: {desc.splitlines()[0][:200] if desc else err or 'unknown error'}")
 
 
-def _token_request(fields: dict) -> dict:
-    fields = dict(fields, client_id=client_id(), client_secret=_client_secret(), scope=SCOPES)
+def _token_request(fields: dict, scopes: str = SCOPES) -> dict:
+    fields = dict(fields, client_id=client_id(), client_secret=_client_secret(), scope=scopes)
     try:
         r = requests.post(f"{AUTHORITY}/oauth2/v2.0/token", data=fields, timeout=TIMEOUT)
     except requests.RequestException as e:
@@ -104,13 +109,13 @@ def _token_request(fields: dict) -> dict:
     return data
 
 
-def exchange_code(code: str) -> dict:
-    return _token_request({"grant_type": "authorization_code", "code": code, "redirect_uri": REDIRECT_URI})
+def exchange_code(code: str, scopes: str = SCOPES) -> dict:
+    return _token_request({"grant_type": "authorization_code", "code": code, "redirect_uri": REDIRECT_URI}, scopes)
 
 
-def refresh(refresh_token: str) -> dict:
+def refresh(refresh_token: str, scopes: str = SCOPES) -> dict:
     """Microsoft sends a new refresh token each time — the caller must save it."""
-    return _token_request({"grant_type": "refresh_token", "refresh_token": refresh_token})
+    return _token_request({"grant_type": "refresh_token", "refresh_token": refresh_token}, scopes)
 
 
 def _get(token: str, url: str, params: dict = None) -> dict:
@@ -191,3 +196,30 @@ def reply_lines(preview: str, limit: int = 400) -> str:
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
     return text[:limit].rstrip() + ("…" if len(text) > limit else "")
+
+
+# ── Microsoft Bookings (read only) ─────────────────────────────────────────
+
+def booking_businesses(token: str) -> list:
+    """The Bookings pages this person manages: [{"id", "name"}]. The id is
+    the Bookings page's own address (e.g. TalktoUs1@phixtra.com)."""
+    d = _get(token, f"{GRAPH}/solutions/bookingBusinesses")
+    return [{"id": b.get("id"), "name": b.get("displayName") or b.get("id")} for b in d.get("value", []) if b.get("id")]
+
+
+def booking_appointments(token: str, business_id: str, start: datetime, end: datetime) -> list:
+    """Every appointment on one Bookings page between start and end. Raises
+    GraphError if any page of the list can't be read, so a half-read list is
+    never mistaken for cancellations."""
+    from urllib.parse import quote
+    fmt = lambda t: t.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    url = f"{GRAPH}/solutions/bookingBusinesses/{quote(business_id, safe='@.')}/calendarView"
+    params = {"start": fmt(start), "end": fmt(end)}
+    out = []
+    while url:
+        d = _get(token, url, params)
+        out.extend(d.get("value", []))
+        url, params = d.get("@odata.nextLink"), None
+        if len(out) > 5000:
+            raise GraphError("temporary", "More than 5,000 appointments — stopped reading.")
+    return out

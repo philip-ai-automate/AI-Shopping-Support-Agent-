@@ -138,6 +138,13 @@
     <div class="rpt-stat-value">{{ _replied }}</div>
     <div class="rpt-stat-sub">Marked on the lead by your team</div>
   </div>
+  {% if demo_bookings %}
+  <div class="rpt-stat" style="border:2px solid #0B1D40">
+    <div class="rpt-stat-label">Booked a demo</div>
+    <div class="rpt-stat-value">{{ demo_bookings|length }}</div>
+    <div class="rpt-stat-sub">Booked within 30 days of this email</div>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -151,6 +158,7 @@
         <button class="filter-btn active-all" id="fAll"    onclick="setFilter('all')">All ({{ recipients|length }})</button>
         <button class="filter-btn"            id="fSent"   onclick="setFilter('sent')">Sent ({{ recipients|selectattr('status','equalto','sent')|list|length }})</button>
         <button class="filter-btn"            id="fFailed" onclick="setFilter('failed')">Failed ({{ recipients|rejectattr('status','equalto','sent')|list|length }})</button>
+        {% if demo_bookings %}<button class="filter-btn" id="fBooked" onclick="setFilter('booked')">Booked a demo ({{ demo_bookings|length }})</button>{% endif %}
       </div>
     </div>
     {% endif %}
@@ -170,7 +178,8 @@
       </thead>
       <tbody>
         {% for r in recipients %}
-        <tr data-status="{{ 'sent' if r.status == 'sent' else 'failed' }}" data-email="{{ r.email|lower }}">
+        {% set _bk = demo_bookings.get((r.email or '')|lower) %}
+        <tr data-status="{{ 'sent' if r.status == 'sent' else 'failed' }}" data-email="{{ r.email|lower }}" data-booked="{{ '1' if _bk else '' }}">
           <td style="color:var(--muted);font-size:12px">{{ loop.index }}</td>
           <td style="font-weight:600">{% if r.lead_id %}<a href="{{ url_for('portal.lead_detail', lead_id=r.lead_id) }}#emails" style="color:inherit">{{ r.email }}</a>{% else %}{{ r.email }}{% endif %}</td>
           <td><span class="badge badge-{{ r.status }}">{{ r.status|capitalize }}</span></td>
@@ -178,7 +187,8 @@
             {{ r.sent_at.strftime('%d %b %Y %H:%M:%S') if r.sent_at else '—' }}
           </td>
           {% if campaign.track %}<td style="font-size:12px;white-space:nowrap">
-            {% if r.replied_at %}<strong>Replied</strong>{% elif r.clicked_at %}<strong>Clicked</strong>{% elif r.opened_at %}Opened{% else %}<span style="color:var(--muted)">—</span>{% endif %}
+            {% if _bk %}<strong>Booked a demo — {{ _bk.when }}</strong>{% if _bk.status == 'cancelled' %} <span style="color:var(--muted)">(cancelled)</span>{% endif %}{% if _bk.lead_id %} <a href="{{ url_for('portal.lead_detail', lead_id=_bk.lead_id) }}#demos">lead →</a>{% endif %}
+            {% elif r.replied_at %}<strong>Replied</strong>{% elif r.clicked_at %}<strong>Clicked</strong>{% elif r.opened_at %}Opened{% else %}<span style="color:var(--muted)">—</span>{% endif %}
           </td>{% endif %}
           <td style="font-size:12px;color:#dc2626;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
               title="{{ r.error_msg or '' }}">
@@ -199,12 +209,14 @@ function setFilter(f) {
   document.getElementById('fAll').className    = 'filter-btn' + (f === 'all'    ? ' active-all'    : '')
   document.getElementById('fSent').className   = 'filter-btn' + (f === 'sent'   ? ' active-sent'   : '')
   document.getElementById('fFailed').className = 'filter-btn' + (f === 'failed' ? ' active-failed' : '')
+  var fb = document.getElementById('fBooked')
+  if (fb) fb.className = 'filter-btn' + (f === 'booked' ? ' active-all' : '')
   filterTable()
 }
 function filterTable() {
   const q = (document.getElementById('srch').value || '').toLowerCase()
   document.querySelectorAll('#recipTable tbody tr').forEach(row => {
-    const matchStatus = _filter === 'all' || row.dataset.status === _filter
+    const matchStatus = _filter === 'all' || (_filter === 'booked' ? row.dataset.booked === '1' : row.dataset.status === _filter)
     const matchSearch = !q || row.dataset.email.includes(q)
     row.style.display = (matchStatus && matchSearch) ? '' : 'none'
   })

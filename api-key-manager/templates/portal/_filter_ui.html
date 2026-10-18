@@ -64,6 +64,22 @@
 {% endif %}
 {%- endmacro %}
 
+{% macro fs_demo(bs, counts) -%}
+{# Microsoft Bookings (2026-10-18): only once the business has had a booking #}
+{% if counts and counts.demo and (counts.demo.any or bs.demo_list) %}
+<section>
+  <h3>Demo booking</h3>
+  {%- for v, label in [('booked', 'Demo booked'), ('due', 'Demo due — not marked done'), ('done', 'Demo done'), ('none', 'No demo booked')] %}
+  <label class="spf-opt"><span>{{ label }}</span><small>{{ '{:,}'.format(counts.demo[v]) }}</small><input type="checkbox" name="demo" value="{{ v }}" {% if v in (bs.demo_list or []) %}checked{% endif %}></label>
+  {%- endfor %}
+</section>
+{% endif %}
+{%- endmacro %}
+
+{% macro demo_badge(d) -%}
+{% if d %}<div style="margin-top:4px">{% if d.state == 'due' %}<span style="display:inline-block;background:#FFF4E5;color:#92400E;border:1px solid #F5C98B;font-weight:700;font-size:11px;border-radius:6px;padding:2px 7px;white-space:nowrap">Demo due · {{ d.when }} — mark as done?</span>{% else %}<span style="display:inline-block;background:#0B1D40;color:#fff;font-weight:700;font-size:11px;border-radius:6px;padding:2px 7px;white-space:nowrap">📅 Demo booked · {{ d.when }}</span>{% endif %}</div>{% endif %}
+{%- endmacro %}
+
 {% macro fs_contact(items) -%}
 <section>
   <h3>Contact details</h3>

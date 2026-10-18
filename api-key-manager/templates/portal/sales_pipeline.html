@@ -12,7 +12,7 @@
 {% set can_bulk_sms_seg   = staff_can_open('portal.sms_pipeline_segments_bulk_add_members') %}
 {% from "portal/_labels_ui.html" import label_chip %}
 {% from "portal/_columns_ui.html" import cc_head, cc_cell %}
-{% from "portal/_filter_ui.html" import fs_business, fs_columns, fs_contact, fs_labels, fs_location with context %}
+{% from "portal/_filter_ui.html" import fs_business, fs_columns, fs_contact, fs_labels, fs_location, fs_demo, demo_badge with context %}
 {% set can_bulk_label     = staff_can_open('portal.lead_labels_bulk_add_members') and 'crm.tags_assign' in (granted_features or []) %}
 {% set can_bulk_assign = staff_can('leads.assign') %}
 {% set can_bulk_cols = all_lead_cols|selectattr('can_fill')|list|length > 0 %}
@@ -559,6 +559,8 @@
         </button>
       </div>
       <div class="spf-body">
+        {{ fs_demo(biz_state, opt_counts) }}
+
         {% if can_filter_assigned %}
         <section>
           <h3>Assigned to</h3>
@@ -711,7 +713,7 @@
           <td>
             <div class="cust-cell">
               <span class="cust-avatar" style="background:{{ cust_color(l.customer_name) }}">{{ cust_initials(l.customer_name) }}</span>
-              <a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" class="biz-name-cell lead-name-link" title="Open this Sales Lead">{{ l.customer_name }}</a>
+              <div><a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" class="biz-name-cell lead-name-link" title="Open this Sales Lead">{{ l.customer_name }}</a>{{ demo_badge(l.demo) }}</div>
             </div>
           </td>
           <td data-col="segment" class="col-hidden" style="font-size:11px">

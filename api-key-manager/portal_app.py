@@ -28,6 +28,7 @@ def create_app():
     from upload_design_routes import upload_bp
     from social_calendar_routes import socialcal_bp
     from mailbox_routes import mailbox_bp
+    from bookings_routes import bookings_bp
     from ambassador_routes import ambassador_bp
     from school_routes import school_bp
     from school_migrations import ensure_school_tables
@@ -47,6 +48,7 @@ def create_app():
     flask_app.register_blueprint(upload_bp)
     flask_app.register_blueprint(socialcal_bp)
     flask_app.register_blueprint(mailbox_bp)
+    flask_app.register_blueprint(bookings_bp)
     from accounts_routes import accounts_bp
     flask_app.register_blueprint(accounts_bp)
     flask_app.register_blueprint(ambassador_bp)

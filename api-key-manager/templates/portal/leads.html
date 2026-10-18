@@ -7,7 +7,7 @@
 {% block content %}
 {% from "portal/_labels_ui.html" import label_chip %}
 {% from "portal/_columns_ui.html" import cc_head, cc_cell, cc_filter_bar %}
-{% from "portal/_filter_ui.html" import fs_business, fs_columns, fs_contact, fs_labels, fs_location, fs_dates with context %}
+{% from "portal/_filter_ui.html" import fs_business, fs_columns, fs_contact, fs_labels, fs_location, fs_dates, fs_demo, demo_badge with context %}
 {% set can_label = staff_can('crm.tags_assign') %}
 {% set can_bulk = staff_can('leads.qualify') or staff_can('leads.assign') or can_label or (all_lead_cols|selectattr('can_fill')|list|length > 0) %}
 
@@ -557,6 +557,8 @@
         </button>
       </div>
       <div class="spf-body">
+        {{ fs_demo(biz_state, opt_counts) }}
+
         {% if can_filter_assigned %}
         <section>
           <h3>Assigned to</h3>
@@ -718,12 +720,12 @@
       <tbody>
         {% set src_meta = {'whatsapp': ('#dcfce7','#15803d','WhatsApp'), 'facebook': ('#dbeafe','#1d4ed8','Facebook'),
                             'instagram': ('#fce7f3','#be185d','Instagram'), 'manual': ('#f1f5f9','#64748b','Manual'),
-                            'import': ('#eef2ff','#3730a3','Import')} %}
+                            'import': ('#eef2ff','#3730a3','Import'), 'demo_booking': ('#E8EEF8','#0B1D40','Demo booking')} %}
         {% set _sb = {'hot': ('🔥','#fef2f2','#b91c1c'), 'warm': ('🌤️','#fffbeb','#b45309'), 'cold': ('❄️','#eff6ff','#1d4ed8')} %}
         {% for l in real_leads %}
         <tr class="lb-row" data-lead-id="{{ l.id }}">
           {% if can_bulk %}<td><input type="checkbox" class="lb-ck lb-row-ck" onchange="lbUpdate()" aria-label="Select {{ l.customer_name }}"></td>{% endif %}
-          <td><a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" style="color:var(--ink);font-weight:700;text-decoration:none">{{ l.customer_name }}</a></td>
+          <td><a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" style="color:var(--ink);font-weight:700;text-decoration:none">{{ l.customer_name }}</a>{{ demo_badge(l.demo) }}</td>
           <td class="muted" style="white-space:nowrap">{{ l.business_category or '—' }}</td>
           <td class="muted" style="white-space:nowrap">{{ l.employees or '—' }}</td>
           <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{% set _w = (l.website or '')|replace('https://','')|replace('http://','') %}{% if _w %}<a href="{{ l.website }}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:none" title="{{ l.website }}">{{ _w.rstrip('/') }}</a>{% else %}—{% endif %}</td>
