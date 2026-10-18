@@ -33,6 +33,28 @@
           <td style="border:none;padding:4px 8px">{{ customer.created_at.strftime('%Y-%m-%d %H:%M') if customer.created_at else '—' }}</td></tr>
       <tr><td class="muted" style="border:none;padding:4px 0">How did you hear about us</td>
           <td style="border:none;padding:4px 8px">{{ customer.hear_about_us_label }}</td></tr>
+      {% set ia = customer.inactivity %}
+      {% if ia %}
+      <tr><td class="muted" style="border:none;padding:4px 0;vertical-align:top">Inactivity</td>
+          <td style="border:none;padding:4px 8px">
+            <span class="pill {% if ia.status == 'warned' %}pill-red{% elif ia.status == 'active' %}pill-green{% else %}pill-grey{% endif %}">{{ ia.status_label }}</span>
+            <span class="muted" style="font-size:12px">· {{ ia.days_inactive }} days since last activity{% if ia.next_step %} · {{ ia.next_step }} {{ ia.next_on.strftime('%-d %b %Y') }}{% endif %}{% if ia.status == 'warned' %} · deletion {{ ia.deletion_on.strftime('%-d %b %Y') }}{% endif %}</span>
+            {% if ia.status in ('active', 'warned', 'no_email') or ia.keep %}
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <form method="POST" action="{{ url_for('portal_admin.inactive_accounts_keep', tenant_id=ia.tenant_id) }}"
+                    {% if not ia.keep %}onsubmit="return confirm('Keep this account? It will never be deleted for inactivity.')"{% endif %}>
+                <input type="hidden" name="keep" value="{{ '0' if ia.keep else '1' }}">
+                <input type="hidden" name="next" value="{{ request.path }}">
+                <button class="btn btn-sm">{{ 'Stop keeping' if ia.keep else 'Keep' }}</button></form>
+              {% if ia.status in ('active', 'warned') %}
+              <form method="POST" action="{{ url_for('portal_admin.inactive_accounts_delay', tenant_id=ia.tenant_id) }}">
+                <input type="hidden" name="next" value="{{ request.path }}">
+                <button class="btn btn-sm">Delay 30 days</button></form>
+              {% endif %}
+            </div>
+            {% endif %}
+          </td></tr>
+      {% endif %}
       {% if onboarding_other %}
       <tr><td class="muted" style="border:none;padding:4px 0">Other category</td>
           <td style="border:none;padding:4px 8px">

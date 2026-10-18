@@ -981,6 +981,25 @@ def _wa_dual_required_page(customer: dict, feature_label: str = "WhatsApp"):
 
 
 @portal_bp.before_request
+def _record_portal_activity():
+    """Inactive accounts (inactivity_core): using the portal counts as
+    activity, not only logging in — people stay signed in for weeks. Saved at
+    most once an hour per session; an admin impersonating doesn't count."""
+    if session.get("impersonate_customer_id") or not session.get("portal_logged_in"):
+        return None
+    now = int(_time.time())
+    if now - int(session.get("_activity_saved_at") or 0) < 3600:
+        return None
+    cid = _customer_id()
+    customer = _get_customer(cid) if cid else None
+    if customer:
+        import inactivity_core
+        inactivity_core.mark_seen(int(customer["tenant_id"]))
+        session["_activity_saved_at"] = now
+    return None
+
+
+@portal_bp.before_request
 def _lock_whatsapp_without_dual_plan():
     """Blocks every route labelled ONLY with WhatsApp feature keys (route
     labels, feature_access.py) for a WooCommerce merchant without a Dual
@@ -22598,8 +22617,9 @@ def _render_comeback_email_html(heading, paragraphs, cta_text, cta_url, unsubscr
         </td></tr>
         <tr><td style="padding:16px 26px 24px;border-top:1px solid #e2e8f0;">
           <p style="margin:0;font-size:10.5px;color:#94a3b8;line-height:1.6">
-            You're getting this because you registered on portal.phixtra.com.
-            <a href="{_html_mod.escape(unsubscribe_url)}" style="color:#94a3b8;text-decoration:underline;">Unsubscribe</a>
+            {"This is a notice about your PhiXtra account." if not unsubscribe_url else
+             "You're getting this because you registered on portal.phixtra.com. "
+             f'<a href="{_html_mod.escape(unsubscribe_url)}" style="color:#94a3b8;text-decoration:underline;">Unsubscribe</a>'}
           </p>
         </td></tr>
       </table>

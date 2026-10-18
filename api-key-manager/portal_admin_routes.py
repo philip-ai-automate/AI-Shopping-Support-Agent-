@@ -604,7 +604,12 @@ def _customer_facet(x, key):
     if key == "assigned": return "yes" if x["assigned_manager_id"] is not None else "no"
     if key == "plan":     return x["plan_name"]
     if key == "heard":    return x["heard_value"]
+    if key == "inactivity": return x["inactivity"]
     return x[key]  # source, product
+
+
+CUSTOMER_INACTIVITY_OPTIONS = [("warned", "Warned"), ("active", "Active"), ("no_email", "Can't warn · no email"),
+                               ("protected", "Protected"), ("not_included", "School / KeyLand (not included)")]
 
 
 CUSTOMERS_PER_PAGE_OPTIONS = ["25", "50", "100", "200"]
@@ -686,6 +691,7 @@ def customers():
     f_plan     = request.args.getlist("plan")
     f_product  = request.args.getlist("product")
     f_heard    = request.args.getlist("heard")
+    f_inactive = request.args.getlist("inactivity")
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -744,6 +750,7 @@ def customers():
             "heard": _heard_label(row.get("hear_about_us")),
             "heard_value": row.get("hear_about_us") or CUSTOMER_HEARD_NONE,
             "source": row.get("source_type"),
+            "inactivity": "active",
         })
 
     # ── School (school_profiles — its own table, no "customers" split) ─────
@@ -783,6 +790,7 @@ def customers():
             "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
             "assigned_manager_name": assignment["manager_name"] if assignment else None,
             "heard": "Not answered", "heard_value": CUSTOMER_HEARD_NONE, "source": "web",
+            "inactivity": "not_included",
         })
 
     # ── Estate (re_tenants — its own table, tenant + owner in one row) ──────
@@ -825,10 +833,18 @@ def customers():
             "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
             "assigned_manager_name": assignment["manager_name"] if assignment else None,
             "heard": "Not answered", "heard_value": CUSTOMER_HEARD_NONE, "source": "web",
+            "inactivity": "not_included",
         })
 
+    import inactivity_core
+    inact = {a["tenant_id"]: a["status"] for a in inactivity_core.accounts()}
+    rows = [x for x in rows if not (x["product"] in ("portal", "connect") and inact.get(x["ref_id"]) == "deleted")]
+    for x in rows:
+        if x["product"] in ("portal", "connect"):
+            x["inactivity"] = inact.get(x["ref_id"], "active")
+
     selected = {k: v for k, v in {
-        "source": f_source, "verified": f_verified, "active": f_active, "assigned": f_assigned,
+        "inactivity": f_inactive, "source": f_source, "verified": f_verified, "active": f_active, "assigned": f_assigned,
         "product": f_product, "plan": f_plan, "heard": f_heard,
     }.items() if v}
 
@@ -836,7 +852,7 @@ def customers():
         return all(_customer_facet(x, k) in v for k, v in selected.items() if k != skip)
 
     facet_counts = {}
-    for key in ("source", "verified", "active", "assigned", "product", "plan", "heard"):
+    for key in ("source", "verified", "active", "assigned", "product", "plan", "heard", "inactivity"):
         counts = facet_counts.setdefault(key, {})
         for x in rows:
             if _passes(x, key):
@@ -885,6 +901,12 @@ def customers():
             "count": len(selected),
         })
     filter_groups.append({
+        "key": "inactivity", "label": "Inactivity",
+        "options": [{"value": v, "label": lbl, "checked": v in f_inactive, "n": facet_counts["inactivity"].get(v, 0)}
+                    for v, lbl in CUSTOMER_INACTIVITY_OPTIONS],
+        "count": len(f_inactive),
+    })
+    filter_groups.append({
         "key": "heard", "label": "Heard About Us",
         "options": [{"value": v, "label": lbl, "checked": v in f_heard, "n": facet_counts["heard"].get(v, 0)}
                     for v, lbl in _heard_options()],
@@ -904,6 +926,9 @@ def customers():
         for val in request.args.getlist(g["key"]):
             if val in label_map:
                 chips.append({"label": f"{g['label']}: {label_map[val]}", "href": _remove_filter_url(g["key"], val)})
+    for val in f_inactive:
+        chips.append({"label": f"Inactivity: {dict(CUSTOMER_INACTIVITY_OPTIONS).get(val, val)}",
+                      "href": _remove_filter_url("inactivity", val)})
     for val in f_heard:
         chips.append({"label": f"Heard About Us: {_heard_label(None if val == CUSTOMER_HEARD_NONE else val)}",
                       "href": _remove_filter_url("heard", val)})
@@ -1090,6 +1115,10 @@ def customer_detail(customer_id: int):
     from portal_routes import HEAR_ABOUT_US_OPTIONS
     customer["hear_about_us_label"] = dict(HEAR_ABOUT_US_OPTIONS).get(
         customer.get("hear_about_us"), customer.get("hear_about_us")) or "—"
+
+    import inactivity_core
+    _ia = inactivity_core.accounts([tenant_id])
+    customer["inactivity"] = _ia[0] if _ia else None
 
     a_ = accounts_core.assignments_for([tenant_id]).get(tenant_id)
     customer["assigned_manager_id"]   = a_["team_member_id"] if a_ else None
@@ -8310,3 +8339,83 @@ def lead_history_admin(lead_id: int):
          "notes": h["notes"], "created_at": h["created_at"].isoformat() if h["created_at"] else ""}
         for h in history
     ])
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# INACTIVE ACCOUNTS — warn, then delete businesses unused for 60 days
+# (approved 2026-10-18; rules in inactivity_core.py, daily job inactivity_jobs.py)
+# ══════════════════════════════════════════════════════════════════════════════
+
+_INACTIVE_ORDER = {"warned": 0, "active": 1, "no_email": 2, "protected": 3}
+
+
+@portal_admin_bp.route("/inactive-accounts")
+def inactive_accounts():
+    r = _require_admin("customers", "view")
+    if r: return r
+    import inactivity_core as ic
+    from datetime import date, timedelta
+    accts = ic.accounts()
+    live = [a for a in accts if a["status"] != "deleted"]
+    live.sort(key=lambda a: (_INACTIVE_ORDER[a["status"]], a["next_on"] or date.max, -a["days_inactive"]))
+    deleted = sorted([a for a in accts if a["status"] == "deleted"], key=lambda a: a["deleted_at"], reverse=True)
+    counts = {k: sum(1 for a in live if a["status"] == k) for k in _INACTIVE_ORDER}
+
+    sample = {"first_name": "Ada", "business_name": "Ada's Fashion House", "days_inactive": 45,
+              "deletion_on": date.today() + timedelta(days=ic.NOTICE_DAYS)}
+    previews = []
+    for kind, when in (("warn1", "Day 45"), ("warn2", "7 days before"), ("warn3", "1 day before"), ("deleted", "Day 60")):
+        subject, html = ic.email_html(kind, sample)
+        previews.append({"when": when, "subject": subject, "html": html})
+
+    return render_template("portal/admin_inactive_accounts.html", accounts=live, deleted=deleted,
+                           counts=counts, mode=ic.get_mode(), modes=ic.MODES, mode_labels=ic.MODE_LABELS,
+                           log=ic.recent_log(60), previews=previews,
+                           warn_after=ic.WARN_AFTER_DAYS, notice=ic.NOTICE_DAYS,
+                           tracking_start=ic.TRACKING_START.date())
+
+
+@portal_admin_bp.route("/inactive-accounts/mode", methods=["POST"])
+def inactive_accounts_mode():
+    r = _require_owner()
+    if r: return r
+    import inactivity_core as ic
+    mode = request.form.get("mode")
+    if mode not in ic.MODES:
+        flash("Pick Off, Test mode or On.", "danger")
+        return redirect(url_for("portal_admin.inactive_accounts"))
+    ic.set_mode(mode, _admin_user())
+    insert_audit_log(admin_username=_admin_user(), action="inactivity_mode", details={"mode": mode})
+    flash({"off": "Inactive accounts is OFF — nothing will be sent or deleted.",
+           "test": "Test mode — businesses get nothing; you get a daily email of what would happen.",
+           "on": "Inactive accounts is ON — warnings go out and accounts are deleted on their dates."}[mode], "success")
+    return redirect(url_for("portal_admin.inactive_accounts"))
+
+
+def _inactive_back(tenant_id):
+    nxt = request.form.get("next") or ""
+    return redirect(nxt if nxt.startswith("/admin/") else url_for("portal_admin.inactive_accounts"))
+
+
+@portal_admin_bp.route("/inactive-accounts/<int:tenant_id>/keep", methods=["POST"])
+def inactive_accounts_keep(tenant_id: int):
+    r = _require_admin("customers", "modify")
+    if r: return r
+    import inactivity_core as ic
+    keep = request.form.get("keep") == "1"
+    ic.set_keep(tenant_id, keep, _admin_user())
+    insert_audit_log(admin_username=_admin_user(), action="inactivity_keep" if keep else "inactivity_unkeep",
+                     tenant_id=tenant_id)
+    flash("Kept — this account will never be deleted for inactivity." if keep
+          else "No longer kept — normal inactivity rules apply again.", "success")
+    return _inactive_back(tenant_id)
+
+
+@portal_admin_bp.route("/inactive-accounts/<int:tenant_id>/delay", methods=["POST"])
+def inactive_accounts_delay(tenant_id: int):
+    r = _require_admin("customers", "modify")
+    if r: return r
+    import inactivity_core as ic
+    ic.delay(tenant_id, _admin_user())
+    flash("Delayed by 30 days. Any warnings already sent start again later, with the new date.", "success")
+    return _inactive_back(tenant_id)

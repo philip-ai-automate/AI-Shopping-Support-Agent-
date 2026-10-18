@@ -240,6 +240,10 @@
        href="{{ url_for('portal_admin.customers') }}">
       <span class="asb-icon">👥</span> Customers
     </a>
+    <a class="asb-link {% if 'inactive_accounts' in (request.endpoint or '') %}active{% endif %}"
+       href="{{ url_for('portal_admin.inactive_accounts') }}">
+      <span class="asb-icon">⏳</span> Inactive Accounts
+    </a>
     {% set _comeback_group = request.endpoint and request.endpoint.startswith('portal_admin.comeback_sequence') %}
     <div class="asb-group-toggle {% if _comeback_group %}open{% endif %}" onclick="asbGroupToggle(this)">
       <span class="asb-gtitle"><span class="asb-icon">📧</span> Onboarding Drip Campaign</span>

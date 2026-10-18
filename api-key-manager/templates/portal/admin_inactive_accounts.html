@@ -1,0 +1,145 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Inactive Accounts — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .ia-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+  .ia-step{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+  .ia-step .d{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .ia-step .t{font-size:13px;font-weight:700;margin-top:4px}
+  .ia-step.end{border-color:rgba(220,38,38,.35);background:rgba(220,38,38,.04)}
+  .ia-mode{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .ia-mode label{display:inline-flex;align-items:center;gap:7px;border:1.5px solid var(--line);border-radius:10px;
+                 padding:8px 12px;font-size:13px;font-weight:650;cursor:pointer;background:#fff}
+  .ia-mode input{accent-color:var(--ink)}
+  .ia-mode label.on{border-color:var(--ink);background:var(--ink);color:#fff}
+  .ia-counts{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 14px}
+  .ia-btns{display:flex;gap:5px;flex-wrap:wrap}
+  .ia-btns form{margin:0}
+  details.ia-prev{border:1px solid var(--line);border-radius:12px;background:#fff;margin-bottom:8px}
+  details.ia-prev summary{cursor:pointer;padding:10px 14px;font-size:13px;font-weight:650}
+  details.ia-prev iframe{width:100%;height:470px;border:0;border-top:1px solid var(--line)}
+</style>
+
+<div class="page-header">
+  <div>
+    <h1 class="section-title">Inactive Accounts</h1>
+    <p class="muted">Businesses not used for 60 days are deleted — after three warning emails. Activity counts from {{ tracking_start.strftime('%-d %b %Y') }}.</p>
+  </div>
+  <a href="{{ url_for('portal_admin.customers') }}" class="btn btn-sm">← Customers</a>
+</div>
+
+<div class="ia-steps">
+  <div class="ia-step"><div class="d">Day {{ warn_after }}</div><div class="t">First warning email</div></div>
+  <div class="ia-step"><div class="d">7 days before</div><div class="t">Second warning</div></div>
+  <div class="ia-step"><div class="d">1 day before</div><div class="t">Final warning</div></div>
+  <div class="ia-step end"><div class="d">Day 60</div><div class="t">Deleted + goodbye email</div></div>
+</div>
+<p class="muted" style="font-size:12.5px;margin:-6px 0 16px">
+  Logging in or using the portal, AI replies, WhatsApp messages, campaigns and social posts all count as activity and cancel any warnings.
+  Never touched: paying businesses, PhiXtra's own, demo accounts, and any you <b>Keep</b>. Accounts with no working email can't be warned, so they're never deleted.
+  Invoices and billing records are kept.
+</p>
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-title">Switch</div>
+  <form method="POST" action="{{ url_for('portal_admin.inactive_accounts_mode') }}" class="ia-mode"
+        onsubmit="var m=this.querySelector('input:checked');return !m||m.value!=='on'||confirm('Turn ON? Warning emails will go out to businesses and accounts will be deleted on their dates.')">
+    {% for m in modes %}
+    <label class="{% if m == mode %}on{% endif %}">
+      <input type="radio" name="mode" value="{{ m }}" {% if m == mode %}checked{% endif %}
+             onchange="this.form.requestSubmit()"/> {{ mode_labels[m] }}
+    </label>
+    {% endfor %}
+  </form>
+  <p class="muted" style="font-size:12.5px;margin:10px 0 0">
+    {% if mode == 'off' %}Nothing is sent or deleted.
+    {% elif mode == 'test' %}Businesses get nothing. PhiXtra's admins get an email each morning listing what <b>would</b> have happened.
+    {% else %}Warnings go out each morning and accounts are deleted on their dates. Admins get a summary email.{% endif %}
+  </p>
+</div>
+
+<div class="ia-counts">
+  <span class="pill pill-red">Warned {{ counts.warned }}</span>
+  <span class="pill pill-green">Active {{ counts.active }}</span>
+  <span class="pill pill-grey">Can't warn {{ counts.no_email }}</span>
+  <span class="pill pill-grey">Protected {{ counts.protected }}</span>
+  <span class="pill pill-grey">Deleted {{ deleted|length }}</span>
+</div>
+
+<div class="card" style="padding:0;margin-bottom:16px">
+  <div class="table-wrap" style="border:none;border-radius:16px">
+    <table>
+      <thead><tr>
+        <th>Business</th><th>Owner email</th><th>Last activity</th><th>Inactive</th>
+        <th>Status</th><th>Next step</th><th>Deletion date</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for a in accounts %}
+        <tr>
+          <td><a href="{{ url_for('portal_admin.customer_detail', customer_id=a.customer_id) }}"><strong>{{ a.business_name or '—' }}</strong></a>
+              <div class="muted" style="font-size:11.5px">{{ a.plan_name }}</div></td>
+          <td class="muted">{{ a.email }}</td>
+          <td class="muted">{{ a.last_activity.strftime('%-d %b %Y') }}</td>
+          <td>{{ a.days_inactive }} days</td>
+          <td>
+            {% if a.status == 'warned' %}<span class="pill pill-red">{{ a.status_label }}</span>
+            {% elif a.status == 'active' %}<span class="pill pill-green">{{ a.status_label }}</span>
+            {% else %}<span class="pill pill-grey">{{ a.status_label }}</span>{% endif %}
+          </td>
+          <td class="muted">{% if a.next_step %}{{ a.next_step }} · {{ a.next_on.strftime('%-d %b') }}{% else %}—{% endif %}</td>
+          <td>{% if a.deletion_on and a.status == 'warned' %}<b>{{ a.deletion_on.strftime('%-d %b %Y') }}</b>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>
+            <div class="ia-btns">
+              {% if a.keep %}
+              <form method="POST" action="{{ url_for('portal_admin.inactive_accounts_keep', tenant_id=a.tenant_id) }}">
+                <input type="hidden" name="keep" value="0"><button class="btn btn-sm">Stop keeping</button></form>
+              {% elif a.status in ('active', 'warned', 'no_email') %}
+              <form method="POST" action="{{ url_for('portal_admin.inactive_accounts_keep', tenant_id=a.tenant_id) }}"
+                    onsubmit="return confirm('Keep {{ a.business_name|e }}? It will never be deleted for inactivity.')">
+                <input type="hidden" name="keep" value="1"><button class="btn btn-sm">Keep</button></form>
+              {% if a.status != 'no_email' %}
+              <form method="POST" action="{{ url_for('portal_admin.inactive_accounts_delay', tenant_id=a.tenant_id) }}">
+                <button class="btn btn-sm">Delay 30 days</button></form>
+              {% endif %}
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="grid g2" style="margin-bottom:16px">
+  <div class="card">
+    <div class="card-title">The emails businesses get</div>
+    <p class="muted" style="font-size:12.5px">Example with a made-up business. Real emails use their own name and date.</p>
+    {% for p in previews %}
+    <details class="ia-prev">
+      <summary>{{ p.when }} — “{{ p.subject }}”</summary>
+      <iframe srcdoc="{{ p.html|e }}" title="{{ p.subject }}"></iframe>
+    </details>
+    {% endfor %}
+  </div>
+  <div class="card">
+    <div class="card-title">History</div>
+    {% if log %}
+    <table style="font-size:12.5px">
+      {% for l in log %}
+      <tr>
+        <td class="muted" style="white-space:nowrap">{{ l.created_at.strftime('%-d %b %H:%M') }}</td>
+        <td>{{ l.business_name or ('#' ~ l.tenant_id) }}</td>
+        <td>{{ {'warn1':'First warning','warn2':'Second warning','warn3':'Final warning','delete':'Deleted','reset':'Active again'}.get(l.action, l.action) }}</td>
+        <td class="muted">{{ l.detail }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}<p class="muted" style="font-size:12.5px">Nothing yet. Steps appear here once the switch is On.</p>{% endif %}
+    {% if deleted %}
+    <div class="card-title" style="margin-top:16px">Deleted accounts</div>
+    {% for a in deleted %}<div class="muted" style="font-size:12.5px">#{{ a.tenant_id }} · {{ a.deleted_at.strftime('%-d %b %Y') }} · by {{ a.deleted_by }}</div>{% endfor %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
