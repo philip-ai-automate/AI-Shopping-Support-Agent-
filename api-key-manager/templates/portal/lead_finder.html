@@ -1,6 +1,8 @@
 {% extends "portal/base.html" %}
 {% block title %}Find New Leads — PhiXtra Portal{% endblock %}
 
+
+
 {% block head %}
 <style>
   .lf-hero { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:18px }
@@ -12,24 +14,47 @@
   .lf-pill { display:inline-flex; gap:6px; align-items:center; font-size:12.5px; background:#E8EEF8; color:#0B1D40; border-radius:99px; padding:5px 12px; font-variant-numeric:tabular-nums }
   .lf-pills { display:flex; gap:8px; flex-wrap:wrap }
   .lf-card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:16px }
-  .lf-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:14px 18px }
-  .lf-field { display:flex; flex-direction:column; gap:6px; min-width:0 }
-  .lf-field > label, .lf-lab { font-size:13px; font-weight:700; color:var(--ink) }
-  .lf-hint { font-size:12px; color:var(--muted) }
-  .lf-field input[type=text], .lf-field select { font:inherit; font-size:14px; border:1px solid var(--line); border-radius:9px; padding:8px 10px; background:#fff; width:100% }
-  .lf-field select[multiple] { height:150px; padding:4px }
-  .lf-checks { display:flex; flex-wrap:wrap; gap:6px }
-  .lf-check { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; border:1px solid var(--line); border-radius:99px; padding:4px 10px; background:#fff; cursor:pointer; user-select:none }
-  .lf-check input { accent-color:#0B1D40; margin:0 }
-  .lf-check:has(input:checked) { background:#0B1D40; color:#fff; border-color:#0B1D40 }
-  .lf-loc-box { position:relative }
-  .lf-sugg { position:absolute; z-index:20; left:0; right:0; top:100%; background:#fff; border:1px solid var(--line); border-radius:9px; box-shadow:0 8px 24px rgba(11,29,64,.12); margin-top:4px; max-height:240px; overflow:auto }
-  .lf-sugg button { display:block; width:100%; text-align:left; border:0; background:none; padding:8px 12px; font:inherit; font-size:13.5px; cursor:pointer }
-  .lf-sugg button:hover, .lf-sugg button:focus { background:#E8EEF8 }
-  .lf-chip { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; background:#0B1D40; color:#fff; border-radius:99px; padding:4px 6px 4px 11px }
-  .lf-chip button { border:0; background:rgba(255,255,255,.18); color:#fff; border-radius:99px; width:20px; height:20px; cursor:pointer; line-height:1 }
-  .lf-lock { font-size:11px; font-weight:700; background:#FEF0C7; color:#93370D; border-radius:6px; padding:1px 7px; margin-left:4px }
-  .lf-actions { display:flex; gap:10px; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-top:14px }
+
+  /* search bar: one row of dropdowns, one row of text boxes + Search */
+  .lf-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px }
+  .lf-row + .lf-row { margin-top:12px }
+  .lf-row.two { grid-template-columns:minmax(200px,1.2fr) minmax(200px,1fr) auto auto; align-items:end }
+  .lf-text { display:flex; flex-direction:column; gap:5px; min-width:0 }
+  .lf-text label, .dd-lab { font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.4px }
+  .lf-text input { font:inherit; font-size:14px; border:1px solid var(--line); border-radius:10px; padding:9px 11px; background:#fff; width:100%; height:40px }
+  .lf-one { display:inline-flex; align-items:center; gap:7px; font-size:13.5px; height:40px; white-space:nowrap }
+  .lf-one input { accent-color:#0B1D40; width:16px; height:16px }
+  .lf-row.two .btn { height:40px }
+
+  .dd [hidden] { display:none !important }   /* panels, filtered-out options, messages */
+  .dd { position:relative; display:flex; flex-direction:column; gap:5px; min-width:0 }
+  .dd-btn { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; height:40px; padding:0 11px;
+            font:inherit; font-size:14px; color:var(--ink); background:#fff; border:1px solid var(--line); border-radius:10px; cursor:pointer; text-align:left }
+  .dd-btn:hover { border-color:rgba(3,12,24,.25) }
+  .dd-btn[aria-expanded="true"] { border-color:#0B1D40; box-shadow:0 0 0 3px rgba(11,29,64,.10) }
+  .dd.on .dd-btn { background:#E8EEF8; border-color:#9DB8E8; font-weight:600 }
+  .dd-val { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .dd-caret { color:var(--muted); font-size:12px; flex-shrink:0 }
+  .dd-panel { position:absolute; z-index:30; top:100%; left:0; margin-top:6px; width:max(100%, 290px); max-width:min(360px, calc(100vw - 32px));
+              background:#fff; border:1px solid var(--line); border-radius:12px; box-shadow:0 12px 32px rgba(11,29,64,.16); display:flex; flex-direction:column; overflow:hidden }
+  .right .dd-panel { left:auto; right:0 }
+  .dd-search { font:inherit; font-size:13.5px; border:0; border-bottom:1px solid var(--line); padding:10px 12px; outline:none }
+  .dd-note { font-size:12px; color:#93370D; background:#FEF0C7; padding:7px 12px }
+  .dd-list { max-height:260px; overflow:auto; padding:4px 0 }
+  .dd-group { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); padding:8px 12px 2px }
+  .dd-opt { display:flex; align-items:center; gap:9px; padding:7px 12px; font-size:13.5px; cursor:pointer }
+  .dd-opt:hover { background:#F3F6FB }
+  .dd-opt input { accent-color:#0B1D40; width:15px; height:15px; margin:0; flex-shrink:0 }
+  .dd-empty { font-size:13px; color:var(--muted); padding:10px 12px }
+  .dd-foot { display:flex; justify-content:space-between; border-top:1px solid var(--line); padding:8px 10px; gap:8px }
+  .dd-foot button { font:inherit; font-size:13px; font-weight:700; border-radius:8px; padding:6px 12px; cursor:pointer }
+  .dd-clear { background:none; border:0; color:var(--muted) }
+  .dd-done { background:#0B1D40; color:#fff; border:1px solid #0B1D40 }
+  .dd-btn:focus-visible, .dd-foot button:focus-visible, .dd-opt:focus-within { outline:2px solid #9DB8E8; outline-offset:1px }
+
+  .lf-jobs { font-size:13px; color:var(--muted); display:flex; gap:6px 14px; flex-wrap:wrap; margin-top:12px }
+  .lf-jobs a { color:#0B1D40; font-weight:600 }
+
   .lf-wrap { overflow-x:auto; background:#fff; border:1px solid var(--line); border-radius:14px }
   .lf-table { width:100%; border-collapse:collapse; font-size:13px; min-width:980px }
   .lf-table th { text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); font-weight:700; padding:10px; border-bottom:1px solid var(--line); background:#F8FAFC; white-space:nowrap }
@@ -46,18 +71,38 @@
   .lf-li { font-size:12px; font-weight:700; color:#0B1D40; border:1px solid var(--line); border-radius:6px; padding:2px 7px; text-decoration:none; white-space:nowrap }
   .lf-pager { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; font-size:13px; color:var(--muted); margin-top:12px }
   .lf-addbar { position:sticky; bottom:0; z-index:5; background:#fff; border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin-top:14px;
-               display:flex; gap:12px 16px; flex-wrap:wrap; align-items:center; box-shadow:0 -6px 20px rgba(11,29,64,.06) }
-  .lf-addbar label { display:inline-flex; align-items:center; gap:6px; font-size:13px }
-  .lf-addbar input[type=checkbox] { accent-color:#0B1D40 }
-  .lf-addbar select, .lf-addbar input[type=text] { font:inherit; font-size:13px; border:1px solid var(--line); border-radius:9px; padding:6px 9px; background:#fff }
+               display:flex; gap:10px 14px; flex-wrap:wrap; align-items:end; box-shadow:0 -6px 20px rgba(11,29,64,.06) }
+  .lf-addbar .lf-text select, .lf-addbar .lf-text input { font:inherit; font-size:13.5px; border:1px solid var(--line); border-radius:10px; padding:0 10px; background:#fff; height:40px; min-width:170px }
+  .lf-addbar .btn { height:40px }
+  .lf-addbar .lf-hint { flex-basis:100%; font-size:12px; color:var(--muted) }
   .lf-error { background:#FDECEC; color:#B42318; border-radius:10px; padding:10px 14px; font-size:13.5px; margin-bottom:12px }
   .lf-empty { text-align:center; padding:34px 20px; color:var(--muted) }
-  .lf-jobs { font-size:13px; color:var(--muted); display:flex; gap:6px 14px; flex-wrap:wrap; margin-top:4px }
-  .lf-jobs a { color:#0B1D40; font-weight:600 }
+  @media (max-width:760px) { .lf-row.two { grid-template-columns:1fr } .lf-addbar { position:static; box-shadow:none } .lf-addbar .lf-text { flex:1 1 100% } }
 </style>
 {% endblock %}
 
 {% block content %}
+{#- A filter dropdown: button shows what's picked; panel = tick list (+ search
+    box for long lists), Clear / Done. Checkboxes are real form fields. -#}
+{% macro dd(id, name, label, any_text, options, picked, search=false, note=None, popular=None) -%}
+<div class="dd" id="dd-{{ id }}" data-any="{{ any_text }}">
+  <span class="dd-lab" id="dd-{{ id }}-lab">{{ label }}</span>
+  <button type="button" class="dd-btn" aria-haspopup="true" aria-expanded="false" aria-labelledby="dd-{{ id }}-lab dd-{{ id }}-val">
+    <span class="dd-val" id="dd-{{ id }}-val">{{ any_text }}</span><span class="dd-caret" aria-hidden="true">▾</span>
+  </button>
+  <div class="dd-panel" hidden>
+    {% if search %}<input type="text" class="dd-search" placeholder="Search…" aria-label="Search {{ label|lower }}" autocomplete="off">{% endif %}
+    {% if note %}<div class="dd-note">{{ note }}</div>{% endif %}
+    <div class="dd-list" role="group" aria-label="{{ label }}">
+      {%- for o in options %}
+      <label class="dd-opt"><input type="checkbox" name="{{ name }}" value="{{ o }}" {% if o in picked %}checked{% endif %}><span>{{ o }}</span></label>
+      {%- endfor %}
+    </div>
+    <div class="dd-empty" hidden>Nothing matches.</div>
+    <div class="dd-foot"><button type="button" class="dd-clear">Clear</button><button type="button" class="dd-done">Done</button></div>
+  </div>
+</div>
+{%- endmacro %}
 <div class="lf-hero">
   <div class="lf-hero-left">
     <div class="lf-hero-icon">🔎</div>
@@ -76,61 +121,49 @@
 <div class="lf-error">The Prospeo key isn't set up on the server yet, so searching is switched off.</div>
 {% endif %}
 
+{% set popular = ['Nigeria', 'United Kingdom', 'Ghana', 'United States', 'Kenya', 'South Africa'] %}
 <form class="lf-card" method="GET" action="{{ url_for('leadfinder.page') }}" id="lf-form">
   <input type="hidden" name="run" value="1">
-  <div class="lf-grid">
-    <div class="lf-field">
-      <span class="lf-lab" id="lf-loc-lab">Country or city</span>
-      <div class="lf-checks" id="lf-loc-chips" aria-labelledby="lf-loc-lab">
-        {% for l in f.locations %}<span class="lf-chip">{{ l }}<input type="hidden" name="loc" value="{{ l }}"><button type="button" aria-label="Remove {{ l }}" onclick="this.parentNode.remove()">×</button></span>{% endfor %}
+  <div class="lf-row">
+    {#- Country or city: popular countries + anything picked before; the search box asks Prospeo for any other place -#}
+    <div class="dd" id="dd-loc" data-any="Anywhere" data-remote="{{ url_for('leadfinder.locations') }}">
+      <span class="dd-lab" id="dd-loc-lab">Country or city</span>
+      <button type="button" class="dd-btn" aria-haspopup="true" aria-expanded="false" aria-labelledby="dd-loc-lab dd-loc-val">
+        <span class="dd-val" id="dd-loc-val">Anywhere</span><span class="dd-caret" aria-hidden="true">▾</span>
+      </button>
+      <div class="dd-panel" hidden>
+        <input type="text" class="dd-search" placeholder="Search any country or city…" aria-label="Search any country or city" autocomplete="off">
+        <div class="dd-list" role="group" aria-label="Country or city">
+          <div class="dd-found"></div>
+          <div class="dd-group">Popular</div>
+          {%- for o in popular %}
+          <label class="dd-opt"><input type="checkbox" name="loc" value="{{ o }}" {% if o in f.locations %}checked{% endif %}><span>{{ o }}</span></label>
+          {%- endfor %}
+          {%- set others = f.locations|reject('in', popular)|list %}
+          {%- if others %}<div class="dd-group">Picked</div>{% for o in others %}
+          <label class="dd-opt"><input type="checkbox" name="loc" value="{{ o }}" checked><span>{{ o }}</span></label>
+          {%- endfor %}{% endif %}
+        </div>
+        <div class="dd-empty" hidden>Type at least 2 letters to search.</div>
+        <div class="dd-foot"><button type="button" class="dd-clear">Clear</button><button type="button" class="dd-done">Done</button></div>
       </div>
-      <div class="lf-loc-box">
-        <input type="text" id="lf-loc-q" autocomplete="off" placeholder="Type to add, e.g. United Kingdom, Lagos">
-        <div class="lf-sugg" id="lf-sugg" hidden></div>
-      </div>
-      <span class="lf-hint">Where the company is based.</span>
     </div>
-
-    <div class="lf-field">
-      <label for="lf-ind">Industry <span class="lf-hint">(hold Ctrl / ⌘ to pick several)</span></label>
-      <select id="lf-ind" name="ind" multiple>
-        {% for i in industries %}<option {% if i in f.industries %}selected{% endif %}>{{ i }}</option>{% endfor %}
-      </select>
-    </div>
-
-    <div class="lf-field">
-      <span class="lf-lab">Job level</span>
-      <div class="lf-checks">
-        {% for s in seniorities %}<label class="lf-check"><input type="checkbox" name="sen" value="{{ s }}" {% if s in f.seniority %}checked{% endif %}>{{ s }}</label>{% endfor %}
-      </div>
-      <label for="lf-title" style="margin-top:6px">Job title contains <span class="lf-hint">(optional, separate with commas)</span></label>
-      <input type="text" id="lf-title" name="title" value="{{ f.title }}" placeholder="e.g. Head of Sales, Customer Service">
-    </div>
-
-    <div class="lf-field">
-      <span class="lf-lab">Company size (staff)</span>
-      <div class="lf-checks">
-        {% for h in headcounts %}<label class="lf-check"><input type="checkbox" name="size" value="{{ h }}" {% if h in f.sizes %}checked{% endif %}>{{ h }}</label>{% endfor %}
-      </div>
-      <span class="lf-hint">None ticked = any size.</span>
-    </div>
-
-    <div class="lf-field">
-      <span class="lf-lab">Uses WhatsApp tools on their website <span class="lf-lock">Prospeo Starter</span></span>
-      <div class="lf-checks">
-        {% for t in wa_tools %}<label class="lf-check"><input type="checkbox" name="wa" value="{{ t }}" {% if t in f.wa_tools %}checked{% endif %}>{{ t }}</label>{% endfor %}
-      </div>
-      <span class="lf-hint">Needs the paid Prospeo plan. On the free plan, try the keyword "whatsapp" instead.</span>
-    </div>
-
-    <div class="lf-field">
-      <label for="lf-kw">Company keyword <span class="lf-hint">(optional)</span></label>
-      <input type="text" id="lf-kw" name="kw" value="{{ f.keyword }}" placeholder="e.g. whatsapp, logistics, fintech">
-      <span class="lf-hint">Matches words in the company's description.</span>
-    </div>
+    {{ dd('ind', 'ind', 'Industry', 'Any industry', industries, f.industries, search=true) }}
+    {{ dd('sen', 'sen', 'Job level', 'Any level', seniorities, f.seniority) }}
+    {{ dd('size', 'size', 'Company size (staff)', 'Any size', headcounts, f.sizes) }}
+    <div class="right">{{ dd('wa', 'wa', 'WhatsApp tools', 'Any', wa_tools, f.wa_tools,
+          note='Tools Prospeo saw on the company website. Needs the paid Prospeo plan; on the free plan, use the keyword "whatsapp" instead.') }}</div>
   </div>
-  <div class="lf-actions">
-    <label class="lf-check" style="border:0;padding:0"><input type="checkbox" name="one" value="1" {% if f.one_per_company %}checked{% endif %}> One person per company (most senior)</label>
+  <div class="lf-row two">
+    <div class="lf-text">
+      <label for="lf-title">Job title contains</label>
+      <input type="text" id="lf-title" name="title" value="{{ f.title }}" placeholder="Optional, e.g. Head of Sales, Customer Service">
+    </div>
+    <div class="lf-text">
+      <label for="lf-kw">Company keyword</label>
+      <input type="text" id="lf-kw" name="kw" value="{{ f.keyword }}" placeholder="Optional, e.g. whatsapp, logistics">
+    </div>
+    <label class="lf-one"><input type="checkbox" name="one" value="1" {% if f.one_per_company %}checked{% endif %}> One person per company</label>
     <button type="submit" class="btn btn-primary" {% if not configured %}disabled{% endif %}>Search</button>
   </div>
   {% if jobs %}
@@ -189,21 +222,31 @@
   <form class="lf-addbar" method="POST" action="{{ url_for('leadfinder.add') }}" id="lf-add">
     <input type="hidden" name="people" id="lf-people">
     <input type="hidden" name="back" value="{{ request.full_path }}">
-    <span class="lf-lab">Get:</span>
-    <label><input type="checkbox" checked disabled> Email (1 credit)</label>
-    <label><input type="checkbox" name="mobile" value="1" id="lf-mob"> Mobile (10 credits)</label>
-    <label id="lf-wa-wrap" hidden><input type="checkbox" name="wa_too" value="1" checked> Save the mobile as WhatsApp number too</label>
+    <input type="hidden" name="mobile" id="lf-mobile" value="">
+    <input type="hidden" name="wa_too" id="lf-wa-too" value="">
+    <div class="lf-text">
+      <label for="lf-get">Get</label>
+      <select id="lf-get">
+        <option value="email">Email only (1 credit)</option>
+        <option value="mobile">Email + mobile (up to 11 credits)</option>
+        <option value="mobile_wa">Email + mobile, save mobile as WhatsApp too</option>
+      </select>
+    </div>
     {% if can_assign %}
-    <label for="lf-assign">Assign to
+    <div class="lf-text">
+      <label for="lf-assign">Assign to</label>
       <select name="assign" id="lf-assign">
         <option value="">Nobody yet</option>
         {% for p in people %}<option value="{{ p.key }}" {% if p.key == me_key %}selected{% endif %}>{{ p.display }}</option>{% endfor %}
       </select>
-    </label>
+    </div>
     {% endif %}
-    <label for="lf-label">Extra label <input type="text" name="label" id="lf-label" maxlength="60" placeholder="optional, e.g. Lagos fintech"></label>
+    <div class="lf-text">
+      <label for="lf-label">Extra label</label>
+      <input type="text" name="label" id="lf-label" maxlength="60" placeholder="Optional, e.g. Lagos fintech">
+    </div>
     <button type="submit" class="btn btn-primary" id="lf-add-btn" disabled>Add 0 to Leads</button>
-    <span class="lf-hint" style="flex-basis:100%">Everyone added gets the "Lead Finder" label. Nobody found = not charged. Already in Leads (same email or number) = skipped. Up to {{ max_per_add }} at a time.</span>
+    <span class="lf-hint">Everyone added gets the "Lead Finder" label. Nobody found = not charged. Already in Leads (same email or number) = skipped. Up to {{ max_per_add }} at a time.</span>
   </form>
   {% endif %}
   {% elif not res.error %}
@@ -213,59 +256,97 @@
 
 <script>
 (function(){
-  // Country / city: type → Prospeo suggestions → chip
-  const q = document.getElementById('lf-loc-q'), box = document.getElementById('lf-sugg'), chips = document.getElementById('lf-loc-chips');
-  let timer;
-  function addChip(name){
-    if ([...chips.querySelectorAll('input')].some(i => i.value === name)) return;
-    const s = document.createElement('span'); s.className = 'lf-chip';
-    s.textContent = name;
-    const h = document.createElement('input'); h.type = 'hidden'; h.name = 'loc'; h.value = name;
-    const b = document.createElement('button'); b.type = 'button'; b.textContent = '×'; b.setAttribute('aria-label', 'Remove ' + name);
-    b.onclick = () => s.remove();
-    s.append(h, b); chips.appendChild(s);
+  // ── Dropdowns ──────────────────────────────────────────────────────────
+  const dds = [...document.querySelectorAll('.dd')];
+  function boxes(d){ return [...d.querySelectorAll('.dd-list input[type=checkbox]')]; }
+  function refresh(d){
+    const on = boxes(d).filter(c => c.checked).map(c => c.value);
+    const val = d.querySelector('.dd-val');
+    val.textContent = !on.length ? d.dataset.any : on.length <= 2 ? on.join(', ') : on[0] + ' +' + (on.length - 1) + ' more';
+    d.classList.toggle('on', on.length > 0);
   }
-  if (q) {
-    q.addEventListener('input', () => {
+  function close(d, focus){
+    const p = d.querySelector('.dd-panel'), b = d.querySelector('.dd-btn');
+    if (p.hidden) return;
+    p.hidden = true; b.setAttribute('aria-expanded', 'false');
+    if (focus) b.focus();
+  }
+  function open(d){
+    dds.forEach(x => x !== d && close(x));
+    const p = d.querySelector('.dd-panel');
+    p.hidden = false; d.querySelector('.dd-btn').setAttribute('aria-expanded', 'true');
+    const s = d.querySelector('.dd-search');
+    (s || d.querySelector('.dd-list input'))?.focus();
+  }
+  dds.forEach(d => {
+    refresh(d);
+    d.querySelector('.dd-btn').addEventListener('click', () => d.querySelector('.dd-panel').hidden ? open(d) : close(d));
+    d.querySelector('.dd-list').addEventListener('change', () => refresh(d));
+    d.querySelector('.dd-clear').addEventListener('click', () => { boxes(d).forEach(c => c.checked = false); refresh(d); });
+    d.querySelector('.dd-done').addEventListener('click', () => close(d, true));
+    d.addEventListener('keydown', e => { if (e.key === 'Escape') close(d, true); });
+    const s = d.querySelector('.dd-search');
+    if (s && !d.dataset.remote) {               // filter a long list as you type
+      s.addEventListener('input', () => {
+        const q = s.value.trim().toLowerCase(); let shown = 0;
+        d.querySelectorAll('.dd-opt').forEach(o => { const m = !q || o.textContent.toLowerCase().includes(q); o.hidden = !m; shown += m; });
+        d.querySelector('.dd-empty').hidden = shown > 0;
+      });
+      s.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+    }
+  });
+  document.addEventListener('click', e => dds.forEach(d => { if (!d.contains(e.target)) close(d); }));
+
+  // Country or city: ask Prospeo for places as you type
+  const loc = document.getElementById('dd-loc');
+  if (loc) {
+    const s = loc.querySelector('.dd-search'), found = loc.querySelector('.dd-found'), empty = loc.querySelector('.dd-empty');
+    let timer;
+    s.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+    s.addEventListener('input', () => {
       clearTimeout(timer);
-      const v = q.value.trim();
-      if (v.length < 2) { box.hidden = true; return; }
+      const q = s.value.trim();
+      if (q.length < 2) { found.innerHTML = ''; empty.hidden = true; return; }
       timer = setTimeout(() => {
-        fetch('{{ url_for("leadfinder.locations") }}?q=' + encodeURIComponent(v))
-          .then(r => r.json()).then(d => {
-            box.innerHTML = '';
-            (d.items || []).forEach(n => {
-              const b = document.createElement('button'); b.type = 'button'; b.textContent = n;
-              b.onclick = () => { addChip(n); q.value = ''; box.hidden = true; q.focus(); };
-              box.appendChild(b);
+        fetch(loc.dataset.remote + '?q=' + encodeURIComponent(q)).then(r => r.json()).then(d => {
+          found.innerHTML = '';
+          const have = new Set(boxes(loc).map(c => c.value));
+          const items = (d.items || []).filter(n => !have.has(n));
+          if (items.length) {
+            const g = document.createElement('div'); g.className = 'dd-group'; g.textContent = 'Found'; found.appendChild(g);
+            items.forEach(n => {
+              const l = document.createElement('label'); l.className = 'dd-opt';
+              const c = document.createElement('input'); c.type = 'checkbox'; c.name = 'loc'; c.value = n;
+              const t = document.createElement('span'); t.textContent = n;
+              l.append(c, t); found.appendChild(l);
             });
-            if (!(d.items || []).length) { const e = document.createElement('div'); e.className = 'lf-hint'; e.style.padding = '8px 12px';
-              e.textContent = d.error || 'No place found with that name.'; box.appendChild(e); }
-            box.hidden = false;
-          }).catch(() => { box.hidden = true; });
+          }
+          empty.textContent = d.error || 'No place found with that name.';
+          empty.hidden = items.length > 0 || (d.items || []).length > 0;
+        }).catch(() => {});
       }, 350);
     });
-    q.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); const f = box.querySelector('button'); if (f) f.click(); } });
-    document.addEventListener('click', e => { if (!box.contains(e.target) && e.target !== q) box.hidden = true; });
   }
 
-  // Ticking people → Add button
+  // ── Picking people → Add button ────────────────────────────────────────
   const picks = [...document.querySelectorAll('.lf-pick')], all = document.getElementById('lf-all'),
-        btn = document.getElementById('lf-add-btn'), mob = document.getElementById('lf-mob'), waWrap = document.getElementById('lf-wa-wrap');
+        btn = document.getElementById('lf-add-btn');
   const MAX = {{ max_per_add }};
   function upd(){
     picks.forEach(c => c.closest('tr').classList.toggle('sel', c.checked));
     const n = picks.filter(c => c.checked).length;
-    if (btn) { btn.textContent = 'Add ' + n + ' to Leads'; btn.disabled = !n || n > MAX; }
-    if (all) all.checked = n && n === picks.length;
+    if (btn) { btn.textContent = n > MAX ? 'Pick up to ' + MAX : 'Add ' + n + ' to Leads'; btn.disabled = !n || n > MAX; }
+    if (all) all.checked = n > 0 && n === picks.length;
   }
   picks.forEach(c => c.addEventListener('change', upd));
   if (all) all.addEventListener('change', () => { picks.forEach(c => c.checked = all.checked); upd(); });
-  if (mob && waWrap) mob.addEventListener('change', () => { waWrap.hidden = !mob.checked; });
   const form = document.getElementById('lf-add');
   if (form) form.addEventListener('submit', e => {
     const chosen = picks.filter(c => c.checked).map(c => JSON.parse(c.dataset.person));
     if (!chosen.length) { e.preventDefault(); return; }
+    const get = document.getElementById('lf-get').value;
+    document.getElementById('lf-mobile').value = get === 'email' ? '' : '1';
+    document.getElementById('lf-wa-too').value = get === 'mobile_wa' ? '1' : '';
     document.getElementById('lf-people').value = JSON.stringify(chosen);
     btn.disabled = true; btn.textContent = 'Adding…';
   });
