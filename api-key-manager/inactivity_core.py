@@ -314,6 +314,17 @@ def log(tenant_id, business_name, email, action, detail, mode):
         cur.close(); conn.close()
 
 
+def purge_old_log():
+    """The warning history (proof of notice) is kept 3 years — Privacy Policy,
+    Data Retention table."""
+    conn, cur = _db()
+    try:
+        cur.execute("DELETE FROM account_inactivity_log WHERE created_at < NOW() - INTERVAL '3 years'")
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+
+
 def recent_log(limit=200) -> list[dict]:
     ensure_tables()
     conn, cur = _db()

@@ -27,6 +27,7 @@ def run():
     if mode == "off":
         print("inactivity: off")
         return
+    ic.purge_old_log()
     done = []
     for r in ic.accounts():
         if r["reset"] and mode == "on":
