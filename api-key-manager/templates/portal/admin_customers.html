@@ -123,6 +123,18 @@
       {% if q or active_count %}<a href="{{ clear_all_url }}" class="btn btn-sm">Clear</a>{% endif %}
     </div>
 
+    {% if customers %}
+    <div class="pager" style="margin:0">
+      <div class="per-page">
+        Per page
+        <select onchange="document.getElementById('perPageField').value=this.value;document.getElementById('filtersForm').submit()">
+          {% for n in per_page_options %}<option value="{{ n }}" {% if n|int == paging.per_page %}selected{% endif %}>{{ n }}</option>{% endfor %}
+        </select>
+        <span>{{ paging.first }}–{{ paging.last }} of {{ paging.total }}</span>
+      </div>
+    </div>
+    {% endif %}
+
     {% if customers or active_count %}
     <div class="view-toggle" role="group" aria-label="Customers view">
       <button type="button" class="view-btn" id="gridViewBtn" onclick="setCustomerView('grid')">
