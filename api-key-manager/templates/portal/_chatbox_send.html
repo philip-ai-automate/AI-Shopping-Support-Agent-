@@ -1,0 +1,10 @@
+{# Send the code by email (2026-10-18): emails the code and the steps for this website builder to any address. #}
+<form method="POST" action="{{ url_for('portal.store_info_website_chatbox_send') }}" class="cbg-send">
+  <input type="hidden" name="back" value="{{ send_back }}">
+  <input type="hidden" name="platform" value="{{ send_platform }}">
+  <label class="cbg-send-l" for="cbgSend{{ send_back }}">Want the code and the steps by email? Type the email address to send them to.</label>
+  <div class="cbg-send-row">
+    <input type="email" id="cbgSend{{ send_back }}" name="email" required placeholder="Email address" class="cbg-input">
+    <button type="submit" class="cbg-btn line">Send by email</button>
+  </div>
+</form>

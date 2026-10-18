@@ -2281,11 +2281,35 @@ def widget_js():
                           headers={"Cache-Control": "public, max-age=300"})
 
 
+_W_SEEN: set = set()   # tenants whose chat box we already know is on their website
+
+
+def _w_mark_seen(tenant_id: int) -> None:
+    """The chat box just loaded on the business's own website: tick "Add the
+    chat box" in its set-up steps (2026-10-18). PhiXtra never visits the
+    website for this; the visitor's browser tells us. Once per tenant."""
+    if tenant_id in _W_SEEN:
+        return
+    conn = get_db_connection()
+    if not conn:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE tenants SET chatbox_seen_at = NOW() WHERE id = %s AND chatbox_seen_at IS NULL", (tenant_id,))
+        conn.commit(); cur.close()
+        _W_SEEN.add(tenant_id)
+    except Exception as e:
+        print("⚠️ _w_mark_seen:", e)
+    finally:
+        conn.close()
+
+
 @app.get("/widget/config")
 def widget_config(site: str, request: _WRequest):
     row, err = _w_site(site, request)
     if err:
         return _WJSON({"enabled": False, "detail": err[1]}, status_code=err[0])
+    _w_mark_seen(int(row["tenant_id"]))
     # The box always shows (2026-10-06). AI off (PhiXtra Connect) = "team"
     # mode: the business's staff answer from the Inbox.
     if row["ai_on"]:

@@ -3660,6 +3660,12 @@ def wp_connect_exchange():
         return jsonify({"ok": False, "error": "no_api_key"}), 409
     insert_audit_log(admin_username=row["created_by"], action="wp_plugin_connected",
                      tenant_id=row["tenant_id"], details={"site": site_host})
+    try:   # the plugin shows the chat box as soon as its key is saved
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("UPDATE tenants SET chatbox_seen_at = NOW() WHERE id=%s AND chatbox_seen_at IS NULL", (row["tenant_id"],))
+        conn.commit(); cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ wp_connect_exchange chatbox_seen_at:", e)
     return jsonify({"ok": True, "api_key": key})
 
 
@@ -5920,18 +5926,22 @@ def _product_sources(tenant_id: int, cur=None) -> dict:
     own = cur is None
     if own:
         conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""SELECT COUNT(*) FILTER (WHERE id NOT LIKE 'xls-%%') AS shop,
-                          COUNT(*) FILTER (WHERE id LIKE 'xls-%%') AS lists
+    cur.execute("""SELECT COUNT(*) FILTER (WHERE id NOT LIKE 'xls-%%' AND id NOT LIKE 'site-%%') AS shop,
+                          COUNT(*) FILTER (WHERE id LIKE 'xls-%%') AS lists,
+                          COUNT(*) FILTER (WHERE id LIKE 'site-%%') AS site
                      FROM documents WHERE tenant_id=%s AND type='product'""", (tenant_id,))
     r = cur.fetchone()
+    cur.execute("SELECT read_products FROM website_sources WHERE tenant_id=%s", (tenant_id,))
+    ws = cur.fetchone()
+    reading = bool(ws and ws["read_products"])
     cur.execute("""SELECT COUNT(*) AS n FROM data_sources WHERE tenant_id=%s AND is_active
                      AND column_map IS NOT NULL""", (tenant_id,))
     n_lists = int(cur.fetchone()["n"])
     if own:
         cur.close(); conn.close()
-    shop, from_lists = int(r["shop"]), int(r["lists"])
-    return {"shop": shop, "lists": n_lists, "list_products": from_lists,
-            "source": "list" if n_lists else ("shop" if shop else None)}
+    shop, from_lists, site = int(r["shop"]), int(r["lists"]), int(r["site"])
+    return {"shop": shop, "lists": n_lists, "list_products": from_lists, "site": site, "read_products": reading,
+            "source": "list" if n_lists else ("shop" if shop else ("site" if (reading or site) else None))}
 
 
 def _setup_checklist(tenant_id: int):
@@ -6000,9 +6010,11 @@ def _setup_checklist(tenant_id: int):
                           text="Install and activate the free PhiXtra AI Sales Agent plugin on WordPress, then click Connect to PhiXtra inside it. That sets up your API key and the chat box.",
                           action="Get your API key", url=url_for("portal.api_keys"), check=True))
     else:
+        gkey = _chatbox_guide_key(t["website_platform"] or "")
         steps.append(dict(key="chatbox", title="Add the chat box", done=bool(t["chatbox_seen_at"]),
-                          text=f"Copy one line of code into {names.get(t['website_platform'], 'your website')}.",
-                          action="Get your chat box code", url=url_for("portal.store_info_website_chatbox"), check=True))
+                          text=f"Copy one line of code into {names.get(t['website_platform'], 'your website')}, or send the code and the steps by email.",
+                          action="Other website builders", url=url_for("portal.store_info_website_chatbox"), check=True,
+                          guide=CHATBOX_GUIDES[gkey], guide_key=gkey))
 
     # 4. Trial.
     paid = t["plan_slug"] not in AI_OFF_FREE_PLAN_SLUGS
@@ -6025,11 +6037,15 @@ def _setup_checklist(tenant_id: int):
         p_text = f"Your products come from your uploaded list ({prod['list_products']} products)."
     elif prod["source"] == "shop":
         p_text = f"Your products come from your WooCommerce shop ({prod['shop']} products)."
+    elif prod["source"] == "site":
+        p_text = (f"Your AI reads your products from your website's pages ({prod['site']} products so far). "
+                  "Prices update each time your website is read.")
     else:
         p_text = ("Optional. Choose which shop products the AI can recommend, inside the plugin, or upload a list instead (Excel, CSV or Google Sheets). Use one or the other."
-                  if wp else "Optional. Upload your product list (Excel, CSV or Google Sheets).")
+                  if wp else "Optional. Let your AI read your products from your website's own pages, or upload a list (Excel, CSV or Google Sheets). Use one or the other.")
     extras = [dict(key="products", title="Products", done=prod["source"] is not None, text=p_text,
-                   shop_url=shop_tab, list_url=url_for("portal.data_sources"), source=prod["source"])]
+                   shop_url=shop_tab, list_url=url_for("portal.data_sources"), source=prod["source"],
+                   site_ok=(not wp) and bool(src), read_url=url_for("portal.store_info_website_read_products"))]
     wa_ok = t["channel_mode"] in ("dual", "both")
     extras.append(dict(key="whatsapp", title="WhatsApp", done=wa_on,
                        text=("Connected." if wa_on else
@@ -6039,8 +6055,73 @@ def _setup_checklist(tenant_id: int):
                        url=(url_for("portal.whatsapp_connect") if wa_ok else url_for("portal.billing_plans"))))
 
     done = sum(1 for st in steps if st["done"])
+    chatbox_code = None
+    if any(st.get("guide") and not st["done"] and not st["locked"] for st in steps):
+        chatbox_code = f'<script src="{WIDGET_SCRIPT_URL}" data-site="{_site_widget_key(tenant_id)}" async></script>'
     return {"steps": steps, "extras": extras, "done": done, "total": len(steps), "complete": done == len(steps),
+            "chatbox_code": chatbox_code,
             "checking": any(st.get("state") == "checking" for st in steps), "domain": t["domain"]}
+
+
+# Where to paste the chat box code, per website builder (2026-10-18: one list
+# for the Add the chat box page, the Dashboard step and the "Send by email"
+# email). Steps hold a little <strong>/<code> markup; they're ours.
+CHATBOX_GUIDES = {
+    "shopify": {
+        "name": "Shopify",
+        "warning": "If you're trying a paid Shopify theme, Shopify only lets you edit its code after you've bought the theme.",
+        "steps": [
+            "Copy your chat box code.",
+            "In your Shopify admin, go to <strong>Online Store</strong>.",
+            "Next to your live theme, click the <strong>…</strong> (more) button, then <strong>Edit code</strong>.",
+            "In the <strong>Layout</strong> folder, click <strong>theme.liquid</strong>.",
+            "Find <code>&lt;/body&gt;</code> near the bottom of the file, and paste the code on the line just above it.",
+            "Click <strong>Save</strong>.",
+        ],
+        "help": ("Shopify's own guide", "https://help.shopify.com/en/manual/online-store/themes/theme-code"),
+    },
+    "wix": {
+        "name": "Wix",
+        "warning": "Wix only runs custom code on a published site with its own connected domain. If you later connect a different domain, Wix removes the code, so add it again.",
+        "steps": [
+            "Copy your chat box code.",
+            "In your Wix site's dashboard, go to <strong>Settings</strong>.",
+            "Under <strong>Development &amp; integrations</strong>, click <strong>Custom Code</strong>.",
+            "Click <strong>+ Add Custom Code</strong> at the top right.",
+            "Paste the code in the text box, and name it <strong>PhiXtra chat box</strong>.",
+            "Under <strong>Add Code to Pages</strong>, choose <strong>All pages</strong>.",
+            "Under <strong>Place Code in</strong>, choose <strong>Body – end</strong>.",
+            "Click <strong>Apply</strong>.",
+        ],
+        "help": ("Wix's own guide", "https://support.wix.com/en/article/embedding-custom-code-on-your-site"),
+    },
+    "squarespace": {
+        "name": "Squarespace",
+        "warning": "Code Injection is on Squarespace's Core, Plus and Advanced plans and some older plans, not on the Basic plan.",
+        "steps": [
+            "Copy your chat box code.",
+            "In Squarespace, open <strong>Website Tools</strong>, then <strong>Code Injection</strong>.",
+            "Paste the code in the <strong>Footer</strong> box. Squarespace adds it to every page.",
+            "Click <strong>Save</strong>.",
+        ],
+        "help": ("Squarespace's own guide", "https://support.squarespace.com/hc/en-us/articles/205815908-Using-code-injection"),
+    },
+    "other": {
+        "name": "Other or custom-built",
+        "warning": "",
+        "steps": [
+            "Copy your chat box code.",
+            "Open your website's main template, the file or setting that every page shares.",
+            "Paste the code on the line just above <code>&lt;/body&gt;</code>.",
+            "Publish the change.",
+        ],
+        "help": None,
+    },
+}
+
+
+def _chatbox_guide_key(platform: str) -> str:
+    return platform if platform in ("shopify", "wix", "squarespace") else "other"
 
 
 # ── Add the chat box: paste-in code for any website (2026-10-05, phase 4) ──
@@ -6083,6 +6164,7 @@ def store_info_website_chatbox():
     return render_template("portal/store_info_website_chatbox.html", customer=customer, code=code,
                            domain=t.get("domain") or "", platform=t.get("website_platform") or "",
                            seen=t.get("chatbox_seen_at"), ai_off=plan.get("plan_slug") in AI_OFF_FREE_PLAN_SLUGS,
+                           guides=CHATBOX_GUIDES,
                            trial_available=plan.get("ai_trial_available"))
 
 
@@ -6111,6 +6193,117 @@ def setup_check_chatbox():
     if request.form.get("back") == "chatbox":
         return redirect(url_for("portal.store_info_website_chatbox"))
     return redirect(url_for("portal.dashboard"))
+
+
+@portal_bp.route("/store-info/website/chat-box/send", methods=["POST"])
+@team_feature("store.info")
+def store_info_website_chatbox_send():
+    """Emails the chat box code and the steps for the business's website
+    builder to an address the business types (2026-10-18). At most 5 a day."""
+    r = _require_login()
+    if r: return r
+    r3 = _require_team_permission("store.info")
+    if r3: return r3
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    back = url_for("portal.store_info_website_chatbox") if request.form.get("back") == "chatbox" else url_for("portal.dashboard")
+    to = (request.form.get("email") or "").strip()
+    if not _re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", to) or len(to) > 254:
+        flash("Please type a valid email address.", "warning")
+        return redirect(back)
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""SELECT COUNT(*) AS n FROM audit_logs WHERE tenant_id=%s AND action='chatbox_code_emailed'
+                     AND created_at > NOW() - INTERVAL '1 day'""", (tenant_id,))
+    sent_today = int(cur.fetchone()["n"])
+    cur.execute("SELECT name, domain, website_platform FROM tenants WHERE id=%s", (tenant_id,))
+    t = cur.fetchone() or {}
+    cur.close(); conn.close()
+    if sent_today >= 5:
+        flash("You've sent the code 5 times today. Please try again tomorrow.", "warning")
+        return redirect(back)
+    key = _chatbox_guide_key(request.form.get("platform") or t.get("website_platform") or "")
+    g = CHATBOX_GUIDES[key]
+    code = f'<script src="{WIDGET_SCRIPT_URL}" data-site="{_site_widget_key(tenant_id)}" async></script>'
+    business = t.get("name") or "A PhiXtra business"
+    domain = t.get("domain") or "the website"
+    from markupsafe import escape as _esc
+    steps_html = "".join(f"<li style='margin-bottom:6px'>{st}</li>" for st in g["steps"])
+    steps_text = "\n".join(f"{i}. {_re.sub(r'<[^>]+>', '', st).replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')}"
+                           for i, st in enumerate(g["steps"], 1))
+    warn = g["warning"]
+    help_html = f"<p style='font-size:13px'><a href='{g['help'][1]}'>{g['help'][0]}</a></p>" if g["help"] else ""
+    html = f"""<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#111E2D;max-width:600px">
+<p>Hello,</p>
+<p>{_esc(business)} would like the PhiXtra chat box added to <strong>{_esc(domain)}</strong>. It's one line of code that goes on every page.</p>
+<p style="margin-bottom:4px"><strong>The code:</strong></p>
+<pre style="background:#0B1D40;color:#E6ECF5;border-radius:8px;padding:12px;font-size:12.5px;white-space:pre-wrap;word-break:break-all">{_esc(code)}</pre>
+<p style="margin-bottom:4px"><strong>Where to paste it ({g['name']}):</strong></p>
+{f"<p style='background:#FFF4D6;padding:8px 10px;border-radius:6px'>{warn}</p>" if warn else ""}
+<ol>{steps_html}</ol>
+{help_html}
+<p>The chat box only works on {_esc(domain)}, so the code is safe to paste anywhere on the site.</p>
+<p>Thank you,<br>PhiXtra, on behalf of {_esc(business)}</p></div>"""
+    text = (f"Hello,\n\n{business} would like the PhiXtra chat box added to {domain}. It's one line of code that goes on every page.\n\n"
+            f"The code:\n{code}\n\nWhere to paste it ({g['name']}):\n" + (f"Note: {warn}\n" if warn else "") + steps_text +
+            (f"\n\n{g['help'][0]}: {g['help'][1]}" if g["help"] else "") +
+            f"\n\nThe chat box only works on {domain}, so the code is safe to paste anywhere on the site.\n\nThank you,\nPhiXtra, on behalf of {business}")
+    from portal_utils import send_email as _send
+    ok = _send(to, f"Please add the PhiXtra chat box to {domain}", html, text, reply_to=customer.get("email") or None)
+    actor = _store_info_actor(customer)
+    if ok:
+        insert_audit_log(admin_username=actor["audit_username"], action="chatbox_code_emailed",
+                         tenant_id=tenant_id, details={"to": to, "platform": key})
+        flash(f"Sent to {to}.", "success")
+    else:
+        flash("We couldn't send the email just now. Please try again in a few minutes.", "danger")
+    return redirect(back)
+
+
+# ── Read products from the website's own pages (2026-10-18) ────────────────
+@portal_bp.route("/store-info/website/read-products", methods=["POST"])
+@team_feature("store.info", "store.info_edit")
+def store_info_website_read_products():
+    r = _require_login()
+    if r: return r
+    r3 = _require_team_permission("store.info_edit")
+    if r3: return r3
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    back = url_for("portal.dashboard") if request.form.get("back") == "dashboard" else url_for("portal.store_info_website_sync")
+    src = _website_source(tenant_id)
+    if not src:
+        flash("Connect your website first.", "warning")
+        return redirect(back)
+    turn_on = request.form.get("action") == "on"
+    actor = _store_info_actor(customer)
+    if turn_on:
+        ps = _product_sources(tenant_id)
+        if ps["lists"]:
+            flash("Your products come from your uploaded list. Remove the list first to read products from your website instead.", "warning")
+            return redirect(back)
+        if ps["shop"]:
+            flash("Your products come from your WooCommerce shop, so they aren't read from your website pages.", "warning")
+            return redirect(back)
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("UPDATE website_sources SET read_products=%s WHERE tenant_id=%s", (turn_on, tenant_id))
+    removed = 0
+    if turn_on:
+        cur.execute("UPDATE website_sources SET status='pending', status_detail=NULL WHERE tenant_id=%s AND status <> 'reading'", (tenant_id,))
+    else:
+        cur.execute("""DELETE FROM documents WHERE tenant_id=%s AND type='product' AND id LIKE %s""",
+                    (tenant_id, f"site-{tenant_id}-%"))
+        removed = cur.rowcount
+        cur.execute("""DELETE FROM website_pages w WHERE w.tenant_id=%s AND w.status='read'
+                         AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.id = w.doc_id)""", (tenant_id,))
+    conn.commit(); cur.close(); conn.close()
+    insert_audit_log(admin_username=actor["audit_username"], action="website_read_products_" + ("on" if turn_on else "off"),
+                     tenant_id=tenant_id, details={"removed": removed})
+    if turn_on:
+        _start_website_reader(tenant_id)
+        flash("Reading your website's product pages now. This can take a few minutes.", "success")
+    else:
+        flash(f"Products are no longer read from your website{f' ({removed} removed)' if removed else ''}.", "success")
+    return redirect(back)
 
 
 # ── Dismiss onboarding wizard ──────────────────────────────────────────────────
@@ -29861,6 +30054,7 @@ def _remove_shop_products(tenant_id: int) -> int:
         cur.execute("""DELETE FROM documents WHERE tenant_id=%s AND type='product' AND id NOT LIKE 'xls-%%'""",
                     (tenant_id,))
         n = cur.rowcount
+        cur.execute("UPDATE website_sources SET read_products=FALSE WHERE tenant_id=%s AND read_products", (tenant_id,))
         conn.commit()
         return n
     finally:
@@ -30517,8 +30711,10 @@ def data_source_upload():
         flash(_limit_msg("product import sources", 0), "warning")
         return redirect(url_for("portal.data_sources"))
     # One source at a time (2026-10-18): a list replaces the shop's products.
-    if _product_sources(tenant_id)["shop"] and request.form.get("replace_shop") != "yes":
-        flash("Your products come from your WooCommerce shop. Tick the box to switch to an uploaded list instead.", "warning")
+    _ps = _product_sources(tenant_id)
+    if (_ps["shop"] or _ps["source"] == "site") and request.form.get("replace_shop") != "yes":
+        flash("Your products come from " + ("your WooCommerce shop" if _ps["shop"] else "your website's pages") +
+              ". Tick the box to switch to an uploaded list instead.", "warning")
         return redirect(url_for("portal.data_sources"))
 
     f = request.files.get("file")
@@ -30731,7 +30927,8 @@ def data_source_google_connect():
     if _data_sources_left(int(_get_customer(_customer_id())["tenant_id"])) == 0:
         flash(_limit_msg("product import sources", 0), "warning")
         return redirect(url_for("portal.data_sources"))
-    if _product_sources(int(_get_customer(_customer_id())["tenant_id"]))["shop"] and request.args.get("replace_shop") != "yes":
+    _ps = _product_sources(int(_get_customer(_customer_id())["tenant_id"]))
+    if (_ps["shop"] or _ps["source"] == "site") and request.args.get("replace_shop") != "yes":
         flash("Your products come from your WooCommerce shop. Tick the box on this page to switch to a list instead.", "warning")
         return redirect(url_for("portal.data_sources"))
     flow = _google_flow()

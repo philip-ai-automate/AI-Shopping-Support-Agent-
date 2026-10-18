@@ -12,6 +12,9 @@ Each readable page becomes a documents row (type 'page', id site-<tenant>-<hash>
 with its web address, so the AI can answer from it and link to it. Menus,
 headers, footers and cookie notices are stripped; product, cart, checkout and
 login pages are skipped (products come from the catalogue / WooCommerce sync).
+A business without a shop plugin or product list can switch on "read products"
+(website_sources.read_products, 2026-10-18): product pages are then read too
+and saved as products, with price and stock from the page's own shop data.
 Pages the business removed stay removed. At most MAX_PAGES pages.
 Embeddings are added by phixtra-data-sync/re_embed_worker.py, started at the end.
 """
@@ -39,6 +42,8 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 MAX_PAGES = int(os.getenv("WEBSITE_READER_MAX_PAGES", "100"))
 MAX_CANDIDATES = 400            # addresses looked at to find MAX_PAGES readable pages
+MAX_PRODUCT_PAGES = int(os.getenv("WEBSITE_READER_MAX_PRODUCTS", "300"))   # with read products on
+MAX_CANDIDATES_PRODUCTS = 1000
 PAGE_TIMEOUT_MS = 30000
 # Websites with a firewall allow PhiXtra by these two (Help › Website & Firewall guide).
 READER_NAME = "PhiXtraWebsiteReader"
@@ -51,8 +56,9 @@ STALE_READING = timedelta(minutes=45)   # a run that died: let the next one star
 
 SKIP_PATH = re.compile(
     r"/(cart|basket|checkout|my-account|account|login|log-in|signin|sign-in|register|signup|sign-up|"
-    r"wp-admin|wp-login\.php|admin|wp-json|feed|xmlrpc\.php|search|tag|author|category|page/\d+|"
-    r"product|products|product-page|product-category|item|items|shop/p|collections/[^/]+/products)(/|$)", re.I)
+    r"wp-admin|wp-login\.php|admin|wp-json|feed|xmlrpc\.php|search|tag|author|category|page/\d+)(/|$)", re.I)
+PRODUCT_PATH = re.compile(
+    r"/(product|products|product-page|product-category|item|items|shop/p|collections/[^/]+/products)(/|$)", re.I)
 SKIP_QUERY = re.compile(r"(add-to-cart|add_to_cart|replytocom|wc-ajax|orderby=|filter_|min_price|max_price|(^|&)s=|share=|nb=|utm_|fbclid|gclid|amp=|(^|&)p=\d)", re.I)
 SKIP_EXT = re.compile(r"\.(pdf|jpe?g|png|gif|webp|svg|ico|zip|rar|mp4|mp3|mov|avi|docx?|xlsx?|pptx?|csv|xml|json|js|css|woff2?|ttf)$", re.I)
 
@@ -89,6 +95,24 @@ EXTRACT_JS = r"""
   });
   const og = document.querySelector('meta[property="og:type"]');
   if (og && /product/i.test(og.content || '')) product = true;
+  // Price and stock from the page's own shop data (schema.org Product), if any.
+  let offer = null;
+  const walk = (o) => {
+    if (!o || typeof o !== 'object' || offer) return;
+    if (Array.isArray(o)) { o.forEach(walk); return; }
+    const t = [].concat(o['@type'] || []).join(' ');
+    if (/Product/.test(t) && o.offers) {
+      const f = [].concat(o.offers)[0] || {};
+      offer = { price: f.price || f.lowPrice || (f.priceSpecification || {}).price || null,
+                currency: f.priceCurrency || (f.priceSpecification || {}).priceCurrency || null,
+                availability: f.availability || null };
+      return;
+    }
+    Object.values(o).forEach(walk);
+  };
+  document.querySelectorAll('script[type="application/ld+json"]').forEach(s => {
+    try { walk(JSON.parse(s.textContent || '')); } catch (e) {}
+  });
   const links = Array.from(document.querySelectorAll('a[href]')).map(a => a.href);
   return {
     title: (document.title || '').trim(),
@@ -96,6 +120,7 @@ EXTRACT_JS = r"""
     text: main ? (main.innerText || main.textContent || '') : '',
     login: !!document.querySelector('input[type=password]'),
     product: product,
+    offer: offer,
     links: links,
   };
 }
@@ -154,11 +179,11 @@ def clean_url(u: str):
     return f"{p.scheme}://{p.netloc.lower()}{path}{q}"
 
 
-def skip_reason_for_url(u: str):
+def skip_reason_for_url(u: str, read_products: bool = False):
     p = urlparse(u)
     if SKIP_EXT.search(p.path):
         return "file, not a page"
-    if SKIP_PATH.search(p.path):
+    if SKIP_PATH.search(p.path) or (not read_products and PRODUCT_PATH.search(p.path)):
         return "product, cart or account page"
     if p.query and SKIP_QUERY.search(p.query):
         return "shop filter or cart link"
@@ -166,14 +191,15 @@ def skip_reason_for_url(u: str):
 
 
 # ── Finding pages ───────────────────────────────────────────────────────────
-def sitemap_urls(base: str, host: str, robots_txt: str) -> list:
+def sitemap_urls(base: str, host: str, robots_txt: str, read_products: bool = False) -> list:
     """Page addresses from the site's sitemap(s), if it has any."""
+    limit = MAX_CANDIDATES_PRODUCTS if read_products else MAX_CANDIDATES
     found, queue, seen = [], [], set()
     for line in robots_txt.splitlines():
         if line.lower().startswith("sitemap:"):
             queue.append(line.split(":", 1)[1].strip())
     queue += [urljoin(base, p) for p in ("/sitemap.xml", "/sitemap_index.xml", "/wp-sitemap.xml", "/page-sitemap.xml")]
-    while queue and len(seen) < 25 and len(found) < MAX_CANDIDATES:
+    while queue and len(seen) < 25 and len(found) < limit:
         sm = queue.pop(0)
         if sm in seen:
             continue
@@ -191,7 +217,8 @@ def sitemap_urls(base: str, host: str, robots_txt: str) -> list:
             u = loc.text.strip()
             if root.tag.endswith("sitemapindex"):
                 # product / category sitemaps hold no information pages
-                if not re.search(r"(product|category|tag|author|collection)", u, re.I):
+                skip = r"(category|tag|author)" if read_products else r"(product|category|tag|author|collection)"
+                if not re.search(skip, u, re.I):
                     queue.append(u)
             else:
                 cu = clean_url(u)
@@ -200,8 +227,9 @@ def sitemap_urls(base: str, host: str, robots_txt: str) -> list:
     return list(dict.fromkeys(found))
 
 
-def read_site(tenant_id: int, start_url: str, removed: set, progress) -> tuple:
-    """Returns (pages, skipped): pages = [{url,title,text}], skipped = {url: reason}."""
+def read_site(tenant_id: int, start_url: str, removed: set, progress, read_products: bool = False) -> tuple:
+    """Returns (pages, skipped): pages = [{url,title,text,kind,offer}], skipped = {url: reason}.
+    kind is 'product' for product pages (only read with read_products on)."""
     from playwright.sync_api import sync_playwright
 
     start = normalise_start(start_url)
@@ -219,10 +247,13 @@ def read_site(tenant_id: int, start_url: str, removed: set, progress) -> tuple:
     except Exception:
         robots.parse([])
 
-    candidates = [start] + [u for u in sitemap_urls(start, host, robots_txt) if u != start]
+    candidates = [start] + [u for u in sitemap_urls(start, host, robots_txt, read_products) if u != start]
     queued = set(candidates)
     pages, skipped = [], {}
     looked = 0
+    n_info = n_prod = 0
+    max_looked = MAX_CANDIDATES_PRODUCTS if read_products else MAX_CANDIDATES
+    max_pages = MAX_PAGES + (MAX_PRODUCT_PAGES if read_products else 0)
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
@@ -232,12 +263,12 @@ def read_site(tenant_id: int, start_url: str, removed: set, progress) -> tuple:
                   if route.request.resource_type in ("image", "media", "font") else route.continue_())
         page = ctx.new_page()
         i = 0
-        while i < len(candidates) and len(pages) < MAX_PAGES and looked < MAX_CANDIDATES:
+        while i < len(candidates) and len(pages) < max_pages and looked < max_looked:
             url = candidates[i]
             i += 1
             if url in removed:
                 continue
-            reason = skip_reason_for_url(url)
+            reason = skip_reason_for_url(url, read_products)
             if reason:
                 skipped[url] = reason
                 continue
@@ -271,15 +302,24 @@ def read_site(tenant_id: int, start_url: str, removed: set, progress) -> tuple:
             if data.get("login"):
                 skipped[final] = "needs a login"
                 continue
-            if data.get("product"):
+            kind = "product" if (data.get("product") or (read_products and PRODUCT_PATH.search(urlparse(final).path))) else "page"
+            if kind == "product" and not read_products:
                 skipped[final] = "product page (products come from your catalogue)"
+                continue
+            if (kind == "product" and n_prod >= MAX_PRODUCT_PAGES) or (kind == "page" and n_info >= MAX_PAGES):
+                skipped[final] = "page limit reached"
                 continue
             text = re.sub(r"[ \t]+", " ", data.get("text") or "")
             text = re.sub(r"\n\s*\n+", "\n\n", text).strip()
             if len(text) < 80:
                 skipped[final] = "almost no text on the page"
                 continue
-            pages.append({"url": final, "title": (data.get("title") or data.get("h1") or final)[:250], "text": text})
+            if kind == "product":
+                n_prod += 1
+            else:
+                n_info += 1
+            pages.append({"url": final, "title": (data.get("title") or data.get("h1") or final)[:250], "text": text,
+                          "kind": kind, "offer": data.get("offer") if kind == "product" else None})
             progress(len(pages))
             # follow links that stay on this website
             for link in data.get("links") or []:
@@ -475,6 +515,20 @@ def check_connection(raw_url: str) -> dict:
 
 
 # ── Saving ──────────────────────────────────────────────────────────────────
+def _offer_fields(offer) -> tuple:
+    """(price, currency, in_stock) from a product page's shop data; Nones when it has none."""
+    if not offer:
+        return None, None, None
+    try:
+        price = float(re.sub(r"[^\d.]", "", str(offer.get("price") or "")) or 0) or None
+    except ValueError:
+        price = None
+    cur = (str(offer.get("currency") or "").strip().upper()[:3]) or None
+    avail = str(offer.get("availability") or "")
+    in_stock = None if not avail else not re.search(r"OutOfStock|SoldOut|Discontinued", avail, re.I)
+    return price, cur, in_stock
+
+
 def doc_id_for(tenant_id: int, url: str) -> str:
     return f"site-{tenant_id}-{hashlib.md5(url.encode()).hexdigest()[:16]}"
 
@@ -525,7 +579,11 @@ def run_tenant(tenant_id: int) -> None:
 
     print(f"tenant {tenant_id}: reading {src['url']}", flush=True)
     try:
-        pages, skipped = read_site(tenant_id, src["url"], removed, progress)
+        # Products come from one place at a time: an uploaded list wins.
+        cur.execute("""SELECT 1 FROM data_sources WHERE tenant_id=%s AND is_active
+                         AND column_map IS NOT NULL LIMIT 1""", (tenant_id,))
+        read_products = bool(src.get("read_products")) and cur.fetchone() is None
+        pages, skipped = read_site(tenant_id, src["url"], removed, progress, read_products)
     except Exception as e:
         msg = str(e) if isinstance(e, ValueError) else \
             f"We could not open your website. Technical detail: {type(e).__name__}: {(str(e).splitlines() or [''])[0][:300]}"
@@ -543,16 +601,21 @@ def run_tenant(tenant_id: int) -> None:
     for p in pages:
         did = doc_id_for(tenant_id, p["url"])
         keep_ids.add(did)
+        price, currency, in_stock = _offer_fields(p.get("offer"))
         cur.execute("""
-            INSERT INTO documents (id, tenant_id, type, title, content, url, site_url, updated_by, updated_at, embedding)
-            VALUES (%s, %s, 'page', %s, %s, %s, %s, 'website_reader', NOW(), NULL)
+            INSERT INTO documents (id, tenant_id, type, title, content, url, site_url, updated_by, updated_at, embedding,
+                                   price_min, price_max, currency, in_stock)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'website_reader', NOW(), NULL, %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET
-                title = EXCLUDED.title, url = EXCLUDED.url, site_url = EXCLUDED.site_url,
+                type = EXCLUDED.type, title = EXCLUDED.title, url = EXCLUDED.url, site_url = EXCLUDED.site_url,
                 updated_by = EXCLUDED.updated_by, updated_at = NOW(),
+                price_min = EXCLUDED.price_min, price_max = EXCLUDED.price_max,
+                currency = EXCLUDED.currency, in_stock = EXCLUDED.in_stock,
                 embedding = CASE WHEN documents.content IS DISTINCT FROM EXCLUDED.content
                                    OR documents.title IS DISTINCT FROM EXCLUDED.title THEN NULL ELSE documents.embedding END,
                 content = EXCLUDED.content
-        """, (did, tenant_id, p["title"], p["text"], p["url"], site_url))
+        """, (did, tenant_id, p.get("kind") or "page", p["title"], p["text"], p["url"], site_url,
+              price, price, currency, in_stock))
         cur.execute("""
             INSERT INTO website_pages (tenant_id, url, title, doc_id, status, skip_reason, last_read_at)
             VALUES (%s, %s, %s, %s, 'read', NULL, NOW())
@@ -585,12 +648,13 @@ def run_tenant(tenant_id: int) -> None:
     start_reason = skipped.get(normalise_start(src["url"]))
     detail = None if pages else "We could not find any readable pages on your website." + (
         f" Your home page: {start_reason}." if start_reason else "")
+    n_products = sum(1 for p in pages if p.get("kind") == "product")
     cur.execute("""UPDATE website_sources SET status=%s, status_detail=%s, pages_read=%s, last_read_at=NOW(),
                    next_read_at=NOW() + (%s || ' days')::interval WHERE tenant_id=%s""",
-                ("done" if pages else "error", detail, len(pages), _next_days(tenant_id, src["frequency"]), tenant_id))
+                ("done" if pages else "error", detail, len(pages) - n_products, _next_days(tenant_id, src["frequency"]), tenant_id))
     conn.commit()
     conn.close()
-    print(f"tenant {tenant_id}: {len(pages)} pages read, {len(skipped)} skipped, {len(gone)} removed", flush=True)
+    print(f"tenant {tenant_id}: {len(pages) - n_products} pages read, {n_products} products, {len(skipped)} skipped, {len(gone)} removed", flush=True)
     # Index the new/changed pages for the AI now (re_embed_worker handles rows with no embedding).
     subprocess.run("cd /root/phixtra-app/phixtra-data-sync && ./venv/bin/python re_embed_worker.py >> /var/log/re_embed_worker.log 2>&1",
                    shell=True, timeout=900)

@@ -1,0 +1,8 @@
+{# One website builder's "where to paste the chat box code" steps (CHATBOX_GUIDES, 2026-10-18).
+   The plan warning comes first so nobody follows the steps on a plan that can't run custom code. #}
+{% if g.warning %}<div class="cbg-warn">⚠️ {{ g.warning }}</div>{% endif %}
+<ol class="cbg-steps">
+  {% for step in g.steps %}<li>{{ step|safe }}</li>{% endfor %}
+  <li>That's it. This step ticks itself the first time the chat box shows on your website.</li>
+</ol>
+{% if g.help %}<p class="cbg-small"><a href="{{ g.help[1] }}" target="_blank" rel="noopener">{{ g.help[0] }}</a></p>{% endif %}

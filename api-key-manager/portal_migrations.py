@@ -4216,6 +4216,10 @@ def ensure_portal_tables():
         cur.execute("ALTER TABLE website_sources ALTER COLUMN frequency SET DEFAULT 'manual'")
         cur.execute("ALTER TABLE website_sources ADD COLUMN IF NOT EXISTS site_title TEXT")
         cur.execute("ALTER TABLE website_sources ADD COLUMN IF NOT EXISTS pages_found INTEGER")
+        # The business can let Sync website read its product pages too (2026-10-18),
+        # for websites without a shop plugin or product list. Off by default.
+        if not _column_exists(cur, "website_sources", "read_products"):
+            cur.execute("ALTER TABLE website_sources ADD COLUMN read_products BOOLEAN NOT NULL DEFAULT FALSE")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS website_connect_attempts (
                 id             SERIAL PRIMARY KEY,

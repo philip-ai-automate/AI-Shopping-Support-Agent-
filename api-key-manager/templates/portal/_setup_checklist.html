@@ -22,6 +22,9 @@
 .su-spin{display:inline-block;width:12px;height:12px;border:2px solid #9DB8E8;border-top-color:#0B1D40;border-radius:50%;animation:su-r 0.9s linear infinite;vertical-align:-1px;margin-right:6px}
 .su-step.locked .su-n{background:#F1F4F9;color:#9AA7BD}
 .su-step.locked .su-name,.su-step.locked .su-text{color:#9AA7BD}
+.su-guide{margin-top:12px;max-width:640px}
+.su-how{margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.su-how summary{cursor:pointer;font-weight:750;font-size:14px;color:#0B1D40}
 .su-opt-h{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#4A5B78;margin:18px 0 10px;padding-top:14px;border-top:1px solid var(--line)}
 .su-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
 .su-opt{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:4px}
@@ -44,6 +47,18 @@
     <div>
       <div class="su-name">{{ st.title }}</div>
       <div class="su-text{% if st.state == 'failed' %} failed{% endif %}">{% if st.state == 'checking' %}<span class="su-spin" aria-hidden="true"></span>{% endif %}{{ st.text }}</div>
+      {% if st.guide and not st.done and not st.locked %}
+      <div class="su-guide">
+        <div class="cbg-code" id="suCode">{{ setup.chatbox_code }}</div>
+        <button type="button" class="cbg-btn" id="suCopy">Copy code</button>
+        <details class="su-how"{% if st.guide_key != 'other' %} open{% endif %}>
+          <summary>How to add it on {{ st.guide.name }}</summary>
+          <div style="margin-top:10px">{% set g = st.guide %}{% include "portal/_chatbox_guide_one.html" %}</div>
+        </details>
+        {% set send_back = 'dashboard' %}{% set send_platform = st.guide_key %}
+        {% include "portal/_chatbox_send.html" %}
+      </div>
+      {% endif %}
     </div>
     {% if not st.done and not st.locked %}
     <div class="su-acts">
@@ -78,7 +93,18 @@
       <div class="su-acts start">
         {% if ex.key == 'products' %}
           {% if ex.source != 'list' and ex.shop_url %}<a class="su-btn line" href="{{ ex.shop_url }}" target="_blank" rel="noopener">{% if ex.source == 'shop' %}Change shop products{% else %}Choose shop products{% endif %}</a>{% endif %}
-          {% if ex.source != 'shop' %}<a class="su-btn line" href="{{ ex.list_url }}">{% if ex.source == 'list' %}Manage your list{% else %}Upload a list{% endif %}</a>{% endif %}
+          {% if ex.site_ok and ex.source is none %}
+          <form method="POST" action="{{ ex.read_url }}" style="margin:0">
+            <input type="hidden" name="action" value="on"><input type="hidden" name="back" value="dashboard">
+            <button type="submit" class="su-btn line">Read products from my website</button>
+          </form>
+          {% elif ex.source == 'site' %}
+          <form method="POST" action="{{ ex.read_url }}" style="margin:0" onsubmit="return confirm('Stop reading products from your website? They will be removed from your AI.')">
+            <input type="hidden" name="action" value="off"><input type="hidden" name="back" value="dashboard">
+            <button type="submit" class="su-btn line">Stop reading products</button>
+          </form>
+          {% endif %}
+          {% if ex.source not in ('shop', 'site') %}<a class="su-btn line" href="{{ ex.list_url }}">{% if ex.source == 'list' %}Manage your list{% else %}Upload a list{% endif %}</a>{% endif %}
         {% elif not ex.done %}
           <a class="su-btn line" href="{{ ex.url }}">{{ ex.action }}</a>
         {% endif %}
@@ -88,6 +114,18 @@
   </div>
   {% endif %}
 </div>
+{% include "portal/_chatbox_guide_styles.html" %}
+<script>
+(function(){
+  var b = document.getElementById('suCopy'), c = document.getElementById('suCode');
+  if (!b || !c) return;
+  b.addEventListener('click', function(){
+    function done(m){ var o = b.textContent; b.textContent = m; setTimeout(function(){ b.textContent = o; }, 1800); }
+    function sel(){ var r = document.createRange(); r.selectNodeContents(c); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); done('Selected: press Ctrl+C'); }
+    try { navigator.clipboard.writeText(c.textContent).then(function(){ done('Copied'); }, sel); } catch (e) { sel(); }
+  });
+})();
+</script>
 {% if setup.checking %}
 <script>setTimeout(function(){ location.reload(); }, 20000);</script>
 {% endif %}
