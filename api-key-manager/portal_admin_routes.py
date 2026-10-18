@@ -579,6 +579,65 @@ CUSTOMER_FILTER_GROUPS = [
 
 CUSTOMER_PRODUCT_LABELS = {"portal": "Portal / CRM", "connect": "Connect", "school": "SchoolCompass", "estate": "KeyLand"}
 
+# "How did you hear about us?" — the sign-up form's own answers, plus the few
+# set by code rather than chosen (plugin sign-ups, test accounts) and "Not
+# answered" for blank ones (older sign-ups, School and KeyLand never ask).
+CUSTOMER_HEARD_NONE = "none"
+CUSTOMER_HEARD_EXTRA = [("wordpress_plugin", "WordPress plugin"), ("internal_test", "Internal test")]
+
+
+def _heard_options():
+    from portal_routes import HEAR_ABOUT_US_OPTIONS
+    return list(HEAR_ABOUT_US_OPTIONS) + CUSTOMER_HEARD_EXTRA + [(CUSTOMER_HEARD_NONE, "Not answered")]
+
+
+def _heard_label(value) -> str:
+    if not value:
+        return "Not answered"
+    return dict(_heard_options()).get(value) or value.replace("_", " ").capitalize()
+
+
+CUSTOMERS_PER_PAGE_OPTIONS = ["25", "50", "100", "200"]
+CUSTOMERS_PER_PAGE_DEFAULT = "50"
+
+
+def _customers_per_page() -> int:
+    """Customers page "Per page", remembered per admin login across visits and
+    devices. Admin logins have no business of their own, so the choice is kept
+    in user_list_prefs under PhiXtra's own tenant with an "admin:" key."""
+    from portal_routes import PHIXTRA_SUPPORT_TENANT_ID
+    chosen = (request.args.get("per_page") or "").strip()
+    actor_key = f"admin:{_admin_user()}"[:64]
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        if chosen in CUSTOMERS_PER_PAGE_OPTIONS:
+            cur.execute("""INSERT INTO user_list_prefs (tenant_id, actor_key, page_key, per_page)
+                           VALUES (%s,%s,'admin_customers',%s)
+                           ON CONFLICT (tenant_id, actor_key, page_key)
+                           DO UPDATE SET per_page=EXCLUDED.per_page, updated_at=NOW()""",
+                        (PHIXTRA_SUPPORT_TENANT_ID, actor_key, chosen))
+            conn.commit()
+            value = chosen
+        else:
+            cur.execute("""SELECT per_page FROM user_list_prefs
+                           WHERE tenant_id=%s AND actor_key=%s AND page_key='admin_customers'""",
+                        (PHIXTRA_SUPPORT_TENANT_ID, actor_key))
+            row = cur.fetchone()
+            value = row[0] if row and row[0] in CUSTOMERS_PER_PAGE_OPTIONS else CUSTOMERS_PER_PAGE_DEFAULT
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _customers_per_page error:", e)
+        value = chosen if chosen in CUSTOMERS_PER_PAGE_OPTIONS else CUSTOMERS_PER_PAGE_DEFAULT
+    return int(value)
+
+
+def _customers_page_url(page: int) -> str:
+    """Current /admin/customers URL (filters kept) on another page number."""
+    args = request.args.to_dict(flat=False)
+    args.pop("per_page", None)
+    args["page"] = [str(page)]
+    return f"{url_for('portal_admin.customers')}?{urlencode(args, doseq=True)}"
+
 # Industry has no real data behind it yet — no product's account record
 # captures a business's industry today. It stays visible (so the gap isn't
 # hidden) but disabled, rather than pretending to filter on nothing.
@@ -616,6 +675,7 @@ def customers():
     f_assigned = request.args.getlist("assigned")
     f_plan     = request.args.getlist("plan")
     f_product  = request.args.getlist("product")
+    f_heard    = request.args.getlist("heard")
 
     want_portal  = (not f_product) or ("portal"  in f_product)
     want_connect = (not f_product) or ("connect" in f_product)
@@ -655,10 +715,19 @@ def customers():
         if f_plan:
             where.append(f"COALESCE(p.name,'Free') IN ({','.join(['%s'] * len(f_plan))})")
             params += f_plan
+        if f_heard:
+            picked = [v for v in f_heard if v != CUSTOMER_HEARD_NONE]
+            ors = []
+            if picked:
+                ors.append(f"c.hear_about_us IN ({','.join(['%s'] * len(picked))})")
+                params += picked
+            if CUSTOMER_HEARD_NONE in f_heard:
+                ors.append("COALESCE(c.hear_about_us,'') = ''")
+            where.append(f"({' OR '.join(ors)})")
 
         cur.execute(f"""
             SELECT c.id, c.first_name, c.last_name, c.email, c.phone_number,
-                   c.email_verified, c.is_active, c.created_at,
+                   c.email_verified, c.is_active, c.created_at, c.hear_about_us,
                    t.id AS tenant_id, t.name AS tenant_name, t.domain, t.signup_product,
                    COALESCE(p.name,'Free') AS plan_name,
                    COALESCE(tb.token_balance,0) AS token_balance
@@ -667,7 +736,7 @@ def customers():
             LEFT JOIN tenant_balances tb ON tb.tenant_id=t.id
             LEFT JOIN plans p ON p.id=t.plan_id
             WHERE {' AND '.join(where)}
-            ORDER BY c.created_at DESC LIMIT 300
+            ORDER BY c.created_at DESC LIMIT 5000
         """, params)
         pc_rows = cur.fetchall() or []
 
@@ -691,6 +760,7 @@ def customers():
                 "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
                 "assigned_manager_name": assignment["manager_name"] if assignment else None,
                 "setup": setup.get(row["tenant_id"]),
+                "heard": _heard_label(row.get("hear_about_us")),
             })
 
     # ── School (school_profiles — its own table, no "customers" split) ─────
@@ -717,6 +787,9 @@ def customers():
             # Not a WhatsApp self-serve signup product — never matches
             # "WhatsApp-only".
             where.append("FALSE")
+        if f_heard and CUSTOMER_HEARD_NONE not in f_heard:
+            # School sign-up never asks "How did you hear about us?".
+            where.append("FALSE")
         if f_plan:
             where.append(f"COALESCE(sp.name,'Free') IN ({','.join(['%s'] * len(f_plan))})")
             params += f_plan
@@ -727,7 +800,7 @@ def customers():
             FROM school_profiles s
             LEFT JOIN school_plans sp ON sp.id = s.plan_id
             WHERE {' AND '.join(where)}
-            ORDER BY s.created_at DESC LIMIT 300
+            ORDER BY s.created_at DESC LIMIT 5000
         """, params)
         school_rows = cur.fetchall() or []
 
@@ -743,6 +816,7 @@ def customers():
                 "balance_credits": None,
                 "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
                 "assigned_manager_name": assignment["manager_name"] if assignment else None,
+                "heard": "Not answered",
             })
 
     # ── Estate (re_tenants — its own table, tenant + owner in one row) ──────
@@ -766,6 +840,8 @@ def customers():
             where.append("FALSE")
         if f_source and "web" not in f_source:
             where.append("FALSE")
+        if f_heard and CUSTOMER_HEARD_NONE not in f_heard:
+            where.append("FALSE")
         if f_plan:
             where.append(f"COALESCE(rp.name,'Free') IN ({','.join(['%s'] * len(f_plan))})")
             params += f_plan
@@ -776,7 +852,7 @@ def customers():
             FROM re_tenants r
             LEFT JOIN re_plans rp ON rp.id = r.plan_id
             WHERE {' AND '.join(where)}
-            ORDER BY r.created_at DESC LIMIT 300
+            ORDER BY r.created_at DESC LIMIT 5000
         """, params)
         estate_rows = cur.fetchall() or []
 
@@ -794,6 +870,7 @@ def customers():
                 "balance_credits": None,
                 "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
                 "assigned_manager_name": assignment["manager_name"] if assignment else None,
+                "heard": "Not answered",
             })
 
     # "Assigned To" spans all three sources at once, so it's simplest to
@@ -804,6 +881,21 @@ def customers():
         rows = [x for x in rows if (x["assigned_manager_id"] is not None) == want_assigned]
 
     rows.sort(key=lambda x: x["created_at"], reverse=True)
+
+    per_page = _customers_per_page()
+    total = len(rows)
+    pages = max(1, -(-total // per_page))
+    try:
+        page = min(max(1, int(request.args.get("page") or 1)), pages)
+    except ValueError:
+        page = 1
+    rows = rows[(page - 1) * per_page: page * per_page]
+    paging = {
+        "page": page, "pages": pages, "total": total, "per_page": per_page,
+        "first": (page - 1) * per_page + 1 if total else 0, "last": min(page * per_page, total),
+        "prev_url": _customers_page_url(page - 1) if page > 1 else None,
+        "next_url": _customers_page_url(page + 1) if page < pages else None,
+    }
 
     # Plan checkboxes: only names actually in use right now, pooled across
     # all three plan catalogs (Portal/Connect, School and Estate each keep
@@ -827,6 +919,11 @@ def customers():
             "options": [{"value": v, "label": lbl, "checked": v in selected} for v, lbl in g["options"]],
             "count": len(selected),
         })
+    filter_groups.append({
+        "key": "heard", "label": "Heard About Us",
+        "options": [{"value": v, "label": lbl, "checked": v in f_heard} for v, lbl in _heard_options()],
+        "count": len(f_heard),
+    })
     plan_selected = f_plan
     plan_group = {
         "key": "plan", "label": "Plan",
@@ -840,6 +937,9 @@ def customers():
         for val in request.args.getlist(g["key"]):
             if val in label_map:
                 chips.append({"label": f"{g['label']}: {label_map[val]}", "href": _remove_filter_url(g["key"], val)})
+    for val in f_heard:
+        chips.append({"label": f"Heard About Us: {_heard_label(None if val == CUSTOMER_HEARD_NONE else val)}",
+                      "href": _remove_filter_url("heard", val)})
     for val in f_plan:
         chips.append({"label": f"Plan: {val}", "href": _remove_filter_url("plan", val)})
     if date_from:
@@ -864,6 +964,7 @@ def customers():
         industry_options=CUSTOMER_INDUSTRY_OPTIONS, PRODUCT_LABELS=CUSTOMER_PRODUCT_LABELS,
         date_from=date_from, date_to=date_to,
         chips=chips, active_count=len(chips), clear_all_url=clear_all_url,
+        paging=paging, per_page_options=CUSTOMERS_PER_PAGE_OPTIONS,
     )
 
 

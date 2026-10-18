@@ -76,6 +76,11 @@
   .chip a{border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;
           padding:2px 4px;display:inline-flex}
   .chip a:hover{color:var(--bad)}
+  .pager{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:14px 0 4px;font-size:13px}
+  .pager .per-page{display:flex;align-items:center;gap:8px;color:var(--muted)}
+  .pager .per-page select{padding:5px 8px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;background:#fff}
+  .pager .pages{display:flex;align-items:center;gap:8px}
+  .pager .btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
   .clear-all-link{color:var(--bad);font-size:12.5px;font-weight:650;padding:9px 6px;align-self:center}
 </style>
 
@@ -194,6 +199,7 @@
       {% if active_count %}<a href="{{ clear_all_url }}" class="clear-all-link">Clear all</a>{% endif %}
     </div>
   </div>
+  <input type="hidden" name="per_page" id="perPageField" value="{{ paging.per_page }}"/>
 </form>
 
 {% if chips %}
@@ -224,6 +230,7 @@
       {% if c.domain %}<div class="cc-field"><span>Domain</span><span title="{{ c.domain }}">{{ c.domain }}</span></div>{% endif %}
       {% if c.balance_credits is not none %}<div class="cc-field"><span>Balance</span><span><strong>{{ "%.1f"|format(c.balance_credits) }}</strong> cr</span></div>{% endif %}
       <div class="cc-field"><span>Plan</span><span>{{ c.plan_name }}</span></div>
+      <div class="cc-field"><span>Heard about us</span><span>{{ c.heard }}</span></div>
       <div class="cc-field"><span>Signed up</span><span>{{ c.created_at.strftime('%Y-%m-%d') if c.created_at else '—' }}</span></div>
     </div>
     <div class="cc-badges">
@@ -286,6 +293,7 @@
           <th>Verified</th>
           <th>Active</th>
           <th>Signed up</th>
+          <th>Heard About Us</th>
           <th>Setup</th>
           <th>Assigned To</th>
           <th>Actions</th>
@@ -309,6 +317,7 @@
             {% else %}<span class="pill pill-red">Disabled</span>{% endif %}
           </td>
           <td class="muted">{{ c.created_at.strftime('%Y-%m-%d') if c.created_at else '—' }}</td>
+          <td{% if c.heard == 'Not answered' %} class="muted"{% endif %}>{{ c.heard }}</td>
           <td>{% if c.setup %}{% if c.setup.complete %}<span class="pill pill-green">{{ c.setup.done }} of {{ c.setup.total }} · done</span>{% else %}<span class="pill pill-red" title="Stopped at: {{ c.setup.stuck }}">{{ c.setup.done }} of {{ c.setup.total }} · {{ c.setup.stuck }}</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
           <td>
             {% if c.customer_id %}
@@ -348,6 +357,23 @@
       </tbody>
     </table>
   </div>
+</div>
+
+<div class="pager">
+  <div class="per-page">
+    Per page
+    <select onchange="document.getElementById('perPageField').value=this.value;document.getElementById('filtersForm').submit()">
+      {% for n in per_page_options %}<option value="{{ n }}" {% if n|int == paging.per_page %}selected{% endif %}>{{ n }}</option>{% endfor %}
+    </select>
+    <span>Showing {{ paging.first }}–{{ paging.last }} of {{ paging.total }}</span>
+  </div>
+  {% if paging.pages > 1 %}
+  <div class="pages">
+    <a class="btn btn-sm" href="{{ paging.prev_url or '#' }}" {% if not paging.prev_url %}aria-disabled="true"{% endif %}>← Previous</a>
+    <span class="muted">Page {{ paging.page }} of {{ paging.pages }}</span>
+    <a class="btn btn-sm" href="{{ paging.next_url or '#' }}" {% if not paging.next_url %}aria-disabled="true"{% endif %}>Next →</a>
+  </div>
+  {% endif %}
 </div>
 {% else %}
 <div class="card muted" style="text-align:center;padding:24px">
