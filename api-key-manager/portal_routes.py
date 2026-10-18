@@ -407,6 +407,13 @@ PLAN_FEATURE_CATALOG = {
         ("leads.team_performance", "Team performance — see how each person is doing and set their targets "
                                    "(staff see only the people who report to them)"),
     ],
+    # Lead Finder (pilot 2026-10-19, lead_finder_routes.py): find business
+    # decision-makers through Prospeo and add them to Leads. Platform business
+    # only for the pilot (PLATFORM_ONLY_MODULES); later a paid add-on.
+    "Lead Finder": [
+        ("leadfinder.search", "Find New Leads — search for people (uses PhiXtra's Prospeo credits: 1 per new page)"),
+        ("leadfinder.add",    "Add found people to Leads (reveals email 1 credit, mobile 10 credits)"),
+    ],
     # Platform business only (PLATFORM_TENANT_ID): signed-up businesses an
     # admin hands to PhiXtra's own staff to help finish setting up
     # (2026-10-10). Never shown to other businesses or in the Plan editor —
@@ -653,6 +660,9 @@ ROLE_FORM_GRID = {
          "other": ["crm.columns_own"]},
         {"label": "Team performance", "view": "leads.team_performance"},
     ],
+    "Lead Finder": [
+        {"label": "Find New Leads", "view": "leadfinder.search", "create": "leadfinder.add"},
+    ],
     "Accounts": [
         {"label": "Accounts", "view": "accounts.view", "other": ["accounts.notes", "accounts.see_all"]},
     ],
@@ -799,7 +809,7 @@ PLAN_ONLY_FEATURE_KEYS = {
 # Modules only the PLATFORM business (PLATFORM_TENANT_ID in .env) ever sees:
 # left out of every other business's Roles screen and out of the Plan editor
 # (not sold, not plan-gated). 2026-10-10.
-PLATFORM_ONLY_MODULES = {"Accounts"}
+PLATFORM_ONLY_MODULES = {"Accounts", "Lead Finder"}
 PLAN_EDITOR_CATALOG = {m: f for m, f in PLAN_FEATURE_CATALOG.items() if m not in PLATFORM_ONLY_MODULES}
 PLATFORM_ONLY_FEATURE_KEYS = {k for m in PLATFORM_ONLY_MODULES for k, _ in PLAN_FEATURE_CATALOG.get(m, [])}
 

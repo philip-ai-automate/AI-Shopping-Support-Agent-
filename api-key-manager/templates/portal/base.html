@@ -762,7 +762,7 @@
          — every report in the portal lives under one Reports menu now, none
          scattered under the feature they report on. Moved above Voice Calls
          (2026-09-22, explicit request). -->
-    {% set _leads_group = request.endpoint in ('portal.leads_overview', 'portal.leads_page', 'portal.lead_detail', 'portal.lead_scoring_explainer', 'portal.team_performance', 'portal.team_performance_person') %}
+    {% set _leads_group = request.endpoint in ('portal.leads_overview', 'portal.leads_page', 'portal.lead_detail', 'portal.lead_scoring_explainer', 'portal.team_performance', 'portal.team_performance_person', 'leadfinder.page', 'leadfinder.job') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _leads_group %}open{% endif %}"
            data-tour="nav-leads" onclick="sbToggle(this)">
@@ -784,6 +784,12 @@
            class="{% if request.endpoint in ('portal.leads_page', 'portal.lead_detail') %}active{% endif %}">
           All Leads
           {% if 'leads.page' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </a>
+        {% endif %}
+        {% if lead_finder_menu %}
+        <a href="{{ url_for('leadfinder.page') }}"
+           class="{% if request.endpoint in ('leadfinder.page', 'leadfinder.job') %}active{% endif %}">
+          Find New Leads
         </a>
         {% endif %}
         {% if staff_can_open('portal.team_performance') %}

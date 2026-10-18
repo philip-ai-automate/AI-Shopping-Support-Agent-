@@ -1,0 +1,274 @@
+{% extends "portal/base.html" %}
+{% block title %}Find New Leads — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .lf-hero { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:18px }
+  .lf-hero-left { display:flex; align-items:center; gap:14px; min-width:0 }
+  .lf-hero-icon { width:48px; height:48px; border-radius:14px; flex-shrink:0; background:linear-gradient(135deg, #0B1D40, #1D4A9E);
+                  display:flex; align-items:center; justify-content:center; font-size:22px; box-shadow:0 6px 16px rgba(11,29,64,.25) }
+  .lf-hero h1 { font-size:22px; font-weight:800; letter-spacing:-.4px; margin:0; color:var(--ink) }
+  .lf-hero p { margin:3px 0 0; font-size:13.5px; color:var(--muted); max-width:70ch }
+  .lf-pill { display:inline-flex; gap:6px; align-items:center; font-size:12.5px; background:#E8EEF8; color:#0B1D40; border-radius:99px; padding:5px 12px; font-variant-numeric:tabular-nums }
+  .lf-pills { display:flex; gap:8px; flex-wrap:wrap }
+  .lf-card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:16px }
+  .lf-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:14px 18px }
+  .lf-field { display:flex; flex-direction:column; gap:6px; min-width:0 }
+  .lf-field > label, .lf-lab { font-size:13px; font-weight:700; color:var(--ink) }
+  .lf-hint { font-size:12px; color:var(--muted) }
+  .lf-field input[type=text], .lf-field select { font:inherit; font-size:14px; border:1px solid var(--line); border-radius:9px; padding:8px 10px; background:#fff; width:100% }
+  .lf-field select[multiple] { height:150px; padding:4px }
+  .lf-checks { display:flex; flex-wrap:wrap; gap:6px }
+  .lf-check { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; border:1px solid var(--line); border-radius:99px; padding:4px 10px; background:#fff; cursor:pointer; user-select:none }
+  .lf-check input { accent-color:#0B1D40; margin:0 }
+  .lf-check:has(input:checked) { background:#0B1D40; color:#fff; border-color:#0B1D40 }
+  .lf-loc-box { position:relative }
+  .lf-sugg { position:absolute; z-index:20; left:0; right:0; top:100%; background:#fff; border:1px solid var(--line); border-radius:9px; box-shadow:0 8px 24px rgba(11,29,64,.12); margin-top:4px; max-height:240px; overflow:auto }
+  .lf-sugg button { display:block; width:100%; text-align:left; border:0; background:none; padding:8px 12px; font:inherit; font-size:13.5px; cursor:pointer }
+  .lf-sugg button:hover, .lf-sugg button:focus { background:#E8EEF8 }
+  .lf-chip { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; background:#0B1D40; color:#fff; border-radius:99px; padding:4px 6px 4px 11px }
+  .lf-chip button { border:0; background:rgba(255,255,255,.18); color:#fff; border-radius:99px; width:20px; height:20px; cursor:pointer; line-height:1 }
+  .lf-lock { font-size:11px; font-weight:700; background:#FEF0C7; color:#93370D; border-radius:6px; padding:1px 7px; margin-left:4px }
+  .lf-actions { display:flex; gap:10px; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-top:14px }
+  .lf-wrap { overflow-x:auto; background:#fff; border:1px solid var(--line); border-radius:14px }
+  .lf-table { width:100%; border-collapse:collapse; font-size:13px; min-width:980px }
+  .lf-table th { text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); font-weight:700; padding:10px; border-bottom:1px solid var(--line); background:#F8FAFC; white-space:nowrap }
+  .lf-table td { padding:10px; border-bottom:1px solid var(--line); vertical-align:top }
+  .lf-table tr:last-child td { border-bottom:0 }
+  .lf-table tr.sel td { background:#F3F6FB }
+  .lf-who b { display:block; color:var(--ink) }
+  .lf-who span, .lf-muted { color:var(--muted); font-size:12px }
+  .lf-ok, .lf-no, .lf-tool, .lf-in { display:inline-block; font-size:11.5px; font-weight:700; border-radius:99px; padding:2px 8px; white-space:nowrap; margin:0 4px 3px 0 }
+  .lf-ok { background:#E8F6EC; color:#15803D }
+  .lf-no { background:#F1F4F9; color:#5A6B85 }
+  .lf-tool { background:#FEF0C7; color:#93370D }
+  .lf-in { background:#E8EEF8; color:#0B1D40; text-decoration:none }
+  .lf-li { font-size:12px; font-weight:700; color:#0B1D40; border:1px solid var(--line); border-radius:6px; padding:2px 7px; text-decoration:none; white-space:nowrap }
+  .lf-pager { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; font-size:13px; color:var(--muted); margin-top:12px }
+  .lf-addbar { position:sticky; bottom:0; z-index:5; background:#fff; border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin-top:14px;
+               display:flex; gap:12px 16px; flex-wrap:wrap; align-items:center; box-shadow:0 -6px 20px rgba(11,29,64,.06) }
+  .lf-addbar label { display:inline-flex; align-items:center; gap:6px; font-size:13px }
+  .lf-addbar input[type=checkbox] { accent-color:#0B1D40 }
+  .lf-addbar select, .lf-addbar input[type=text] { font:inherit; font-size:13px; border:1px solid var(--line); border-radius:9px; padding:6px 9px; background:#fff }
+  .lf-error { background:#FDECEC; color:#B42318; border-radius:10px; padding:10px 14px; font-size:13.5px; margin-bottom:12px }
+  .lf-empty { text-align:center; padding:34px 20px; color:var(--muted) }
+  .lf-jobs { font-size:13px; color:var(--muted); display:flex; gap:6px 14px; flex-wrap:wrap; margin-top:4px }
+  .lf-jobs a { color:#0B1D40; font-weight:600 }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="lf-hero">
+  <div class="lf-hero-left">
+    <div class="lf-hero-icon">🔎</div>
+    <div>
+      <h1>Find New Leads</h1>
+      <p>Search business decision-makers by country, industry, job and company size. Emails and mobiles stay hidden until you add someone to Leads.</p>
+    </div>
+  </div>
+  <div class="lf-pills">
+    {% if account %}<span class="lf-pill">Prospeo credits left: <b>{{ account.credits_left }}</b>{% if account.renews %} · renews {{ account.renews }}{% endif %}</span>{% endif %}
+    <span class="lf-pill">Added this month: <b>{{ usage.added }}</b> · {{ usage.emails }} emails · {{ usage.mobiles }} mobiles</span>
+  </div>
+</div>
+
+{% if not configured %}
+<div class="lf-error">The Prospeo key isn't set up on the server yet, so searching is switched off.</div>
+{% endif %}
+
+<form class="lf-card" method="GET" action="{{ url_for('leadfinder.page') }}" id="lf-form">
+  <input type="hidden" name="run" value="1">
+  <div class="lf-grid">
+    <div class="lf-field">
+      <span class="lf-lab" id="lf-loc-lab">Country or city</span>
+      <div class="lf-checks" id="lf-loc-chips" aria-labelledby="lf-loc-lab">
+        {% for l in f.locations %}<span class="lf-chip">{{ l }}<input type="hidden" name="loc" value="{{ l }}"><button type="button" aria-label="Remove {{ l }}" onclick="this.parentNode.remove()">×</button></span>{% endfor %}
+      </div>
+      <div class="lf-loc-box">
+        <input type="text" id="lf-loc-q" autocomplete="off" placeholder="Type to add, e.g. United Kingdom, Lagos">
+        <div class="lf-sugg" id="lf-sugg" hidden></div>
+      </div>
+      <span class="lf-hint">Where the company is based.</span>
+    </div>
+
+    <div class="lf-field">
+      <label for="lf-ind">Industry <span class="lf-hint">(hold Ctrl / ⌘ to pick several)</span></label>
+      <select id="lf-ind" name="ind" multiple>
+        {% for i in industries %}<option {% if i in f.industries %}selected{% endif %}>{{ i }}</option>{% endfor %}
+      </select>
+    </div>
+
+    <div class="lf-field">
+      <span class="lf-lab">Job level</span>
+      <div class="lf-checks">
+        {% for s in seniorities %}<label class="lf-check"><input type="checkbox" name="sen" value="{{ s }}" {% if s in f.seniority %}checked{% endif %}>{{ s }}</label>{% endfor %}
+      </div>
+      <label for="lf-title" style="margin-top:6px">Job title contains <span class="lf-hint">(optional, separate with commas)</span></label>
+      <input type="text" id="lf-title" name="title" value="{{ f.title }}" placeholder="e.g. Head of Sales, Customer Service">
+    </div>
+
+    <div class="lf-field">
+      <span class="lf-lab">Company size (staff)</span>
+      <div class="lf-checks">
+        {% for h in headcounts %}<label class="lf-check"><input type="checkbox" name="size" value="{{ h }}" {% if h in f.sizes %}checked{% endif %}>{{ h }}</label>{% endfor %}
+      </div>
+      <span class="lf-hint">None ticked = any size.</span>
+    </div>
+
+    <div class="lf-field">
+      <span class="lf-lab">Uses WhatsApp tools on their website <span class="lf-lock">Prospeo Starter</span></span>
+      <div class="lf-checks">
+        {% for t in wa_tools %}<label class="lf-check"><input type="checkbox" name="wa" value="{{ t }}" {% if t in f.wa_tools %}checked{% endif %}>{{ t }}</label>{% endfor %}
+      </div>
+      <span class="lf-hint">Needs the paid Prospeo plan. On the free plan, try the keyword "whatsapp" instead.</span>
+    </div>
+
+    <div class="lf-field">
+      <label for="lf-kw">Company keyword <span class="lf-hint">(optional)</span></label>
+      <input type="text" id="lf-kw" name="kw" value="{{ f.keyword }}" placeholder="e.g. whatsapp, logistics, fintech">
+      <span class="lf-hint">Matches words in the company's description.</span>
+    </div>
+  </div>
+  <div class="lf-actions">
+    <label class="lf-check" style="border:0;padding:0"><input type="checkbox" name="one" value="1" {% if f.one_per_company %}checked{% endif %}> One person per company (most senior)</label>
+    <button type="submit" class="btn btn-primary" {% if not configured %}disabled{% endif %}>Search</button>
+  </div>
+  {% if jobs %}
+  <div class="lf-jobs">Recent adds:
+    {% for j in jobs %}<a href="{{ url_for('leadfinder.job', job_id=j.id) }}">{{ j.created_at.strftime('%d %b %H:%M') }} · {{ j.added }} added{% if j.status == 'running' %} (working…){% endif %}</a>{% endfor %}
+  </div>
+  {% endif %}
+</form>
+
+{% if res %}
+  {% if res.error %}<div class="lf-error">{{ res.error }}</div>{% endif %}
+  {% if res.rows %}
+  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+    <h2 style="font-size:17px;font-weight:800;margin:0">{{ "{:,}".format(res.total) }} people found</h2>
+    <span class="lf-muted">Page {{ page }} of {{ "{:,}".format(res.pages) }} · each new page uses 1 Prospeo credit</span>
+  </div>
+  <div class="lf-wrap">
+    <table class="lf-table">
+      <thead><tr>
+        <th>{% if can_add %}<input type="checkbox" id="lf-all" aria-label="Select everyone on this page">{% endif %}</th>
+        <th>Person</th><th>Company</th><th>Industry</th><th>Staff</th><th>Location</th><th>LinkedIn</th><th>Email</th><th>Mobile</th>
+      </tr></thead>
+      <tbody>
+      {% for x in res.rows %}
+        {% set in_leads = added.get(x.person_id) %}
+        <tr>
+          <td>{% if can_add and not in_leads and (x.email or x.mobile) %}<input type="checkbox" class="lf-pick" id="lf-p{{ loop.index }}" aria-label="Select {{ x.name }}"
+                 data-person='{{ {"person_id": x.person_id, "name": x.name, "title": x.title, "company": x.company, "linkedin": x.linkedin}|tojson|forceescape }}'>{% endif %}</td>
+          <td class="lf-who"><b>{{ x.name }}</b><span>{{ x.title }}</span></td>
+          <td>{{ x.company }}{% if x.domain %}<div class="lf-muted">{{ x.domain }}</div>{% endif %}
+              {% for t in x.wa_tools %}<div><span class="lf-tool">Uses {{ t }}</span></div>{% endfor %}</td>
+          <td>{{ x.industry }}</td>
+          <td style="white-space:nowrap">{{ x.size }}</td>
+          <td>{{ x.city }}{% if x.city and x.country %}, {% endif %}{{ x.country }}</td>
+          <td>{% if x.linkedin %}<a class="lf-li" href="{{ x.linkedin }}" target="_blank" rel="noopener">View ↗</a>{% endif %}</td>
+          {% if in_leads %}
+          <td colspan="2"><a class="lf-in" href="{{ url_for('portal.lead_detail', lead_id=in_leads) }}">Already in your Leads</a></td>
+          {% else %}
+          <td>{% if x.email %}<span class="lf-ok">✓ Available</span>{% else %}<span class="lf-no">✗ None</span>{% endif %}</td>
+          <td>{% if x.mobile %}<span class="lf-ok">✓ Available</span>{% else %}<span class="lf-no">✗ None</span>{% endif %}</td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="lf-pager">
+    <span>Showing {{ (page-1)*25 + 1 }}–{{ (page-1)*25 + res.rows|length }} of {{ "{:,}".format(res.total) }}</span>
+    <span style="display:flex;gap:8px">
+      {% if page > 1 %}<a class="btn btn-sm" href="{{ url_for('leadfinder.page', page=page-1, **page_args) }}">‹ Previous</a>{% endif %}
+      {% if page < res.pages %}<a class="btn btn-sm" href="{{ url_for('leadfinder.page', page=page+1, **page_args) }}">Next ›</a>{% endif %}
+    </span>
+  </div>
+
+  {% if can_add %}
+  <form class="lf-addbar" method="POST" action="{{ url_for('leadfinder.add') }}" id="lf-add">
+    <input type="hidden" name="people" id="lf-people">
+    <input type="hidden" name="back" value="{{ request.full_path }}">
+    <span class="lf-lab">Get:</span>
+    <label><input type="checkbox" checked disabled> Email (1 credit)</label>
+    <label><input type="checkbox" name="mobile" value="1" id="lf-mob"> Mobile (10 credits)</label>
+    <label id="lf-wa-wrap" hidden><input type="checkbox" name="wa_too" value="1" checked> Save the mobile as WhatsApp number too</label>
+    {% if can_assign %}
+    <label for="lf-assign">Assign to
+      <select name="assign" id="lf-assign">
+        <option value="">Nobody yet</option>
+        {% for p in people %}<option value="{{ p.key }}" {% if p.key == me_key %}selected{% endif %}>{{ p.display }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <label for="lf-label">Extra label <input type="text" name="label" id="lf-label" maxlength="60" placeholder="optional, e.g. Lagos fintech"></label>
+    <button type="submit" class="btn btn-primary" id="lf-add-btn" disabled>Add 0 to Leads</button>
+    <span class="lf-hint" style="flex-basis:100%">Everyone added gets the "Lead Finder" label. Nobody found = not charged. Already in Leads (same email or number) = skipped. Up to {{ max_per_add }} at a time.</span>
+  </form>
+  {% endif %}
+  {% elif not res.error %}
+  <div class="lf-card lf-empty">Nobody matches this search. Try fewer filters, another country, or a broader job level.</div>
+  {% endif %}
+{% endif %}
+
+<script>
+(function(){
+  // Country / city: type → Prospeo suggestions → chip
+  const q = document.getElementById('lf-loc-q'), box = document.getElementById('lf-sugg'), chips = document.getElementById('lf-loc-chips');
+  let timer;
+  function addChip(name){
+    if ([...chips.querySelectorAll('input')].some(i => i.value === name)) return;
+    const s = document.createElement('span'); s.className = 'lf-chip';
+    s.textContent = name;
+    const h = document.createElement('input'); h.type = 'hidden'; h.name = 'loc'; h.value = name;
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = '×'; b.setAttribute('aria-label', 'Remove ' + name);
+    b.onclick = () => s.remove();
+    s.append(h, b); chips.appendChild(s);
+  }
+  if (q) {
+    q.addEventListener('input', () => {
+      clearTimeout(timer);
+      const v = q.value.trim();
+      if (v.length < 2) { box.hidden = true; return; }
+      timer = setTimeout(() => {
+        fetch('{{ url_for("leadfinder.locations") }}?q=' + encodeURIComponent(v))
+          .then(r => r.json()).then(d => {
+            box.innerHTML = '';
+            (d.items || []).forEach(n => {
+              const b = document.createElement('button'); b.type = 'button'; b.textContent = n;
+              b.onclick = () => { addChip(n); q.value = ''; box.hidden = true; q.focus(); };
+              box.appendChild(b);
+            });
+            if (!(d.items || []).length) { const e = document.createElement('div'); e.className = 'lf-hint'; e.style.padding = '8px 12px';
+              e.textContent = d.error || 'No place found with that name.'; box.appendChild(e); }
+            box.hidden = false;
+          }).catch(() => { box.hidden = true; });
+      }, 350);
+    });
+    q.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); const f = box.querySelector('button'); if (f) f.click(); } });
+    document.addEventListener('click', e => { if (!box.contains(e.target) && e.target !== q) box.hidden = true; });
+  }
+
+  // Ticking people → Add button
+  const picks = [...document.querySelectorAll('.lf-pick')], all = document.getElementById('lf-all'),
+        btn = document.getElementById('lf-add-btn'), mob = document.getElementById('lf-mob'), waWrap = document.getElementById('lf-wa-wrap');
+  const MAX = {{ max_per_add }};
+  function upd(){
+    picks.forEach(c => c.closest('tr').classList.toggle('sel', c.checked));
+    const n = picks.filter(c => c.checked).length;
+    if (btn) { btn.textContent = 'Add ' + n + ' to Leads'; btn.disabled = !n || n > MAX; }
+    if (all) all.checked = n && n === picks.length;
+  }
+  picks.forEach(c => c.addEventListener('change', upd));
+  if (all) all.addEventListener('change', () => { picks.forEach(c => c.checked = all.checked); upd(); });
+  if (mob && waWrap) mob.addEventListener('change', () => { waWrap.hidden = !mob.checked; });
+  const form = document.getElementById('lf-add');
+  if (form) form.addEventListener('submit', e => {
+    const chosen = picks.filter(c => c.checked).map(c => JSON.parse(c.dataset.person));
+    if (!chosen.length) { e.preventDefault(); return; }
+    document.getElementById('lf-people').value = JSON.stringify(chosen);
+    btn.disabled = true; btn.textContent = 'Adding…';
+  });
+})();
+</script>
+{% endblock %}

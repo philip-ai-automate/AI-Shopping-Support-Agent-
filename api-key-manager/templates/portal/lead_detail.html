@@ -322,7 +322,7 @@
       <div class="lc-field-label">Source</div>
       {% set src_meta = {'whatsapp': ('#dcfce7','#15803d','WhatsApp'), 'facebook': ('#dbeafe','#1d4ed8','Facebook'),
                           'instagram': ('#fce7f3','#be185d','Instagram'), 'manual': ('#f1f5f9','#64748b','Manual'),
-                          'import': ('#eef2ff','#3730a3','Import'), 'demo_booking': ('#E8EEF8','#0B1D40','Demo booking')} %}
+                          'import': ('#eef2ff','#3730a3','Import'), 'demo_booking': ('#E8EEF8','#0B1D40','Demo booking'), 'lead_finder': ('#E8EEF8','#0B1D40','Lead Finder')} %}
       {% if lead.source and lead.source in src_meta %}
       {% set s_bg, s_fg, s_label = src_meta[lead.source] %}
       <span class="stage-pill" style="background:{{ s_bg }};color:{{ s_fg }}">{{ s_label }}</span>

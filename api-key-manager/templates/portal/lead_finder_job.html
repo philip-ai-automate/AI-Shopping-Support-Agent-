@@ -1,0 +1,83 @@
+{% extends "portal/base.html" %}
+{% block title %}Adding to Leads — PhiXtra Portal{% endblock %}
+
+{% block head %}
+{% if j.status == 'running' %}<meta http-equiv="refresh" content="3">{% endif %}
+<style>
+  .lj-hero h1 { font-size:22px; font-weight:800; letter-spacing:-.4px; margin:0 0 4px; color:var(--ink) }
+  .lj-hero p { margin:0 0 16px; font-size:13.5px; color:var(--muted) }
+  .lj-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:16px }
+  .lj-kpi { background:#fff; border:1px solid var(--line); border-radius:14px; padding:14px 16px }
+  .lj-kpi b { display:block; font-size:24px; color:var(--ink); font-variant-numeric:tabular-nums }
+  .lj-kpi span { color:var(--muted); font-size:12.5px }
+  .lj-bar { height:8px; border-radius:99px; background:#E8EEF8; overflow:hidden; margin-bottom:16px }
+  .lj-bar i { display:block; height:100%; background:#0B1D40 }
+  .lj-wrap { overflow-x:auto; background:#fff; border:1px solid var(--line); border-radius:14px }
+  .lj-table { width:100%; border-collapse:collapse; font-size:13px; min-width:760px }
+  .lj-table th { text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); font-weight:700; padding:10px; border-bottom:1px solid var(--line); background:#F8FAFC }
+  .lj-table td { padding:10px; border-bottom:1px solid var(--line); vertical-align:top }
+  .lj-table tr:last-child td { border-bottom:0 }
+  .lj-who b { display:block } .lj-who span, .lj-muted { color:var(--muted); font-size:12px }
+  .lj-s { display:inline-block; font-size:11.5px; font-weight:700; border-radius:99px; padding:2px 8px; white-space:nowrap }
+  .lj-s.added { background:#E8F6EC; color:#15803D }
+  .lj-s.skipped { background:#E8EEF8; color:#0B1D40 }
+  .lj-s.none { background:#F1F4F9; color:#5A6B85 }
+  .lj-s.failed, .lj-s.stopped { background:#FDECEC; color:#B42318 }
+  .lj-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="lj-hero">
+  <h1>{% if j.status == 'running' %}Adding people to your Leads…{% else %}Done: {{ counts.added }} added to your Leads{% endif %}</h1>
+  <p>Started by {{ j.actor_name }} on {{ j.created_at.strftime('%d %b %Y at %H:%M') }}.
+     {% if req.get_mobile %}Getting email and mobile.{% else %}Getting email only.{% endif %}
+     {% if req.assign_label %}Assigned to {{ req.assign_label }}.{% endif %}
+     {% if j.status == 'running' %} This page updates by itself.{% endif %}</p>
+</div>
+
+{% if j.status == 'running' %}
+<div class="lj-bar" role="progressbar" aria-valuemin="0" aria-valuemax="{{ j.total }}" aria-valuenow="{{ j.done }}"><i style="width:{{ (100 * j.done / (j.total or 1))|round|int }}%"></i></div>
+{% endif %}
+
+<div class="lj-kpis">
+  <div class="lj-kpi"><b>{{ counts.added }}</b><span>Added to Leads</span></div>
+  <div class="lj-kpi"><b>{{ counts.skipped }}</b><span>Already in Leads (skipped)</span></div>
+  <div class="lj-kpi"><b>{{ counts.none }}</b><span>Nothing found (not charged)</span></div>
+  <div class="lj-kpi"><b>{{ j.credits }}</b><span>Prospeo credits used</span></div>
+</div>
+{% if j.error %}<p class="lj-muted">Stopped early: {{ j.error }}</p>{% endif %}
+
+<div class="lj-wrap">
+  <table class="lj-table">
+    <thead><tr><th>Person</th><th>Company</th><th>Email</th><th>Mobile</th><th>Result</th></tr></thead>
+    <tbody>
+    {% for x in results %}
+      <tr>
+        <td class="lj-who"><b>{{ x.name }}</b><span>{{ x.title }}</span></td>
+        <td>{{ x.company }}</td>
+        <td>{{ x.email or '—' }}</td>
+        <td>{{ x.mobile or '—' }}</td>
+        <td>
+          {% if x.outcome == 'added' %}<span class="lj-s added">Added</span>
+          {% elif x.outcome == 'skipped' %}<span class="lj-s skipped">Skipped</span>
+          {% elif x.outcome == 'none' %}<span class="lj-s none">Nothing found</span>
+          {% elif x.outcome == 'stopped' %}<span class="lj-s stopped">Stopped</span>
+          {% else %}<span class="lj-s failed">Not added</span>{% endif %}
+          {% if x.why %}<div class="lj-muted">{{ x.why }}</div>{% endif %}
+          {% if x.lead_id %}<div><a href="{{ url_for('portal.lead_detail', lead_id=x.lead_id) }}">Open lead</a></div>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    {% if j.done < j.total %}
+      <tr><td colspan="5" class="lj-muted">{{ j.total - j.done }} more to go…</td></tr>
+    {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<div class="lj-actions">
+  <a class="btn btn-primary" href="{{ url_for('portal.leads_page') }}">Go to Leads</a>
+  <a class="btn" href="{{ req.back or url_for('leadfinder.page') }}">Back to the search</a>
+</div>
+{% endblock %}

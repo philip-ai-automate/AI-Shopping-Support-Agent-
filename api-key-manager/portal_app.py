@@ -51,6 +51,8 @@ def create_app():
     flask_app.register_blueprint(bookings_bp)
     from accounts_routes import accounts_bp
     flask_app.register_blueprint(accounts_bp)
+    from lead_finder_routes import leadfinder_bp
+    flask_app.register_blueprint(leadfinder_bp)
     flask_app.register_blueprint(ambassador_bp)
     flask_app.register_blueprint(school_bp, url_prefix="/school")
     flask_app.register_blueprint(estate_bp)
