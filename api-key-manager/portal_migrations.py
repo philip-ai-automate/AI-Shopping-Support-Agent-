@@ -4037,6 +4037,18 @@ def ensure_portal_tables():
                 site_key   VARCHAR(64) UNIQUE NOT NULL,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )""")
+        # One-click "Connect to PhiXtra" in the WordPress plugin (2026-10-18):
+        # a logged-in owner approves, the plugin swaps the one-time code for the
+        # API key server to server. Only the code's hash is kept; 10 minutes, once.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS wp_connect_codes (
+                code_hash  VARCHAR(64) PRIMARY KEY,
+                tenant_id  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                site_host  VARCHAR(255) NOT NULL,
+                created_by VARCHAR(255),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                used_at    TIMESTAMPTZ
+            )""")
 
         # Website-only plans, seeded once and switched OFF until go-live (the
         # admin switches them on in the Plan editor). Prices/limits from the

@@ -3557,6 +3557,112 @@ def wp_connect_status():
     return jsonify({"verified": bool(row and row["email_verified"])})
 
 
+# ── One-click "Connect to PhiXtra" from the WordPress plugin (2026-10-18) ──
+# The plugin opens /connect/authorize; the logged-in business approves; we send
+# the browser back to its own WordPress admin with a one-time code; the plugin
+# swaps the code for the API key server to server (/connect/exchange). The key
+# never travels in a web address.
+_WP_CODE_MINUTES = 10
+
+
+def _bare_host(url_or_host: str) -> str:
+    from urllib.parse import urlparse
+    v = (url_or_host or "").strip().lower()
+    host = urlparse(v if "://" in v else "https://" + v).hostname or ""
+    return host[4:] if host.startswith("www.") else host
+
+
+def _wp_return_ok(return_url: str, tenant_host: str) -> bool:
+    from urllib.parse import urlparse
+    u = urlparse(return_url or "")
+    return (u.scheme in ("http", "https") and _bare_host(return_url) == tenant_host
+            and u.path.endswith("/wp-admin/admin-post.php"))
+
+
+@portal_bp.route("/connect/authorize", methods=["GET", "POST"])
+@team_feature("ai.api_keys_view")
+def wp_connect_authorize():
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("ai.api_keys_view")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    args = request.form if request.method == "POST" else request.args
+    site_url   = (args.get("site_url") or "").strip()[:500]
+    return_url = (args.get("return_url") or "").strip()[:1000]
+    state      = (args.get("state") or "").strip()[:128]
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT name, domain FROM tenants WHERE id=%s", (tenant_id,))
+    t = cur.fetchone() or {}
+    cur.close(); conn.close()
+    tenant_host = _bare_host(t.get("domain") or "")
+    problem = None
+    if not tenant_host:
+        problem = "Your PhiXtra account doesn't have a website address yet. Contact support@phixtra.com."
+    elif _bare_host(site_url) != tenant_host:
+        problem = (f"This PhiXtra account is for {tenant_host}, but the plugin is on "
+                   f"{_bare_host(site_url) or 'an unknown website'}. Log in with the account for that website.")
+    elif not _wp_return_ok(return_url, tenant_host) or not state:
+        problem = "This link is incomplete. Go back to WordPress and click Connect to PhiXtra again."
+    if problem or request.method == "GET":
+        return render_template("portal/wp_connect_authorize.html", customer=customer, problem=problem,
+                               business=t.get("name") or "", site=tenant_host,
+                               site_url=site_url, return_url=return_url, state=state)
+
+    import hashlib as _hl
+    from urllib.parse import urlencode, urlparse, parse_qsl, urlunparse
+    code = secrets.token_urlsafe(32)
+    actor = _store_info_actor(customer)
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("""INSERT INTO wp_connect_codes (code_hash, tenant_id, site_host, created_by)
+                   VALUES (%s, %s, %s, %s)""",
+                (_hl.sha256(code.encode()).hexdigest(), tenant_id, tenant_host, actor["audit_username"]))
+    conn.commit(); cur.close(); conn.close()
+    insert_audit_log(admin_username=actor["audit_username"], action="wp_plugin_connect_approved",
+                     tenant_id=tenant_id, details={"site": tenant_host})
+    u = urlparse(return_url)
+    q = [(k, v) for k, v in parse_qsl(u.query) if k not in ("code", "state")] + [("code", code), ("state", state)]
+    return redirect(urlunparse(u._replace(query=urlencode(q))))
+
+
+@portal_bp.route("/connect/exchange", methods=["POST"])
+@public_route
+def wp_connect_exchange():
+    """The plugin (from the store's server) swaps a one-time code for its API key."""
+    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
+    if not _connect_status_rate_ok(client_ip):
+        return jsonify({"ok": False, "error": "too_many_attempts"}), 429
+    data = request.get_json(silent=True) or request.form
+    code = (data.get("code") or "").strip()
+    site_host = _bare_host(data.get("site_url") or "")
+    if not code or not site_host:
+        return jsonify({"ok": False, "error": "missing"}), 400
+    import hashlib as _hl
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""UPDATE wp_connect_codes SET used_at = NOW()
+                    WHERE code_hash = %s AND used_at IS NULL AND site_host = %s
+                      AND created_at > NOW() - (%s || ' minutes')::interval
+                RETURNING tenant_id, created_by""",
+                (_hl.sha256(code.encode()).hexdigest(), site_host, str(_WP_CODE_MINUTES)))
+    row = cur.fetchone()
+    conn.commit()
+    key = None
+    if row:
+        cur.execute("""SELECT api_key_plain FROM api_keys WHERE tenant_id=%s AND is_active
+                         AND COALESCE(api_key_plain, '') <> '' ORDER BY created_at LIMIT 1""", (row["tenant_id"],))
+        k = cur.fetchone()
+        key = k["api_key_plain"] if k else None
+    cur.close(); conn.close()
+    if not row:
+        return jsonify({"ok": False, "error": "code_not_valid"}), 400
+    if not key:
+        return jsonify({"ok": False, "error": "no_api_key"}), 409
+    insert_audit_log(admin_username=row["created_by"], action="wp_plugin_connected",
+                     tenant_id=row["tenant_id"], details={"site": site_host})
+    return jsonify({"ok": True, "api_key": key})
+
+
 @portal_bp.route("/connect/whatsapp-status")
 @public_route
 def wp_whatsapp_status():
@@ -5678,7 +5784,6 @@ def dashboard():
     series          = _usage_timeseries(tenant_id, days=30)
     ob              = _onboarding_status(tenant_id, int(customer["id"]))
     keys            = _get_api_keys(tenant_id)
-    _maybe_start_auto_website_check(tenant_id)
     setup           = _setup_checklist(tenant_id)
 
     chart_points = [{"d": str(r["d"]), "credits": tokens_to_credits(int(r["tokens"]))} for r in series]
@@ -5808,62 +5913,38 @@ def _chatbox_on_site(domain: str) -> tuple:
         return False, f"We couldn't open your website to look for the chat box ({type(e).__name__})."
 
 
-def _run_auto_website_check(tenant_id: int, domain: str) -> None:
-    """The same check as Connect Website, run once by itself after the first
-    log-in. Reads nothing: the business clicks Sync now for that."""
-    try:
-        result = _check_website_connection(domain)
-        site_url = result.get("final_url") or result.get("url") or domain
-        if result.get("ok"):
-            from website_reader import normalise_start
-            site_url = normalise_start(site_url)
-        conn = get_db_connection(); cur = conn.cursor()
-        cur.execute("""INSERT INTO website_connect_attempts
-                       (tenant_id, url, ok, reason, detail, http_status, created_by, created_label)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
-                    (tenant_id, site_url, bool(result.get("ok")), result.get("reason") or None,
-                     result.get("detail") or None, result.get("http_status"),
-                     "system:auto_website_check", "Automatic check"))
-        if result.get("ok"):
-            cur.execute("""INSERT INTO website_sources (tenant_id, url, frequency, status, site_title, pages_found,
-                                                        created_by, created_label)
-                           VALUES (%s, %s, 'manual', 'connected', %s, %s, %s, %s)
-                           ON CONFLICT (tenant_id) DO NOTHING""",
-                        (tenant_id, site_url, result.get("title") or None, result.get("pages_found"),
-                         "system:auto_website_check", "Automatic check"))
-        conn.commit(); cur.close(); conn.close()
-        insert_audit_log(admin_username="system:auto_website_check",
-                         action="website_connected" if result.get("ok") else "website_connect_failed",
-                         tenant_id=tenant_id, details={"url": site_url, "reason": result.get("reason"),
-                                                       "detail": result.get("detail"), "automatic": True})
-    except Exception as e:
-        print("⚠️ _run_auto_website_check:", e)
-
-
-def _maybe_start_auto_website_check(tenant_id: int) -> None:
-    """Start the automatic website check once per business (the claim is in
-    the UPDATE, so two workers or two tabs can't start it twice)."""
-    try:
-        conn = get_db_connection(); cur = conn.cursor()
-        cur.execute("""UPDATE tenants t SET website_autocheck_at = NOW()
-                        WHERE t.id = %s AND t.website_autocheck_at IS NULL
-                          AND t.signup_channel IN ('website', 'both') AND COALESCE(t.domain, '') <> ''
-                          AND NOT EXISTS (SELECT 1 FROM website_sources w WHERE w.tenant_id = t.id)
-                    RETURNING t.domain""", (tenant_id,))
-        row = cur.fetchone(); conn.commit(); cur.close(); conn.close()
-        if row:
-            import threading
-            threading.Thread(target=_run_auto_website_check, args=(tenant_id, row[0]), daemon=True).start()
-    except Exception as e:
-        print("⚠️ _maybe_start_auto_website_check:", e)
+def _product_sources(tenant_id: int, cur=None) -> dict:
+    """Where a business's products come from. One source at a time
+    (2026-10-18): the WooCommerce shop (sent by the AI Sales Agent plugin)
+    or an uploaded list (Excel, CSV, Google Sheets)."""
+    own = cur is None
+    if own:
+        conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""SELECT COUNT(*) FILTER (WHERE id NOT LIKE 'xls-%%') AS shop,
+                          COUNT(*) FILTER (WHERE id LIKE 'xls-%%') AS lists
+                     FROM documents WHERE tenant_id=%s AND type='product'""", (tenant_id,))
+    r = cur.fetchone()
+    cur.execute("""SELECT COUNT(*) AS n FROM data_sources WHERE tenant_id=%s AND is_active
+                     AND column_map IS NOT NULL""", (tenant_id,))
+    n_lists = int(cur.fetchone()["n"])
+    if own:
+        cur.close(); conn.close()
+    shop, from_lists = int(r["shop"]), int(r["lists"])
+    return {"shop": shop, "lists": n_lists, "list_products": from_lists,
+            "source": "list" if n_lists else ("shop" if shop else None)}
 
 
 def _setup_checklist(tenant_id: int):
-    """The Dashboard "Get set up" steps, or None for businesses that don't get it."""
+    """The Dashboard "Get set up" steps, or None for businesses that don't get it.
+
+    2026-10-18: the business connects its own website first (PhiXtra never
+    contacts it before that), then reads it. Only the next step can be done;
+    later ones wait. Products and WhatsApp are optional and sit below the
+    steps, so a website-only business can still finish."""
     try:
         conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""SELECT t.signup_channel, t.website_platform, t.domain, t.source_type, t.trial_granted_at,
-                              t.website_autocheck_at, t.chatbox_seen_at, p.slug AS plan_slug
+                              t.chatbox_seen_at, p.slug AS plan_slug, COALESCE(p.channel_mode, 'whatsapp') AS channel_mode
                          FROM tenants t LEFT JOIN plans p ON p.id = t.plan_id WHERE t.id = %s""", (tenant_id,))
         t = cur.fetchone()
         if not t or t["signup_channel"] not in ("website", "both"):
@@ -5876,10 +5957,7 @@ def _setup_checklist(tenant_id: int):
         cur.execute("""SELECT ok, reason FROM website_connect_attempts WHERE tenant_id=%s
                        ORDER BY created_at DESC LIMIT 1""", (tenant_id,))
         last = cur.fetchone()
-        cur.execute("SELECT COUNT(*) AS n FROM documents WHERE tenant_id=%s AND type='product'", (tenant_id,))
-        n_products = int(cur.fetchone()["n"])
-        cur.execute("SELECT COUNT(*) AS n FROM data_sources WHERE tenant_id=%s", (tenant_id,))
-        n_lists = int(cur.fetchone()["n"])
+        prod = _product_sources(tenant_id, cur)
         cur.close(); conn.close()
     except Exception as e:
         print("⚠️ _setup_checklist:", e)
@@ -5888,49 +5966,80 @@ def _setup_checklist(tenant_id: int):
     wp = t["website_platform"] == "wordpress"
     names = {"shopify": "Shopify", "wix": "Wix", "squarespace": "Squarespace", "other": "your website"}
     steps = []
-    if t["signup_channel"] == "both":
-        steps.append(dict(key="whatsapp", title="Connect your WhatsApp", done=wa_on,
-                          text="Use Meta's official sign-up window. You keep your number.",
-                          action="Connect WhatsApp", url=url_for("portal.whatsapp_connect")))
-    # Website: automatic check → connected (pages found) → read (Sync now)
-    if src and src.get("last_read_at"):
-        site = dict(done=True, state="done", text=f"We've read {src.get('pages_read') or 0} pages of your website.",
-                    action="Sync website", url=url_for("portal.store_info_website_sync"))
-    elif src:
-        site = dict(done=False, state="sync", text=f"We can reach your website and found {src.get('pages_found') or 0} pages. Click Sync now so the AI reads them.",
-                    action="Sync now", url=url_for("portal.store_info_website_sync"))
+
+    # 1. Connect: the business types its address and gives permission.
+    if src:
+        steps.append(dict(key="website", title="Connect your website", done=True,
+                          text=f"Connected: {(src.get('url') or '').replace('https://', '').replace('http://', '').rstrip('/')}"))
     elif last and not last["ok"]:
-        site = dict(done=False, state="failed", text=f"We couldn't reach your website: {last['reason'] or 'unknown reason'}",
-                    action="See how to fix it", url=url_for("portal.store_info_website_connect"))
-    elif t["website_autocheck_at"]:
-        site = dict(done=False, state="checking", text=f"We're checking that we can reach {t['domain']}. This takes up to a minute.",
-                    action=None, url=None)
+        steps.append(dict(key="website", title="Connect your website", done=False, state="failed",
+                          text=f"We couldn't reach your website: {last['reason'] or 'unknown reason'}",
+                          action="See how to fix it", url=url_for("portal.store_info_website_connect")))
     else:
-        site = dict(done=False, state="todo", text="We'll check that we can reach your website.",
-                    action="Connect website", url=url_for("portal.store_info_website_connect"))
-    steps.append(dict(key="website", title="Connect your website", **site))
-    steps.append(dict(key="chatbox", title="Add the chat box", done=bool(t["chatbox_seen_at"]),
-                      text=("Install the free PhiXtra plugin on WordPress and paste in your API key."
-                            if wp else f"Copy one line of code into {names.get(t['website_platform'], 'your website')}."),
-                      action=("Get your API key" if wp else "Get your chat box code"),
-                      url=(url_for("portal.api_keys") if wp else url_for("portal.store_info_website_chatbox")),
-                      check=True))
+        steps.append(dict(key="website", title="Connect your website", done=False,
+                          text="Type your website address and give PhiXtra permission to read its public pages. We don't contact your website before you do.",
+                          action="Connect website", url=url_for("portal.store_info_website_connect")))
+
+    # 2. Read it.
+    if src and src.get("last_read_at"):
+        steps.append(dict(key="sync", title="Sync your website", done=True,
+                          text=f"Your AI has read {src.get('pages_read') or 0} pages of your website."))
+    elif src and src.get("status") in ("pending", "reading"):
+        steps.append(dict(key="sync", title="Sync your website", done=False, state="checking",
+                          text="Reading your website now. This usually takes a few minutes."))
+    else:
+        found = (src or {}).get("pages_found")
+        steps.append(dict(key="sync", title="Sync your website", done=False,
+                          text=(f"We found {found} pages. Click Sync now so your AI reads them." if found
+                                else "Your AI reads your website's public pages (about, delivery, prices, FAQs)."),
+                          action="Sync now", url=url_for("portal.store_info_website_sync"), post_sync=True))
+
+    # 3. Chat box.
     if wp:
-        steps.append(dict(key="products", title="Your products sync by themselves", done=n_products > 0,
-                          text="The plugin sends your WooCommerce products to the AI.", action=None, url=None))
+        steps.append(dict(key="chatbox", title="Install the PhiXtra plugin", done=bool(t["chatbox_seen_at"]),
+                          text="Install and activate the free PhiXtra AI Sales Agent plugin on WordPress, then click Connect to PhiXtra inside it. That sets up your API key and the chat box.",
+                          action="Get your API key", url=url_for("portal.api_keys"), check=True))
     else:
-        steps.append(dict(key="products", title="Upload your product list", done=(n_lists > 0 or n_products > 0),
-                          text="Excel, CSV or Google Sheets.", action="Upload product list",
-                          url=url_for("portal.data_sources")))
+        steps.append(dict(key="chatbox", title="Add the chat box", done=bool(t["chatbox_seen_at"]),
+                          text=f"Copy one line of code into {names.get(t['website_platform'], 'your website')}.",
+                          action="Get your chat box code", url=url_for("portal.store_info_website_chatbox"), check=True))
+
+    # 4. Trial.
     paid = t["plan_slug"] not in AI_OFF_FREE_PLAN_SLUGS
-    steps.append(dict(key="trial", title="Start your 2-week AI trial", done=bool(t["trial_granted_at"]) or paid,
+    steps.append(dict(key="trial", title="Start your free trial", done=bool(t["trial_granted_at"]) or paid,
                       text="Full features for 14 days, no card needed. Until then your team answers website chats from the Inbox.",
-                      action=None, url=None, trial=not t["trial_granted_at"] and not paid))
+                      trial=not t["trial_granted_at"] and not paid))
+
+    # Only the first step not done yet can be acted on.
+    nxt = next((i for i, st in enumerate(steps) if not st["done"]), None)
     for i, st in enumerate(steps, 1):
         st["n"] = i
         st.setdefault("state", "done" if st["done"] else "todo")
+        st["locked"] = (not st["done"]) and nxt is not None and i - 1 > nxt
+        if st["locked"]:
+            st["text"] = st["text"] + " Available after the step above."
+
+    # Optional: products (one source at a time) and WhatsApp.
+    shop_tab = f"https://{t['domain']}/wp-admin/admin.php?page=phixaish-widget&tab=products" if (wp and t["domain"]) else None
+    if prod["source"] == "list":
+        p_text = f"Your products come from your uploaded list ({prod['list_products']} products)."
+    elif prod["source"] == "shop":
+        p_text = f"Your products come from your WooCommerce shop ({prod['shop']} products)."
+    else:
+        p_text = ("Optional. Choose which shop products the AI can recommend, inside the plugin, or upload a list instead (Excel, CSV or Google Sheets). Use one or the other."
+                  if wp else "Optional. Upload your product list (Excel, CSV or Google Sheets).")
+    extras = [dict(key="products", title="Products", done=prod["source"] is not None, text=p_text,
+                   shop_url=shop_tab, list_url=url_for("portal.data_sources"), source=prod["source"])]
+    wa_ok = t["channel_mode"] in ("dual", "both")
+    extras.append(dict(key="whatsapp", title="WhatsApp", done=wa_on,
+                       text=("Connected." if wa_on else
+                             "Let the AI answer on WhatsApp too. Use Meta's official sign-up window and keep your number." if wa_ok else
+                             "Answer customers on WhatsApp too. This needs a Dual-Agent plan."),
+                       action=("Connect WhatsApp" if wa_ok else "See Dual-Agent plans"),
+                       url=(url_for("portal.whatsapp_connect") if wa_ok else url_for("portal.billing_plans"))))
+
     done = sum(1 for st in steps if st["done"])
-    return {"steps": steps, "done": done, "total": len(steps), "complete": done == len(steps),
+    return {"steps": steps, "extras": extras, "done": done, "total": len(steps), "complete": done == len(steps),
             "checking": any(st.get("state") == "checking" for st in steps), "domain": t["domain"]}
 
 
@@ -11738,6 +11847,12 @@ def store_info_website_connect():
         if not raw:
             flash("Please type your website address.", "warning")
             return redirect(url_for("portal.store_info_website_connect"))
+        # PhiXtra only contacts a website after the business says yes (2026-10-18).
+        if request.form.get("permission") != "yes":
+            flash("Please tick the box to give PhiXtra permission to read your website.", "warning")
+            return render_template("portal/store_info_website_connect.html", customer=customer, **_website_reader_ids(),
+                                   source=None, result=None,
+                                   attempts=_website_connect_attempts(tenant_id), form_url=raw)
         # The checker handles every problem itself (bad address, no DNS,
         # private address…) so the real reason is always shown.
         result = _check_website_connection(raw)
@@ -11763,7 +11878,7 @@ def store_info_website_connect():
         insert_audit_log(admin_username=actor["audit_username"],
                          action="website_connected" if result.get("ok") else "website_connect_failed",
                          tenant_id=tenant_id, details={"url": site_url, "reason": result.get("reason"),
-                                                       "detail": result.get("detail")})
+                                                       "detail": result.get("detail"), "permission_given": True})
         return render_template("portal/store_info_website_connect.html", customer=customer, **_website_reader_ids(),
                                source=_website_source(tenant_id), result=result,
                                attempts=_website_connect_attempts(tenant_id),
@@ -29655,6 +29770,103 @@ def _import_rows(tenant_id: int, rows: list[dict], column_map: dict) -> tuple[in
     return count, skipped
 
 
+def _list_doc_prefix(tenant_id: int, source_id: int) -> str:
+    return f"xls-{int(tenant_id)}-{int(source_id)}-"
+
+
+def _list_products_to_ai(tenant_id: int, source_id: int, rows: list[dict], column_map: dict) -> tuple[int, int]:
+    """Puts an uploaded list's products where the AI searches (documents),
+    and takes off the AI any product from this list that isn't in it any more
+    (2026-10-18). Only products the import actually kept (the plan's product
+    limit) are added. Returns (on the AI, removed)."""
+    import hashlib as _hl
+    get = lambda raw, k: (str(raw.get(column_map.get(k) or "", "") or "").strip() if column_map.get(k) else "")
+    prefix = _list_doc_prefix(tenant_id, source_id)
+    currency = _selling_currency.tenant_currency(tenant_id) or None
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("SELECT name FROM products WHERE tenant_id=%s AND is_active", (tenant_id,))
+        kept = {r["name"] for r in cur.fetchall()}
+        cur.execute("SELECT id, title FROM documents WHERE tenant_id=%s AND id LIKE %s", (tenant_id, prefix + "%"))
+        before = {r["id"]: r["title"] for r in cur.fetchall()}
+        now_ids = set()
+        for raw in rows:
+            name = get(raw, "name")
+            if not name or name not in kept:
+                continue
+            doc_id = prefix + _hl.md5(name.lower().encode()).hexdigest()[:20]
+            if doc_id in now_ids:
+                continue
+            now_ids.add(doc_id)
+            try:
+                price = float(_re.sub(r"[^\d.]", "", get(raw, "price")) or 0)
+            except ValueError:
+                price = 0.0
+            stock_txt = get(raw, "stock").replace(",", "")
+            try:
+                in_stock = int(float(stock_txt)) > 0 if stock_txt else True
+            except ValueError:
+                in_stock = True
+            desc, cat = get(raw, "description"), get(raw, "category")
+            content = "\n".join(x for x in (name, f"Category: {cat}" if cat else "", desc) if x)
+            cur.execute("""
+                INSERT INTO documents (id, tenant_id, type, title, content, price_min, price_max, in_stock,
+                                       categories_text, image_url, currency, updated_by, updated_at)
+                VALUES (%s, %s, 'product', %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                ON CONFLICT (id) DO UPDATE SET
+                    title = EXCLUDED.title, price_min = EXCLUDED.price_min, price_max = EXCLUDED.price_max,
+                    in_stock = EXCLUDED.in_stock, categories_text = EXCLUDED.categories_text,
+                    image_url = EXCLUDED.image_url, currency = EXCLUDED.currency, updated_by = EXCLUDED.updated_by,
+                    updated_at = NOW(),
+                    content = EXCLUDED.content,
+                    embedding = CASE WHEN documents.content IS DISTINCT FROM EXCLUDED.content
+                                       OR documents.title IS DISTINCT FROM EXCLUDED.title
+                                     THEN NULL ELSE documents.embedding END
+            """, (doc_id, tenant_id, name[:512], content, price or None, price or None, in_stock,
+                  cat or None, get(raw, "image_url")[:1024] or None, currency, f"list:{int(source_id)}"))
+        gone = [i for i in before if i not in now_ids]
+        if gone:
+            cur.execute("DELETE FROM documents WHERE tenant_id=%s AND id = ANY(%s)", (tenant_id, gone))
+            names_gone = [before[i] for i in gone if before[i]]
+            if names_gone:
+                cur.execute("UPDATE products SET is_active=FALSE WHERE tenant_id=%s AND name = ANY(%s)",
+                            (tenant_id, names_gone))
+        conn.commit()
+        return len(now_ids), len(gone)
+    finally:
+        cur.close(); conn.close()
+
+
+def _remove_list_products(tenant_id: int, source_id: int) -> int:
+    """A deleted list's products come off the AI and the catalogue."""
+    prefix = _list_doc_prefix(tenant_id, source_id)
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM documents WHERE tenant_id=%s AND id LIKE %s RETURNING title", (tenant_id, prefix + "%"))
+        names = [r[0] for r in cur.fetchall() if r[0]]
+        if names:
+            cur.execute("UPDATE products SET is_active=FALSE WHERE tenant_id=%s AND name = ANY(%s)", (tenant_id, names))
+        conn.commit()
+        return len(names)
+    finally:
+        cur.close(); conn.close()
+
+
+def _remove_shop_products(tenant_id: int) -> int:
+    """Switching to an uploaded list: the products the WooCommerce plugin sent
+    come off the AI (the sync service then refuses new ones from the plugin
+    while a list is in use)."""
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("""DELETE FROM documents WHERE tenant_id=%s AND type='product' AND id NOT LIKE 'xls-%%'""",
+                    (tenant_id,))
+        n = cur.rowcount
+        conn.commit()
+        return n
+    finally:
+        cur.close(); conn.close()
+
+
 # ─── DB helpers ───────────────────────────────────────────────────────────
 def _get_data_sources(tenant_id: int) -> list[dict]:
     conn = get_db_connection()
@@ -30283,6 +30495,7 @@ def data_sources():
         "portal/data_sources.html",
         customer          = customer,
         sources           = sources,
+        product_sources   = _product_sources(tenant_id),
         google_configured = _google_oauth_configured(),
     )
 
@@ -30302,6 +30515,10 @@ def data_source_upload():
     if r2: return r2
     if _data_sources_left(tenant_id) == 0:
         flash(_limit_msg("product import sources", 0), "warning")
+        return redirect(url_for("portal.data_sources"))
+    # One source at a time (2026-10-18): a list replaces the shop's products.
+    if _product_sources(tenant_id)["shop"] and request.form.get("replace_shop") != "yes":
+        flash("Your products come from your WooCommerce shop. Tick the box to switch to an uploaded list instead.", "warning")
         return redirect(url_for("portal.data_sources"))
 
     f = request.files.get("file")
@@ -30442,6 +30659,8 @@ def data_source_sync(source_id: int):
             rows = _read_file_rows(source)
 
         count, skipped = _import_rows(tenant_id, rows, source["column_map"])
+        shop_removed = _remove_shop_products(tenant_id)
+        on_ai, removed = _list_products_to_ai(tenant_id, source_id, rows, source["column_map"])
 
         cur.execute("""
             UPDATE data_sources
@@ -30450,7 +30669,14 @@ def data_source_sync(source_id: int):
             WHERE id = %s AND tenant_id = %s
         """, (count, source_id, tenant_id))
         conn.commit()
-        flash(f"Imported {count} products successfully.", "success")
+        flash(f"Imported {count} products successfully. Your AI can now recommend them.", "success")
+        if removed:
+            flash(f"{removed} product(s) that are no longer in your list were removed.", "success")
+        if shop_removed:
+            flash(f"{shop_removed} product(s) from your WooCommerce shop were removed: your products now come from this list.", "success")
+        insert_audit_log(admin_username=_store_info_actor(customer)["audit_username"], action="product_list_synced",
+                         tenant_id=tenant_id, details={"source_id": source_id, "imported": count, "on_ai": on_ai,
+                                                       "removed": removed, "shop_removed": shop_removed})
         if skipped:
             flash(f"{skipped} new product(s) were not added because your plan's product limit "
                   f"was reached. Upgrade your plan (Billing › Plans) to add more.", "warning")
@@ -30485,7 +30711,8 @@ def data_source_delete(source_id: int):
     """, (source_id, tenant_id))
     conn.commit()
     cur.close(); conn.close()
-    flash("Data source removed.", "success")
+    gone = _remove_list_products(tenant_id, source_id)
+    flash(f"List removed{f', with its {gone} product(s)' if gone else ''}.", "success")
     return redirect(url_for("portal.data_sources"))
 
 
@@ -30503,6 +30730,9 @@ def data_source_google_connect():
         return redirect(url_for("portal.data_sources"))
     if _data_sources_left(int(_get_customer(_customer_id())["tenant_id"])) == 0:
         flash(_limit_msg("product import sources", 0), "warning")
+        return redirect(url_for("portal.data_sources"))
+    if _product_sources(int(_get_customer(_customer_id())["tenant_id"]))["shop"] and request.args.get("replace_shop") != "yes":
+        flash("Your products come from your WooCommerce shop. Tick the box on this page to switch to a list instead.", "warning")
         return redirect(url_for("portal.data_sources"))
     flow = _google_flow()
     auth_url, state = flow.authorization_url(

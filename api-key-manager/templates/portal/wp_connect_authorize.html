@@ -1,0 +1,37 @@
+{% extends "portal/base.html" %}
+{% block title %}Connect WordPress — PhiXtra Portal{% endblock %}
+{% block content %}
+<style>
+.wca-wrap{display:flex;justify-content:center;padding:40px 16px}
+.wca-card{background:#fff;border:1px solid var(--line);border-radius:20px;padding:36px 32px;max-width:520px;width:100%;box-shadow:0 4px 24px rgba(3,12,24,.07)}
+.wca-title{font-size:21px;font-weight:800;color:#0B1D40;margin:0 0 8px;letter-spacing:-.2px}
+.wca-sub{font-size:14px;color:var(--muted);line-height:1.6;margin:0 0 18px}
+.wca-site{display:flex;gap:12px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:18px}
+.wca-site b{font-size:15px;color:#111E2D}
+.wca-site span{font-size:12.5px;color:var(--muted)}
+.wca-list{margin:0 0 22px;padding-left:18px;font-size:13.5px;line-height:1.7;color:#4A5B78}
+.wca-err{border:1px solid #F5C2C0;background:#FEF3F2;color:#B42318;border-radius:12px;padding:14px;font-size:14px;line-height:1.5}
+</style>
+<div class="wca-wrap"><div class="wca-card">
+  {% if problem %}
+    <h1 class="wca-title">We can't connect this plugin</h1>
+    <div class="wca-err">{{ problem }}</div>
+  {% else %}
+    <h1 class="wca-title">Connect your WordPress website</h1>
+    <p class="wca-sub">The PhiXtra AI Sales Agent plugin is asking to connect to {{ business or 'your PhiXtra account' }}.</p>
+    <div class="wca-site"><div style="font-size:24px;line-height:1">🌐</div><div><b>{{ site }}</b><br><span>WordPress website</span></div></div>
+    <ul class="wca-list">
+      <li>Your API key is saved in the plugin for you, so there's nothing to copy.</li>
+      <li>The chat box appears on your website.</li>
+      <li>No products are sent until you choose which ones in the plugin.</li>
+    </ul>
+    <form method="POST" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <input type="hidden" name="site_url" value="{{ site_url }}">
+      <input type="hidden" name="return_url" value="{{ return_url }}">
+      <input type="hidden" name="state" value="{{ state }}">
+      <button type="submit" class="btn btn-primary" style="padding:11px 24px;font-size:14px">Connect {{ site }}</button>
+      <a href="{{ url_for('portal.dashboard') }}" style="font-weight:700">Not now</a>
+    </form>
+  {% endif %}
+</div></div>
+{% endblock %}

@@ -636,6 +636,20 @@ def sync_complete(
     return {"ok": True, "tenant_domain": tenant_domain}
 
 
+def _uses_product_list(tenant_id: int) -> bool:
+    """True when the business's products come from a list in the portal."""
+    try:
+        conn = _pg(); cur = conn.cursor()
+        cur.execute("""SELECT 1 FROM data_sources WHERE tenant_id=%s AND is_active
+                         AND column_map IS NOT NULL LIMIT 1""", (tenant_id,))
+        found = cur.fetchone() is not None
+        cur.close(); conn.close()
+        return found
+    except Exception as e:
+        print("⚠️ _uses_product_list:", e)
+        return False
+
+
 @app.post("/sync/batch")
 def sync_batch(
     req: BatchRequest,
@@ -662,6 +676,12 @@ def sync_batch(
             _last_sync_error[tenant_domain] = str(e)[:600]
             raise HTTPException(status_code=500, detail=str(e))
         return {"ok": True, "index": f"pg-tenant-{tenant_id}", "count": len(doc_ids), "queue_has_more": False}
+
+    # One product source at a time (2026-10-18): while the business uses an
+    # uploaded list (Excel / CSV / Google Sheets) in the portal, products sent
+    # from the shop are refused. Removals above still go through.
+    if any((it.type or "") == "product" for it in req.items) and _uses_product_list(tenant_id):
+        raise HTTPException(status_code=409, detail="product_list_in_use")
 
     # Build document rows for upsert
     pg_docs: List[Dict[str, Any]] = []

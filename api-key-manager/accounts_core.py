@@ -234,7 +234,9 @@ def setup_steps_many(tenant_ids) -> dict:
         cur.execute("SELECT DISTINCT tenant_id FROM wa_tenants WHERE tenant_id = ANY(%s) AND active", (ids,))
         wa_on = {r["tenant_id"] for r in cur.fetchall() or []}
         cur.execute("SELECT tenant_id, last_read_at FROM website_sources WHERE tenant_id = ANY(%s)", (ids,))
-        site_read = {r["tenant_id"] for r in cur.fetchall() or [] if r["last_read_at"]}
+        _ws = cur.fetchall() or []
+        site_on = {r["tenant_id"] for r in _ws}
+        site_read = {r["tenant_id"] for r in _ws if r["last_read_at"]}
         cur.execute("""SELECT tenant_id, COUNT(*) AS n FROM documents
                         WHERE tenant_id = ANY(%s) AND type='product' GROUP BY tenant_id""", (ids,))
         products = {r["tenant_id"]: int(r["n"]) for r in cur.fetchall() or []}
@@ -249,14 +251,13 @@ def setup_steps_many(tenant_ids) -> dict:
         trial = bool(t["trial_granted_at"]) or (t["plan_slug"] not in FREE_PLAN_SLUGS and t["plan_slug"] is not None)
         kind = signup_type(t)
         if t["signup_channel"] in ("website", "both"):
-            steps = []
-            if t["signup_channel"] == "both":
-                steps.append(("Connect WhatsApp", tid in wa_on))
+            # Same four steps as the Dashboard (2026-10-18); products and
+            # WhatsApp are optional there, so they don't count here either.
             wp = t["website_platform"] == "wordpress"
-            steps += [("Connect website", tid in site_read),
-                      ("Add chat box", bool(t["chatbox_seen_at"])),
-                      ("Products", products.get(tid, 0) > 0 if wp else has_products),
-                      ("AI trial", trial)]
+            steps = [("Connect website", tid in site_on),
+                     ("Sync website", tid in site_read),
+                     ("Install plugin" if wp else "Add chat box", bool(t["chatbox_seen_at"])),
+                     ("AI trial", trial)]
         elif kind == "Website plugin":
             steps = [("Account", True), ("Products", has_products), ("AI trial", trial)]
         else:

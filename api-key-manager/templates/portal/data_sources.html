@@ -131,7 +131,7 @@
     <form method="post"
           action="{{ url_for('portal.data_source_delete', source_id=src.id) }}"
           style="display:inline"
-          onsubmit="return confirm('Remove this data source?')">
+          onsubmit="return confirm('Remove this list? Its products will be taken off your AI.')">
       <button class="btn btn-sm btn-danger" type="submit">Remove</button>
     </form>
     {% endif %}
@@ -212,6 +212,19 @@
       </div>
       <div style="font-size:13px;color:var(--muted)">Supports .xlsx, .xls, .csv</div>
     </div>
+
+    {% if product_sources and product_sources.shop %}
+    <div style="margin-top:14px;padding:12px 14px;border:1px solid #F2C94C;background:#FFF8E1;border-radius:10px;font-size:13.5px;line-height:1.5">
+      <strong>Your products come from your WooCommerce shop ({{ product_sources.shop }} products).</strong>
+      Products come from one place at a time. Uploading a list removes the shop's products from your AI and stops the plugin sending them.
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-top:8px;cursor:pointer">
+        <input type="checkbox" name="replace_shop" value="yes" required style="margin-top:3px">
+        <span>Yes, use my uploaded list instead of my shop's products.</span>
+      </label>
+    </div>
+    {% elif product_sources and product_sources.lists %}
+    <div style="margin-top:14px;font-size:13px;color:var(--muted)">Your AI uses the products in your list. Products that are no longer in your list are removed each time you sync it.</div>
+    {% endif %}
 
     <div style="margin-top:14px;text-align:right">
       <button class="btn btn-primary" type="submit" id="uploadBtn" disabled>
