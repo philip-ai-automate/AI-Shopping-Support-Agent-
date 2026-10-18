@@ -597,6 +597,16 @@ def _heard_label(value) -> str:
     return dict(_heard_options()).get(value) or value.replace("_", " ").capitalize()
 
 
+def _customer_facet(x, key):
+    """A Customers-page row's value for one filter group's checkboxes."""
+    if key == "verified": return "yes" if x["verified"] else "no"
+    if key == "active":   return "yes" if x["active"] else "no"
+    if key == "assigned": return "yes" if x["assigned_manager_id"] is not None else "no"
+    if key == "plan":     return x["plan_name"]
+    if key == "heard":    return x["heard_value"]
+    return x[key]  # source, product
+
+
 CUSTOMERS_PER_PAGE_OPTIONS = ["25", "50", "100", "200"]
 CUSTOMERS_PER_PAGE_DEFAULT = "50"
 
@@ -677,203 +687,162 @@ def customers():
     f_product  = request.args.getlist("product")
     f_heard    = request.args.getlist("heard")
 
-    want_portal  = (not f_product) or ("portal"  in f_product)
-    want_connect = (not f_product) or ("connect" in f_product)
-    want_school  = (not f_product) or ("school"  in f_product)
-    want_estate  = (not f_product) or ("estate"  in f_product)
-
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     rows = []
 
     # ── Portal + Connect (share the tenants/customers tables) ──────────────
-    if want_portal or want_connect:
-        where  = ["t.is_demo = FALSE"]
-        params = []
-        if want_portal and not want_connect:
-            where.append("t.signup_product = 'portal'")
-        elif want_connect and not want_portal:
-            where.append("t.signup_product = 'connect'")
+    where  = ["t.is_demo = FALSE"]
+    params = []
 
-        if q:
-            where.append("""(LOWER(c.email) LIKE %s OR LOWER(t.domain) LIKE %s
-                              OR LOWER(t.name) LIKE %s
-                              OR LOWER(CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,''))) LIKE %s)""")
-            params += [f"%{q}%"] * 4
-        if date_from:
-            where.append("c.created_at >= %s"); params.append(date_from)
-        if date_to:
-            where.append("c.created_at < (%s::date + INTERVAL '1 day')"); params.append(date_to)
-        if f_source:
-            where.append(f"t.source_type IN ({','.join(['%s'] * len(f_source))})")
-            params += f_source
-        if f_verified and len(f_verified) == 1:
-            where.append("c.email_verified = %s"); params.append(f_verified[0] == "yes")
-        if f_active and len(f_active) == 1:
-            where.append("c.is_active = %s"); params.append(f_active[0] == "yes")
-        if f_plan:
-            where.append(f"COALESCE(p.name,'Free') IN ({','.join(['%s'] * len(f_plan))})")
-            params += f_plan
+    if q:
+        where.append("""(LOWER(c.email) LIKE %s OR LOWER(t.domain) LIKE %s
+                          OR LOWER(t.name) LIKE %s
+                          OR LOWER(CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,''))) LIKE %s)""")
+        params += [f"%{q}%"] * 4
+    if date_from:
+        where.append("c.created_at >= %s"); params.append(date_from)
+    if date_to:
+        where.append("c.created_at < (%s::date + INTERVAL '1 day')"); params.append(date_to)
 
-        cur.execute(f"""
-            SELECT c.id, c.first_name, c.last_name, c.email, c.phone_number,
-                   c.email_verified, c.is_active, c.created_at, c.hear_about_us,
-                   t.id AS tenant_id, t.name AS tenant_name, t.domain, t.signup_product,
-                   COALESCE(p.name,'Free') AS plan_name,
-                   COALESCE(tb.token_balance,0) AS token_balance
-            FROM customers c
-            JOIN tenants t ON t.id=c.tenant_id
-            LEFT JOIN tenant_balances tb ON tb.tenant_id=t.id
-            LEFT JOIN plans p ON p.id=t.plan_id
-            WHERE {' AND '.join(where)}
-            ORDER BY c.created_at DESC LIMIT 5000
-        """, params)
-        pc_rows = cur.fetchall() or []
+    cur.execute(f"""
+        SELECT c.id, c.first_name, c.last_name, c.email, c.phone_number,
+               c.email_verified, c.is_active, c.created_at, c.hear_about_us,
+               t.id AS tenant_id, t.name AS tenant_name, t.domain, t.signup_product, t.source_type,
+               COALESCE(p.name,'Free') AS plan_name,
+               COALESCE(tb.token_balance,0) AS token_balance
+        FROM customers c
+        JOIN tenants t ON t.id=c.tenant_id
+        LEFT JOIN tenant_balances tb ON tb.tenant_id=t.id
+        LEFT JOIN plans p ON p.id=t.plan_id
+        WHERE {' AND '.join(where)}
+        ORDER BY c.created_at DESC LIMIT 5000
+    """, params)
+    pc_rows = cur.fetchall() or []
 
-        # Portal/Connect businesses are assigned to the platform business's own
-        # staff (Accounts page, 2026-10-10), not to ambassador Sales Managers.
-        pc_ids = [row["tenant_id"] for row in pc_rows]
-        acct = accounts_core.assignments_for(pc_ids)
-        setup = accounts_core.setup_steps_many(pc_ids)
-        for row in pc_rows:
-            fn = (row.get("first_name") or "").strip()
-            ln = (row.get("last_name")  or "").strip()
-            a_ = acct.get(row["tenant_id"])
-            assignment = {"manager_id": a_["team_member_id"], "manager_name": a_["staff_name"]} if a_ else None
-            rows.append({
-                "product": row["signup_product"], "ref_id": row["tenant_id"], "customer_id": row["id"],
-                "full_name": f"{fn} {ln}".strip() or "—", "business_name": row["tenant_name"] or "—",
-                "email": row["email"], "phone": row["phone_number"] or "—", "domain": row["domain"],
-                "verified": row["email_verified"], "active": row["is_active"],
-                "created_at": row["created_at"], "plan_name": row["plan_name"],
-                "balance_credits": tokens_to_credits(int(row.get("token_balance") or 0)),
-                "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
-                "assigned_manager_name": assignment["manager_name"] if assignment else None,
-                "setup": setup.get(row["tenant_id"]),
-                "heard": _heard_label(row.get("hear_about_us")),
-                "heard_value": row.get("hear_about_us") or CUSTOMER_HEARD_NONE,
-            })
+    # Portal/Connect businesses are assigned to the platform business's own
+    # staff (Accounts page, 2026-10-10), not to ambassador Sales Managers.
+    pc_ids = [row["tenant_id"] for row in pc_rows]
+    acct = accounts_core.assignments_for(pc_ids)
+    setup = accounts_core.setup_steps_many(pc_ids)
+    for row in pc_rows:
+        fn = (row.get("first_name") or "").strip()
+        ln = (row.get("last_name")  or "").strip()
+        a_ = acct.get(row["tenant_id"])
+        assignment = {"manager_id": a_["team_member_id"], "manager_name": a_["staff_name"]} if a_ else None
+        rows.append({
+            "product": row["signup_product"], "ref_id": row["tenant_id"], "customer_id": row["id"],
+            "full_name": f"{fn} {ln}".strip() or "—", "business_name": row["tenant_name"] or "—",
+            "email": row["email"], "phone": row["phone_number"] or "—", "domain": row["domain"],
+            "verified": row["email_verified"], "active": row["is_active"],
+            "created_at": row["created_at"], "plan_name": row["plan_name"],
+            "balance_credits": tokens_to_credits(int(row.get("token_balance") or 0)),
+            "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
+            "assigned_manager_name": assignment["manager_name"] if assignment else None,
+            "setup": setup.get(row["tenant_id"]),
+            "heard": _heard_label(row.get("hear_about_us")),
+            "heard_value": row.get("hear_about_us") or CUSTOMER_HEARD_NONE,
+            "source": row.get("source_type"),
+        })
 
     # ── School (school_profiles — its own table, no "customers" split) ─────
-    if want_school:
-        where  = [
-            "LOWER(s.contact_email) NOT LIKE '%%@phixtra.com'",
-            "LOWER(s.contact_email) NOT LIKE '%%demo%%'",
-        ]
-        params = []
-        if q:
-            where.append("(LOWER(s.contact_email) LIKE %s OR LOWER(s.school_name) LIKE %s OR LOWER(COALESCE(s.principal_name,'')) LIKE %s)")
-            params += [f"%{q}%"] * 3
-        if date_from:
-            where.append("s.created_at >= %s"); params.append(date_from)
-        if date_to:
-            where.append("s.created_at < (%s::date + INTERVAL '1 day')"); params.append(date_to)
-        if f_active and len(f_active) == 1:
-            where.append("s.is_active = %s"); params.append(f_active[0] == "yes")
-        if f_verified == ["no"]:
-            # Schools have no email-verification step of their own — none
-            # of them can ever match "Unverified only".
-            where.append("FALSE")
-        if f_source and "web" not in f_source:
-            # Not a WhatsApp self-serve signup product — never matches
-            # "WhatsApp-only".
-            where.append("FALSE")
-        if f_plan:
-            where.append(f"COALESCE(sp.name,'Free') IN ({','.join(['%s'] * len(f_plan))})")
-            params += f_plan
+    where  = [
+        "LOWER(s.contact_email) NOT LIKE '%%@phixtra.com'",
+        "LOWER(s.contact_email) NOT LIKE '%%demo%%'",
+    ]
+    params = []
+    if q:
+        where.append("(LOWER(s.contact_email) LIKE %s OR LOWER(s.school_name) LIKE %s OR LOWER(COALESCE(s.principal_name,'')) LIKE %s)")
+        params += [f"%{q}%"] * 3
+    if date_from:
+        where.append("s.created_at >= %s"); params.append(date_from)
+    if date_to:
+        where.append("s.created_at < (%s::date + INTERVAL '1 day')"); params.append(date_to)
 
-        cur.execute(f"""
-            SELECT s.id, s.school_name, s.principal_name, s.contact_email,
-                   s.is_active, s.created_at, COALESCE(sp.name,'Free') AS plan_name
-            FROM school_profiles s
-            LEFT JOIN school_plans sp ON sp.id = s.plan_id
-            WHERE {' AND '.join(where)}
-            ORDER BY s.created_at DESC LIMIT 5000
-        """, params)
-        school_rows = cur.fetchall() or []
+    cur.execute(f"""
+        SELECT s.id, s.school_name, s.principal_name, s.contact_email,
+               s.is_active, s.created_at, COALESCE(sp.name,'Free') AS plan_name
+        FROM school_profiles s
+        LEFT JOIN school_plans sp ON sp.id = s.plan_id
+        WHERE {' AND '.join(where)}
+        ORDER BY s.created_at DESC LIMIT 5000
+    """, params)
+    school_rows = cur.fetchall() or []
 
-        assignments = _amb_manager_assignments([row["id"] for row in school_rows], "school")
-        for row in school_rows:
-            assignment = assignments.get(row["id"])
-            rows.append({
-                "product": "school", "ref_id": row["id"], "customer_id": None,
-                "full_name": row["principal_name"] or "—", "business_name": row["school_name"] or "—",
-                "email": row["contact_email"], "phone": "—", "domain": None,
-                "verified": True, "active": row["is_active"],
-                "created_at": row["created_at"], "plan_name": row["plan_name"],
-                "balance_credits": None,
-                "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
-                "assigned_manager_name": assignment["manager_name"] if assignment else None,
-                "heard": "Not answered", "heard_value": CUSTOMER_HEARD_NONE,
-            })
+    assignments = _amb_manager_assignments([row["id"] for row in school_rows], "school")
+    for row in school_rows:
+        assignment = assignments.get(row["id"])
+        rows.append({
+            "product": "school", "ref_id": row["id"], "customer_id": None,
+            "full_name": row["principal_name"] or "—", "business_name": row["school_name"] or "—",
+            "email": row["contact_email"], "phone": "—", "domain": None,
+            "verified": True, "active": row["is_active"],
+            "created_at": row["created_at"], "plan_name": row["plan_name"],
+            "balance_credits": None,
+            "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
+            "assigned_manager_name": assignment["manager_name"] if assignment else None,
+            "heard": "Not answered", "heard_value": CUSTOMER_HEARD_NONE, "source": "web",
+        })
 
     # ── Estate (re_tenants — its own table, tenant + owner in one row) ──────
-    if want_estate:
-        where  = [
-            "LOWER(r.email) NOT LIKE '%%@phixtra.com'",
-            "LOWER(r.email) NOT LIKE '%%demo%%'",
-            "LOWER(COALESCE(r.business_name,'')) NOT LIKE '%%test%%'",
-        ]
-        params = []
-        if q:
-            where.append("(LOWER(r.email) LIKE %s OR LOWER(COALESCE(r.business_name,'')) LIKE %s OR LOWER(CONCAT(COALESCE(r.first_name,''),' ',COALESCE(r.last_name,''))) LIKE %s)")
-            params += [f"%{q}%"] * 3
-        if date_from:
-            where.append("r.created_at >= %s"); params.append(date_from)
-        if date_to:
-            where.append("r.created_at < (%s::date + INTERVAL '1 day')"); params.append(date_to)
-        if f_active and len(f_active) == 1:
-            where.append("(r.status = 'active') = %s"); params.append(f_active[0] == "yes")
-        if f_verified == ["no"]:
-            where.append("FALSE")
-        if f_source and "web" not in f_source:
-            where.append("FALSE")
-        if f_plan:
-            where.append(f"COALESCE(rp.name,'Free') IN ({','.join(['%s'] * len(f_plan))})")
-            params += f_plan
+    where  = [
+        "LOWER(r.email) NOT LIKE '%%@phixtra.com'",
+        "LOWER(r.email) NOT LIKE '%%demo%%'",
+        "LOWER(COALESCE(r.business_name,'')) NOT LIKE '%%test%%'",
+    ]
+    params = []
+    if q:
+        where.append("(LOWER(r.email) LIKE %s OR LOWER(COALESCE(r.business_name,'')) LIKE %s OR LOWER(CONCAT(COALESCE(r.first_name,''),' ',COALESCE(r.last_name,''))) LIKE %s)")
+        params += [f"%{q}%"] * 3
+    if date_from:
+        where.append("r.created_at >= %s"); params.append(date_from)
+    if date_to:
+        where.append("r.created_at < (%s::date + INTERVAL '1 day')"); params.append(date_to)
 
-        cur.execute(f"""
-            SELECT r.id, r.business_name, r.first_name, r.last_name, r.email, r.phone,
-                   r.status, r.created_at, COALESCE(rp.name,'Free') AS plan_name
-            FROM re_tenants r
-            LEFT JOIN re_plans rp ON rp.id = r.plan_id
-            WHERE {' AND '.join(where)}
-            ORDER BY r.created_at DESC LIMIT 5000
-        """, params)
-        estate_rows = cur.fetchall() or []
+    cur.execute(f"""
+        SELECT r.id, r.business_name, r.first_name, r.last_name, r.email, r.phone,
+               r.status, r.created_at, COALESCE(rp.name,'Free') AS plan_name
+        FROM re_tenants r
+        LEFT JOIN re_plans rp ON rp.id = r.plan_id
+        WHERE {' AND '.join(where)}
+        ORDER BY r.created_at DESC LIMIT 5000
+    """, params)
+    estate_rows = cur.fetchall() or []
 
-        assignments = _amb_manager_assignments([row["id"] for row in estate_rows], "estate")
-        for row in estate_rows:
-            fn = (row.get("first_name") or "").strip()
-            ln = (row.get("last_name")  or "").strip()
-            assignment = assignments.get(row["id"])
-            rows.append({
-                "product": "estate", "ref_id": row["id"], "customer_id": None,
-                "full_name": f"{fn} {ln}".strip() or "—", "business_name": row["business_name"] or "—",
-                "email": row["email"], "phone": row["phone"] or "—", "domain": None,
-                "verified": True, "active": (row["status"] == "active"),
-                "created_at": row["created_at"], "plan_name": row["plan_name"],
-                "balance_credits": None,
-                "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
-                "assigned_manager_name": assignment["manager_name"] if assignment else None,
-                "heard": "Not answered", "heard_value": CUSTOMER_HEARD_NONE,
-            })
+    assignments = _amb_manager_assignments([row["id"] for row in estate_rows], "estate")
+    for row in estate_rows:
+        fn = (row.get("first_name") or "").strip()
+        ln = (row.get("last_name")  or "").strip()
+        assignment = assignments.get(row["id"])
+        rows.append({
+            "product": "estate", "ref_id": row["id"], "customer_id": None,
+            "full_name": f"{fn} {ln}".strip() or "—", "business_name": row["business_name"] or "—",
+            "email": row["email"], "phone": row["phone"] or "—", "domain": None,
+            "verified": True, "active": (row["status"] == "active"),
+            "created_at": row["created_at"], "plan_name": row["plan_name"],
+            "balance_credits": None,
+            "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
+            "assigned_manager_name": assignment["manager_name"] if assignment else None,
+            "heard": "Not answered", "heard_value": CUSTOMER_HEARD_NONE, "source": "web",
+        })
 
-    # "Assigned To" spans all three sources at once, so it's simplest to
-    # apply as one pass over the merged list rather than duplicating the
-    # yes/no logic three times above.
-    if f_assigned and len(f_assigned) == 1:
-        want_assigned = f_assigned[0] == "yes"
-        rows = [x for x in rows if (x["assigned_manager_id"] is not None) == want_assigned]
+    selected = {k: v for k, v in {
+        "source": f_source, "verified": f_verified, "active": f_active, "assigned": f_assigned,
+        "product": f_product, "plan": f_plan, "heard": f_heard,
+    }.items() if v}
 
-    # Heard About Us goes last so its dropdown counts reflect every other
-    # filter, then narrows the list.
-    heard_counts = {}
-    for x in rows:
-        heard_counts[x["heard_value"]] = heard_counts.get(x["heard_value"], 0) + 1
-    if f_heard:
-        rows = [x for x in rows if x["heard_value"] in f_heard]
+    def _passes(x, skip=None):
+        return all(_customer_facet(x, k) in v for k, v in selected.items() if k != skip)
+
+    facet_counts = {}
+    for key in ("source", "verified", "active", "assigned", "product", "plan", "heard"):
+        counts = facet_counts.setdefault(key, {})
+        for x in rows:
+            if _passes(x, key):
+                val = _customer_facet(x, key)
+                counts[val] = counts.get(val, 0) + 1
+    rows = [x for x in rows if _passes(x)]
 
     rows.sort(key=lambda x: x["created_at"], reverse=True)
 
@@ -911,19 +880,21 @@ def customers():
         selected = request.args.getlist(g["key"])
         filter_groups.append({
             "key": g["key"], "label": g["label"],
-            "options": [{"value": v, "label": lbl, "checked": v in selected} for v, lbl in g["options"]],
+            "options": [{"value": v, "label": lbl, "checked": v in selected,
+                         "n": facet_counts[g["key"]].get(v, 0)} for v, lbl in g["options"]],
             "count": len(selected),
         })
     filter_groups.append({
         "key": "heard", "label": "Heard About Us",
-        "options": [{"value": v, "label": lbl, "checked": v in f_heard, "n": heard_counts.get(v, 0)}
+        "options": [{"value": v, "label": lbl, "checked": v in f_heard, "n": facet_counts["heard"].get(v, 0)}
                     for v, lbl in _heard_options()],
         "count": len(f_heard),
     })
     plan_selected = f_plan
     plan_group = {
         "key": "plan", "label": "Plan",
-        "options": [{"value": n, "label": n, "checked": n in plan_selected} for n in plan_names],
+        "options": [{"value": n, "label": n, "checked": n in plan_selected,
+                     "n": facet_counts["plan"].get(n, 0)} for n in plan_names],
         "count": len(plan_selected),
     }
 

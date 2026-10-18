@@ -187,7 +187,7 @@
           <label class="filter-opt">
             <input type="checkbox" name="plan" value="{{ opt.value }}" {% if opt.checked %}checked{% endif %}
                    onchange="document.getElementById('filtersForm').submit()"/>
-            {{ opt.label }}
+            {{ opt.label }}<span class="opt-n">{{ opt.n }}</span>
           </label>
           {% endfor %}
         </div>
