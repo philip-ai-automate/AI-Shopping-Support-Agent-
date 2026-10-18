@@ -1,0 +1,232 @@
+{# Website Set-up How-To Guide (2026-10-18): the 4 "Get set up" steps for
+   website businesses (WordPress/WooCommerce and Wix, Shopify, Squarespace,
+   custom sites), the chat box, products (one place at a time), the free
+   trial and WhatsApp. ids are prefixed set-, CSS scoped .setg. Screenshots
+   in static/portal/tutorial/setup/ (demo state on the test account; plugin
+   shots from profitbuyz.com's own WordPress). #}
+<style>
+.setg{--g-ink:#030C18;--g-txt:#1A2433;--g-muted:#5B6678;--g-line:#DDE3EB;--g-chip:#EEF2F7;--g-gold:#B8860B;
+  --g-good:#0F9F5F;--g-good-soft:#E7F7EF;--g-warn-soft:#FFF4D6;--g-link:#1D4ED8;color:var(--g-txt);font-size:15px;line-height:1.65}
+.setg *{box-sizing:border-box}
+.setg a{color:var(--g-link)}
+.setg .g-lede{max-width:72ch;color:var(--g-muted);margin:0 0 16px;font-size:14px}
+.setg nav.toc{background:#fff;border:1px solid var(--g-line);border-radius:12px;padding:10px 14px;margin:0 0 26px;font-size:13.5px}
+.setg nav.toc ol{margin:0;padding-left:20px;columns:2 240px;column-gap:18px}
+.setg nav.toc li{margin:3px 0;break-inside:avoid}
+.setg section.part{margin-bottom:44px}
+.setg h2{font-size:21px;line-height:1.25;color:var(--g-ink);margin:0 0 8px;scroll-margin-top:80px;font-weight:800}
+.setg h2 .num{color:var(--g-gold);margin-right:8px}
+.setg h3{font-size:16.5px;color:var(--g-ink);margin:22px 0 6px;scroll-margin-top:80px;font-weight:750}
+.setg p,.setg li{max-width:72ch}
+.setg p{margin:0 0 12px}
+.setg ol,.setg ul{padding-left:22px;margin:0 0 12px}
+.setg li{margin:4px 0}
+.setg .ui{display:inline-block;font-size:.88em;font-weight:650;padding:1px 7px;border:1px solid var(--g-line);border-radius:5px;background:#fff;color:var(--g-ink)}
+.setg code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;background:#F4F6FA;border:1px solid var(--g-line);border-radius:6px;padding:1px 6px}
+.setg .box{border-radius:10px;padding:12px 14px;margin:12px 0 16px;max-width:72ch;font-size:14px}
+.setg .tip{background:var(--g-good-soft)}
+.setg .warn{background:var(--g-warn-soft)}
+.setg figure{margin:14px 0 20px;max-width:100%}
+.setg figure img{display:block;max-width:100%;height:auto;border:1px solid var(--g-line);border-radius:10px;box-shadow:0 2px 10px rgba(3,12,24,.06)}
+.setg figcaption{font-size:13px;color:var(--g-muted);margin-top:6px;max-width:72ch}
+.setg .steps4{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:6px 0 18px}
+.setg .steps4 div{border:1px solid var(--g-line);border-radius:12px;padding:12px;background:#fff}
+.setg .steps4 b{display:block;color:var(--g-ink);font-size:14.5px;margin-bottom:2px}
+.setg .steps4 span{font-size:13px;color:var(--g-muted)}
+.setg .steps4 i{font-style:normal;display:inline-flex;width:24px;height:24px;border-radius:50%;background:var(--g-ink);color:#fff;font-size:12.5px;font-weight:800;align-items:center;justify-content:center;margin-bottom:6px}
+.setg table{border-collapse:collapse;width:100%;max-width:820px;font-size:14px;margin:6px 0 16px}
+.setg th,.setg td{border:1px solid var(--g-line);padding:8px 10px;text-align:left;vertical-align:top}
+.setg th{background:#F4F6FA;color:var(--g-ink);font-weight:750}
+@media(max-width:600px){.setg table{display:block;overflow-x:auto}}
+</style>
+
+<div class="setg">
+<p class="g-lede">How a business with a website gets PhiXtra working: connect the website, let the AI read it, add the chat box, and start the free trial. It works for WordPress and WooCommerce shops, and for Wix, Shopify, Squarespace and custom-built websites. Most businesses finish in about 15 minutes.</p>
+
+<nav class="toc" aria-label="In this guide">
+  <ol>
+    <li><a href="#set-overview">The 4 steps</a></li>
+    <li><a href="#set-connect">Step 1: Connect your website</a></li>
+    <li><a href="#set-sync">Step 2: Sync your website</a></li>
+    <li><a href="#set-wordpress">Step 3 on WordPress: the plugin</a></li>
+    <li><a href="#set-chatbox">Step 3 on Wix, Shopify, Squarespace and others</a></li>
+    <li><a href="#set-trial">Step 4: Start your free trial</a></li>
+    <li><a href="#set-products">Products: one place at a time</a></li>
+    <li><a href="#set-shop">Products from your WooCommerce shop</a></li>
+    <li><a href="#set-list">Products from an uploaded list</a></li>
+    <li><a href="#set-site">Products from your website's pages</a></li>
+    <li><a href="#set-whatsapp">Adding WhatsApp</a></li>
+    <li><a href="#set-problems">Problems and how to fix them</a></li>
+  </ol>
+</nav>
+
+<section class="part" id="set-overview">
+  <h2><span class="num">1</span>The 4 steps</h2>
+  <p>After you sign up, your Dashboard shows a <strong>Get set up</strong> box with 4 steps. Only the next step can be clicked. The ones after it are greyed out until the step before is done, so you always know what to do next.</p>
+  <div class="steps4">
+    <div><i>1</i><b>Connect your website</b><span>Type your address and give permission.</span></div>
+    <div><i>2</i><b>Sync your website</b><span>Your AI reads your public pages.</span></div>
+    <div><i>3</i><b>Add the chat box</b><span>The plugin on WordPress, one line of code elsewhere.</span></div>
+    <div><i>4</i><b>Start your free trial</b><span>14 days, no card needed.</span></div>
+  </div>
+  <p>Below the steps there are two <strong>Optional</strong> cards: <strong>Products</strong> and <strong>WhatsApp</strong>. You can finish set-up without them.</p>
+  <figure><img src="/static/portal/tutorial/setup/s01_start.jpg" width="994" height="684" alt="Get set up on a new account: 0 of 4 done. Only Connect your website can be clicked." loading="lazy"><figcaption>A new account: 0 of 4 done. Only "Connect website" can be clicked.</figcaption></figure>
+</section>
+
+<section class="part" id="set-connect">
+  <h2><span class="num">2</span>Step 1: Connect your website</h2>
+  <p>PhiXtra never contacts your website until you say yes. This step is where you say yes.</p>
+  <ol>
+    <li>Click <span class="ui">Connect website</span> in the Get set up box.</li>
+    <li>Type your website address, for example <code>yourshop.com</code>.</li>
+    <li>Tick the box: <em>"This is my business's website (or I look after it), and I give PhiXtra permission to read its public pages so the AI can answer customers."</em></li>
+    <li>Click <span class="ui">Connect</span>. PhiXtra checks it can reach your website. This takes up to 30 seconds.</li>
+  </ol>
+  <figure><img src="/static/portal/tutorial/setup/s02_connect.jpg" width="994" height="356" alt="Connect Website: type the address and tick the permission box, then click Connect." loading="lazy"><figcaption>Type your address, tick the permission box, then click Connect.</figcaption></figure>
+  <p>When it works, you see <strong>Connection successful</strong> and how many pages PhiXtra found. Nothing has been read yet.</p>
+  <div class="box warn"><strong>Connection failed?</strong> The message says why. Most often it's a firewall, Cloudflare or a security plugin stopping automatic visitors. The <a href="{{ url_for('portal.tutorials') }}?topic=website">Website &amp; Firewall guide</a> shows how to let PhiXtra in.</div>
+</section>
+
+<section class="part" id="set-sync">
+  <h2><span class="num">3</span>Step 2: Sync your website</h2>
+  <p>Click <span class="ui">Sync now</span> in step 2, or <span class="ui">Read my website now</span> straight after connecting. Your AI reads your public pages: about, services, delivery, prices, policies, FAQs and contact. That's up to 100 pages, and it usually takes a few minutes.</p>
+  <figure><img src="/static/portal/tutorial/setup/s03_sync.jpg" width="948" height="73" alt="Step 2 open: click Sync now so your AI reads your website." loading="lazy"><figcaption>Step 2: click Sync now.</figcaption></figure>
+  <ul>
+    <li><strong>What's skipped:</strong> menus, headers, footers, cookie notices, pages behind a login, and product pages, unless you choose <a href="#set-site">Read products from my website</a>.</li>
+    <li><strong>See what was read:</strong> go to <strong>Store Information › Sync Website</strong>. You can remove any page you don't want your AI to use.</li>
+    <li><strong>Changed your website?</strong> Click <span class="ui">Sync now</span> again. On paid plans you can also choose to re-read it daily, weekly or monthly.</li>
+  </ul>
+</section>
+
+<section class="part" id="set-wordpress">
+  <h2><span class="num">4</span>Step 3 on WordPress: install the plugin</h2>
+  <p>On WordPress and WooCommerce, the chat box comes from the free <strong>PhiXtra AI Sales Agent</strong> plugin. There's no code to copy and no key to paste.</p>
+  <ol>
+    <li>In your WordPress admin, go to <strong>Plugins</strong>, add a new plugin, and search for <strong>PhiXtra</strong>. Install <strong>PhiXtra – AI Sales Agent</strong> and click <strong>Activate</strong>. The <span class="ui">Get the plugin</span> button in step 3 opens the plugin's page on WordPress.org.</li>
+    <li>In the plugin, click <span class="ui">Connect to PhiXtra</span>.</li>
+    <li>PhiXtra opens. Log in if asked, check the website address is yours, and click <span class="ui">Connect yourshop.com</span>.</li>
+    <li>You're sent back to WordPress with the message <em>"Connected to PhiXtra. The chat box is now on your website."</em></li>
+  </ol>
+  <figure><img src="/static/portal/tutorial/setup/s04_plugin.jpg" width="994" height="664" alt="WordPress: step 3 asks you to install the plugin and click Connect to PhiXtra." loading="lazy"><figcaption>Step 3 on WordPress.</figcaption></figure>
+  <figure><img src="/static/portal/tutorial/setup/s05_approve.jpg" width="520" height="419" alt="After Connect to PhiXtra in WordPress: approve your website in PhiXtra." loading="lazy"><figcaption>Approve your website in PhiXtra. The API key is saved in the plugin for you.</figcaption></figure>
+  <div class="box tip"><strong>Step 3 ticks itself</strong> as soon as the plugin is connected. No products are sent until you choose them. See <a href="#set-shop">Products from your WooCommerce shop</a>.</div>
+  <p>The link only works for the website on your PhiXtra account, only once, and only for 10 minutes. If it has expired, click <span class="ui">Connect to PhiXtra</span> again.</p>
+</section>
+
+<section class="part" id="set-chatbox">
+  <h2><span class="num">5</span>Step 3 on Wix, Shopify, Squarespace and other websites</h2>
+  <p>On other websites the chat box is <strong>one line of code</strong>, made for your business. Step 3 shows everything you need:</p>
+  <ul>
+    <li>your code, with a <span class="ui">Copy code</span> button</li>
+    <li><strong>How to add it on …</strong>: the steps for your website builder</li>
+    <li><span class="ui">Send by email</span>: sends the code and the steps to any email address, for example whoever looks after your website</li>
+  </ul>
+  <figure><img src="/static/portal/tutorial/setup/s07_wix_step.jpg" width="948" height="758" alt="Wix: your code, a Copy button, the Wix steps and Send by email, all inside step 3." loading="lazy"><figcaption>Step 3 for a Wix website.</figcaption></figure>
+
+  <h3>Where the code goes</h3>
+  <table>
+    <thead><tr><th>Website</th><th>Where to paste it</th><th>Check first</th></tr></thead>
+    <tbody>
+      <tr><td>Wix</td><td>Settings › Custom Code › + Add Custom Code. All pages, Body – end.</td><td>Wix only runs custom code on a published site with its own connected domain.</td></tr>
+      <tr><td>Shopify</td><td>Online Store › your theme's … button › Edit code › Layout › <code>theme.liquid</code>, just above <code>&lt;/body&gt;</code>.</td><td>A paid theme's code can only be edited after you've bought it.</td></tr>
+      <tr><td>Squarespace</td><td>Website Tools › Code Injection › Footer.</td><td>Code Injection isn't on the Basic plan.</td></tr>
+      <tr><td>Other or custom-built</td><td>The main template every page shares, just above <code>&lt;/body&gt;</code>.</td><td>Not sure where that is? Use Send by email.</td></tr>
+    </tbody>
+  </table>
+  <p>For the full steps for another website builder, click <span class="ui">Other website builders</span> in step 3, or open <strong>Store Information › Add the chat box</strong>.</p>
+  <figure><img src="/static/portal/tutorial/setup/s08_chatbox_page.jpg" width="860" height="574" alt="Add the chat box page: steps for Shopify, Wix, Squarespace and other websites." loading="lazy"><figcaption>The Add the chat box page has the steps for every website builder.</figcaption></figure>
+
+  <h3>How you know it worked</h3>
+  <p>Open your website. A round chat button appears in the bottom corner, and clicking it opens the chat.</p>
+  <figure><img src="/static/portal/tutorial/setup/s14_chatbox_live.jpg" width="540" height="680" alt="The PhiXtra chat box open on a website." loading="lazy" style="max-width:360px"><figcaption>The chat box on a website.</figcaption></figure>
+  <div class="box tip"><strong>Step 3 ticks itself</strong> the first time the chat box loads on your website. PhiXtra doesn't need to visit your website for this. If you want to check straight away, click <span class="ui">Check it's installed</span>.</div>
+  <p>The code only works on your own website address, so it's safe to paste anywhere on your site or send by email.</p>
+</section>
+
+<section class="part" id="set-trial">
+  <h2><span class="num">6</span>Step 4: Start your free trial</h2>
+  <p>Click <span class="ui">Start my free trial</span>. You get every feature for 14 days, and no card is needed.</p>
+  <figure><img src="/static/portal/tutorial/setup/s06_trial.jpg" width="994" height="644" alt="Steps 1 to 3 done. Start your free trial, then add products or WhatsApp if you want." loading="lazy"><figcaption>Steps 1 to 3 done: start the free trial.</figcaption></figure>
+  <p>Before the trial, and on the free plan, the chat box still shows. Your team answers website chats from the <strong>Inbox</strong> instead of the AI.</p>
+</section>
+
+<section class="part" id="set-products">
+  <h2><span class="num">7</span>Products: one place at a time</h2>
+  <p>Products are optional. If you add them, your AI can recommend them and answer questions about them. They come from <strong>one</strong> of these places, never two, so the AI never sees two different prices for the same thing.</p>
+  <table>
+    <thead><tr><th>Where from</th><th>Best for</th><th>Price and stock changes</th></tr></thead>
+    <tbody>
+      <tr><td><a href="#set-shop">Your WooCommerce shop</a></td><td>WooCommerce shops</td><td>Sent by themselves</td></tr>
+      <tr><td><a href="#set-list">An uploaded list</a> (Excel or CSV)</td><td>Products kept in a spreadsheet</td><td>Upload or sync the list again</td></tr>
+      <tr><td><a href="#set-site">Your website's pages</a></td><td>Wix, Shopify, Squarespace and custom sites with product pages</td><td>Each time your website is read</td></tr>
+    </tbody>
+  </table>
+  <figure><img src="/static/portal/tutorial/setup/s09_products_card.jpg" width="948" height="169" alt="Optional cards: read products from your website or upload a list, and WhatsApp." loading="lazy"><figcaption>The Products card on a Wix website. WooCommerce shops see "Choose shop products" instead.</figcaption></figure>
+  <p><strong>Switching:</strong> to switch to an uploaded list, tick <em>"Yes, use my uploaded list instead"</em> when you upload. The products from the old place are removed from your AI.</p>
+  <figure><img src="/static/portal/tutorial/setup/s10_list_switch.jpg" width="994" height="372" alt="Uploading a list when products come from your website: tick the box to switch." loading="lazy"><figcaption>Switching to an uploaded list.</figcaption></figure>
+</section>
+
+<section class="part" id="set-shop">
+  <h2><span class="num">8</span>Products from your WooCommerce shop</h2>
+  <p>In WordPress, open <strong>PhiXtra AI › PhiXtra AI Sales Agent</strong> and click the <strong>Products</strong> tab. Choose one option, then click <span class="ui">Save</span>:</p>
+  <ul>
+    <li><strong>None:</strong> nothing is sent. This is where new shops start. Choosing None later removes products sent before.</li>
+    <li><strong>Only products in these categories:</strong> tick the categories. Their subcategories are included.</li>
+    <li><strong>Only these products:</strong> type a product name and pick it from the list.</li>
+    <li><strong>All published products.</strong></li>
+  </ul>
+  <figure><img src="/static/portal/tutorial/setup/s11_plugin_products.jpg" width="720" height="627" alt="In WordPress: PhiXtra AI › PhiXtra AI Sales Agent › Products. Choose which products the AI can recommend, then click Save." loading="lazy"><figcaption>The Products tab in the plugin.</figcaption></figure>
+  <figure><img src="/static/portal/tutorial/setup/s13_plugin_search.jpg" width="720" height="330" alt="Only these products: type a product name and pick it from the list." loading="lazy"><figcaption>Only these products: type and pick.</figcaption></figure>
+  <ul>
+    <li><strong>Staying up to date:</strong> changes to the products you chose are sent by themselves, including price, stock, a sale that sells out the last one, unpublishing and deleting. Only published products are ever sent, and never customers or orders.</li>
+    <li><strong>One product at a time:</strong> in WooCommerce › Products, each product has a <strong>Sync to PhiXtra</strong> link. It adds that product to your chosen products.</li>
+    <li><strong>Checking:</strong> the top of the Products tab shows how many products were sent and when. Use <span class="ui">Sync chosen products now</span> after a big import or price change.</li>
+  </ul>
+  <figure><img src="/static/portal/tutorial/setup/s12_plugin_status.jpg" width="720" height="210" alt="The Products tab shows how many products were sent and when." loading="lazy"><figcaption>How many products were sent, and when.</figcaption></figure>
+</section>
+
+<section class="part" id="set-list">
+  <h2><span class="num">9</span>Products from an uploaded list</h2>
+  <ol>
+    <li>Go to <strong>Data Sources</strong> (the <span class="ui">Upload a list</span> button on the Products card takes you there).</li>
+    <li>Upload your Excel or CSV file. The first row must be the column names. Use <span class="ui">Download Sample Template</span> if you need one.</li>
+    <li>Match your columns: product name and price are needed; description, category, stock and image are optional.</li>
+    <li>Click sync. Your AI can recommend the products straight away.</li>
+  </ol>
+  <div class="box warn"><strong>Products not in the list are removed.</strong> Each time you sync, any product that has gone from your list is taken off your AI. Keep your full product list in one file.</div>
+  <p>Removing the list on Data Sources takes its products off your AI.</p>
+</section>
+
+<section class="part" id="set-site">
+  <h2><span class="num">10</span>Products from your website's pages</h2>
+  <p>For websites without a shop plugin or a spreadsheet. Click <span class="ui">Read products from my website</span> on the Products card. Your website is read again, this time including product pages, up to 300 products.</p>
+  <ul>
+    <li>Price, currency and stock are taken from the page's own shop information when it has it. Otherwise the AI uses the text on the page.</li>
+    <li>Prices update each time your website is read: click <span class="ui">Sync now</span>, or set a re-read schedule on a paid plan.</li>
+    <li>To stop, click <span class="ui">Stop reading products</span>. Those products are removed from your AI.</li>
+  </ul>
+</section>
+
+<section class="part" id="set-whatsapp">
+  <h2><span class="num">11</span>Adding WhatsApp</h2>
+  <p>The <strong>WhatsApp</strong> card lets your AI answer on WhatsApp as well. If your plan includes WhatsApp, click <span class="ui">Connect WhatsApp</span> and use Meta's official sign-up window. You keep your number. If it doesn't, the card shows <span class="ui">See Dual-Agent plans</span>: Dual-Agent plans cover both your website and WhatsApp.</p>
+</section>
+
+<section class="part" id="set-problems">
+  <h2><span class="num">12</span>Problems and how to fix them</h2>
+  <table>
+    <thead><tr><th>What you see</th><th>Why</th><th>What to do</th></tr></thead>
+    <tbody>
+      <tr><td>"We couldn't reach your website"</td><td>A firewall, Cloudflare or a security plugin is stopping automatic visitors.</td><td>Follow the <a href="{{ url_for('portal.tutorials') }}?topic=website">Website &amp; Firewall guide</a>, then connect again.</td></tr>
+      <tr><td>No chat button on the website</td><td>The code isn't on the page, or the website change isn't published.</td><td>Check the steps for your website builder, publish, and open your website in a new private window.</td></tr>
+      <tr><td>Wix: the code was added but nothing shows</td><td>Wix runs custom code only on a published site with its own connected domain.</td><td>Connect your domain in Wix, publish, and add the code again if you changed domain.</td></tr>
+      <tr><td>"That connection link has expired" in WordPress</td><td>The approval link works once, for 10 minutes.</td><td>Click Connect to PhiXtra again.</td></tr>
+      <tr><td>"This PhiXtra account is for … but the plugin is on …"</td><td>You're logged in to a different PhiXtra account from the website.</td><td>Log in with the account for that website.</td></tr>
+      <tr><td>Plugin says "Your products come from an uploaded list"</td><td>Your PhiXtra account uses a list, so the shop's products aren't sent.</td><td>Use the list, or remove it on Data Sources, then choose products in the plugin and click Save.</td></tr>
+      <tr><td>The AI doesn't know a product</td><td>It isn't in the products you chose, or isn't published.</td><td>Check the Products tab choice, or click Sync to PhiXtra on that product.</td></tr>
+      <tr><td>An old product is still recommended</td><td>The list or website hasn't been synced since it was removed.</td><td>Sync the list or click Sync now.</td></tr>
+    </tbody>
+  </table>
+  <p>Still stuck? Email <a href="mailto:support@phixtra.com">support@phixtra.com</a>.</p>
+</section>
+</div>

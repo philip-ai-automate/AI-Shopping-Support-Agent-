@@ -6008,7 +6008,7 @@ def _setup_checklist(tenant_id: int):
     if wp:
         steps.append(dict(key="chatbox", title="Install the PhiXtra plugin", done=bool(t["chatbox_seen_at"]),
                           text="Install and activate the free PhiXtra AI Sales Agent plugin on WordPress, then click Connect to PhiXtra inside it. That sets up your API key and the chat box.",
-                          action="Get your API key", url=url_for("portal.api_keys"), check=True))
+                          action="Get the plugin", url="https://wordpress.org/plugins/phixtra-ai-shopping-assistant/", check=True))
     else:
         gkey = _chatbox_guide_key(t["website_platform"] or "")
         steps.append(dict(key="chatbox", title="Add the chat box", done=bool(t["chatbox_seen_at"]),
@@ -6021,6 +6021,12 @@ def _setup_checklist(tenant_id: int):
     steps.append(dict(key="trial", title="Start your free trial", done=bool(t["trial_granted_at"]) or paid,
                       text="Full features for 14 days, no card needed. Until then your team answers website chats from the Inbox.",
                       trial=not t["trial_granted_at"] and not paid))
+
+    # "How to" links into the Website Set-up guide (2026-10-18).
+    _howto = {"website": "set-connect", "sync": "set-sync", "trial": "set-trial",
+              "chatbox": "set-wordpress" if wp else "set-chatbox"}
+    for st in steps:
+        st["howto"] = url_for("portal.tutorials", topic="setup") + "#" + _howto.get(st["key"], "set-overview")
 
     # Only the first step not done yet can be acted on.
     nxt = next((i for i, st in enumerate(steps) if not st["done"]), None)
@@ -6041,8 +6047,8 @@ def _setup_checklist(tenant_id: int):
         p_text = (f"Your AI reads your products from your website's pages ({prod['site']} products so far). "
                   "Prices update each time your website is read.")
     else:
-        p_text = ("Optional. Choose which shop products the AI can recommend, inside the plugin, or upload a list instead (Excel, CSV or Google Sheets). Use one or the other."
-                  if wp else "Optional. Let your AI read your products from your website's own pages, or upload a list (Excel, CSV or Google Sheets). Use one or the other.")
+        p_text = ("Optional. Choose which shop products the AI can recommend, inside the plugin, or upload a list instead (Excel or CSV). Use one or the other."
+                  if wp else "Optional. Let your AI read your products from your website's own pages, or upload a list (Excel or CSV). Use one or the other.")
     extras = [dict(key="products", title="Products", done=prod["source"] is not None, text=p_text,
                    shop_url=shop_tab, list_url=url_for("portal.data_sources"), source=prod["source"],
                    site_ok=(not wp) and bool(src), read_url=url_for("portal.store_info_website_read_products"))]
@@ -6423,27 +6429,17 @@ def plugin_download(plugin_key: str):
 
 
 # ── Onboarding wizard detail page ──────────────────────────────────────────────
+# Retired 2026-10-18: the old 7-step plugin wizard (API key, download plugins,
+# PhiXtra Export) is replaced by the Website Set-up guide. The route stays so
+# old links (the plugin's "View the full setup guide", dashboard buttons) land
+# there. Old page: /root/backups/website_onboarding_20261018/portal_routes.py.
 @portal_bp.route("/onboarding")
 @owner_only
 def onboarding():
     r = _require_login()
     if r: return r
-    customer  = _get_customer(_customer_id())
-    tenant_id = int(customer["tenant_id"])
-    ob        = _onboarding_status(tenant_id, int(customer["id"]))
-    keys      = _get_api_keys(tenant_id)
+    return redirect(url_for("portal.tutorials", topic="setup"))
 
-    # Load available plugin downloads so the template can show download buttons
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM plugin_downloads")
-    rows = cur.fetchall() or []
-    cur.close(); conn.close()
-    plugins_map = {r["plugin_key"]: r for r in rows}
-
-    return render_template("portal/onboarding.html",
-                           customer=customer, onboarding=ob, keys=keys,
-                           plugins=plugins_map)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -25,6 +25,7 @@
 .su-guide{margin-top:12px;max-width:640px}
 .su-how{margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .su-how summary{cursor:pointer;font-weight:750;font-size:14px;color:#0B1D40}
+.su-howto{font-size:12px;font-weight:700;margin-left:6px;color:#2563EB;text-decoration:underline}
 .su-opt-h{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#4A5B78;margin:18px 0 10px;padding-top:14px;border-top:1px solid var(--line)}
 .su-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
 .su-opt{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:4px}
@@ -45,7 +46,7 @@
   <div class="su-step{% if st.done %} done{% endif %}{% if st.locked %} locked{% endif %}">
     <div class="su-n">{% if st.done %}✓{% else %}{{ st.n }}{% endif %}</div>
     <div>
-      <div class="su-name">{{ st.title }}</div>
+      <div class="su-name">{{ st.title }}{% if st.howto and not st.done %} <a class="su-howto" href="{{ st.howto }}" target="_blank" rel="noopener">How to</a>{% endif %}</div>
       <div class="su-text{% if st.state == 'failed' %} failed{% endif %}">{% if st.state == 'checking' %}<span class="su-spin" aria-hidden="true"></span>{% endif %}{{ st.text }}</div>
       {% if st.guide and not st.done and not st.locked %}
       <div class="su-guide">
@@ -67,7 +68,7 @@
           <input type="hidden" name="action" value="sync_now"/>
           <button type="submit" class="su-btn">{{ st.action }}</button>
         </form>
-      {% elif st.url and st.action %}<a class="su-btn{% if st.check %} line{% endif %}" href="{{ st.url }}">{{ st.action }}</a>{% endif %}
+      {% elif st.url and st.action %}<a class="su-btn{% if st.check %} line{% endif %}" href="{{ st.url }}"{% if st.url.startswith('http') %} target="_blank" rel="noopener"{% endif %}>{{ st.action }}</a>{% endif %}
       {% if st.check %}
       <form method="POST" action="{{ url_for('portal.setup_check_chatbox') }}" style="margin:0">
         <button type="submit" class="su-btn">Check it's installed</button>
@@ -84,7 +85,7 @@
   {% endfor %}
 
   {% if setup.extras %}
-  <div class="su-opt-h">Optional</div>
+  <div class="su-opt-h">Optional · <a class="su-howto" style="margin:0;text-transform:none;letter-spacing:0" href="{{ url_for('portal.tutorials', topic='setup') }}#set-products" target="_blank" rel="noopener">How products work</a></div>
   <div class="su-opts">
     {% for ex in setup.extras %}
     <div class="su-opt{% if ex.done %} done{% endif %}">

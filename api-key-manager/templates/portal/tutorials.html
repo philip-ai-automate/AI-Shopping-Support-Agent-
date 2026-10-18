@@ -119,6 +119,9 @@
     <button class="tut-nav-item" id="card-email" onclick="showGuide('email')">
       <span class="tut-nav-icon">✉️</span><span class="tut-nav-label">Email Campaigns (full guide)</span>
     </button>
+    <button class="tut-nav-item" id="card-setup" onclick="showGuide('setup')">
+      <span class="tut-nav-icon">🚀</span><span class="tut-nav-label">Website Set-up</span>
+    </button>
     <button class="tut-nav-item" id="card-website" onclick="showGuide('website')">
       <span class="tut-nav-icon">🌐</span><span class="tut-nav-label">Website &amp; Firewall</span>
     </button>
@@ -167,6 +170,14 @@
     {% include "portal/help/email_guide.html" %}
   </div>
 </div><!-- end guide-email -->
+
+<!-- ── Website Set-up Guide (added 2026-10-18) ───────────────────────────── -->
+<div class="guide-section" id="guide-setup">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Website Set-up: get your website working with PhiXtra</div>
+    {% include "portal/help/setup_guide.html" %}
+  </div>
+</div><!-- end guide-setup -->
 
 <!-- ── Website & Firewall Guide (added 2026-10-03) ───────────────────────── -->
 <div class="guide-section" id="guide-website">
@@ -223,6 +234,7 @@ function showGuide(id) {
   if (!topic && hash.indexOf('cur-') === 0) topic = 'currency';
   if (!topic && hash.indexOf('lead-') === 0) topic = 'leads';
   if (!topic && hash.indexOf('web-') === 0) topic = 'website';
+  if (!topic && hash.indexOf('set-') === 0) topic = 'setup';
   if (!topic && hash.indexOf('eml-') === 0) topic = 'email';
   if (!topic && hash.indexOf('aig-') === 0) topic = 'ai';
   if (!topic || !document.getElementById('guide-' + topic)) return;

@@ -213,13 +213,18 @@
       <div style="font-size:13px;color:var(--muted)">Supports .xlsx, .xls, .csv</div>
     </div>
 
-    {% if product_sources and product_sources.shop %}
+    {% if product_sources and (product_sources.shop or product_sources.source == 'site') %}
     <div style="margin-top:14px;padding:12px 14px;border:1px solid #F2C94C;background:#FFF8E1;border-radius:10px;font-size:13.5px;line-height:1.5">
+      {% if product_sources.shop %}
       <strong>Your products come from your WooCommerce shop ({{ product_sources.shop }} products).</strong>
       Products come from one place at a time. Uploading a list removes the shop's products from your AI and stops the plugin sending them.
+      {% else %}
+      <strong>Your products come from your website's pages ({{ product_sources.site }} products).</strong>
+      Products come from one place at a time. Uploading a list removes those products from your AI and stops reading products from your website.
+      {% endif %}
       <label style="display:flex;gap:8px;align-items:flex-start;margin-top:8px;cursor:pointer">
-        <input type="checkbox" name="replace_shop" value="yes" required style="margin-top:3px">
-        <span>Yes, use my uploaded list instead of my shop's products.</span>
+        <input type="checkbox" name="replace_shop" value="yes" required style="margin-top:3px;width:auto;flex:none">
+        <span style="flex:1;text-align:left;color:inherit">Yes, use my uploaded list instead.</span>
       </label>
     </div>
     {% elif product_sources and product_sources.lists %}
