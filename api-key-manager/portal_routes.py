@@ -476,7 +476,7 @@ PLAN_FEATURE_CATALOG = {
         ("ecom.woo_sync_view",           "WooCommerce Sync — view"),
         ("ecom.woo_sync_delete",         "Remove a WooCommerce Sync record"),
         ("ecom.data_sources_view",       "Product Import — view"),
-        ("ecom.data_sources_create",     "Add a Product Import source (incl. Google Sheets)"),
+        ("ecom.data_sources_create",     "Add a Product Import source"),
         ("ecom.data_sources_edit",       "Edit a Product Import source's mapping / re-sync"),
         ("ecom.data_sources_delete",     "Delete a Product Import source"),
         ("ecom.discount_settings_view",  "Discount Settings — view"),
@@ -2778,17 +2778,17 @@ def _send_account_ready_email(
                       "Use Meta's official sign-up window inside the portal. You keep your number."))
     if kind in ("both", "website"):
         steps.append(("Connect your website.",
-                      f"We check we can reach {site}. Then click Sync now so the AI can read your pages."))
+                      f"Give permission for {site}, then click Sync now so the AI can read your pages."))
         if wp:
-            steps.append(("Add the chat box.", "Install the free PhiXtra plugin in WordPress, then paste in "
-                                               "the API key from the portal's API Keys page."))
-            steps.append(("Your WooCommerce products sync through the plugin.", ""))
+            steps.append(("Add the chat box.", "Install the free PhiXtra plugin in WordPress, then click "
+                                               "Connect to PhiXtra inside it."))
+            steps.append(("Choose your products (optional).", "Pick which WooCommerce products the AI can recommend, in the plugin."))
         else:
             steps.append(("Add the chat box.", "Copy one line of code from the portal's Add Chat Box page into "
                                                "your website. There's a step-by-step guide for your platform."))
-            steps.append(("Upload your product list.", "Excel, CSV or Google Sheets."))
+            steps.append(("Add your products (optional).", "Read them from your website's pages, or upload an Excel or CSV list."))
     else:
-        steps.append(("Upload your product list.", "Excel, CSV or Google Sheets."))
+        steps.append(("Upload your product list.", "Excel or CSV."))
     steps.append(("Start your 2-week AI trial when you're ready.", ""))
 
     trial_head = "Increase your revenue and customer satisfaction"
@@ -5922,7 +5922,7 @@ def _chatbox_on_site(domain: str) -> tuple:
 def _product_sources(tenant_id: int, cur=None) -> dict:
     """Where a business's products come from. One source at a time
     (2026-10-18): the WooCommerce shop (sent by the AI Sales Agent plugin)
-    or an uploaded list (Excel, CSV, Google Sheets)."""
+    or an uploaded list (Excel or CSV)."""
     own = cur is None
     if own:
         conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)

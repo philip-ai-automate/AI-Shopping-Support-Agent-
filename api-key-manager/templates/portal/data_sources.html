@@ -45,7 +45,7 @@
   <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
     <div>
       <div class="section-title">Product Import</div>
-      <p class="muted">Import your product catalogue from Google Sheets or upload a spreadsheet file to keep your AI's pricing and stock accurate.</p>
+      <p class="muted">Upload your product list as an Excel or CSV file to keep your AI's pricing and stock accurate.</p>
     </div>
     <a href="javascript:history.back()" class="btn btn-sm" style="white-space:nowrap">← Back</a>
   </div>
@@ -141,7 +141,7 @@
 {% endfor %}
 {% else %}
 <div style="text-align:center;padding:40px 0;color:var(--muted);font-size:14px">
-  No products imported yet.{% if staff_can_open('portal.data_source_upload') %} Upload a file or connect Google Sheets above.{% endif %}
+  No products imported yet.{% if staff_can_open('portal.data_source_upload') %} Upload an Excel or CSV file below.{% endif %}
 </div>
 {% endif %}
 
@@ -250,7 +250,7 @@
     <div>
       <div style="font-size:20px;margin-bottom:6px">1️⃣</div>
       <div style="font-weight:600;font-size:14px;margin-bottom:4px">Upload or connect</div>
-      <div style="font-size:13px;color:var(--muted)">Upload your Excel/CSV file or connect Google Sheets with one click.</div>
+      <div style="font-size:13px;color:var(--muted)">Upload your Excel or CSV file.</div>
     </div>
     <div>
       <div style="font-size:20px;margin-bottom:6px">2️⃣</div>
