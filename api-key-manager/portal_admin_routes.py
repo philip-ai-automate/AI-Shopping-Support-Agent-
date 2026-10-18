@@ -715,15 +715,6 @@ def customers():
         if f_plan:
             where.append(f"COALESCE(p.name,'Free') IN ({','.join(['%s'] * len(f_plan))})")
             params += f_plan
-        if f_heard:
-            picked = [v for v in f_heard if v != CUSTOMER_HEARD_NONE]
-            ors = []
-            if picked:
-                ors.append(f"c.hear_about_us IN ({','.join(['%s'] * len(picked))})")
-                params += picked
-            if CUSTOMER_HEARD_NONE in f_heard:
-                ors.append("COALESCE(c.hear_about_us,'') = ''")
-            where.append(f"({' OR '.join(ors)})")
 
         cur.execute(f"""
             SELECT c.id, c.first_name, c.last_name, c.email, c.phone_number,
@@ -761,6 +752,7 @@ def customers():
                 "assigned_manager_name": assignment["manager_name"] if assignment else None,
                 "setup": setup.get(row["tenant_id"]),
                 "heard": _heard_label(row.get("hear_about_us")),
+                "heard_value": row.get("hear_about_us") or CUSTOMER_HEARD_NONE,
             })
 
     # ── School (school_profiles — its own table, no "customers" split) ─────
@@ -786,9 +778,6 @@ def customers():
         if f_source and "web" not in f_source:
             # Not a WhatsApp self-serve signup product — never matches
             # "WhatsApp-only".
-            where.append("FALSE")
-        if f_heard and CUSTOMER_HEARD_NONE not in f_heard:
-            # School sign-up never asks "How did you hear about us?".
             where.append("FALSE")
         if f_plan:
             where.append(f"COALESCE(sp.name,'Free') IN ({','.join(['%s'] * len(f_plan))})")
@@ -816,7 +805,7 @@ def customers():
                 "balance_credits": None,
                 "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
                 "assigned_manager_name": assignment["manager_name"] if assignment else None,
-                "heard": "Not answered",
+                "heard": "Not answered", "heard_value": CUSTOMER_HEARD_NONE,
             })
 
     # ── Estate (re_tenants — its own table, tenant + owner in one row) ──────
@@ -839,8 +828,6 @@ def customers():
         if f_verified == ["no"]:
             where.append("FALSE")
         if f_source and "web" not in f_source:
-            where.append("FALSE")
-        if f_heard and CUSTOMER_HEARD_NONE not in f_heard:
             where.append("FALSE")
         if f_plan:
             where.append(f"COALESCE(rp.name,'Free') IN ({','.join(['%s'] * len(f_plan))})")
@@ -870,7 +857,7 @@ def customers():
                 "balance_credits": None,
                 "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
                 "assigned_manager_name": assignment["manager_name"] if assignment else None,
-                "heard": "Not answered",
+                "heard": "Not answered", "heard_value": CUSTOMER_HEARD_NONE,
             })
 
     # "Assigned To" spans all three sources at once, so it's simplest to
@@ -879,6 +866,14 @@ def customers():
     if f_assigned and len(f_assigned) == 1:
         want_assigned = f_assigned[0] == "yes"
         rows = [x for x in rows if (x["assigned_manager_id"] is not None) == want_assigned]
+
+    # Heard About Us goes last so its dropdown counts reflect every other
+    # filter, then narrows the list.
+    heard_counts = {}
+    for x in rows:
+        heard_counts[x["heard_value"]] = heard_counts.get(x["heard_value"], 0) + 1
+    if f_heard:
+        rows = [x for x in rows if x["heard_value"] in f_heard]
 
     rows.sort(key=lambda x: x["created_at"], reverse=True)
 
@@ -921,7 +916,8 @@ def customers():
         })
     filter_groups.append({
         "key": "heard", "label": "Heard About Us",
-        "options": [{"value": v, "label": lbl, "checked": v in f_heard} for v, lbl in _heard_options()],
+        "options": [{"value": v, "label": lbl, "checked": v in f_heard, "n": heard_counts.get(v, 0)}
+                    for v, lbl in _heard_options()],
         "count": len(f_heard),
     })
     plan_selected = f_plan

@@ -67,6 +67,7 @@
   .filter-opt{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:8px;font-size:13px;cursor:pointer}
   .filter-opt:hover{background:rgba(3,12,24,.04)}
   .filter-opt input[type=checkbox]{width:15px;height:15px;accent-color:var(--ink);cursor:pointer;flex-shrink:0}
+  .filter-opt .opt-n{margin-left:auto;font-size:12px;font-weight:700;color:var(--muted);background:rgba(3,12,24,.05);border-radius:999px;padding:1px 8px}
   .filter-opt.disabled{cursor:not-allowed;color:var(--muted)}
   .filter-opt.disabled input{cursor:not-allowed}
   .filter-caption{font-size:11px;color:var(--warn);font-style:italic;padding:4px 8px 8px;border-bottom:1px solid var(--line);margin-bottom:6px}
@@ -157,7 +158,7 @@
           <label class="filter-opt">
             <input type="checkbox" name="{{ g.key }}" value="{{ opt.value }}" {% if opt.checked %}checked{% endif %}
                    onchange="document.getElementById('filtersForm').submit()"/>
-            {{ opt.label }}
+            {{ opt.label }}{% if opt.n is defined %}<span class="opt-n">{{ opt.n }}</span>{% endif %}
           </label>
           {% endfor %}
         </div>
