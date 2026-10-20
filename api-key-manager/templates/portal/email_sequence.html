@@ -132,8 +132,31 @@
     <form method="POST" action="{{ url_for('portal.email_sequence_save', seq_id=seq.id) }}" id="stepsForm">
       <div class="row2">
         <label class="fld">Sequence name<input type="text" name="name" value="{{ seq.name }}" maxlength="255" required></label>
-        <label class="fld">Replies go to<input type="email" name="reply_to" value="{{ seq.reply_to or '' }}" placeholder="{{ default_reply_to }}"></label>
+        <label class="fld">Replies go to<input type="email" name="reply_to" value="{{ seq.reply_to or '' }}" placeholder="{{ seq.from_email or default_reply_to }}"></label>
       </div>
+      {% if sender and send_as_choices %}
+      <div class="row2">
+        <label class="fld">Send as
+          <select name="from_email" id="sqFromEmail">
+            <option value="">{{ sender.from_name }} &lt;{{ sender.from_email }}&gt; (business address)</option>
+            {% for c in send_as_choices %}<option value="{{ c.email }}" data-name="{{ c.name }}" {% if seq.from_email and seq.from_email|lower == c.email|lower %}selected{% endif %}>{{ c.email }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="fld">Name people see<input type="text" name="from_name" id="sqFromName" maxlength="255" value="{{ seq.from_name or '' }}" placeholder="e.g. Philip" {% if not seq.from_email %}disabled{% endif %}></label>
+      </div>
+      <p class="sq-hint" style="margin:-4px 0 12px;font-size:13px;color:#64748b">Choose a team member's own address to send these emails as them. Replies go to that address unless you fill in "Replies go to".</p>
+      <script>
+      (function () {
+        var s = document.getElementById('sqFromEmail'), n = document.getElementById('sqFromName')
+        s.addEventListener('change', function () {
+          var o = s.options[s.selectedIndex]
+          n.disabled = !s.value
+          if (s.value && !n.value) n.value = o.dataset.name || ''
+          if (!s.value) n.value = ''
+        })
+      })()
+      </script>
+      {% endif %}
       {% if not templates %}
       <div class="sq-warn" style="margin-bottom:12px">You don't have any saved emails yet. Use <a href="{{ url_for('portal.email_new') }}">New Email</a> to write one. It will then show here.</div>
       {% endif %}

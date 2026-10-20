@@ -103,6 +103,11 @@ textarea.ne-in { resize: vertical; line-height: 1.5; }
 details.ne-panel > summary { list-style: none; cursor: pointer; }
 details.ne-panel > summary::-webkit-details-marker { display: none; }
 details.ne-panel:not([open]) > summary .ne-ph { border-bottom: none; }
+.ne-style{display:grid;gap:8px}
+.ne-style label{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border:1px solid #E1E7F0;border-radius:8px;cursor:pointer;font-weight:600;font-size:14px}
+.ne-style label:has(input:checked){border-color:#0B1D40;background:#F3F6FB}
+.ne-style small{display:block;font-weight:400;color:#5A6B85;font-size:12.5px}
+.ne-style input{margin-top:3px}
 /* preview */
 .ne-side { position: sticky; top: 92px; display: flex; flex-direction: column; gap: 16px; }
 .ne-tabs { display: inline-flex; background: var(--soft); border-radius: 8px; padding: 3px; gap: 2px; }
@@ -229,7 +234,12 @@ details.ne-panel:not([open]) > summary .ne-ph { border-bottom: none; }
       <section class="ne-panel" aria-labelledby="neMsgH">
         <div class="ne-ph"><h2 id="neMsgH">Message</h2><span class="ne-note">Names fill in for each person when it's sent</span></div>
         <div class="ne-pb">
-          <div class="ne-f"><label class="ne-lab" for="fHero">Heading <span>Optional. Leave empty for a personal-looking email</span></label>
+          <div class="ne-f"><span class="ne-lab" id="fStyleLab">Look</span>
+            <div class="ne-style" role="radiogroup" aria-labelledby="fStyleLab">
+              <label><input type="radio" name="fStyle" value="designed" {% if f.style != 'plain' %}checked{% endif %}> <span>Designed <small>Logo at the top, colours and a button</small></span></label>
+              <label><input type="radio" name="fStyle" value="plain" {% if f.style == 'plain' %}checked{% endif %}> <span>Plain personal email <small>Looks like an email typed in Outlook. Your signature and logo go at the bottom</small></span></label>
+            </div></div>
+          <div class="ne-f" id="fHeroWrap"><label class="ne-lab" for="fHero">Heading <span>Optional. Leave empty for a personal-looking email</span></label>
             <input class="ne-in" id="fHero" placeholder="Main headline of the email" value="{{ f.hero_heading or '' }}"></div>
           <div class="ne-editor">
             <div class="ne-edtop">
@@ -255,7 +265,7 @@ details.ne-panel:not([open]) > summary .ne-ph { border-bottom: none; }
       </section>
 
       <section class="ne-panel" aria-labelledby="neBtnH">
-        <div class="ne-ph"><h2 id="neBtnH">Button</h2><span class="ne-note">One clear next step. Optional</span></div>
+        <div class="ne-ph"><h2 id="neBtnH">Button</h2><span class="ne-note" id="neBtnNote">One clear next step. Optional</span></div>
         <div class="ne-pb">
           <div class="ne-row">
             <div class="ne-f"><label class="ne-lab" for="fCtaText">Button text</label><input class="ne-in" id="fCtaText" placeholder="e.g. Book a demo" value="{{ f.cta_text or '' }}"></div>
@@ -286,8 +296,8 @@ details.ne-panel:not([open]) > summary .ne-ph { border-bottom: none; }
       </details>
 
       <section class="ne-panel" aria-labelledby="neSigH">
-        <div class="ne-ph"><h2 id="neSigH">Sign-off</h2><span class="ne-note">First line is the name, lines under it are smaller</span></div>
-        <div class="ne-pb"><textarea class="ne-in" id="fSignoff" rows="2" aria-labelledby="neSigH" placeholder="Your name&#10;Company · email">{{ f.signoff if (template and f.signoff is not none) else (design.signoff or '') }}</textarea></div>
+        <div class="ne-ph"><h2 id="neSigH">Signature</h2><span class="ne-note">First line is the name in bold, lines under it are smaller</span></div>
+        <div class="ne-pb"><textarea class="ne-in" id="fSignoff" rows="4" aria-labelledby="neSigH" placeholder="Your name&#10;Company · email">{{ f.signoff if (template and f.signoff is not none) else (design.signoff or '') }}</textarea></div>
       </section>
     </div>
 
@@ -387,8 +397,15 @@ details.ne-panel:not([open]) > summary .ne-ph { border-bottom: none; }
     return { name: $('fName').value.trim(), subject: $('fSubject').value.trim(), preheader: $('fPre').value.trim(),
              hero_heading: $('fHero').value.trim(), body_html: quill.root.innerHTML, cta_text: $('fCtaText').value.trim(),
              cta_url: $('fCtaUrl').value.trim(), image_url: imageUrl, video_url: $('fVideo').value.trim(),
-             video_picture_url: videoPic, signoff: $('fSignoff').value }
+             video_picture_url: videoPic, signoff: $('fSignoff').value,
+             style: (document.querySelector('input[name=fStyle]:checked') || {}).value || 'designed' }
   }
+  function styleUi() {
+    const plain = fields().style === 'plain'
+    $('fHeroWrap').hidden = plain
+    $('neBtnNote').textContent = plain ? 'Shows as an ordinary link in a plain email. Optional' : 'One clear next step. Optional'
+  }
+  document.querySelectorAll('input[name=fStyle]').forEach(r => r.addEventListener('change', () => { styleUi(); changed() }))
   function formData(extra) { const fd = new FormData(); Object.entries(Object.assign(fields(), extra || {})).forEach(([k, v]) => fd.append(k, v ?? '')); return fd }
   function showMsg(t, cls) { const m = $('neMsg'); m.textContent = t || ''; m.className = 'ne-msg ' + (cls || ''); m.hidden = !t; if (t) m.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }
 
@@ -511,7 +528,7 @@ details.ne-panel:not([open]) > summary .ne-ph { border-bottom: none; }
   }
   {% endif %}
 
-  counts(); checks(); preview(); dirty = false
+  styleUi(); counts(); checks(); preview(); dirty = false
 })()
 </script>
 {% endblock %}

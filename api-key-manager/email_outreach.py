@@ -156,6 +156,56 @@ def render_designed_email(*, hero_heading, body_html, cta_text, cta_url, image_u
 </body></html>'''
 
 
+def render_plain_email(*, body_html, cta_text, cta_url, from_name, brand=None,
+                       video_url=None, signoff=None) -> str:
+    """A plain personal email, like one typed in Outlook or Gmail: white
+    page, no header, no card, the button as an ordinary link, then the
+    sender's signature (with the business logo under it, as many real
+    signatures have). The small unsubscribe line still goes at the bottom.
+    Leaves {{UNSUBSCRIBE_URL}} for the send loop."""
+    brand = brand or {}
+    esc = _html.escape
+    name = from_name or "this business"
+    font = "Calibri,Aptos,'Segoe UI',Arial,sans-serif"
+    link = "#1155CC"
+    body = style_body(body_html, DEFAULT_BRAND)
+    body = re.sub(r'<a(\s[^>]*)?style="color:#0B1D40;', lambda m: f'<a{m.group(1) or ""}style="color:{link};', body)
+    marker = re.compile(r"<p[^>]*>\s*\{\{\s*video\s*\}\}\s*</p>|\{\{\s*video\s*\}\}", re.I)
+    vlink = (f'<p style="margin:0 0 16px;"><a href="{esc(video_url)}" style="color:{link};">Watch the video</a></p>'
+             if video_url else "")
+    placed = bool(marker.search(body))
+    body = marker.sub(lambda m: vlink, body, count=1)
+    body = marker.sub("", body)
+    parts = [body]
+    if video_url and not placed:
+        parts.append(vlink)
+    if cta_text and cta_url:
+        parts.append(f'<p style="margin:0 0 16px;"><a href="{esc(cta_url)}" style="color:{link};font-weight:600;">'
+                     f'{esc(cta_text)}</a></p>')
+    if signoff:
+        lines = [esc(l) for l in signoff.strip().splitlines() if l.strip()]
+        if lines:
+            first, rest = lines[0], lines[1:]
+            sig = (f'<p style="margin:0;font-weight:700;color:#111E2D;">{first}</p>'
+                   + "".join(f'<p style="margin:0;color:#444444;font-size:14px;">{l}</p>' for l in rest))
+            if brand.get("logo_url"):
+                sig += (f'<img src="{esc(brand["logo_url"])}" alt="{esc(name)}" width="110" '
+                        f'style="display:block;width:110px;max-width:110px;height:auto;border:0;margin-top:10px;">')
+            parts.append(f'<div style="padding-top:6px;line-height:1.4;">{sig}</div>')
+    note = (brand.get("footer_note") or f"You're receiving this because you're a contact of {name}.").strip()
+    address = brand.get("footer_address")
+    footer_addr = f'{esc(address)}<br>' if address else ''
+    return f'''<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#ffffff;">
+<div style="max-width:640px;padding:20px 16px;font-family:{font};font-size:15px;line-height:1.55;color:#111E2D;">
+{"".join(parts)}
+<p style="margin:32px 0 0;font-size:11px;line-height:1.5;color:#8A94A6;">{footer_addr}{esc(note)}
+<a href="{{{{UNSUBSCRIBE_URL}}}}" style="color:#8A94A6;text-decoration:underline;">Unsubscribe</a></p>
+</div>
+</body></html>'''
+
+
 # ── Name filling ────────────────────────────────────────────────────────────
 
 MERGE_FIELDS = [

@@ -4357,6 +4357,12 @@ def ensure_portal_tables():
         cur.execute("CREATE INDEX IF NOT EXISTS esp_lead_idx ON email_sequence_people (lead_id) WHERE lead_id IS NOT NULL")
         if not _column_exists(cur, "email_campaigns", "sequence_id"):
             cur.execute("ALTER TABLE email_campaigns ADD COLUMN sequence_id BIGINT")
+        # "Send as" (2026-10-20): a sequence can go out from one team
+        # member's own address on the business's sending domain.
+        for _col in ("from_name", "from_email"):
+            if not _column_exists(cur, "email_sequences", _col):
+                cur.execute("SET LOCAL lock_timeout = '3s'")
+                cur.execute(f"ALTER TABLE email_sequences ADD COLUMN {_col} VARCHAR(255)")
         # Same plans as tracking (approved 2026-10-08: tracking, sequences and
         # mailbox on Pro and above); the Plan editor decides after.
         _seq_keys = ("campaigns_email.sequences_view", "campaigns_email.sequences_create",

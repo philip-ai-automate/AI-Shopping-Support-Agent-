@@ -22216,6 +22216,10 @@ def _render_campaign_email_html(hero_heading, body_html, cta_text, cta_url, imag
     signoff = extra.get("signoff")
     if signoff is None:
         signoff = brand.get("signoff")
+    if extra.get("style") == "plain":
+        return email_outreach.render_plain_email(
+            body_html=_sanitize_quill_html(body_html), cta_text=cta_text, cta_url=cta_url,
+            from_name=from_name, brand=brand, video_url=extra.get("video_url"), signoff=signoff)
     return email_outreach.render_designed_email(
         hero_heading=hero_heading, body_html=_sanitize_quill_html(body_html), cta_text=cta_text,
         cta_url=cta_url, image_url=image_url, from_name=from_name, brand=brand,
@@ -22231,6 +22235,7 @@ def _builder_fields(form) -> dict:
         "cta_text": g("cta_text"), "cta_url": g("cta_url"), "image_url": g("image_url"),
         "video_url": g("video_url"), "video_picture_url": g("video_picture_url"),
         "signoff": form.get("signoff") if form.get("signoff") is not None else None,
+        "style": "plain" if g("style") == "plain" else "designed",
     }
 
 
@@ -22240,7 +22245,7 @@ def _render_builder(fields: dict, from_name: str, tenant_id: int) -> str:
         fields["image_url"] or None, from_name, tenant_id=tenant_id,
         extra={"video_url": fields.get("video_url") or None,
                "video_picture_url": fields.get("video_picture_url") or None,
-               "signoff": fields.get("signoff")})
+               "signoff": fields.get("signoff"), "style": fields.get("style")})
 
 
 def _default_reply_to(customer: dict) -> str:
@@ -25841,12 +25846,13 @@ def _seq_prepare_step(cur, seq, step, from_name: str):
     fields = {k: f.get(k) or "" for k in ("hero_heading", "body_html", "cta_text", "cta_url",
                                            "image_url", "video_url", "video_picture_url")}
     fields["signoff"] = f.get("signoff")
+    fields["style"] = f.get("style")
     tenant_id = int(seq["tenant_id"])
     html_body = _render_builder(fields, from_name, tenant_id)
     name = f"{seq['name']} · Email {step['position']}"
     track = _plan_grants_feature(_get_tenant_plan(tenant_id), "campaigns_email.tracking")
     vals = (name, f["subject"].strip(), (f.get("preheader") or "").strip() or None, html_body,
-            seq.get("reply_to"), psycopg2.extras.Json(fields), track)
+            seq.get("reply_to") or seq.get("from_email"), psycopg2.extras.Json(fields), track)
     if step.get("campaign_id"):
         cur.execute("""UPDATE email_campaigns SET name=%s, subject=%s, preheader=%s, html_body=%s,
                            reply_to=%s, fields=%s, track=%s
@@ -25896,6 +25902,45 @@ def _seq_stop_matching(cur, tenant_id: int, reason: str, email: str = None, lead
                    WHERE tenant_id=%s AND status IN ('active','ready')
                      AND (lower(email)=lower(%s) OR (%s::bigint IS NOT NULL AND lead_id=%s))""",
                 (reason, tenant_id, email or "", lead_id, lead_id))
+
+
+def _send_as_choices(tenant_id: int, sender: dict) -> list:
+    """Addresses a sequence can be sent from: the team's own work addresses
+    on the business's sending domain (ZeptoMail only sends from that
+    domain). [{'email','name'}], owner first."""
+    if not sender or not sender.get("from_email") or "@" not in sender["from_email"]:
+        return []
+    domain = sender["from_email"].rsplit("@", 1)[1].lower()
+    out, seen = [], {sender["from_email"].lower()}
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""SELECT email, first_name, name FROM team_members
+                       WHERE tenant_id=%s AND is_active AND lower(email) LIKE %s ORDER BY id""",
+                    (tenant_id, "%@" + domain))
+        rows = cur.fetchall()
+        cur.execute("SELECT email, first_name, NULL AS name FROM customers WHERE tenant_id=%s AND lower(email) LIKE %s",
+                    (tenant_id, "%@" + domain))
+        rows = cur.fetchall() + rows
+    finally:
+        cur.close(); conn.close()
+    for r in rows:
+        e = (r["email"] or "").strip()
+        if e and e.lower() not in seen:
+            seen.add(e.lower())
+            first = (r["first_name"] or (r["name"] or "").split(" ")[0] or "").strip()
+            out.append({"email": e, "name": first})
+    return out
+
+
+def _seq_sender(seq, sender: dict) -> dict:
+    """The business's sender, or the sequence's own "Send as" address when
+    one is set and is still on the sending domain."""
+    fe = (seq.get("from_email") or "").strip()
+    if not sender or not fe:
+        return sender
+    if fe.rsplit("@", 1)[-1].lower() != (sender.get("from_email") or "").rsplit("@", 1)[-1].lower():
+        return sender
+    return dict(sender, from_email=fe, from_name=(seq.get("from_name") or "").strip() or sender["from_name"])
 
 
 def _seq_deliver(cur, camp, tenant_id: int, email: str, sender: dict, lead_id=None):
@@ -25973,7 +26018,7 @@ def _seq_send_next(person_id: int):
                                updated_at=NOW() WHERE id=%s""", (reason, p["id"]))
             conn.commit()
             return False, f"Not sent: {reason.lower()}."
-        sender = _get_email_sender(tenant_id)
+        sender = _seq_sender(seq, _get_email_sender(tenant_id))
         if not sender:
             return _put_back("No sending address is set up for this business.")
         step = steps[p["steps_sent"]]
@@ -26293,7 +26338,7 @@ def email_sequence_detail(seq_id: int):
         # (Integrations › Microsoft 365). Warn when it isn't.
         reply_unwatched = None
         if _plan_grants_feature(_get_tenant_plan(tenant_id), "campaigns_email.mailbox_connect"):
-            rt = (seq.get("reply_to") or _default_reply_to(customer) or "").strip()
+            rt = (seq.get("reply_to") or seq.get("from_email") or _default_reply_to(customer) or "").strip()
             if rt:
                 cur.execute("SELECT 1 FROM mailbox_connections WHERE tenant_id=%s AND lower(email)=lower(%s) "
                             "AND status='active'", (tenant_id, rt))
@@ -26311,6 +26356,7 @@ def email_sequence_detail(seq_id: int):
         page_size=_SEQ_PAGE_SIZE,
         segments=segments, stages=[(s, stage_labels.get(s, s)) for s in PIPELINE_STAGE_ORDER if s != "won"],
         status_words=_SEQ_STATUS_WORDS, sender=_get_email_sender(tenant_id),
+        send_as_choices=_send_as_choices(tenant_id, _get_email_sender(tenant_id)),
         default_reply_to=_default_reply_to(customer))
 
 
@@ -26328,6 +26374,12 @@ def email_sequence_save(seq_id: int):
     reply_to = (request.form.get("reply_to") or "").strip()
     if reply_to and not _re_seq_email.fullmatch(reply_to):
         flash("The 'Replies go to' address doesn't look like an email address.", "warning")
+        return back
+    from_email = (request.form.get("from_email") or "").strip()
+    from_name = (request.form.get("from_name") or "").strip()[:255]
+    if from_email and from_email.lower() not in {c["email"].lower() for c in
+                                                  _send_as_choices(tenant_id, _get_email_sender(tenant_id))}:
+        flash("That 'Send as' address can't be used. Pick one from the list.", "warning")
         return back
     tpl_ids = request.form.getlist("template_id")
     waits = request.form.getlist("wait_days")
@@ -26355,8 +26407,10 @@ def email_sequence_save(seq_id: int):
             m = "manual" if (modes[i] if i < len(modes) else "") == "manual" else "auto"
             rows.append((int(t), w, m))
         old = _seq_steps(cur, seq_id)
-        cur.execute("UPDATE email_sequences SET name=%s, reply_to=%s, updated_at=NOW() WHERE id=%s",
-                    (name or seq["name"], reply_to or None, seq_id))
+        cur.execute("""UPDATE email_sequences SET name=%s, reply_to=%s, from_email=%s, from_name=%s,
+                           updated_at=NOW() WHERE id=%s""",
+                    (name or seq["name"], reply_to or None, from_email or None,
+                     (from_name or None) if from_email else None, seq_id))
         # Keep each position's own campaign row (its sends/opens/clicks stay
         # with "Email N"); drop rows past the new end.
         for pos, (t, w, m) in enumerate(rows, start=1):
