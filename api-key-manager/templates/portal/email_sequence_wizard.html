@@ -1,0 +1,435 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ seq.name if seq else 'New sequence' }} — Email Sequence — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+.wz-back { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; color:var(--muted); text-decoration:none; margin-bottom:14px; }
+.wz-top { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
+.wz-top h1 { font-size:22px; font-weight:800; color:var(--ink); margin:0; }
+.wz-draft { font-size:12px; font-weight:700; color:#067647; background:#ECFDF3; padding:3px 10px; border-radius:99px; }
+.wz-steps { list-style:none; margin:0 0 16px; padding:0; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; }
+.wz-steps button { width:100%; font:inherit; font-size:13px; font-weight:700; display:flex; gap:8px; align-items:center; padding:10px 12px; border-radius:10px; border:1.5px solid #e2e8f0; background:#fff; color:var(--muted); cursor:pointer; }
+.wz-steps button:disabled { cursor:not-allowed; opacity:.5; }
+.wz-steps .sn { width:22px; height:22px; border-radius:50%; display:grid; place-items:center; font-size:12px; background:#f1f5f9; flex:none; }
+.wz-steps button.cur { border-color:#0B1D40; color:#0B1D40; }
+.wz-steps button.cur .sn { background:#0B1D40; color:#fff; }
+.wz-steps button.done .sn { background:#ECFDF3; color:#067647; }
+.wz-steps button.skip .sn { background:#FFFAEB; color:#B54708; }
+.wz-card { background:#fff; border:1px solid rgba(3,12,24,.08); border-radius:16px; padding:22px 24px; display:flex; flex-direction:column; gap:16px; }
+.wz-pane { display:flex; flex-direction:column; gap:14px; }
+.wz-pane[hidden] { display:none; }
+.wz-card [hidden], .wz-top [hidden] { display:none !important; }
+.wz-pane h2 { margin:0; font-size:18px; font-weight:800; color:var(--ink); }
+.wz-sub { margin:-8px 0 0; color:var(--muted); font-size:13px; }
+.wf { display:flex; flex-direction:column; gap:5px; font-size:12.5px; font-weight:700; color:var(--muted); flex:1; min-width:0; }
+.wf input, .wf select, .wf textarea { font:inherit; font-size:14px; font-weight:400; padding:8px 10px; border:1.5px solid #e2e8f0; border-radius:9px; background:#fff; color:var(--ink); min-width:0; }
+.wf.sm { flex:0 0 190px; }
+.wz-row { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; }
+.wz-num { width:32px; height:32px; border-radius:9px; background:#0B1D40; color:#fff; display:grid; place-items:center; font-weight:800; flex:none; margin-bottom:3px; }
+.wz-x { background:none; border:none; color:#98a2b3; font-size:18px; cursor:pointer; padding:0 4px 8px; }
+.wz-wait { font-size:13px; font-weight:600; color:#B54708; background:#FFFAEB; border-radius:9px; padding:8px 12px; align-self:flex-start; margin-left:44px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.wz-wait input { width:64px; font:inherit; padding:3px 6px; border:1px solid #e2e8f0; border-radius:6px; }
+.wz-wait select { font:inherit; font-size:12.5px; padding:3px 6px; border:1px solid #e2e8f0; border-radius:6px; background:#fff; }
+.opts { display:grid; gap:8px; }
+.opt { display:flex; gap:10px; align-items:flex-start; border:1.5px solid #e2e8f0; border-radius:10px; padding:11px 13px; cursor:pointer; font-size:14px; }
+.opt:has(input:checked) { border-color:#0B1D40; background:#F3F6FB; }
+.opt small { display:block; color:var(--muted); font-size:12.5px; font-weight:400; }
+.opt input { margin-top:3px; }
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+.okline { font-size:13px; background:#ECFDF3; color:#05603A; border-radius:10px; padding:10px 13px; }
+.warnline { font-size:13px; background:#FFFAEB; color:#93370D; border-radius:10px; padding:10px 13px; }
+.errline { font-size:13px; background:#FEF3F2; color:#B42318; border-radius:10px; padding:10px 13px; }
+.quick { display:flex; gap:6px; flex-wrap:wrap; align-items:center; font-size:12.5px; color:var(--muted); font-weight:600; }
+.qp { font:inherit; font-size:12.5px; font-weight:600; padding:5px 11px; border-radius:99px; border:1.5px solid #e2e8f0; background:#fff; color:var(--ink); cursor:pointer; }
+.qp[aria-pressed="true"] { background:#0B1D40; border-color:#0B1D40; color:#fff; }
+.days { display:flex; gap:6px; flex-wrap:wrap; }
+.dbtn { font:inherit; font-size:13px; font-weight:700; padding:7px 12px; border-radius:8px; border:1.5px solid #e2e8f0; color:var(--muted); background:#fff; cursor:pointer; }
+.dbtn.on { background:#0B1D40; border-color:#0B1D40; color:#fff; }
+.ck { display:flex; gap:9px; align-items:flex-start; font-size:13.5px; font-weight:600; color:var(--ink); cursor:pointer; }
+.ck small { display:block; color:var(--muted); font-weight:400; font-size:12px; }
+.ck input { margin-top:3px; }
+.mcal { display:flex; gap:18px; flex-wrap:wrap; }
+.mcm { flex:1 1 260px; max-width:340px; }
+.mct { font-weight:700; font-size:13.5px; margin-bottom:6px; }
+.mcg { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; font-variant-numeric:tabular-nums; }
+.mh { font-size:11px; color:var(--muted); text-align:center; font-weight:700; }
+.md { font:inherit; font-size:12px; border:1px solid transparent; border-radius:7px; background:none; color:var(--muted); padding:4px 0; min-height:38px; cursor:pointer; line-height:1.2; }
+.md small { display:block; font-size:10px; font-weight:600; }
+.md.in { background:#f8fafc; }
+.md.send { background:#E8EEF8; border-color:#9DB8E8; color:#0B1D40; font-weight:700; }
+.md.rest { opacity:.5; }
+.md.st, .md.en { outline:2px solid #0B1D40; outline-offset:-2px; }
+.rev { display:flex; flex-direction:column; border:1px solid #e2e8f0; border-radius:12px; }
+.rrow { display:grid; grid-template-columns:110px 1fr auto; gap:12px; align-items:center; padding:12px 14px; border-top:1px solid #e2e8f0; font-size:13.5px; }
+.rrow:first-child { border-top:0; }
+.rrow .rk { font-weight:700; color:var(--muted); }
+.rrow .skipped { color:#B54708; font-weight:700; }
+.wz-foot { display:flex; gap:10px; align-items:center; border-top:1px solid #e2e8f0; padding-top:14px; flex-wrap:wrap; }
+.btn2 { display:inline-flex; align-items:center; gap:6px; padding:10px 18px; border-radius:10px; font:inherit; font-size:14px; font-weight:700; border:1.5px solid #cbd5e1; background:#fff; color:#0B1D40; cursor:pointer; text-decoration:none; white-space:nowrap; }
+.btn2.pri { background:#0B1D40; border-color:#0B1D40; color:#fff; }
+.btn2.go { background:#067647; border-color:#067647; color:#fff; }
+.btn2.sm { font-size:12.5px; padding:6px 12px; border-radius:8px; }
+.btn2:disabled { opacity:.5; cursor:default; }
+.linkbtn { font:inherit; font-size:13.5px; font-weight:600; background:none; border:0; color:#175CD3; cursor:pointer; text-decoration:underline; }
+@media (max-width:760px) {
+  .wz-steps button { flex-direction:column; gap:4px; padding:8px 4px; font-size:11.5px; }
+  .grid2, .grid3 { grid-template-columns:1fr; } .wf.sm { flex:1 1 100%; } .wz-wait { margin-left:0; }
+  .rrow { grid-template-columns:1fr auto; } .rrow .rk { grid-column:1 / -1; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('portal.email_sequences') }}" class="wz-back">← All sequences</a>
+<div class="wz-top">
+  <h1>{{ 'Set up: ' ~ seq.name if seq else 'New sequence' }}</h1>
+  <span class="wz-draft" id="wzDraft" {% if not seq %}hidden{% endif %}>✓ Saved, paused until you start it</span>
+</div>
+
+<ol class="wz-steps" id="wzSteps">
+  <li><button type="button" data-s="0"><span class="sn">1</span>Emails</button></li>
+  <li><button type="button" data-s="1"><span class="sn">2</span>Sender</button></li>
+  <li><button type="button" data-s="2"><span class="sn">3</span>People</button></li>
+  <li><button type="button" data-s="3"><span class="sn">4</span>Schedule</button></li>
+  <li><button type="button" data-s="4"><span class="sn">✓</span>Review</button></li>
+</ol>
+
+<div class="wz-card">
+  <!-- 1 Emails -->
+  <div class="wz-pane" data-s="0">
+    <h2>Which emails, and how far apart?</h2>
+    <p class="wz-sub">Required. Pick from your saved emails. Write new ones in Email › New Email.</p>
+    {% if not templates %}<div class="warnline">You don't have any saved emails yet. <a href="{{ url_for('portal.email_new') }}">Write one first</a>, then come back.</div>{% endif %}
+    <label class="wf" for="wzName">Name this sequence<input id="wzName" maxlength="255" value="{{ seq.name if seq else '' }}" placeholder="e.g. Retail outreach"></label>
+    <div id="wzEmails"></div>
+    <button type="button" class="btn2 sm" style="align-self:flex-start" onclick="wzAddEmail()" {% if not templates %}disabled{% endif %}>+ Add another email</button>
+  </div>
+
+  <!-- 2 Sender -->
+  <div class="wz-pane" data-s="1" hidden>
+    <h2>Who is it from?</h2>
+    <p class="wz-sub">Optional. Skip to send from the business address.</p>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="wzFrom" value="biz" {% if not (seq and seq.from_email) %}checked{% endif %}><span><b>Business address</b><small>{{ sender.from_name ~ ' <' ~ sender.from_email ~ '>' if sender else 'Not set up yet' }}</small></span></label>
+      {% if send_as_choices %}<label class="opt"><input type="radio" name="wzFrom" value="me" {% if seq and seq.from_email %}checked{% endif %}><span><b>A team member's own address</b><small>Feels personal. Replies go to their inbox.</small></span></label>{% endif %}
+    </div>
+    {% if send_as_choices %}
+    <div class="grid2" id="wzMeBox">
+      <label class="wf" for="wzFromEmail">Address<select id="wzFromEmail">{% for c in send_as_choices %}<option value="{{ c.email }}" data-name="{{ c.name }}" {% if seq and seq.from_email and seq.from_email|lower == c.email|lower %}selected{% endif %}>{{ c.email }}</option>{% endfor %}</select></label>
+      <label class="wf" for="wzFromName">Name people see<input id="wzFromName" maxlength="255" value="{{ seq.from_name if seq and seq.from_name else '' }}" placeholder="e.g. Philip"></label>
+    </div>
+    {% endif %}
+    <label class="wf" for="wzReply">Replies go to <span style="font-weight:400">(optional)</span><input id="wzReply" type="email" value="{{ seq.reply_to if seq and seq.reply_to else '' }}" placeholder="Same as the sender"></label>
+  </div>
+
+  <!-- 3 People -->
+  <div class="wz-pane" data-s="2" hidden>
+    <h2>Who gets it?</h2>
+    <p class="wz-sub">Optional. Add people now or later. Unsubscribed people and anyone already in this sequence are skipped.</p>
+    <div class="okline" id="wzHave" {% if not n_people %}hidden{% endif %}>{{ '{:,}'.format(n_people) }} people are already in this sequence.</div>
+    <div class="opts">
+      <label class="opt"><input type="radio" name="wzSrc" value="leads" checked><span><b>Leads</b><small>All open leads with an email, or narrow by label, category or stage</small></span></label>
+      <label class="opt"><input type="radio" name="wzSrc" value="segment"><span><b>An Email Segment</b><small>Contacts saved in a segment</small></span></label>
+      <label class="opt"><input type="radio" name="wzSrc" value="emails"><span><b>Type email addresses</b><small>One per line, or separated by commas</small></span></label>
+    </div>
+    <div class="grid3" data-src="leads">
+      <label class="wf" for="wzLabel">Label<select id="wzLabel"><option value="">Any label</option>{% for l in labels %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}</select></label>
+      <label class="wf" for="wzCat">Business category<select id="wzCat"><option value="">Any category</option>{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select></label>
+      <label class="wf" for="wzStage">Stage<select id="wzStage"><option value="">Any open stage</option>{% for v, l in stages %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></label>
+    </div>
+    <label class="wf" data-src="segment" hidden for="wzSeg">Email Segment<select id="wzSeg"><option value="">Choose a segment…</option>{% for sg in segments %}<option value="{{ sg.id }}">{{ sg.name }}</option>{% endfor %}</select></label>
+    <label class="wf" data-src="emails" hidden for="wzTyped">Email addresses<textarea id="wzTyped" rows="4"></textarea></label>
+    <div class="okline" id="wzCount">Checking…</div>
+  </div>
+
+  <!-- 4 Schedule -->
+  <div class="wz-pane" data-s="3" hidden>
+    <h2>When should it send?</h2>
+    <p class="wz-sub">Optional, but recommended for big lists. Pick the dates and days, and we work out how many go each day.</p>
+    <div class="okline" id="wzPeopleLine"></div>
+    <div class="grid3">
+      <label class="wf" for="wzStart">Start date<input type="date" id="wzStart"></label>
+      <label class="wf" for="wzEnd">End date<input type="date" id="wzEnd"></label>
+      <div class="wf"><span>Hours</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="wzFromH" aria-label="From" style="flex:1">{% for h in range(0,24) %}<option value="{{ h }}" {% if (schedule.from_h if schedule.on else 9) == h %}selected{% endif %}>{{ '12am' if h==0 else (h ~ 'am' if h<12 else ('12pm' if h==12 else (h-12) ~ 'pm')) }}</option>{% endfor %}</select>
+          <span>to</span>
+          <select id="wzToH" aria-label="To" style="flex:1">{% for h in range(1,25) %}<option value="{{ h }}" {% if (schedule.to_h if schedule.on else 17) == h %}selected{% endif %}>{{ 'midnight' if h==24 else (h ~ 'am' if h<12 else ('12pm' if h==12 else (h-12) ~ 'pm')) }}</option>{% endfor %}</select>
+        </div></div>
+    </div>
+    <div class="quick" id="wzQuick">Length:
+      <button type="button" class="qp" data-w="7">1 week</button>
+      <button type="button" class="qp" data-w="14">2 weeks</button>
+      <button type="button" class="qp" data-w="30">1 month</button>
+    </div>
+    <div class="grid2">
+      <div class="wf"><span>Sending days</span><div class="days" id="wzDays">
+        {% set on_days = schedule.days if schedule.on else [1,2,3,4,5] %}
+        {% for d, l in [(1,'Mon'),(2,'Tue'),(3,'Wed'),(4,'Thu'),(5,'Fri'),(6,'Sat'),(0,'Sun')] %}<button type="button" class="dbtn {% if d in on_days %}on{% endif %}" data-d="{{ d }}">{{ l }}</button>{% endfor %}
+      </div></div>
+      <label class="wf" for="wzTz">Time zone<select id="wzTz">{% for t, l in tz_choices %}<option value="{{ t }}" {% if (schedule.tz or 'Africa/Lagos') == t %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
+    </div>
+    <label class="ck"><input type="checkbox" id="wzFollow" {% if not schedule.on or schedule.follow %}checked{% endif %}><span>Follow-ups keep to these days and hours too<small>A follow-up due outside them waits for the next sending time.</small></span></label>
+    <div class="okline" id="wzPlan"></div>
+    <div class="mcal" id="wzCal" aria-label="Sending calendar"></div>
+    <p class="wz-sub" style="margin:0">Tip: click a date in the calendar to make it the end date.</p>
+  </div>
+
+  <!-- 5 Review -->
+  <div class="wz-pane" data-s="4" hidden>
+    <h2>Check and start</h2>
+    <p class="wz-sub">Press Edit on any line to change it. You'll come straight back here.</p>
+    <div class="rev" id="wzRev"></div>
+    <div class="warnline" id="wzWarn" hidden></div>
+  </div>
+
+  <div class="errline" id="wzErr" hidden></div>
+  <div class="wz-foot">
+    <button class="btn2" type="button" id="wzBack">← Back</button>
+    <span style="flex:1"></span>
+    <button class="linkbtn" type="button" id="wzSkip">Skip this step</button>
+    <button class="btn2 pri" type="button" id="wzNext">Next →</button>
+  </div>
+</div>
+
+<form method="POST" id="wzStartForm" hidden><input type="hidden" name="status" value="active"></form>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id)
+  const TEMPLATES = {{ templates|map(attribute='id')|list|tojson }}
+  const TNAMES = {{ templates|tojson }}
+  const STATE = {
+    seq: {{ seq.id if seq else 'null' }},
+    emails: {{ steps|map(attribute='template_id')|list|tojson if steps else '[]' }},
+    waits: {{ steps|map(attribute='wait_days')|list|tojson if steps else '[]' }},
+    modes: {{ steps|map(attribute='send_mode')|list|tojson if steps else '[]' }},
+    fromEmail: {{ (seq.from_email if seq else none)|tojson }}, fromName: {{ (seq.from_name if seq else none)|tojson }},
+    people: {{ n_people|int }},
+    sch: {{ {'on': schedule.get('on', False), 'start': schedule.start.isoformat() if schedule.get('start') else None, 'end': schedule.end.isoformat() if schedule.get('end') else None}|tojson }},
+    seen: new Set([0]), fromReview: false, cur: 0, schSkipped: false
+  }
+  const BIZ = {{ (sender.from_name ~ ' <' ~ sender.from_email ~ '>' if sender else 'the business address')|tojson }}
+  const URL = {
+    emails: '{{ url_for("portal.email_sequence_wizard_emails") }}',
+    sender: id => '/email/sequences/' + id + '/wizard/sender',
+    people: id => '/email/sequences/' + id + '/wizard/people',
+    sched: id => '/email/sequences/' + id + '/schedule',
+    status: id => '/email/sequences/' + id + '/status',
+    detail: id => '/email/sequences/' + id,
+    setup: id => '/email/sequences/' + id + '/setup'
+  }
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
+  const fmtN = n => Number(n).toLocaleString('en-GB')
+  const D = v => new Date(v + 'T12:00:00'), iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+  const fmtD = d => d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  function err(msg) { $('wzErr').textContent = msg || ''; $('wzErr').hidden = !msg }
+  function post(url, data) {
+    const fd = new FormData(); Object.entries(data).forEach(([k, v]) => Array.isArray(v) ? v.forEach(x => fd.append(k, x)) : fd.append(k, v == null ? '' : v))
+    return fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' }).then(r => r.json().catch(() => ({ error: 'Something went wrong (' + r.status + ').' })))
+  }
+
+  // ── 1 Emails ──
+  function emailRow(i, tid, wait, mode) {
+    const opts = '<option value="">Choose a saved email…</option>' + TNAMES.map(t => `<option value="${t.id}" ${t.id === tid ? 'selected' : ''}>${esc(t.name)}</option>`).join('')
+    return (i ? `<div class="wz-wait">⏱ then wait <input type="number" class="w-wait" min="1" max="365" value="${wait || 3}" aria-label="Days to wait"> days, only if they haven't replied, and
+        <select class="w-mode" aria-label="How it is sent"><option value="auto" ${mode !== 'manual' ? 'selected' : ''}>send it automatically</option><option value="manual" ${mode === 'manual' ? 'selected' : ''}>I'll send it myself</option></select></div>` : '')
+      + `<div class="wz-row w-row"><span class="wz-num">${i + 1}</span><label class="wf">Email ${i + 1}<select class="w-tpl">${opts}</select></label>${i ? '<button type="button" class="wz-x" title="Remove this email">✕</button>' : ''}</div>`
+  }
+  function drawEmails() {
+    const box = $('wzEmails'); box.innerHTML = ''
+    const n = Math.max(1, STATE.emails.length)
+    for (let i = 0; i < n; i++) { const w = document.createElement('div'); w.className = 'w-item'; w.style.cssText = 'display:flex;flex-direction:column;gap:10px'; w.innerHTML = emailRow(i, STATE.emails[i], STATE.waits[i], STATE.modes[i]); box.appendChild(w) }
+    box.querySelectorAll('.wz-x').forEach((b, k) => b.onclick = () => { readEmails(); STATE.emails.splice(k + 1, 1); STATE.waits.splice(k + 1, 1); STATE.modes.splice(k + 1, 1); drawEmails() })
+  }
+  function readEmails() {
+    STATE.emails = [], STATE.waits = [], STATE.modes = []
+    document.querySelectorAll('#wzEmails .w-item').forEach((it, i) => {
+      STATE.emails.push(+it.querySelector('.w-tpl').value || null)
+      STATE.waits.push(i ? +(it.querySelector('.w-wait').value || 3) : 0)
+      STATE.modes.push(i ? it.querySelector('.w-mode').value : 'auto')
+    })
+  }
+  window.wzAddEmail = function () { readEmails(); STATE.emails.push(null); STATE.waits.push(3); STATE.modes.push('auto'); drawEmails() }
+  function saveEmails() {
+    readEmails()
+    const name = $('wzName').value.trim()
+    if (!name) return Promise.resolve({ error: 'Give the sequence a name.' })
+    if (!STATE.emails.length || STATE.emails.some(x => !x)) return Promise.resolve({ error: 'Choose a saved email for every step, or remove the empty one.' })
+    return post(URL.emails, { seq_id: STATE.seq || '', name, template_id: STATE.emails, wait_days: STATE.waits, send_mode: STATE.modes }).then(d => {
+      if (d.seq_id) { STATE.seq = d.seq_id; $('wzDraft').hidden = false; history.replaceState(null, '', URL.setup(d.seq_id)); $('wzStartForm').action = URL.status(d.seq_id) }
+      return d
+    })
+  }
+
+  // ── 2 Sender ──
+  function fromMode() { const r = document.querySelector('input[name=wzFrom]:checked'); return r ? r.value : 'biz' }
+  function senderUi() {
+    const me = fromMode() === 'me', box = $('wzMeBox'); if (box) box.hidden = !me
+    if (me && $('wzFromName') && !$('wzFromName').value) { const o = $('wzFromEmail').selectedOptions[0]; $('wzFromName').value = o ? o.dataset.name || '' : '' }
+  }
+  document.querySelectorAll('input[name=wzFrom]').forEach(r => r.addEventListener('change', senderUi))
+  if ($('wzFromEmail')) $('wzFromEmail').addEventListener('change', () => { const o = $('wzFromEmail').selectedOptions[0]; $('wzFromName').value = o.dataset.name || '' })
+  function saveSender(skip) {
+    const me = !skip && fromMode() === 'me'
+    const data = { from_email: me ? $('wzFromEmail').value : '', from_name: me ? $('wzFromName').value.trim() : '', reply_to: skip ? '' : $('wzReply').value.trim() }
+    return post(URL.sender(STATE.seq), data).then(d => { if (!d.error) { STATE.fromEmail = data.from_email || null; STATE.fromName = data.from_name || null; STATE.reply = data.reply_to } return d })
+  }
+
+  // ── 3 People ──
+  function src() { return document.querySelector('input[name=wzSrc]:checked').value }
+  function peopleData() {
+    const s = src(), d = { source: s }
+    if (s === 'leads') { d.label_id = $('wzLabel').value; d.category = $('wzCat').value; d.stage = $('wzStage').value }
+    if (s === 'segment') d.segment_id = $('wzSeg').value
+    if (s === 'emails') d.emails = $('wzTyped').value
+    return d
+  }
+  let pvT = null, pvN = 0, lastCan = 0
+  function peopleUi() {
+    const s = src()
+    document.querySelectorAll('[data-src]').forEach(el => el.hidden = el.dataset.src !== s)
+    clearTimeout(pvT); pvT = setTimeout(previewPeople, 350)
+  }
+  function previewPeople() {
+    if (!STATE.seq) return
+    const n = ++pvN; $('wzCount').className = 'okline'; $('wzCount').textContent = 'Checking…'
+    post(URL.people(STATE.seq), Object.assign({ preview: '1' }, peopleData())).then(d => {
+      if (n !== pvN) return
+      if (d.error) { $('wzCount').className = 'errline'; $('wzCount').textContent = d.error; return }
+      lastCan = d.can_add
+      const out = []; if (d.unsubscribed) out.push(fmtN(d.unsubscribed) + ' unsubscribed'); if (d.already) out.push(fmtN(d.already) + ' already in this sequence')
+      $('wzCount').className = d.can_add ? 'okline' : 'warnline'
+      $('wzCount').textContent = d.can_add ? fmtN(d.can_add) + ' people will be added.' + (out.length ? ' Skipped: ' + out.join(', ') + '.' : '') : 'Nobody new to add with this choice.' + (out.length ? ' (' + out.join(', ') + ')' : '')
+    })
+  }
+  document.querySelectorAll('input[name=wzSrc]').forEach(r => r.addEventListener('change', peopleUi))
+  ;['wzLabel', 'wzCat', 'wzStage', 'wzSeg', 'wzTyped'].forEach(id => { $(id).addEventListener('change', peopleUi); $(id).addEventListener('input', peopleUi) })
+  function savePeople() {
+    if (!lastCan) return Promise.resolve({ ok: true, none: true })
+    return post(URL.people(STATE.seq), peopleData()).then(d => { if (!d.error) { STATE.people = d.total; $('wzHave').hidden = false; $('wzHave').textContent = fmtN(d.total) + ' people are in this sequence.' } return d })
+  }
+
+  // ── 4 Schedule ──
+  function sdays() { return new Set([...document.querySelectorAll('#wzDays .dbtn.on')].map(b => +b.dataset.d)) }
+  function schedCalc() {
+    const n = STATE.people, ds = sdays(), st = D($('wzStart').value), en = D($('wzEnd').value)
+    if (!ds.size || isNaN(st) || isNaN(en) || en < st) return null
+    const list = []; for (let d = new Date(st); d <= en; d.setDate(d.getDate() + 1)) if (ds.has(d.getDay())) list.push(new Date(d))
+    if (!list.length) return null
+    const per = n ? Math.ceil(n / list.length) : 0
+    const plan = list.map((d, i) => [d, n ? Math.max(0, Math.min(per, n - per * i)) : 0]).filter(x => !n || x[1] > 0)
+    return { n, per, list, plan, st, en }
+  }
+  function lab(h) { h = +h; return h === 0 ? '12am' : h === 24 ? 'midnight' : h < 12 ? h + 'am' : h === 12 ? '12pm' : (h - 12) + 'pm' }
+  function planText() {
+    const c = schedCalc(); if (!c) return 'Check the dates and days'
+    const hrs = ', ' + lab($('wzFromH').value) + ' to ' + lab($('wzToH').value)
+    return c.n ? fmtN(c.per) + ' a day on ' + c.plan.length + ' sending day' + (c.plan.length > 1 ? 's' : '') + ', ' + fmtD(c.st) + ' to ' + fmtD(c.en) + hrs
+      : c.list.length + ' sending days, ' + fmtD(c.st) + ' to ' + fmtD(c.en) + hrs + '. People are shared out when added'
+  }
+  function schedDraw() {
+    const n = STATE.people, c = schedCalc(), plan = $('wzPlan')
+    $('wzPeopleLine').textContent = n ? fmtN(n) + ' people in this sequence.' : 'No people yet. They will be shared across these dates when you add them.'
+    const st = D($('wzStart').value)
+    document.querySelectorAll('#wzQuick .qp').forEach(b => { const e = new Date(st); e.setDate(e.getDate() + (+b.dataset.w) - 1); b.setAttribute('aria-pressed', !isNaN(st) && iso(e) === $('wzEnd').value) })
+    if (!c) { plan.className = 'warnline'; plan.textContent = D($('wzEnd').value) < st ? 'The end date must be on or after the start date.' : 'There are no sending days between these dates. Pick more days or a later end date.' }
+    else { plan.className = 'okline'; plan.innerHTML = '<b>Email 1:</b> ' + esc(planText()) + '.' }
+    const cal = $('wzCal'); if (isNaN(st)) { cal.innerHTML = ''; return }
+    const en = D($('wzEnd').value), last = isNaN(en) || en < st ? st : en, map = {}, ds = sdays()
+    if (c) c.plan.forEach(([d, v]) => map[d.toDateString()] = v)
+    let m = new Date(st.getFullYear(), st.getMonth(), 1, 12), html = '', guard = 0
+    while ((m <= last || !html) && guard++ < 4) {
+      const y = m.getFullYear(), mo = m.getMonth(), first = new Date(y, mo, 1, 12), lead = (first.getDay() + 6) % 7, dim = new Date(y, mo + 1, 0).getDate()
+      html += `<div class="mcm"><div class="mct">${first.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</div><div class="mcg">` + ['M','T','W','T','F','S','S'].map(x => `<span class="mh">${x}</span>`).join('') + '<span></span>'.repeat(lead)
+      for (let dd = 1; dd <= dim; dd++) { const x = new Date(y, mo, dd, 12), inR = x >= st && x <= last, v = map[x.toDateString()]
+        html += `<button type="button" class="md${inR ? ' in' : ''}${v !== undefined ? ' send' : ''}${inR && !ds.has(x.getDay()) ? ' rest' : ''}${iso(x) === iso(st) ? ' st' : ''}${iso(x) === iso(last) ? ' en' : ''}" data-iso="${iso(x)}">${dd}${v ? `<small>${fmtN(v)}</small>` : ''}</button>` }
+      html += '</div></div>'; m = new Date(y, mo + 1, 1, 12)
+    }
+    cal.innerHTML = html
+    cal.querySelectorAll('.md').forEach(b => b.onclick = () => { if (b.dataset.iso < $('wzStart').value) $('wzStart').value = b.dataset.iso; else $('wzEnd').value = b.dataset.iso; schedDraw() })
+  }
+  document.querySelectorAll('#wzDays .dbtn').forEach(b => b.onclick = () => { b.classList.toggle('on'); schedDraw() })
+  document.querySelectorAll('#wzQuick .qp').forEach(b => b.onclick = () => { const e = D($('wzStart').value); if (isNaN(e)) return; e.setDate(e.getDate() + (+b.dataset.w) - 1); $('wzEnd').value = iso(e); schedDraw() })
+  ;['wzStart', 'wzEnd', 'wzFromH', 'wzToH'].forEach(id => $(id).addEventListener('change', schedDraw))
+  ;(function initDates() {
+    const t = new Date(); t.setDate(t.getDate() + 1)
+    $('wzStart').value = STATE.sch.start || iso(t)
+    const e = D($('wzStart').value); e.setDate(e.getDate() + 6)
+    $('wzEnd').value = STATE.sch.end || iso(e)
+  })()
+  function saveSchedule(skip) {
+    if (skip) return post(URL.sched(STATE.seq), { ajax: '1', on: '0' }).then(d => { if (!d.error) { STATE.sch.on = false; STATE.schSkipped = true } return d })
+    if (!schedCalc()) return Promise.resolve({ error: 'Fix the dates or days first.' })
+    if (+$('wzToH').value <= +$('wzFromH').value) return Promise.resolve({ error: 'The sending hours must end after they start.' })
+    return post(URL.sched(STATE.seq), { ajax: '1', on: '1', start: $('wzStart').value, end: $('wzEnd').value, from_h: $('wzFromH').value,
+      to_h: $('wzToH').value, tz: $('wzTz').value, follow: $('wzFollow').checked ? '1' : '', days: [...sdays()].map(String) })
+      .then(d => { if (!d.error) { STATE.sch.on = true; STATE.schSkipped = false } return d })
+  }
+
+  // ── Review ──
+  function review() {
+    const n = STATE.emails.length
+    const rows = [
+      ['Emails', n + ' email' + (n > 1 ? 's' : '') + (n > 1 ? ' · then ' + STATE.waits.slice(1).map(w => w + ' days').join(', then ') + ' between them, if no reply' : ''), false],
+      ['Sender', STATE.fromEmail ? esc((STATE.fromName || '') + ' <' + STATE.fromEmail + '>') : 'Skipped: sends from ' + esc(BIZ), !STATE.fromEmail],
+      ['People', STATE.people ? fmtN(STATE.people) + ' people' : 'Skipped: add people later', !STATE.people],
+      ['Schedule', STATE.sch.on ? esc(planText()) : 'Skipped: everyone due gets their email as soon as you start', !STATE.sch.on]
+    ]
+    $('wzRev').innerHTML = rows.map((r, k) => `<div class="rrow"><span class="rk">${r[0]}</span><span>${r[2] ? `<span class="skipped">${r[1]}</span>` : r[1]}</span><button class="btn2 sm" type="button" data-edit="${k}">${r[2] && k ? 'Set it up' : 'Edit'}</button></div>`).join('')
+    $('wzRev').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { STATE.fromReview = true; go(+b.dataset.edit) })
+    const w = $('wzWarn')
+    w.hidden = STATE.people && STATE.sch.on
+    w.textContent = !STATE.people ? 'No people yet, so it will be saved as paused. Add people later on the sequence page.' : 'No schedule: when you press Start, everyone gets Email 1 within minutes.'
+  }
+
+  // ── Navigation ──
+  function stepState(s) {
+    if (s === 1) return STATE.seen.has(1) && !STATE.fromEmail ? 'skip' : 'done'
+    if (s === 2) return STATE.people ? 'done' : (STATE.seen.has(2) ? 'skip' : '')
+    if (s === 3) return STATE.sch.on ? 'done' : (STATE.seen.has(3) ? 'skip' : '')
+    return 'done'
+  }
+  function go(i) {
+    err(''); STATE.cur = i; STATE.seen.add(i)
+    document.querySelectorAll('.wz-pane').forEach(p => p.hidden = +p.dataset.s !== i)
+    document.querySelectorAll('#wzSteps button').forEach(b => { const s = +b.dataset.s
+      b.className = s === i ? 'cur' : (STATE.seen.has(s) && s < 4 ? stepState(s) : '')
+      b.disabled = !(STATE.seen.has(s) || (STATE.seq && s <= 4 && STATE.seen.has(s - 1))) || (!STATE.seq && s > 0) })
+    const back = $('wzBack'), next = $('wzNext'), skip = $('wzSkip')
+    back.hidden = i === 0; skip.hidden = i === 0 || i === 4
+    if (STATE.fromReview && i < 4) { next.textContent = 'Save and back to review'; back.hidden = true }
+    else next.textContent = i === 4 ? (STATE.people ? '▶ Start sequence' : 'Save as paused') : 'Next →'
+    next.className = 'btn2 ' + (i === 4 && STATE.people ? 'go' : 'pri')
+    if (i === 1) senderUi()
+    if (i === 2) peopleUi()
+    if (i === 3) schedDraw()
+    if (i === 4) review()
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+  const SAVE = [() => saveEmails(), () => saveSender(false), () => savePeople(), () => saveSchedule(false)]
+  const SKIP = [null, () => saveSender(true), () => Promise.resolve({ ok: true }), () => saveSchedule(true)]
+  function after(p) {
+    const btn = $('wzNext'); btn.disabled = true
+    return p.then(d => { btn.disabled = false; if (d.error) { err(d.error); return false } return true })
+      .catch(() => { btn.disabled = false; err('Could not reach the server. Check your connection and try again.'); return false })
+  }
+  function advance() { if (STATE.fromReview) { STATE.fromReview = false; go(4) } else go(STATE.cur + 1) }
+  $('wzNext').onclick = () => {
+    if (STATE.cur === 4) {
+      if (!STATE.people) { location.href = URL.detail(STATE.seq); return }
+      $('wzStartForm').action = URL.status(STATE.seq); $('wzStartForm').submit(); return
+    }
+    after(SAVE[STATE.cur]()).then(ok => { if (ok) advance() })
+  }
+  $('wzSkip').onclick = () => after(SKIP[STATE.cur]()).then(ok => { if (ok) advance() })
+  $('wzBack').onclick = () => go(Math.max(0, STATE.cur - 1))
+  document.querySelectorAll('#wzSteps button').forEach(b => b.onclick = () => { STATE.fromReview = false; go(+b.dataset.s) })
+
+  drawEmails()
+  if (STATE.seq) [0, 1, 2, 3].forEach(s => STATE.seen.add(s))
+  go(STATE.seq ? 4 : 0)
+})()
+</script>
+{% endblock %}

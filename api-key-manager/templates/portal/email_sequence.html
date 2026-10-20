@@ -31,6 +31,74 @@
 .fld { display:flex; flex-direction:column; gap:5px; font-size:12px; font-weight:600; color:var(--muted); }
 .fld input, .fld select, .fld textarea { padding:8px 11px; border:1.5px solid #e2e8f0; border-radius:9px; font-size:13px; color:var(--ink); background:#fff; font-weight:400; }
 .row2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:18px; }
+.sq-btn.go { background:#067647; }
+.rdy { display:grid; grid-template-columns:repeat(4,1fr); background:#fff; border:1px solid rgba(3,12,24,.08); border-radius:14px; overflow:hidden; margin-bottom:14px; }
+.rdy-i { display:flex; gap:11px; align-items:flex-start; padding:13px 15px; border:0; border-right:1px solid rgba(3,12,24,.07); background:none; font:inherit; text-align:left; cursor:pointer; color:var(--ink); }
+.rdy-i:last-child { border-right:0; } .rdy-i:hover { background:#F3F6FB; }
+.rdy-i b { display:block; font-size:13.5px; } .rdy-i small { display:block; font-size:12px; color:var(--muted); }
+.rdy-d { flex:none; width:26px; height:26px; border-radius:50%; display:grid; place-items:center; font-size:13px; font-weight:800; }
+.rdy-d.ok { background:#ECFDF3; color:#067647; } .rdy-d.no { background:#FEF3F2; color:#B42318; } .rdy-d.warn { background:#FFFAEB; color:#B54708; }
+.kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:18px; }
+.kpi { background:#fff; border:1px solid rgba(3,12,24,.08); border-radius:12px; padding:11px 14px; }
+.kpi .k { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.kpi .v { font-size:22px; font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums; }
+.tabs { display:flex; gap:4px; border-bottom:1.5px solid #e2e8f0; margin-bottom:18px; overflow-x:auto; }
+.tab { font:inherit; font-size:14px; font-weight:700; color:var(--muted); background:none; border:0; padding:10px 14px; border-bottom:2.5px solid transparent; margin-bottom:-1.5px; cursor:pointer; white-space:nowrap; }
+.tab[aria-selected="true"] { color:#0B1D40; border-bottom-color:#0B1D40; }
+.tab .tc { font-size:11.5px; background:#E8EEF8; color:#0B1D40; border-radius:99px; padding:1px 7px; margin-left:5px; }
+.tp[hidden] { display:none; }
+.ov { display:grid; grid-template-columns:1.35fr 1fr; gap:18px; align-items:start; }
+.ov .sq-card { margin-bottom:0; }
+.tl-step { display:flex; gap:12px; }
+.tl-num { flex:none; width:32px; height:32px; border-radius:9px; background:#0B1D40; color:#fff; display:grid; place-items:center; font-weight:800; }
+.tl-mail { flex:1; border:1px solid #e2e8f0; border-radius:12px; padding:11px 14px; min-width:0; }
+.tl-t { display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; font-size:14px; }
+.tl-mode { font-size:11.5px; font-weight:700; color:#175CD3; background:#EFF8FF; padding:2px 8px; border-radius:99px; white-space:nowrap; }
+.tl-mode.man { color:#B54708; background:#FFFAEB; }
+.tl-subj { font-size:12.5px; color:var(--muted); margin-top:3px; }
+.tl-mini { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin-top:7px; font-variant-numeric:tabular-nums; }
+.tl-mini b { color:var(--ink); }
+.tl-wait { display:flex; gap:12px; align-items:center; min-height:44px; }
+.tl-rail { width:32px; align-self:stretch; background:linear-gradient(#e2e8f0,#e2e8f0) center/2px 100% no-repeat; flex:none; }
+.tl-chip { font-size:12.5px; font-weight:600; color:#B54708; background:#FFFAEB; border-radius:8px; padding:5px 10px; }
+.kv { display:grid; grid-template-columns:auto 1fr; gap:8px 16px; margin:0; font-size:13.5px; }
+.kv dt { color:var(--muted); } .kv dd { margin:0; font-weight:600; }
+.kv-rows .kv-r { display:flex; justify-content:space-between; gap:10px; padding:9px 0; border-top:1px solid #eef2f6; font-size:13.5px; }
+.kv-rows .kv-r:first-child { border-top:0; } .kv-rows span { color:var(--muted); }
+.sch-quick { display:flex; gap:6px; flex-wrap:wrap; align-items:center; font-size:12.5px; color:var(--muted); font-weight:600; margin-top:12px; }
+.sch-qp { font:inherit; font-size:12.5px; font-weight:600; padding:5px 11px; border-radius:99px; border:1.5px solid #e2e8f0; background:#fff; color:var(--ink); cursor:pointer; }
+.sch-qp[aria-pressed="true"] { background:#0B1D40; border-color:#0B1D40; color:#fff; }
+.mcal { display:flex; gap:18px; flex-wrap:wrap; margin-top:12px; }
+.mcm { flex:1 1 260px; max-width:340px; } .mct { font-weight:700; font-size:13.5px; margin-bottom:6px; }
+.mcg { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; font-variant-numeric:tabular-nums; }
+.mh { font-size:11px; color:var(--muted); text-align:center; font-weight:700; }
+.md { font:inherit; font-size:12px; border:1px solid transparent; border-radius:7px; background:none; color:var(--muted); padding:4px 0; min-height:38px; cursor:pointer; line-height:1.2; }
+.md small { display:block; font-size:10px; font-weight:600; }
+.md.in { background:#f8fafc; } .md.send { background:#E8EEF8; border-color:#9DB8E8; color:#0B1D40; font-weight:700; }
+.md.rest { opacity:.5; } .md.st, .md.en { outline:2px solid #0B1D40; outline-offset:-2px; }
+@media (max-width: 900px) { .rdy { grid-template-columns:1fr 1fr; } .rdy-i:nth-child(2) { border-right:0; } .rdy-i:nth-child(-n+2) { border-bottom:1px solid rgba(3,12,24,.07); } .kpis { grid-template-columns:repeat(3,1fr); } .ov { grid-template-columns:1fr; } }
+@media (max-width: 520px) { .rdy { grid-template-columns:1fr; } .rdy-i { border-right:0; border-bottom:1px solid rgba(3,12,24,.07); } .kpis { grid-template-columns:1fr 1fr; } }
+.sch-badge { font-size:12px; font-weight:700; padding:4px 11px; border-radius:99px; background:#E8EEF8; color:#0B1D40; white-space:nowrap; }
+.sch-check { display:flex; gap:9px; align-items:flex-start; font-size:13px; color:var(--ink); cursor:pointer; }
+.sch-check input { margin-top:3px; }
+.sch-check small { display:block; color:var(--muted); font-size:12px; }
+#schBody { margin-top:16px; }
+.sch-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; }
+.sch-small { font-weight:400; color:var(--muted); }
+.sch-hours { display:flex; gap:6px; align-items:center; }
+.sch-hours select { flex:1; min-width:0; }
+.sch-days { display:flex; flex-wrap:wrap; gap:6px; }
+.sch-day input { position:absolute; opacity:0; pointer-events:none; }
+.sch-day span { display:inline-block; padding:7px 12px; border-radius:8px; border:1.5px solid #e2e8f0; font-size:13px; font-weight:700; color:var(--muted); cursor:pointer; background:#fff; }
+.sch-day input:checked + span { background:#0B1D40; border-color:#0B1D40; color:#fff; }
+.sch-day input:focus-visible + span { outline:2px solid #9DB8E8; outline-offset:2px; }
+.sch-plan { margin-top:14px; background:#ECFDF3; color:#05603A; border-radius:10px; padding:11px 14px; font-size:13px; }
+.sch-cal { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-top:10px; font-size:11.5px; font-variant-numeric:tabular-nums; }
+.sch-cal .dh { color:var(--muted); text-align:center; font-weight:700; }
+.sch-cal .c { border:1px solid #e2e8f0; border-radius:6px; padding:5px 3px; text-align:center; min-height:40px; color:var(--muted); }
+.sch-cal .c.on { background:#E8EEF8; border-color:#9DB8E8; color:#0B1D40; font-weight:700; }
+.sch-cal .c.off { opacity:.45; }
+.sch-cal .c span { display:block; font-weight:400; font-size:10.5px; }
 .step { border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; margin-bottom:10px; background:#fbfcfe; }
 .step-top { display:grid; grid-template-columns:90px 1fr 190px 210px 34px; gap:12px; align-items:end; }
 .step-n { font-weight:800; color:#0B1D40; font-size:14px; padding-bottom:9px; }
@@ -89,6 +157,7 @@
     {% if seq.status == 'active' %}<span class="pill pill-on">● Running</span>{% else %}<span class="pill pill-off">❚❚ Paused</span>{% endif %}
   </h1>
   <div class="acts">
+    {% if can_edit %}<button type="button" class="sq-btn light" onclick="sqShowAdd()">+ Add people</button>{% endif %}
     {% if can_edit %}
     <form method="POST" action="{{ url_for('portal.email_sequence_status', seq_id=seq.id) }}" style="margin:0">
       {% if seq.status == 'active' %}
@@ -96,7 +165,7 @@
       <button class="sq-btn light" type="submit" title="Nothing goes out automatically while paused. You can still send by hand.">❚❚ Pause</button>
       {% else %}
       <input type="hidden" name="status" value="active">
-      <button class="sq-btn" type="submit">▶ Start sequence</button>
+      <button class="sq-btn go" type="submit">▶ Start sequence</button>
       {% endif %}
     </form>
     {% endif %}
@@ -116,9 +185,73 @@
 {% if not sender %}
 <div class="sq-warn">No sending address is set up for this business yet, so sequence emails can't go out. Ask PhiXtra support to set one up.</div>
 {% elif seq.status != 'active' %}
-<div class="sq-warn" style="background:#f8fafc;border-color:#e2e8f0;color:#475569">This sequence is paused: nothing goes out automatically. You can still send anyone's next email yourself from the list below. Press <strong>Start sequence</strong> when you're ready.</div>
+<div class="sq-warn" style="background:#f8fafc;border-color:#e2e8f0;color:#475569">This sequence is paused: nothing goes out automatically. You can still send anyone's next email yourself from the People tab. Press <strong>Start sequence</strong> when you're ready.</div>
 {% endif %}
 
+{% set steps_ok = steps and (steps|selectattr('template_name')|list|length == steps|length) %}
+{% set sent_total = steps|sum(attribute='stats.sent') %}
+<div class="rdy" role="list" aria-label="Ready to start">
+  <button type="button" class="rdy-i" data-go="emails" role="listitem"><span class="rdy-d {{ 'ok' if steps_ok else 'no' }}">{{ '✓' if steps_ok else '!' }}</span><span><b>Emails</b><small>{% if steps_ok %}{{ steps|length }} email{{ 's' if steps|length != 1 }}{% if steps|length > 1 %}, then {{ steps[1:]|map(attribute='wait_days')|join(', ') }} days apart{% endif %}{% else %}Choose the emails{% endif %}</small></span></button>
+  <button type="button" class="rdy-i" data-go="settings" role="listitem"><span class="rdy-d {{ 'ok' if sender else 'no' }}">{{ '✓' if sender else '!' }}</span><span><b>Sender</b><small>{% if seq.from_email %}{{ seq.from_name or seq.from_email }} · own address{% elif sender %}Business address{% else %}No sending address{% endif %}</small></span></button>
+  <button type="button" class="rdy-i" data-go="settings" role="listitem"><span class="rdy-d {{ 'ok' if schedule.on else 'warn' }}">{{ '✓' if schedule.on else '–' }}</span><span><b>Schedule</b><small>{% if schedule.on %}{{ schedule.start.strftime('%-d %b') if schedule.start else 'Now' }}{% if schedule.end %} – {{ schedule.end.strftime('%-d %b') }}{% endif %} · {{ schedule.days|length }} days a week{% else %}None: sends all at once{% endif %}</small></span></button>
+  <button type="button" class="rdy-i" data-go="people" role="listitem"><span class="rdy-d {{ 'ok' if total_people else 'no' }}">{{ '✓' if total_people else '!' }}</span><span><b>People</b><small>{% if total_people %}{{ '{:,}'.format(total_people) }}{% if waiting_first %} · {{ '{:,}'.format(waiting_first) }} waiting for Email 1{% endif %}{% else %}Nobody added yet{% endif %}</small></span></button>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="k">Sent</div><div class="v">{{ '{:,}'.format(sent_total) }}</div></div>
+  <div class="kpi"><div class="k">Opened</div><div class="v">{{ '{:,}'.format(track_counts.opened or 0) }}</div></div>
+  <div class="kpi"><div class="k">Clicked</div><div class="v">{{ '{:,}'.format(track_counts.clicked or 0) }}</div></div>
+  <div class="kpi"><div class="k">Replied</div><div class="v">{{ '{:,}'.format(track_counts.replied or 0) }}</div></div>
+  <div class="kpi"><div class="k">Stopped</div><div class="v">{{ '{:,}'.format(counts.get('stopped', 0)) }}</div></div>
+</div>
+
+<div class="tabs" role="tablist">
+  <button type="button" class="tab" role="tab" data-t="overview">Overview</button>
+  <button type="button" class="tab" role="tab" data-t="emails">Emails <span class="tc">{{ steps|length }}</span></button>
+  <button type="button" class="tab" role="tab" data-t="people">People <span class="tc">{{ '{:,}'.format(total_people) }}</span></button>
+  <button type="button" class="tab" role="tab" data-t="settings">Settings</button>
+</div>
+
+<section class="tp" data-tab="overview">
+<div class="ov">
+  <div class="sq-card">
+    <div class="sq-card-h"><div><h2>What each person gets</h2><p>In this order. Anyone who replies, unsubscribes or bounces stops straight away.</p></div>
+      {% if can_edit %}<button type="button" class="sq-btn small light" data-go="emails">Change</button>{% endif %}</div>
+    <div class="sq-card-b">
+      {% for st in steps %}
+        {% if not loop.first %}<div class="tl-wait"><span class="tl-rail"></span><span class="tl-chip">⏱ Wait {{ st.wait_days }} day{{ 's' if st.wait_days != 1 }} · only if they haven't replied</span></div>{% endif %}
+        <div class="tl-step"><span class="tl-num">{{ loop.index }}</span>
+          <div class="tl-mail">
+            <div class="tl-t"><b>{{ st.template_name or 'No saved email chosen' }}</b><span class="tl-mode {{ 'man' if st.send_mode == 'manual' }}">{{ "I'll send it myself" if st.send_mode == 'manual' else 'Sends automatically' }}</span></div>
+            {% if st.template_fields and st.template_fields.subject %}<div class="tl-subj">Subject: {{ st.template_fields.subject|replace("{{", "[")|replace("}}", "]") }}</div>{% endif %}
+            <div class="tl-mini"><span>Sent <b>{{ st.stats.sent or 0 }}</b></span><span>Opened <b>{{ st.stats.opened or 0 }}</b></span><span>Clicked <b>{{ st.stats.clicked or 0 }}</b></span><span>Replied <b>{{ st.stats.replied or 0 }}</b></span></div>
+          </div></div>
+      {% else %}
+        <div class="muted">No emails chosen yet.{% if can_edit %} <a href="#emails" data-go="emails">Choose them →</a>{% endif %}</div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="sq-card">
+    <div class="sq-card-h"><div><h2>When it sends</h2><p>{{ dict(tz_choices).get(schedule.tz, '') if schedule.on else 'No schedule' }}</p></div>
+      {% if can_edit %}<button type="button" class="sq-btn small light" data-go="settings">Change</button>{% endif %}</div>
+    <div class="sq-card-b">
+      {% if schedule.on %}
+      <dl class="kv">
+        <dt>Starts</dt><dd>{{ schedule.start.strftime('%a %-d %b') if schedule.start else 'As soon as started' }}</dd>
+        <dt>Ends</dt><dd>{{ schedule.end.strftime('%a %-d %b') if schedule.end else (schedule.per_day ~ ' a day' if schedule.per_day else 'No end date') }}</dd>
+        <dt>Days</dt><dd>{% for d, l in [(1,'Mon'),(2,'Tue'),(3,'Wed'),(4,'Thu'),(5,'Fri'),(6,'Sat'),(0,'Sun')] if d in schedule.days %}{{ l }}{{ ', ' if not loop.last }}{% endfor %}</dd>
+        <dt>Hours</dt><dd>{{ schedule.from_h }}:00 to {{ schedule.to_h }}:00</dd>
+        <dt>Follow-ups</dt><dd>{{ 'Same days and hours' if schedule.follow else 'Any time they fall due' }}</dd>
+      </dl>
+      {% else %}
+      <p class="muted" style="margin:0">No schedule, so everyone due gets their email within minutes of pressing Start.{% if can_edit %} <a href="#settings" data-go="settings">Set a schedule →</a>{% endif %}</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+</section>
+
+<section class="tp" data-tab="emails" hidden>
 <!-- ── The emails ── -->
 <div class="sq-card">
   <div class="sq-card-h">
@@ -130,33 +263,6 @@
   <div class="sq-card-b">
     {% if can_edit %}
     <form method="POST" action="{{ url_for('portal.email_sequence_save', seq_id=seq.id) }}" id="stepsForm">
-      <div class="row2">
-        <label class="fld">Sequence name<input type="text" name="name" value="{{ seq.name }}" maxlength="255" required></label>
-        <label class="fld">Replies go to<input type="email" name="reply_to" value="{{ seq.reply_to or '' }}" placeholder="{{ seq.from_email or default_reply_to }}"></label>
-      </div>
-      {% if sender and send_as_choices %}
-      <div class="row2">
-        <label class="fld">Send as
-          <select name="from_email" id="sqFromEmail">
-            <option value="">{{ sender.from_name }} &lt;{{ sender.from_email }}&gt; (business address)</option>
-            {% for c in send_as_choices %}<option value="{{ c.email }}" data-name="{{ c.name }}" {% if seq.from_email and seq.from_email|lower == c.email|lower %}selected{% endif %}>{{ c.email }}</option>{% endfor %}
-          </select>
-        </label>
-        <label class="fld">Name people see<input type="text" name="from_name" id="sqFromName" maxlength="255" value="{{ seq.from_name or '' }}" placeholder="e.g. Philip" {% if not seq.from_email %}disabled{% endif %}></label>
-      </div>
-      <p class="sq-hint" style="margin:-4px 0 12px;font-size:13px;color:#64748b">Choose a team member's own address to send these emails as them. Replies go to that address unless you fill in "Replies go to".</p>
-      <script>
-      (function () {
-        var s = document.getElementById('sqFromEmail'), n = document.getElementById('sqFromName')
-        s.addEventListener('change', function () {
-          var o = s.options[s.selectedIndex]
-          n.disabled = !s.value
-          if (s.value && !n.value) n.value = o.dataset.name || ''
-          if (!s.value) n.value = ''
-        })
-      })()
-      </script>
-      {% endif %}
       {% if not templates %}
       <div class="sq-warn" style="margin-bottom:12px">You don't have any saved emails yet. Use <a href="{{ url_for('portal.email_new') }}">New Email</a> to write one. It will then show here.</div>
       {% endif %}
@@ -232,6 +338,10 @@
   </div>
 </div>
 
+</section>
+
+<section class="tp" data-tab="people" hidden>
+<div id="addBox" hidden>
 <!-- ── Add people ── -->
 {% if can_edit %}
 <div class="sq-card">
@@ -255,6 +365,9 @@
       <label class="fld">Stage
         <select name="stage"><option value="">Any open stage</option>{% for v, l in stages %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
       </label>
+      {% if labels %}<label class="fld">Label
+        <select name="label_id"><option value="">Any label</option>{% for l in labels %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}</select>
+      </label>{% endif %}
       <label class="fld">Business category
         <select name="category"><option value="">Any category</option>{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select>
       </label>
@@ -280,6 +393,7 @@
 </div>
 {% endif %}
 
+</div>
 <!-- ── People ── -->
 <div class="sq-card">
   <div class="sq-card-h">
@@ -316,7 +430,7 @@
   </div>
   {% if people %}
   <form method="POST" action="{{ url_for('portal.email_sequence_people_action', seq_id=seq.id) }}" id="peopleForm">
-    <input type="hidden" name="next" value="{{ request.full_path }}">
+    <input type="hidden" name="next" value="{{ request.full_path }}#people">
     {% if can_edit or can_send %}
     <div class="bulk" style="background:#fff">
       <span class="muted" style="font-size:12.5px">With ticked people:</span>
@@ -397,9 +511,147 @@
   {% endif %}
 </div>
 
+</section>
+
+<section class="tp" data-tab="settings" hidden>
+<div class="sq-card">
+  <div class="sq-card-h"><div><h2>Name, sender and replies</h2><p>Who the emails come from and where replies go.</p></div></div>
+  <div class="sq-card-b">
+    {% if can_edit %}
+      <div class="row2">
+        <label class="fld">Sequence name<input type="text" name="name" form="stepsForm" value="{{ seq.name }}" maxlength="255" required></label>
+        <label class="fld">Replies go to<input type="email" name="reply_to" form="stepsForm" value="{{ seq.reply_to or '' }}" placeholder="{{ seq.from_email or default_reply_to }}"></label>
+      </div>
+      {% if sender and send_as_choices %}
+      <div class="row2">
+        <label class="fld">Send as
+          <select name="from_email" form="stepsForm" id="sqFromEmail">
+            <option value="">{{ sender.from_name }} &lt;{{ sender.from_email }}&gt; (business address)</option>
+            {% for c in send_as_choices %}<option value="{{ c.email }}" data-name="{{ c.name }}" {% if seq.from_email and seq.from_email|lower == c.email|lower %}selected{% endif %}>{{ c.email }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="fld">Name people see<input type="text" name="from_name" form="stepsForm" id="sqFromName" maxlength="255" value="{{ seq.from_name or '' }}" placeholder="e.g. Philip" {% if not seq.from_email %}disabled{% endif %}></label>
+      </div>
+      <p class="sq-hint" style="margin:-4px 0 12px;font-size:13px;color:#64748b">Choose a team member's own address to send these emails as them. Replies go to that address unless you fill in "Replies go to".</p>
+      <script>
+      (function () {
+        var s = document.getElementById('sqFromEmail'), n = document.getElementById('sqFromName')
+        s.addEventListener('change', function () {
+          var o = s.options[s.selectedIndex]
+          n.disabled = !s.value
+          if (s.value && !n.value) n.value = o.dataset.name || ''
+          if (!s.value) n.value = ''
+        })
+      })()
+      </script>
+      {% endif %}
+      <div style="display:flex;justify-content:flex-end"><button type="submit" form="stepsForm" class="sq-btn">Save</button></div>
+    {% else %}
+      <div class="kv-rows">
+        <div class="kv-r"><span>Sends as</span><b>{{ (seq.from_name ~ ' <' ~ seq.from_email ~ '>') if seq.from_email else ((sender.from_name ~ ' <' ~ sender.from_email ~ '>') if sender else '—') }}</b></div>
+        <div class="kv-r"><span>Replies go to</span><b>{{ seq.reply_to or seq.from_email or default_reply_to }}</b></div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+<!-- ── Sending schedule ── -->
+<div class="sq-card" id="schedule">
+  <div class="sq-card-h">
+    <div>
+      <h2>Sending schedule</h2>
+      <p>When emails are allowed to go out. Nobody gets an email outside these dates, days and hours, even after you press Start.</p>
+    </div>
+    <span class="sch-badge">{{ '{:,}'.format(waiting_first) }} waiting for Email 1</span>
+  </div>
+  <div class="sq-card-b">
+    {% if can_edit %}
+    <form method="POST" action="{{ url_for('portal.email_sequence_schedule_save', seq_id=seq.id) }}" id="schForm">
+      <label class="sch-check"><input type="checkbox" name="on" value="1" id="schOn" {% if schedule.on %}checked{% endif %}>
+        <span><b>Use a sending schedule</b><small>Off: everyone due gets their email as soon as the sequence is running, all at once.</small></span></label>
+      <div id="schBody" {% if not schedule.on %}hidden{% endif %}>
+        <div class="sch-grid">
+          <label class="fld">Start date<input type="date" name="start" id="schStart" value="{{ schedule.start.isoformat() if schedule.start else '' }}"></label>
+          <label class="fld">End date<input type="date" name="end" id="schEnd" value="{{ schedule.end.isoformat() if schedule.end else '' }}"></label>
+          <div class="fld"><span>Sending hours</span>
+            <div class="sch-hours">
+              <select name="from_h" id="schFrom" aria-label="From">{% for h in range(0,24) %}<option value="{{ h }}" {% if (schedule.from_h if schedule.on else 9) == h %}selected{% endif %}>{{ '12am' if h==0 else (h ~ 'am' if h<12 else ('12pm' if h==12 else (h-12) ~ 'pm')) }}</option>{% endfor %}</select>
+              <span>to</span>
+              <select name="to_h" id="schTo" aria-label="To">{% for h in range(1,25) %}<option value="{{ h }}" {% if (schedule.to_h if schedule.on else 17) == h %}selected{% endif %}>{{ 'midnight' if h==24 else (h ~ 'am' if h<12 else ('12pm' if h==12 else (h-12) ~ 'pm')) }}</option>{% endfor %}</select>
+            </div></div>
+          <label class="fld">Time zone<select name="tz" id="schTz">{% for t, label in tz_choices %}<option value="{{ t }}" {% if (schedule.tz or 'Africa/Lagos') == t %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        </div>
+        <div class="sch-quick" id="schQuick">Length:
+          <button type="button" class="sch-qp" data-w="7">1 week</button>
+          <button type="button" class="sch-qp" data-w="14">2 weeks</button>
+          <button type="button" class="sch-qp" data-w="30">1 month</button>
+        </div>
+        <div class="fld" style="margin-top:14px"><span>Sending days</span>
+          <div class="sch-days">
+            {% set on_days = schedule.days if schedule.on else [1,2,3,4,5] %}
+            {% for d, label in [(1,'Mon'),(2,'Tue'),(3,'Wed'),(4,'Thu'),(5,'Fri'),(6,'Sat'),(0,'Sun')] %}
+            <label class="sch-day"><input type="checkbox" name="days" value="{{ d }}" {% if d in on_days %}checked{% endif %}><span>{{ label }}</span></label>
+            {% endfor %}
+          </div></div>
+        <label class="sch-check" style="margin-top:12px"><input type="checkbox" name="follow" value="1" id="schFollow" {% if not schedule.on or schedule.follow %}checked{% endif %}>
+          <span><b>Follow-ups keep to these days and hours too</b><small>A follow-up due outside them waits for the next sending time.</small></span></label>
+        {% if schedule.per_day and not schedule.end %}<div class="sq-warn" style="margin:12px 0 0">This schedule uses an older setting of {{ schedule.per_day }} new people a day. Pick an end date and save to switch to dates.</div>{% endif %}
+        <div class="sch-plan" id="schPlan" aria-live="polite"></div>
+        <div class="mcal" id="schCal" aria-label="Sending calendar"></div>
+        <p class="muted" style="font-size:12px;margin:8px 0 0">Tip: click a date in the calendar to make it the end date. People added later are shared over the sending days left.</p>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:14px"><button type="submit" class="sq-btn">Save schedule</button></div>
+    </form>
+    <script>
+    (function () {
+      var WAIT = {{ waiting_first|int }}, $ = function (id) { return document.getElementById(id) }
+      function D(v) { return new Date(v + 'T12:00:00') }
+      function iso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
+      function lab(h) { h = +h; return h === 0 ? '12am' : h === 24 ? 'midnight' : h < 12 ? h + 'am' : h === 12 ? '12pm' : (h - 12) + 'pm' }
+      function fmt(d) { return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) }
+      function days() { return new Set([].slice.call(document.querySelectorAll('#schForm input[name=days]:checked')).map(function (b) { return +b.value })) }
+      if (!$('schStart').value) { var t = new Date(); t.setDate(t.getDate() + 1); $('schStart').value = iso(t) }
+      if (!$('schEnd').value) { var e = D($('schStart').value); e.setDate(e.getDate() + 6); $('schEnd').value = iso(e) }
+      function draw() {
+        $('schBody').hidden = !$('schOn').checked
+        var ds = days(), st = D($('schStart').value), en = D($('schEnd').value), plan = $('schPlan'), cal = $('schCal')
+        document.querySelectorAll('.sch-qp').forEach(function (b) { var x = new Date(st); x.setDate(x.getDate() + (+b.dataset.w) - 1); b.setAttribute('aria-pressed', !isNaN(st) && iso(x) === $('schEnd').value) })
+        var list = []
+        if (!isNaN(st) && !isNaN(en) && en >= st) for (var d = new Date(st); d <= en; d.setDate(d.getDate() + 1)) if (ds.has(d.getDay())) list.push(new Date(d))
+        var bad = !ds.size ? 'Pick at least one sending day.' : (isNaN(st) || isNaN(en)) ? 'Pick a start and end date.' : en < st ? 'The end date must be on or after the start date.'
+          : (+$('schTo').value <= +$('schFrom').value) ? 'The sending hours must end after they start.' : !list.length ? 'There are no sending days between these dates.' : ''
+        var per = WAIT && list.length ? Math.ceil(WAIT / list.length) : 0, map = {}
+        list.forEach(function (d, i) { map[d.toDateString()] = WAIT ? Math.max(0, Math.min(per, WAIT - per * i)) : 0 })
+        plan.className = bad ? 'sq-warn' : 'sch-plan'; plan.style.margin = '14px 0 0'
+        var hrs = ', ' + lab($('schFrom').value) + ' to ' + lab($('schTo').value)
+        plan.innerHTML = bad || ('<b>Email 1:</b> ' + (WAIT ? per.toLocaleString('en-GB') + ' a day on ' + Math.min(list.length, Math.ceil(WAIT / per)) + ' sending days, ' : list.length + ' sending days, ') + fmt(st) + ' to ' + fmt(en) + hrs + '.' + (WAIT ? '' : ' People are shared out when added.'))
+        if (isNaN(st)) { cal.innerHTML = ''; return }
+        var last = isNaN(en) || en < st ? st : en, m = new Date(st.getFullYear(), st.getMonth(), 1, 12), h = '', g = 0
+        while ((m <= last || !h) && g++ < 4) {
+          var y = m.getFullYear(), mo = m.getMonth(), first = new Date(y, mo, 1, 12), lead = (first.getDay() + 6) % 7, dim = new Date(y, mo + 1, 0).getDate()
+          h += '<div class="mcm"><div class="mct">' + first.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) + '</div><div class="mcg">' + ['M','T','W','T','F','S','S'].map(function (x) { return '<span class="mh">' + x + '</span>' }).join('') + new Array(lead + 1).join('<span></span>')
+          for (var dd = 1; dd <= dim; dd++) { var x = new Date(y, mo, dd, 12), inR = x >= st && x <= last, v = map[x.toDateString()]
+            h += '<button type="button" class="md' + (inR ? ' in' : '') + (v !== undefined && (v > 0 || !WAIT) ? ' send' : '') + (inR && !ds.has(x.getDay()) ? ' rest' : '') + (iso(x) === iso(st) ? ' st' : '') + (iso(x) === iso(last) ? ' en' : '') + '" data-iso="' + iso(x) + '">' + dd + (v ? '<small>' + v.toLocaleString('en-GB') + '</small>' : '') + '</button>' }
+          h += '</div></div>'; m = new Date(y, mo + 1, 1, 12)
+        }
+        cal.innerHTML = h
+        cal.querySelectorAll('.md').forEach(function (b) { b.onclick = function () { if (b.dataset.iso < $('schStart').value) $('schStart').value = b.dataset.iso; else $('schEnd').value = b.dataset.iso; draw() } })
+      }
+      document.querySelectorAll('.sch-qp').forEach(function (b) { b.onclick = function () { var e = D($('schStart').value); if (isNaN(e)) return; e.setDate(e.getDate() + (+b.dataset.w) - 1); $('schEnd').value = iso(e); draw() } })
+      $('schForm').addEventListener('input', draw); $('schForm').addEventListener('change', draw); draw()
+    })()
+    </script>
+    {% else %}
+      {% if schedule.on %}
+      <p class="muted">{{ schedule.start.strftime('%a %-d %b') if schedule.start else 'Now' }} to {{ schedule.end.strftime('%a %-d %b') if schedule.end else 'no end date' }}, {{ schedule.from_h }}:00 to {{ schedule.to_h }}:00.</p>
+      {% else %}<p class="muted">No schedule: emails go out as soon as they're due.</p>{% endif %}
+    {% endif %}
+  </div>
+</div>
+</section>
+
 <form method="POST" action="{{ url_for('portal.email_sequence_people_action', seq_id=seq.id) }}" id="oneForm" hidden>
   <input type="hidden" name="action"><input type="hidden" name="person_id">
-  <input type="hidden" name="next" value="{{ request.full_path }}">
+  <input type="hidden" name="next" value="{{ request.full_path }}#people">
 </form>
 
 <script>
@@ -460,5 +712,20 @@ document.querySelectorAll('.add-tab').forEach(t => t.addEventListener('click', (
   document.querySelectorAll('.add-pane').forEach(p => p.hidden = p.dataset.pane !== t.dataset.pane);
 }));
 {% if can_edit and not steps and templates %}sqAddStep();{% endif %}
+// Tabs: Overview · Emails · People · Settings. The hash keeps the tab after a save.
+function sqTab(t) {
+  if (!document.querySelector('.tp[data-tab="' + t + '"]')) t = 'overview';
+  document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', b.dataset.t === t));
+  document.querySelectorAll('.tp').forEach(p => p.hidden = p.dataset.tab !== t);
+  history.replaceState(null, '', location.pathname + location.search + '#' + t);
+}
+function sqShowAdd() { sqTab('people'); const b = document.getElementById('addBox'); if (b) { b.hidden = false; b.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
+document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => sqTab(b.dataset.t)));
+document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', e => { e.preventDefault(); sqTab(b.dataset.go); }));
+(function () {
+  const h = location.hash.replace('#', ''), q = new URLSearchParams(location.search);
+  sqTab(h === 'schedule' ? 'settings' : h || ((q.get('show') && q.get('show') !== 'all') || q.get('q') || q.get('page') ? 'people' : 'overview'));
+  if (h === 'add') sqShowAdd();
+})();
 </script>
 {% endblock %}

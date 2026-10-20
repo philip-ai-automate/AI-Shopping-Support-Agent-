@@ -26061,23 +26061,133 @@ def _seq_send_next(person_id: int):
         cur.close(); conn.close()
 
 
+import datetime as _sqdt
+
+_SEQ_TZ_CHOICES = [("Africa/Lagos", "Nigeria (Lagos)"), ("Europe/London", "UK (London)"),
+                   ("Africa/Accra", "Ghana (Accra)"), ("Africa/Nairobi", "Kenya (Nairobi)"),
+                   ("Africa/Johannesburg", "South Africa (Johannesburg)"), ("Asia/Dubai", "UAE (Dubai)"),
+                   ("America/New_York", "US East (New York)"), ("UTC", "UTC")]
+
+
+def _seq_schedule(seq):
+    """The sequence's sending schedule as a clean dict, or None (send any
+    time, everyone at once). days use 0=Sun … 6=Sat; hours are whole hours
+    in the schedule's own time zone. With an end date, the people waiting
+    are shared evenly over the sending days left; per_day (older schedules)
+    is a fixed daily number; neither = no daily limit."""
+    raw = (seq or {}).get("schedule")
+    if not isinstance(raw, dict) or not raw.get("on"):
+        return None
+    tzs = {t for t, _ in _SEQ_TZ_CHOICES}
+    try:
+        start = _sqdt.date.fromisoformat(raw.get("start")) if raw.get("start") else None
+    except ValueError:
+        start = None
+    try:
+        end = _sqdt.date.fromisoformat(raw.get("end")) if raw.get("end") else None
+    except ValueError:
+        end = None
+    days = sorted({int(d) for d in (raw.get("days") or []) if str(d).isdigit() and 0 <= int(d) <= 6})
+    fh, th = int(raw.get("from_h") or 0), int(raw.get("to_h") or 24)
+    per_day = int(raw["per_day"]) if str(raw.get("per_day") or "").isdigit() and int(raw["per_day"]) > 0 else None
+    return {"on": True, "start": start, "end": end, "per_day": per_day, "from_h": max(0, min(23, fh)),
+            "to_h": max(1, min(24, th)), "days": days or [0, 1, 2, 3, 4, 5, 6],
+            "follow": bool(raw.get("follow", True)), "tz": raw.get("tz") if raw.get("tz") in tzs else "Africa/Lagos"}
+
+
+def _seq_window(sch, now=None):
+    """(open, share_of_window_gone, start_of_local_day_utc) for a schedule."""
+    from zoneinfo import ZoneInfo
+    now = now or _sqdt.datetime.now(_sqdt.timezone.utc)
+    local = now.astimezone(ZoneInfo(sch["tz"]))
+    day0 = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    if sch["start"] and local.date() < sch["start"]:
+        return False, 0.0, day0
+    if (local.isoweekday() % 7) not in sch["days"]:
+        return False, 0.0, day0
+    hour = local.hour + local.minute / 60
+    if not (sch["from_h"] <= hour < sch["to_h"]):
+        return False, 0.0, day0
+    span = max(1 / 60, sch["to_h"] - sch["from_h"])
+    return True, min(1.0, (hour - sch["from_h"] + 1 / 60) / span), day0
+
+
+def _seq_first_quota(cur, seq_id: int, sch):
+    """How many more people may get Email 1 right now: None = no limit.
+    The day's limit is spread evenly over the sending hours."""
+    if not sch:
+        return None
+    is_open, gone, day0 = _seq_window(sch)
+    if not is_open:
+        return 0
+    if not sch["per_day"] and not sch["end"]:
+        return None
+    import math
+    cur.execute("""SELECT count(*) AS n FROM email_campaign_recipients r
+                   JOIN email_sequence_steps st ON st.campaign_id = r.campaign_id
+                   WHERE st.sequence_id=%s AND st.position=1 AND r.sent_at >= %s""", (seq_id, day0))
+    sent_today = int(cur.fetchone()["n"])
+    if sch["per_day"]:
+        target = sch["per_day"]
+    else:
+        cur.execute("SELECT count(*) AS n FROM email_sequence_people WHERE sequence_id=%s AND steps_sent=0 "
+                    "AND status IN ('active','sending')", (seq_id,))
+        waiting = int(cur.fetchone()["n"])
+        target = math.ceil((waiting + sent_today) / _seq_days_left(sch, day0.date()))
+    return max(0, math.ceil(target * gone) - sent_today)
+
+
+def _seq_days_left(sch, today) -> int:
+    """Sending days from today to the end date (at least 1, so anyone
+    still waiting after the end date goes on the next sending day)."""
+    n, d = 0, today
+    while sch["end"] and d <= sch["end"]:
+        if (d.isoweekday() % 7) in sch["days"]:
+            n += 1
+        d += _sqdt.timedelta(days=1)
+    return max(1, n)
+
+
 def _email_sequence_tick():
     """Due people in running sequences: automatic email → send it; by-hand
-    email → mark Ready for the team; closed/replied/unsubscribed → stop."""
+    email → mark Ready for the team; closed/replied/unsubscribed → stop.
+    A sequence with a sending schedule only sends inside its days/hours and
+    gives Email 1 to at most its daily number of new people."""
     conn = get_db_connection()
     if not conn:
         return
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
-        cur.execute("""SELECT p.*, st.send_mode,
-                              (SELECT count(*) FROM email_sequence_steps x WHERE x.sequence_id = p.sequence_id) AS n_steps
-                       FROM email_sequence_people p
-                       JOIN email_sequences s ON s.id = p.sequence_id AND s.status = 'active'
-                       JOIN tenants tn ON tn.id = p.tenant_id AND NOT COALESCE(tn.is_training, FALSE)
-                       LEFT JOIN email_sequence_steps st ON st.sequence_id = p.sequence_id AND st.position = p.steps_sent + 1
-                       WHERE p.status = 'active' AND p.next_due_at <= NOW()
-                       ORDER BY p.next_due_at LIMIT 300""")
-        due = cur.fetchall()
+        cur.execute("""SELECT s.id, s.schedule FROM email_sequences s
+                       JOIN tenants tn ON tn.id = s.tenant_id AND NOT COALESCE(tn.is_training, FALSE)
+                       WHERE s.status = 'active' AND EXISTS (
+                           SELECT 1 FROM email_sequence_people p
+                           WHERE p.sequence_id = s.id AND p.status = 'active' AND p.next_due_at <= NOW())""")
+        seqs = cur.fetchall()
+        conn.commit()
+        due = []
+        for sq in seqs:
+            sch = _seq_schedule(sq)
+            quota = _seq_first_quota(cur, sq["id"], sch)
+            follow_ok = not sch or not sch["follow"] or _seq_window(sch)[0]
+            if quota == 0 and not follow_ok:
+                continue
+            cur.execute("""SELECT p.*, st.send_mode,
+                                  (SELECT count(*) FROM email_sequence_steps x WHERE x.sequence_id = p.sequence_id) AS n_steps
+                           FROM email_sequence_people p
+                           LEFT JOIN email_sequence_steps st ON st.sequence_id = p.sequence_id AND st.position = p.steps_sent + 1
+                           WHERE p.sequence_id = %s AND p.status = 'active' AND p.next_due_at <= NOW()
+                           ORDER BY p.next_due_at LIMIT 300""", (sq["id"],))
+            for p in cur.fetchall():
+                if p["steps_sent"] == 0:
+                    if quota is not None:
+                        if quota <= 0:
+                            continue
+                        quota -= 1
+                elif not follow_ok:
+                    continue
+                due.append(p)
+            conn.commit()
         no_sender = set()  # businesses with no sending address: skip them, never block the others
         for p in due:
             if not p["n_steps"] or p["tenant_id"] in no_sender:
@@ -26228,6 +26338,189 @@ def email_sequences_create():
     return redirect(url_for("portal.email_sequence_detail", seq_id=seq_id))
 
 
+@portal_bp.route("/email/sequences/new")
+@portal_bp.route("/email/sequences/<int:seq_id>/setup")
+@team_feature("campaigns_email.sequences_create")
+def email_sequence_wizard(seq_id: int = None):
+    """New sequence, step by step: Emails → Sender → People → Schedule →
+    Review. Saved as a paused sequence after step 1, so it can be left and
+    picked up again from here."""
+    customer, resp = _seq_page_guard("campaigns_email.sequences_create", _team_member_has_permission("campaigns_email.sequences_create"))
+    if resp: return resp
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        seq, steps, n_people = None, [], 0
+        if seq_id:
+            seq = _seq_get(cur, tenant_id, seq_id)
+            if not seq:
+                flash("Sequence not found.", "warning")
+                return redirect(url_for("portal.email_sequences"))
+            steps = _seq_steps(cur, seq_id)
+            cur.execute("SELECT count(*) AS n FROM email_sequence_people WHERE sequence_id=%s AND status IN ('active','ready','sending')", (seq_id,))
+            n_people = int(cur.fetchone()["n"])
+        vis, vp = _tpl_vis("t")
+        cur.execute("SELECT t.id, t.name, t.fields->>'subject' AS subject FROM email_templates t WHERE t.tenant_id=%s"
+                    + vis + " ORDER BY t.name", [tenant_id] + vp)
+        templates = cur.fetchall()
+        _ls_exec(cur, "SELECT DISTINCT business_category FROM merchant_pipeline_leads WHERE tenant_id=%s "
+                 "AND business_category IS NOT NULL AND business_category <> '' AND email IS NOT NULL "
+                 "ORDER BY business_category LIMIT 300", (tenant_id,))
+        categories = [r["business_category"] for r in cur.fetchall()]
+        vis, vp = _seg_vis("s", "email")
+        _ls_exec(cur, "SELECT s.id, s.name FROM wa_segments s WHERE s.tenant_id=%s" + vis + " ORDER BY lower(s.name)",
+                 [tenant_id] + vp)
+        segments = cur.fetchall()
+        labels = [{"id": l["id"], "name": l["name"]} for l in _lbl.visible_labels(cur, tenant_id)]
+    finally:
+        cur.close(); conn.close()
+    sender = _get_email_sender(tenant_id)
+    stage_labels = dict(pipeline_effective_stage_labels(tenant_id))
+    stage_labels["new_lead"] = "New Lead"
+    sch = _seq_schedule(seq) if seq else None
+    return render_template(
+        "portal/email_sequence_wizard.html", seq=seq, steps=steps, n_people=n_people, templates=templates,
+        categories=categories, segments=segments, labels=labels, sender=sender,
+        send_as_choices=_send_as_choices(tenant_id, sender), default_reply_to=_default_reply_to(customer),
+        stages=[(s, stage_labels.get(s, s)) for s in PIPELINE_STAGE_ORDER if s != "won"],
+        schedule=sch or {}, tz_choices=_SEQ_TZ_CHOICES)
+
+
+@portal_bp.route("/email/sequences/wizard/emails", methods=["POST"])
+@team_feature("campaigns_email.sequences_create")
+def email_sequence_wizard_emails():
+    """Wizard step 1: name + emails. Creates the (paused) sequence the first
+    time; after that updates it. JSON {seq_id}."""
+    customer, resp = _seq_page_guard("campaigns_email.sequences_create", _team_member_has_permission("campaigns_email.sequences_create"), json_reply=True)
+    if resp: return resp
+    tenant_id = int(customer["tenant_id"])
+    f = request.form
+    name = (f.get("name") or "").strip()[:255]
+    if not name:
+        return jsonify({"error": "Give the sequence a name."}), 400
+    tpl_ids, waits, modes = f.getlist("template_id"), f.getlist("wait_days"), f.getlist("send_mode")
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        seq_id = int(f["seq_id"]) if (f.get("seq_id") or "").isdigit() else None
+        if seq_id and not _seq_get(cur, tenant_id, seq_id):
+            return jsonify({"error": "Sequence not found."}), 404
+        vis, vp = _tpl_vis("t")
+        cur.execute("SELECT t.id FROM email_templates t WHERE t.tenant_id=%s" + vis, [tenant_id] + vp)
+        own = {r["id"] for r in cur.fetchall()}
+        if seq_id:
+            cur.execute("SELECT template_id FROM email_sequence_steps WHERE sequence_id=%s", (seq_id,))
+            own |= {r["template_id"] for r in cur.fetchall() if r["template_id"]}
+        rows = []
+        for i, t in enumerate(tpl_ids):
+            if not t.isdigit() or int(t) not in own:
+                continue
+            try:
+                w = max(0, min(365, int((waits[i] if i < len(waits) else "0") or 0)))
+            except ValueError:
+                w = 0
+            rows.append((int(t), 0 if not rows else w, "manual" if (modes[i] if i < len(modes) else "") == "manual" else "auto"))
+        if not rows:
+            return jsonify({"error": "Choose at least one saved email."}), 400
+        if not seq_id:
+            cur.execute("""INSERT INTO email_sequences (tenant_id, name, status, reply_to, created_by)
+                           VALUES (%s,%s,'paused',NULL,%s) RETURNING id""",
+                        (tenant_id, name, _current_actor(customer)["label"]))
+            seq_id = cur.fetchone()["id"]
+        else:
+            cur.execute("UPDATE email_sequences SET name=%s, updated_at=NOW() WHERE id=%s", (name, seq_id))
+        old = _seq_steps(cur, seq_id)
+        for pos, (t, w, m) in enumerate(rows, start=1):
+            if pos <= len(old):
+                cur.execute("UPDATE email_sequence_steps SET template_id=%s, wait_days=%s, send_mode=%s WHERE id=%s",
+                            (t, w, m, old[pos - 1]["id"]))
+            else:
+                cur.execute("INSERT INTO email_sequence_steps (sequence_id, position, template_id, wait_days, send_mode) "
+                            "VALUES (%s,%s,%s,%s,%s)", (seq_id, pos, t, w, m))
+        cur.execute("DELETE FROM email_sequence_steps WHERE sequence_id=%s AND position > %s", (seq_id, len(rows)))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ email_sequence_wizard_emails error:", e)
+        return jsonify({"error": "Could not save. Please try again."}), 500
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "seq_id": seq_id})
+
+
+@portal_bp.route("/email/sequences/<int:seq_id>/wizard/sender", methods=["POST"])
+@team_feature("campaigns_email.sequences_edit")
+def email_sequence_wizard_sender(seq_id: int):
+    """Wizard step 2: send as (blank = business address) and replies."""
+    customer, resp = _seq_page_guard("campaigns_email.sequences_edit", _team_member_has_permission("campaigns_email.sequences_edit"), json_reply=True)
+    if resp: return resp
+    tenant_id = int(customer["tenant_id"])
+    f = request.form
+    from_email = (f.get("from_email") or "").strip()
+    from_name = (f.get("from_name") or "").strip()[:255]
+    reply_to = (f.get("reply_to") or "").strip()
+    if reply_to and not _re_seq_email.fullmatch(reply_to):
+        return jsonify({"error": "The 'Replies go to' address doesn't look like an email address."}), 400
+    if from_email and from_email.lower() not in {c["email"].lower() for c in
+                                                  _send_as_choices(tenant_id, _get_email_sender(tenant_id))}:
+        return jsonify({"error": "That address can't be used. Pick one from the list."}), 400
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        if not _seq_get(cur, tenant_id, seq_id):
+            return jsonify({"error": "Sequence not found."}), 404
+        cur.execute("UPDATE email_sequences SET from_email=%s, from_name=%s, reply_to=%s, updated_at=NOW() WHERE id=%s",
+                    (from_email or None, (from_name or None) if from_email else None,
+                     reply_to or (None if from_email else (_default_reply_to(customer) or None)), seq_id))
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True})
+
+
+@portal_bp.route("/email/sequences/<int:seq_id>/wizard/people", methods=["POST"])
+@team_feature("campaigns_email.sequences_edit")
+def email_sequence_wizard_people(seq_id: int):
+    """Wizard step 3: preview=1 counts who would go in; otherwise adds them."""
+    customer, resp = _seq_page_guard("campaigns_email.sequences_edit", _team_member_has_permission("campaigns_email.sequences_edit"), json_reply=True)
+    if resp: return resp
+    tenant_id = int(customer["tenant_id"])
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        if not _seq_get(cur, tenant_id, seq_id):
+            return jsonify({"error": "Sequence not found."}), 404
+        people = _seq_people_from_form(cur, tenant_id, request.form)
+        if request.form.get("preview") == "1":
+            cur.execute("SELECT lower(email) AS e FROM email_suppressions WHERE tenant_id=%s", (tenant_id,))
+            sup = {r["e"] for r in cur.fetchall()}
+            cur.execute("SELECT lower(email) AS e FROM email_sequence_people WHERE sequence_id=%s", (seq_id,))
+            already = {r["e"] for r in cur.fetchall()}
+            seen, ok, n_sup, n_already = set(), 0, 0, 0
+            for e, _l in people:
+                k = (e or "").strip().lower()
+                if not k or k in seen:
+                    continue
+                seen.add(k)
+                if k in sup: n_sup += 1
+                elif k in already: n_already += 1
+                else: ok += 1
+            return jsonify({"ok": True, "found": len(seen), "can_add": ok, "unsubscribed": n_sup, "already": n_already})
+        if not people:
+            return jsonify({"error": "Nobody found to add. Check your choice and try again."}), 400
+        res = _seq_add_people(cur, tenant_id, seq_id, people, _current_actor(customer)["label"])
+        conn.commit()
+        if res.get("added"):
+            staff_activity.log("seq_added", tenant_id, qty=res["added"], detail=f"sequence {seq_id}")
+        cur.execute("SELECT count(*) AS n FROM email_sequence_people WHERE sequence_id=%s AND status IN ('active','ready','sending')", (seq_id,))
+        total = int(cur.fetchone()["n"])
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ email_sequence_wizard_people error:", e)
+        return jsonify({"error": "Could not add people. Please try again."}), 500
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "added": res["added"], "already": res["already"],
+                    "unsubscribed": res["unsubscribed"], "total": total})
+
+
 @portal_bp.route("/email/sequences/<int:seq_id>")
 @team_feature("campaigns_email.sequences_view")
 def email_sequence_detail(seq_id: int):
@@ -26256,6 +26549,9 @@ def email_sequence_detail(seq_id: int):
         _ls_exec(cur, "SELECT p.status, count(*) AS n FROM email_sequence_people p WHERE p.sequence_id=%s AND "
                  + _SEQ_PEOPLE_VISIBLE + " GROUP BY p.status", (seq_id,))
         counts = {r["status"]: r["n"] for r in cur.fetchall()}
+        cur.execute("SELECT count(*) AS n FROM email_sequence_people WHERE sequence_id=%s AND steps_sent=0 "
+                    "AND status IN ('active','sending')", (seq_id,))
+        waiting_first = int(cur.fetchone()["n"])
         # Who opened / clicked / replied, across all of this sequence's emails.
         _ls_exec(cur, "SELECT count(*) FILTER (WHERE " + _SEQ_TRACK_COND["opened"] + ") AS opened, "
                  "count(*) FILTER (WHERE " + _SEQ_TRACK_COND["clicked"] + ") AS clicked, "
@@ -26334,6 +26630,7 @@ def email_sequence_detail(seq_id: int):
         _ls_exec(cur, "SELECT s.id, s.name FROM wa_segments s WHERE s.tenant_id=%s" + vis + " ORDER BY lower(s.name)",
                  [tenant_id] + vp)
         segments = cur.fetchall()
+        labels = [{"id": l["id"], "name": l["name"]} for l in _lbl.visible_labels(cur, tenant_id)]
         # Replies only show here if the "Replies go to" mailbox is connected
         # (Integrations › Microsoft 365). Warn when it isn't.
         reply_unwatched = None
@@ -26356,8 +26653,68 @@ def email_sequence_detail(seq_id: int):
         page_size=_SEQ_PAGE_SIZE,
         segments=segments, stages=[(s, stage_labels.get(s, s)) for s in PIPELINE_STAGE_ORDER if s != "won"],
         status_words=_SEQ_STATUS_WORDS, sender=_get_email_sender(tenant_id),
+        schedule=_seq_schedule(seq) or {}, schedule_raw=seq.get("schedule") or {}, tz_choices=_SEQ_TZ_CHOICES,
+        labels=labels,
+        waiting_first=waiting_first,
         send_as_choices=_send_as_choices(tenant_id, _get_email_sender(tenant_id)),
         default_reply_to=_default_reply_to(customer))
+
+
+@portal_bp.route("/email/sequences/<int:seq_id>/schedule", methods=["POST"])
+@team_feature("campaigns_email.sequences_edit")
+def email_sequence_schedule_save(seq_id: int):
+    """Sending schedule: on/off, start and end dates, sending hours and
+    days, time zone, and whether follow-ups keep to it. ajax=1 (the New
+    sequence wizard) answers in JSON."""
+    customer, resp = _seq_page_guard("campaigns_email.sequences_edit", _team_member_has_permission("campaigns_email.sequences_edit"))
+    if resp: return resp
+    tenant_id = int(customer["tenant_id"])
+    back = redirect(url_for("portal.email_sequence_detail", seq_id=seq_id) + "#settings")
+    f = request.form
+    ajax = f.get("ajax") == "1"
+
+    def fail(msg):
+        if ajax:
+            return jsonify({"error": msg}), 400
+        flash(msg, "warning")
+        return back
+    sch = None
+    if f.get("on") == "1":
+        try:
+            start = _sqdt.date.fromisoformat(f.get("start")) if f.get("start") else None
+            end = _sqdt.date.fromisoformat(f.get("end")) if f.get("end") else None
+        except ValueError:
+            return fail("One of the dates isn't a real date.")
+        if start and end and end < start:
+            return fail("The end date must be on or after the start date.")
+        try:
+            fh, th = int(f.get("from_h") or 0), int(f.get("to_h") or 24)
+        except ValueError:
+            fh, th = 0, 24
+        if not 0 <= fh < th <= 24:
+            return fail("The sending hours must end after they start.")
+        days = sorted({int(d) for d in f.getlist("days") if d.isdigit() and 0 <= int(d) <= 6})
+        if not days:
+            return fail("Pick at least one sending day.")
+        sch = {"on": True, "start": start.isoformat() if start else None, "end": end.isoformat() if end else None,
+               "per_day": None, "from_h": fh, "to_h": th, "days": days, "follow": f.get("follow") == "1",
+               "tz": f.get("tz") if f.get("tz") in {t for t, _ in _SEQ_TZ_CHOICES} else "Africa/Lagos"}
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        if not _seq_get(cur, tenant_id, seq_id):
+            if ajax:
+                return jsonify({"error": "Sequence not found."}), 404
+            flash("Sequence not found.", "warning")
+            return redirect(url_for("portal.email_sequences"))
+        cur.execute("UPDATE email_sequences SET schedule=%s, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
+                    (psycopg2.extras.Json(sch) if sch else None, seq_id, tenant_id))
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    if ajax:
+        return jsonify({"ok": True})
+    flash("Sending schedule saved." if sch else "Sending schedule turned off. Emails go out as soon as they're due.", "success")
+    return back
 
 
 @portal_bp.route("/email/sequences/<int:seq_id>/save", methods=["POST"])
@@ -26369,7 +26726,7 @@ def email_sequence_save(seq_id: int):
     customer, resp = _seq_page_guard("campaigns_email.sequences_edit", _team_member_has_permission("campaigns_email.sequences_edit"))
     if resp: return resp
     tenant_id = int(customer["tenant_id"])
-    back = redirect(url_for("portal.email_sequence_detail", seq_id=seq_id))
+    back = redirect(url_for("portal.email_sequence_detail", seq_id=seq_id) + "#emails")
     name = (request.form.get("name") or "").strip()[:255]
     reply_to = (request.form.get("reply_to") or "").strip()
     if reply_to and not _re_seq_email.fullmatch(reply_to):
@@ -26472,6 +26829,33 @@ def email_sequence_status(seq_id: int):
     return redirect(url_for("portal.email_sequence_detail", seq_id=seq_id))
 
 
+def _seq_people_from_form(cur, tenant_id: int, form) -> list:
+    """[(email, lead_id or None)] for source = leads (optional label, stage,
+    business category), segment, or typed email addresses."""
+    source = form.get("source") or ""
+    if source == "leads":
+        where, params = ["tenant_id=%s", "email IS NOT NULL", "email <> ''", "dropped_at IS NULL",
+                         "(outcome IS NULL OR outcome NOT IN ('won','lost','dropped','not_a_fit'))",
+                         "stage <> 'won'"], [tenant_id]
+        stage = form.get("stage") or ""
+        if stage in PIPELINE_STAGE_ORDER:
+            where.append("stage=%s"); params.append(stage)
+        cat = (form.get("category") or "").strip()
+        if cat:
+            where.append("business_category=%s"); params.append(cat)
+        lab = form.get("label_id") or ""
+        if lab.isdigit() and _lbl.get_label(cur, tenant_id, int(lab)):
+            where.append("id IN (SELECT lead_id FROM lead_label_leads WHERE label_id=%s)"); params.append(int(lab))
+        _ls_exec(cur, "SELECT id, email FROM merchant_pipeline_leads WHERE " + " AND ".join(where)
+                 + " ORDER BY id LIMIT 5000", params)
+        return [(r["email"], r["id"]) for r in cur.fetchall()]
+    if source == "segment" and (form.get("segment_id") or "").isdigit():
+        return [(e, None) for e in _email_segment_audience(cur, tenant_id, int(form["segment_id"]))]
+    if source == "emails":
+        return [(e, None) for e in _re_seq_email.findall(form.get("emails") or "")]
+    return []
+
+
 @portal_bp.route("/email/sequences/<int:seq_id>/people/add", methods=["POST"])
 @team_feature("campaigns_email.sequences_edit")
 def email_sequence_add_people(seq_id: int):
@@ -26480,8 +26864,7 @@ def email_sequence_add_people(seq_id: int):
     customer, resp = _seq_page_guard("campaigns_email.sequences_edit", _team_member_has_permission("campaigns_email.sequences_edit"))
     if resp: return resp
     tenant_id = int(customer["tenant_id"])
-    back = redirect(url_for("portal.email_sequence_detail", seq_id=seq_id))
-    source = request.form.get("source") or ""
+    back = redirect(url_for("portal.email_sequence_detail", seq_id=seq_id) + "#people")
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
@@ -26491,24 +26874,7 @@ def email_sequence_add_people(seq_id: int):
         if not cur.fetchone()["n"]:
             flash("Choose the sequence's emails first, then add people.", "warning")
             return back
-        people = []
-        if source == "leads":
-            where, params = ["tenant_id=%s", "email IS NOT NULL", "email <> ''", "dropped_at IS NULL",
-                             "(outcome IS NULL OR outcome NOT IN ('won','lost','dropped','not_a_fit'))",
-                             "stage <> 'won'"], [tenant_id]
-            stage = request.form.get("stage") or ""
-            if stage in PIPELINE_STAGE_ORDER:
-                where.append("stage=%s"); params.append(stage)
-            cat = (request.form.get("category") or "").strip()
-            if cat:
-                where.append("business_category=%s"); params.append(cat)
-            _ls_exec(cur, "SELECT id, email FROM merchant_pipeline_leads WHERE " + " AND ".join(where)
-                     + " ORDER BY id LIMIT 5000", params)
-            people = [(r["email"], r["id"]) for r in cur.fetchall()]
-        elif source == "segment" and (request.form.get("segment_id") or "").isdigit():
-            people = [(e, None) for e in _email_segment_audience(cur, tenant_id, int(request.form["segment_id"]))]
-        elif source == "emails":
-            people = [(e, None) for e in _re_seq_email.findall(request.form.get("emails") or "")]
+        people = _seq_people_from_form(cur, tenant_id, request.form)
         if not people:
             flash("Nobody found to add. Check your choice and try again.", "warning")
             return back
@@ -36185,6 +36551,147 @@ def leads_bulk_set_address():
     finally:
         cur.close(); conn.close()
     return jsonify({"ok": True, "saved": done, "skipped": len(ids) - done, "selected": len(ids)})
+
+
+_SPLIT_SHARED_RE = __import__("re").compile(
+    r"^(info|sales|contact|hello|admin|enquir|inquir|support|office|customer|cs|mail|team|marketing|orders?|booking|reservations?|help)")
+
+
+def _split_eligible(cur, tenant_id: int, lead_ids: list) -> tuple:
+    """(eligible, left_out) for a split test: one lead per email address,
+    leaving out unsubscribed/bounced addresses, anyone already in a
+    sequence, and anyone emailed in the last 30 days.
+    eligible = [(lead_id, email, category, shared_inbox)]."""
+    left = {"no_email": 0, "unsubscribed": 0, "in_sequence": 0, "recent": 0, "duplicate": 0}
+    if not lead_ids:
+        return [], left
+    cur.execute("""SELECT id, lower(trim(COALESCE(email,''))) AS email,
+                          COALESCE(NULLIF(business_category,''),'') AS cat
+                   FROM merchant_pipeline_leads WHERE tenant_id=%s AND id = ANY(%s) ORDER BY id""", (tenant_id, lead_ids))
+    rows = cur.fetchall()
+    cur.execute("SELECT lower(email) AS e FROM email_suppressions WHERE tenant_id=%s", (tenant_id,))
+    sup = {r["e"] for r in cur.fetchall()}
+    cur.execute("SELECT DISTINCT lower(email) AS e FROM email_sequence_people WHERE tenant_id=%s", (tenant_id,))
+    inseq = {r["e"] for r in cur.fetchall()}
+    cur.execute("""SELECT DISTINCT lower(email) AS e FROM email_campaign_recipients WHERE tenant_id=%s
+                   AND status IN ('sent','bounced') AND sent_at > NOW() - interval '30 days'""", (tenant_id,))
+    recent = {r["e"] for r in cur.fetchall()}
+    out, seen = [], set()
+    for r in rows:
+        e = r["email"]
+        if not e or not _re_seq_email.fullmatch(e):
+            left["no_email"] += 1
+        elif e in seen:
+            left["duplicate"] += 1
+        elif e in sup:
+            left["unsubscribed"] += 1
+        elif e in inseq:
+            left["in_sequence"] += 1
+        elif e in recent:
+            left["recent"] += 1
+        else:
+            seen.add(e)
+            out.append((r["id"], e, r["cat"], bool(_SPLIT_SHARED_RE.match(e.split("@")[0]))))
+    return out, left
+
+
+@portal_bp.route("/leads/bulk/split-preview", methods=["POST"])
+@team_feature("campaigns_email.sequences_edit")
+def leads_bulk_split_preview():
+    """What the Split test window needs: how many of the selected leads can
+    go in, why the rest can't, and the sequences to choose from."""
+    if not _team_member_has_permission("campaigns_email.sequences_edit"):
+        return jsonify({"error": "Your role doesn't allow this."}), 403
+    customer, tenant_id, err = _bulk_json_guard("campaigns_email.sequences_edit")
+    if err: return err
+    if _require_plan_sub_feature(customer, "campaigns_email.sequences_edit", "Email Sequences"):
+        return jsonify({"error": "Email sequences aren't included in your plan."}), 403
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        ids = _bulk_selected_lead_ids(cur, tenant_id, request.form, "leads", _current_actor(customer)["key"])
+        ok, left = _split_eligible(cur, tenant_id, ids)
+        cur.execute("""SELECT s.id, s.name, s.status, s.schedule,
+                              (SELECT count(*) FROM email_sequence_steps st WHERE st.sequence_id=s.id) AS n_steps
+                       FROM email_sequences s WHERE s.tenant_id=%s ORDER BY s.created_at DESC""", (tenant_id,))
+        seqs = [{"id": r["id"], "name": r["name"], "status": r["status"], "n_steps": int(r["n_steps"]),
+                 "scheduled": bool(_seq_schedule(r)), "per_day": (_seq_schedule(r) or {}).get("per_day")}
+                for r in cur.fetchall()]
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"selected": len(ids), "eligible": len(ok), "left_out": left, "sequences": seqs})
+
+
+@portal_bp.route("/leads/bulk/split-test", methods=["POST"])
+@team_feature("campaigns_email.sequences_edit")
+def leads_bulk_split_test():
+    """Share the selected leads evenly at random between two sequences
+    (balanced by category and info@-type address if asked), label each
+    group, and add them. Their first email then follows each sequence's
+    own sending schedule."""
+    if not _team_member_has_permission("campaigns_email.sequences_edit"):
+        return jsonify({"error": "Your role doesn't allow this."}), 403
+    customer, tenant_id, err = _bulk_json_guard("campaigns_email.sequences_edit")
+    if err: return err
+    if _require_plan_sub_feature(customer, "campaigns_email.sequences_edit", "Email Sequences"):
+        return jsonify({"error": "Email sequences aren't included in your plan."}), 403
+    f = request.form
+    try:
+        seq_a, seq_b = int(f.get("seq_a") or 0), int(f.get("seq_b") or 0)
+    except ValueError:
+        seq_a = seq_b = 0
+    if not seq_a or not seq_b or seq_a == seq_b:
+        return jsonify({"error": "Pick two different sequences."}), 400
+    lab_a, lab_b = (f.get("label_a") or "").strip()[:60], (f.get("label_b") or "").strip()[:60]
+    if not lab_a or not lab_b or lab_a.lower() == lab_b.lower():
+        return jsonify({"error": "Give each group its own label name."}), 400
+    size_raw = (f.get("size") or "").strip()
+    if size_raw and (not size_raw.isdigit() or int(size_raw) < 1):
+        return jsonify({"error": "People per group must be a whole number."}), 400
+    import random
+    actor = _current_actor(customer)
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        for sid in (seq_a, seq_b):
+            if not _seq_get(cur, tenant_id, sid):
+                return jsonify({"error": "One of those sequences no longer exists."}), 400
+        ids = _bulk_selected_lead_ids(cur, tenant_id, f, "leads", actor["key"])
+        ok, _left = _split_eligible(cur, tenant_id, ids)
+        size = min(int(size_raw) if size_raw else len(ok) // 2, len(ok) // 2)
+        if size < 1:
+            return jsonify({"error": "Not enough leads can go in. Each group needs at least one."}), 400
+        rng = random.SystemRandom()
+        rng.shuffle(ok)
+        pick = ok[:size * 2]
+        groups = ([], [])
+        if f.get("balance") == "1":
+            strata = {}
+            for r in pick:
+                strata.setdefault((r[2], r[3]), []).append(r)
+            turn = rng.randint(0, 1)
+            for k in sorted(strata):
+                for r in strata[k]:
+                    groups[turn % 2].append(r); turn += 1
+            while len(groups[0]) > size: groups[1].append(groups[0].pop())
+            while len(groups[1]) > size: groups[0].append(groups[1].pop())
+        else:
+            groups = (pick[:size], pick[size:])
+        result = {}
+        for (sid, lab, rows), key in zip(((seq_a, lab_a, groups[0]), (seq_b, lab_b, groups[1])), ("a", "b")):
+            label_id = _lbl.find_or_create(cur, tenant_id, lab)
+            lids = [r[0] for r in rows]
+            if label_id and lids:
+                cur.execute("INSERT INTO lead_label_leads (label_id, lead_id) SELECT %s, unnest(%s::int[]) "
+                            "ON CONFLICT DO NOTHING", (label_id, lids))
+            res = _seq_add_people(cur, tenant_id, sid, [(r[1], r[0]) for r in rows], actor["label"])
+            result[key] = res.get("added", 0)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ leads_bulk_split_test error:", e)
+        return jsonify({"error": "Something went wrong. Nothing was changed."}), 500
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "a": result["a"], "b": result["b"]})
 
 
 @portal_bp.route("/leads/bulk/not-a-fit", methods=["POST"])

@@ -4363,6 +4363,11 @@ def ensure_portal_tables():
             if not _column_exists(cur, "email_sequences", _col):
                 cur.execute("SET LOCAL lock_timeout = '3s'")
                 cur.execute(f"ALTER TABLE email_sequences ADD COLUMN {_col} VARCHAR(255)")
+        # Sending schedule (2026-10-20): start date, new people per day,
+        # sending hours/days, time zone — see _seq_schedule().
+        if not _column_exists(cur, "email_sequences", "schedule"):
+            cur.execute("SET LOCAL lock_timeout = '3s'")
+            cur.execute("ALTER TABLE email_sequences ADD COLUMN schedule JSONB")
         # Same plans as tracking (approved 2026-10-08: tracking, sequences and
         # mailbox on Pro and above); the Plan editor decides after.
         _seq_keys = ("campaigns_email.sequences_view", "campaigns_email.sequences_create",

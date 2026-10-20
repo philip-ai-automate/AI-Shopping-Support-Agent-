@@ -702,6 +702,7 @@
   {% if can_label %}<button type="button" class="lb-btn lb-ghost" onclick="LabelUI.bulk(this, 'add', lbForm, lbLabelDone)">🏷️ Add label</button>
   <button type="button" class="lb-btn lb-ghost" onclick="LabelUI.bulk(this, 'remove', lbForm, lbLabelDone)">Remove label</button>{% endif %}
   {% if all_lead_cols %}<button type="button" class="lb-btn lb-ghost" onclick="ColumnUI.bulkFill(this, lbForm, lbLabelDone)">▦ Fill a column</button>{% endif %}
+  {% if staff_can('campaigns_email.sequences_edit') %}<button type="button" class="lb-btn lb-ghost" onclick="lbOpenSplit()">⚖️ Split test</button>{% endif %}
   {% if staff_can('leads.qualify') %}<button type="button" class="lb-btn lb-red" onclick="lbOpenNaf()">Not a Fit</button>{% endif %}
   <button type="button" class="lb-btn lb-ghost" onclick="lbClear()">Clear</button>
 </div>
@@ -887,6 +888,52 @@ tr.lb-sel td{background:#eef2fa}
 {% endmacro %}
 
 {% if can_bulk and view_mode == 'list' %}
+{% if staff_can('campaigns_email.sequences_edit') %}
+<div class="lm-over" id="lmSplit" onclick="if(event.target===this)lbCloseModals()">
+  <div class="lm-box" role="dialog" aria-labelledby="lmSplitTitle" style="max-width:620px">
+    <div>
+      <h2 class="lm-title" id="lmSplitTitle">Split test with <span class="lmN">0</span> leads</h2>
+      <p class="lm-sub">Shares the leads evenly and at random between two email sequences, and labels each group so you can compare results later.</p>
+    </div>
+    <div class="lm-note" id="lmSplitCount">Checking the leads…</div>
+    <div class="sp-grid">
+      <label class="sp-fld" for="lmSplitSize">People per group<input type="number" id="lmSplitSize" class="finp" min="1" step="1" placeholder="As many as possible"></label>
+      <label class="sp-ck"><input type="checkbox" id="lmSplitBal" checked> <span>Balance the groups<small>Same mix of categories and info@-type addresses in each</small></span></label>
+    </div>
+    <div class="sp-two">
+      <div class="sp-grp"><b>Group A</b>
+        <label class="sp-fld" for="lmSplitSeqA">Sequence<select id="lmSplitSeqA" class="finp"></select></label>
+        <label class="sp-fld" for="lmSplitLabA">Label<input id="lmSplitLabA" class="finp" maxlength="60" value="Split test · Group A"></label>
+        <div class="sp-warn" id="lmSplitWarnA" hidden></div>
+      </div>
+      <div class="sp-grp"><b>Group B</b>
+        <label class="sp-fld" for="lmSplitSeqB">Sequence<select id="lmSplitSeqB" class="finp"></select></label>
+        <label class="sp-fld" for="lmSplitLabB">Label<input id="lmSplitLabB" class="finp" maxlength="60" value="Split test · Group B"></label>
+        <div class="sp-warn" id="lmSplitWarnB" hidden></div>
+      </div>
+    </div>
+    <div class="lm-note" id="lmSplitSum"></div>
+    <div class="lm-err" id="lmSplitErr"></div>
+    <div class="lm-acts">
+      <button type="button" class="btn btn-sm btn-ghost" onclick="lbCloseModals()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="lmSplitGo" onclick="lbSubmitSplit()">Split and add</button>
+    </div>
+  </div>
+</div>
+<style>
+.sp-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end}
+.sp-two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.sp-grp{border:1px solid #e2e8f0;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.sp-grp b{color:#0B1D40;font-size:14px}
+.sp-fld{display:flex;flex-direction:column;gap:4px;font-size:12.5px;font-weight:600;color:#475569}
+.sp-fld .finp{margin:0}
+.sp-ck{display:flex;gap:8px;align-items:flex-start;font-size:13px;font-weight:600;cursor:pointer}
+.sp-ck input{width:16px !important;flex:none;margin:3px 0 0}
+.sp-ck small{display:block;font-weight:400;color:#64748b;font-size:12px}
+.sp-warn{font-size:12px;background:#fffbeb;color:#92400e;border-radius:8px;padding:7px 9px}
+@media (max-width:560px){.sp-grid,.sp-two{grid-template-columns:1fr}}
+</style>
+{% endif %}
 {% if staff_can('crm.pipeline_board_edit') %}
 <div class="lm-over" id="lmAddr" onclick="if(event.target===this)lbCloseModals()">
   <div class="lm-box" role="dialog" aria-labelledby="lmAddrTitle" style="max-width:560px">
@@ -1142,6 +1189,60 @@ function lbSubmitNaf(){
   lbPost('/leads/bulk/not-a-fit', fd).then(function(d){
     if (d.error) { err.textContent = d.error; lbBusy(btn, false, 'Try again'); return; }
     alert(lbFmt(d.closed) + ' leads marked Not a Fit.'); location.reload();
+  }).catch(function(){ err.textContent = 'Could not reach the server. Nothing was changed.'; lbBusy(btn, false, 'Try again'); });
+}
+var SP = { eligible: 0, seqs: [] };
+function lbOpenSplit(){
+  var err = document.getElementById('lmSplitErr'), btn = document.getElementById('lmSplitGo');
+  btn.disabled = true; btn.textContent = 'Split and add';
+  document.getElementById('lmSplitCount').textContent = 'Checking the leads…';
+  document.getElementById('lmSplitSum').textContent = '';
+  lbOpen('lmSplit');
+  lbPost('/leads/bulk/split-preview', lbForm()).then(function(d){
+    if (d.error) { err.textContent = d.error; return; }
+    SP = d; var lo = d.left_out || {}, out = [];
+    if (lo.no_email) out.push(lbFmt(lo.no_email) + ' have no email');
+    if (lo.unsubscribed) out.push(lbFmt(lo.unsubscribed) + ' unsubscribed or bounced');
+    if (lo.in_sequence) out.push(lbFmt(lo.in_sequence) + ' already in a sequence');
+    if (lo.recent) out.push(lbFmt(lo.recent) + ' emailed in the last 30 days');
+    if (lo.duplicate) out.push(lbFmt(lo.duplicate) + ' share an email with another lead');
+    document.getElementById('lmSplitCount').innerHTML = '<b>' + lbFmt(d.eligible) + ' of ' + lbFmt(d.selected) + '</b> can go in the test.' + (out.length ? ' Left out: ' + out.join(', ') + '.' : '');
+    var opts = '<option value="">Choose a sequence…</option>' + d.sequences.map(function(q){
+      return '<option value="' + q.id + '">' + q.name.replace(/</g, '&lt;') + (q.status === 'active' ? '' : ' (paused)') + '</option>'; }).join('');
+    document.getElementById('lmSplitSeqA').innerHTML = opts; document.getElementById('lmSplitSeqB').innerHTML = opts;
+    document.getElementById('lmSplitSize').value = Math.floor(d.eligible / 2) || '';
+    document.getElementById('lmSplitSize').max = Math.floor(d.eligible / 2);
+    btn.disabled = false; lbSplitSum();
+  }).catch(function(){ err.textContent = 'Could not reach the server.'; });
+}
+function lbSplitSum(){
+  var half = Math.floor(SP.eligible / 2), n = Math.min(+document.getElementById('lmSplitSize').value || half, half);
+  ['A','B'].forEach(function(g){
+    var id = +document.getElementById('lmSplitSeq' + g).value, q, w = document.getElementById('lmSplitWarn' + g);
+    q = (SP.sequences || []).filter(function(x){ return x.id === id; })[0];
+    if (!q) { w.hidden = true; return; }
+    var msg = !q.n_steps ? 'This sequence has no emails yet.'
+      : !q.scheduled ? 'No sending schedule: everyone gets Email 1 at once when the sequence runs. Set one on the sequence page first.'
+      : q.per_day ? 'Sends to ' + lbFmt(q.per_day) + ' new people a day, so about ' + Math.ceil(n / q.per_day) + ' sending days.' : '';
+    w.textContent = msg; w.hidden = !msg;
+  });
+  document.getElementById('lmSplitSum').textContent = n > 0 ? lbFmt(n) + ' leads in each group. ' + lbFmt(SP.eligible - 2 * n) + ' stay out of the test.' : '';
+}
+['lmSplitSize','lmSplitSeqA','lmSplitSeqB'].forEach(function(id){ var el = document.getElementById(id); if (el) { el.addEventListener('input', lbSplitSum); el.addEventListener('change', lbSplitSum); } });
+function lbSubmitSplit(){
+  var fd = lbForm(), err = document.getElementById('lmSplitErr'), btn = document.getElementById('lmSplitGo');
+  var a = document.getElementById('lmSplitSeqA').value, b = document.getElementById('lmSplitSeqB').value;
+  if (!a || !b || a === b) { err.textContent = 'Pick two different sequences.'; return; }
+  fd.append('seq_a', a); fd.append('seq_b', b);
+  fd.append('label_a', document.getElementById('lmSplitLabA').value.trim());
+  fd.append('label_b', document.getElementById('lmSplitLabB').value.trim());
+  fd.append('size', document.getElementById('lmSplitSize').value.trim());
+  if (document.getElementById('lmSplitBal').checked) fd.append('balance', '1');
+  lbBusy(btn, true, 'Splitting…');
+  lbPost('/leads/bulk/split-test', fd).then(function(d){
+    if (d.error) { err.textContent = d.error; lbBusy(btn, false, 'Try again'); return; }
+    alert(lbFmt(d.a) + ' leads added to Group A and ' + lbFmt(d.b) + ' to Group B, and labelled. Press Start on each sequence when you are ready.');
+    location.reload();
   }).catch(function(){ err.textContent = 'Could not reach the server. Nothing was changed.'; lbBusy(btn, false, 'Try again'); });
 }
 document.addEventListener('keydown', function(e){ if (e.key === 'Escape') lbCloseModals(); });

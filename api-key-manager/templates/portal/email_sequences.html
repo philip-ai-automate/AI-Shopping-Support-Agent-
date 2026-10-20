@@ -43,10 +43,7 @@
        A person stops getting them as soon as they reply, unsubscribe, or their lead is closed.</p>
   </div>
   {% if staff_can_open('portal.email_sequences_create') %}
-  <form class="sq-new" method="POST" action="{{ url_for('portal.email_sequences_create') }}">
-    <input type="text" name="name" placeholder="New sequence name, e.g. Retail outreach" required maxlength="255">
-    <button class="sq-btn" type="submit">+ New sequence</button>
-  </form>
+  <a class="sq-btn" href="{{ url_for('portal.email_sequence_wizard') }}">+ New sequence</a>
   {% endif %}
 </div>
 
@@ -66,7 +63,7 @@
         <td><a class="sq-name" href="{{ url_for('portal.email_sequence_detail', seq_id=s.id) }}">{{ s.name }}</a>
             <div class="muted" style="font-size:11.5px">Made by {{ s.created_by or '—' }} · {{ s.created_at.strftime('%d %b %Y') if s.created_at else '' }}</div></td>
         <td class="num">{{ s.n_steps }}</td>
-        <td>{% if s.status == 'active' %}<span class="pill pill-on">● Running</span>{% else %}<span class="pill pill-off">❚❚ Paused</span>{% endif %}</td>
+        <td>{% if s.status == 'active' %}<span class="pill pill-on">● Running</span>{% elif not s.n_steps or not s.n_people %}<span class="pill pill-off">Setting up</span>{% if staff_can_open('portal.email_sequences_create') %}<div><a href="{{ url_for('portal.email_sequence_wizard', seq_id=s.id) }}" style="font-size:12px;font-weight:600">Continue setup →</a></div>{% endif %}{% else %}<span class="pill pill-off">❚❚ Paused</span>{% endif %}</td>
         <td class="num">{{ s.n_active }}</td>
         <td class="num">{% if s.n_ready %}<span class="pill pill-ready">{{ s.n_ready }}</span>{% else %}0{% endif %}</td>
         <td class="num">{{ s.n_finished }}</td>
