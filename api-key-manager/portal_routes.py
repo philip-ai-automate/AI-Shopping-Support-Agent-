@@ -22341,6 +22341,7 @@ def _send_email_campaign_now(campaign_id: int, tenant_id: int):
                 ok, err = zeptomail_api.send_email(
                     sender["token"], sender["from_email"], sender["from_name"],
                     email, ctx.get("full") or "", subject, final_html, reply_to=reply_to,
+                    client_reference=f"pxr:{rec_id}" if rec_id else None,
                 )
                 if ok:
                     sent += 1
@@ -25168,6 +25169,109 @@ def lead_labels_import_bounces():
     return render_template("portal/lead_labels_import_bounces.html", customer=customer, result=result)
 
 
+# ZeptoMail bounce webhook (2026-10-20). ZeptoMail only says "accepted" when we
+# send; a bounce comes later, so before this the portal never knew about
+# bounces except through the CSV import above. ZeptoMail posts each hard/soft
+# bounce here (Mail Agent › Webhooks). Every campaign/sequence email carries
+# client_reference "pxr:<email_campaign_recipients.id>", which tells us the
+# business, campaign and lead; older emails without it fall back to the most
+# recent send to that address. The URL key (ZEPTOMAIL_WEBHOOK_KEY in .env) is
+# the shared secret.
+
+def _zepto_list(v):
+    return v if isinstance(v, list) else ([v] if v else [])
+
+
+def _zepto_find_recipient(cur, ref: str, address: str):
+    if ref.startswith("pxr:") and ref[4:].isdigit():
+        cur.execute("""SELECT id, tenant_id, campaign_id, lead_id, contact_id, email, status
+                       FROM email_campaign_recipients WHERE id=%s AND lower(email)=lower(%s)""",
+                    (int(ref[4:]), address))
+        row = cur.fetchone()
+        if row:
+            return row
+    cur.execute("""SELECT id, tenant_id, campaign_id, lead_id, contact_id, email, status
+                   FROM email_campaign_recipients
+                   WHERE lower(email)=lower(%s) AND status IN ('sent', 'bounced')
+                     AND sent_at > NOW() - INTERVAL '14 days'
+                   ORDER BY sent_at DESC LIMIT 1""", (address,))
+    return cur.fetchone()
+
+
+def _zepto_record_bounce(cur, rec, hard: bool, reason: str) -> bool:
+    """Record one bounce for one campaign recipient. Safe to repeat."""
+    tenant_id, email = rec["tenant_id"], rec["email"]
+    kind = "bounced" if hard else "soft_bounced"
+    cur.execute("SELECT 1 FROM email_events WHERE recipient_id=%s AND kind=%s LIMIT 1", (rec["id"], kind))
+    if cur.fetchone():
+        return False
+    email_outreach.log_event(cur, tenant_id, kind, campaign_id=rec["campaign_id"], recipient_id=rec["id"],
+                             lead_id=rec["lead_id"], contact_id=rec["contact_id"], email=email,
+                             detail=(reason or "")[:300] or None)
+    if not hard:
+        return True
+    cur.execute("""UPDATE email_campaign_recipients SET status='bounced', error_msg=%s
+                   WHERE id=%s AND status IN ('sent', 'pending', 'bounced')""",
+                (("Bounced: " + (reason or "the address doesn't exist"))[:400], rec["id"]))
+    cur.execute("INSERT INTO email_suppressions (tenant_id, email, reason) VALUES (%s, %s, 'hard_bounce') "
+                "ON CONFLICT (tenant_id, email) DO NOTHING", (tenant_id, email.lower()))
+    cur.execute("SELECT id FROM merchant_pipeline_leads WHERE tenant_id=%s AND dropped_at IS NULL "
+                "AND (id=%s OR lower(email)=lower(%s))", (tenant_id, rec["lead_id"], email))
+    lead_ids = [r["id"] for r in cur.fetchall()]
+    if lead_ids:
+        cur.execute("INSERT INTO lead_labels (tenant_id, name, visibility) VALUES (%s, %s, 'business') "
+                    "ON CONFLICT (tenant_id, name) WHERE visibility='business' DO UPDATE SET name=EXCLUDED.name "
+                    "RETURNING id", (tenant_id, BOUNCED_LABEL_NAME))
+        label_id = cur.fetchone()["id"]
+        cur.execute("INSERT INTO lead_label_leads (label_id, lead_id) SELECT %s, unnest(%s::int[]) "
+                    "ON CONFLICT (label_id, lead_id) DO NOTHING", (label_id, lead_ids))
+    _seq_stop_matching(cur, tenant_id, "Email bounced", email=email, lead_id=rec["lead_id"])
+    return True
+
+
+@portal_bp.route("/email/zeptomail-webhook/<key>", methods=["GET", "POST"])
+@public_route
+def zeptomail_bounce_webhook(key):
+    import hmac
+    want = os.getenv("ZEPTOMAIL_WEBHOOK_KEY") or ""
+    if not want or not hmac.compare_digest(key.encode(), want.encode()):
+        return ("", 404)
+    data = request.get_json(silent=True) or {}
+    if request.method == "GET" or not data.get("event_message"):
+        return jsonify({"ok": True})       # ZeptoMail's "Verify" / test call
+    names = [str(n).lower() for n in _zepto_list(data.get("event_name"))]
+    recorded = 0
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        for msg in _zepto_list(data.get("event_message")):
+            info = msg.get("email_info") or {}
+            ref = str(info.get("client_reference") or "")
+            to_addrs = [((t.get("email_address") or {}).get("address") or "")
+                        for t in _zepto_list(info.get("to"))]
+            for ev in _zepto_list(msg.get("event_data")):
+                kind = str(ev.get("object") or (names[0] if names else "")).lower()
+                if "bounce" not in kind:
+                    continue
+                hard = "hard" in kind
+                for d in _zepto_list(ev.get("details")) or [{}]:
+                    address = (d.get("bounced_recipient") or (to_addrs[0] if to_addrs else "")).strip()
+                    if not address:
+                        continue
+                    rec = _zepto_find_recipient(cur, ref, address)
+                    if not rec:
+                        print(f"ℹ️ [ZEPTO WEBHOOK] {kind} for {address} — no matching campaign email")
+                        continue
+                    reason = d.get("reason") or d.get("diagnostic_message") or ""
+                    if _zepto_record_bounce(cur, rec, hard, reason):
+                        recorded += 1
+        conn.commit(); cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ zeptomail_bounce_webhook error:", e)
+        return jsonify({"ok": False}), 500   # ZeptoMail can try again later
+    return jsonify({"ok": True, "recorded": recorded})
+
+
 @portal_bp.route("/email/campaigns/pipeline-leads-json")
 @team_feature("campaigns_email.segments_view")
 def email_campaigns_pipeline_leads_json():
@@ -25281,7 +25385,9 @@ def email_campaign_report(campaign_id: int):
         total  = campaign["total_count"]  or 0
         sent   = campaign["sent_count"]   or 0
         failed = campaign["failed_count"] or 0
-        rate   = round(sent / total * 100) if total else 0
+        bounced = sum(1 for x in recipients if x["status"] == "bounced")
+        # Delivered = handed over and not bounced back (bounces come from ZeptoMail's webhook)
+        rate   = round((sent - bounced) / total * 100) if total else 0
 
         return render_template(
             "portal/email_campaign_report.html",
@@ -25289,6 +25395,7 @@ def email_campaign_report(campaign_id: int):
             recipients=recipients,
             total=total,
             sent=sent,
+            bounced=bounced,
             failed=failed,
             rate=rate,
             demo_bookings=demo_bookings,
@@ -25481,7 +25588,7 @@ def lead_email_replied(lead_id: int):
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""SELECT r.*, c.name AS campaign_name FROM email_campaign_recipients r
                        JOIN email_campaigns c ON c.id = r.campaign_id
-                       WHERE r.tenant_id=%s AND (r.lead_id=%s OR lower(r.email)=lower(%s)) AND r.status='sent'
+                       WHERE r.tenant_id=%s AND (r.lead_id=%s OR lower(r.email)=lower(%s)) AND r.status IN ('sent', 'bounced')
                        ORDER BY r.sent_at DESC NULLS LAST LIMIT 1""",
                     (tenant_id, lead_id, lead.get("email") or ""))
         rec = cur.fetchone()
@@ -25759,10 +25866,11 @@ def _seq_prepare_step(cur, seq, step, from_name: str):
 def _seq_stop_reason(cur, person):
     """Why this person shouldn't get any more emails, or None."""
     tenant_id, email = person["tenant_id"], person["email"]
-    cur.execute("SELECT 1 FROM email_suppressions WHERE tenant_id=%s AND lower(email)=lower(%s) LIMIT 1",
+    cur.execute("SELECT reason FROM email_suppressions WHERE tenant_id=%s AND lower(email)=lower(%s) LIMIT 1",
                 (tenant_id, email))
-    if cur.fetchone():
-        return "Unsubscribed"
+    sup = cur.fetchone()
+    if sup:
+        return "Email bounced" if sup["reason"] == "hard_bounce" else "Unsubscribed"
     cur.execute("""SELECT 1 FROM email_events WHERE tenant_id=%s AND kind='replied' AND created_at >= %s
                    AND (lower(email)=lower(%s) OR (%s::bigint IS NOT NULL AND lead_id=%s)) LIMIT 1""",
                 (tenant_id, person["watch_from"], email, person["lead_id"], person["lead_id"]))
@@ -25810,7 +25918,8 @@ def _seq_deliver(cur, camp, tenant_id: int, email: str, sender: dict, lead_id=No
     try:
         ok, err = zeptomail_api.send_email(sender["token"], sender["from_email"], sender["from_name"],
                                            email, ctx.get("full") or "", subject, body,
-                                           reply_to=(camp.get("reply_to") or None))
+                                           reply_to=(camp.get("reply_to") or None),
+                                           client_reference=f"pxr:{rec_id}")
     except Exception as e:
         ok, err = False, str(e)
     cur.execute("UPDATE email_campaign_recipients SET status=%s, error_msg=%s, sent_at=NOW() WHERE id=%s",

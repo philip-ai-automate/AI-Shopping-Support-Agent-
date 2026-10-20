@@ -279,7 +279,7 @@
         {% endif %}
       </div>
       {% endif %}
-      {% set _email_words = {'sent': 'Email sent', 'opened': 'Opened the email', 'clicked': 'Clicked a link', 'replied': 'Replied', 'unsubscribed': 'Unsubscribed from emails'} %}
+      {% set _email_words = {'sent': 'Email sent', 'opened': 'Opened the email', 'clicked': 'Clicked a link', 'replied': 'Replied', 'unsubscribed': 'Unsubscribed from emails', 'bounced': 'Email bounced — this address doesn\'t exist', 'soft_bounced': 'Email delayed (temporary problem at their end)'} %}
       {% for e in email_history %}
       <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:8px">
         <strong>{{ _email_words.get(e.kind, e.kind) }}</strong>
@@ -288,6 +288,7 @@
         {% if e.reply_snippet %}<div style="margin-top:8px;padding:8px 12px;border-left:3px solid #0B1D40;background:#fff;border-radius:0 8px 8px 0;white-space:pre-line;line-height:1.5">{{ e.reply_snippet }}</div>{% endif %}
         {% if e.reply_link %}<div style="margin-top:6px"><a href="{{ e.reply_link }}" target="_blank" rel="noopener" style="font-weight:600;color:#0B1D40">Open in Outlook ↗</a>{% if e.reply_mailbox %} <span style="color:var(--muted)">({{ e.reply_mailbox }}'s mailbox)</span>{% endif %}</div>{% endif %}
         {% if e.kind == 'clicked' and e.detail %}<div style="color:var(--muted);margin-top:3px;word-break:break-all">Link: {{ e.detail }}</div>{% endif %}
+        {% if e.kind in ('bounced', 'soft_bounced') and e.detail %}<div style="color:var(--muted);margin-top:3px;word-break:break-word">Reason given: {{ e.detail }}</div>{% endif %}
       </div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted)">No campaign emails to this lead yet.</div>

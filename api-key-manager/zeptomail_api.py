@@ -26,10 +26,12 @@ API_URL = "https://api.zeptomail.eu/v1.1/email"
 
 def send_email(send_mail_token: str, from_email: str, from_name: str,
                 to_email: str, to_name: str, subject: str, html_body: str,
-                reply_to: str = None):
+                reply_to: str = None, client_reference: str = None):
     """Sends a single email via ZeptoMail's HTTP API. Returns (ok, error).
     reply_to: where the recipient's reply goes (e.g. the sending staff
-    member's own mailbox), when it isn't the From address."""
+    member's own mailbox), when it isn't the From address.
+    client_reference: our own id for this email; ZeptoMail sends it back in
+    its bounce webhook so the bounce finds the right campaign recipient."""
     payload = {
         "from": {"address": from_email, "name": from_name or ""},
         "to": [{"email_address": {"address": to_email, "name": to_name or ""}}],
@@ -38,6 +40,8 @@ def send_email(send_mail_token: str, from_email: str, from_name: str,
     }
     if reply_to:
         payload["reply_to"] = [{"address": reply_to}]
+    if client_reference:
+        payload["client_reference"] = client_reference
     try:
         r = requests.post(
             API_URL,
