@@ -227,7 +227,7 @@
               {% for st in ['lead','prospect','customer','inactive'] %}
               <label class="msdd-option">
                 <input type="checkbox" name="status" value="{{ st }}" {% if st in sel_status %}checked{% endif %} onchange="updateMsddLabel(this,'Status')">
-                <span>{{ st.title() }}</span>
+                <span>{{ st|contact_status }}</span>
               </label>
               {% endfor %}
             </div>

@@ -115,7 +115,7 @@
               <div style="font-weight:600;font-size:13px">{{ c.display_name or '<span style="color:var(--muted);font-style:italic">Unnamed</span>'|safe }}</div>
               <div class="add-cand-phone">{% if c.phone %}📞 {{ c.phone|phone_display }}{% endif %}{% if c.phone and c.whatsapp_number %} · {% endif %}{% if c.whatsapp_number %}💬 {{ c.whatsapp_number|phone_display }}{% endif %}{% if not c.phone and not c.whatsapp_number %}{{ c.email or '—' }}{% endif %}</div>
             </td>
-            <td><span class="status-badge badge-{{ c.status or 'lead' }}">{{ (c.status or 'lead')|title }}</span></td>
+            <td><span class="status-badge badge-{{ c.status or 'lead' }}">{{ c.status|contact_status }}</span></td>
             <td>
               {% if can_edit_seg %}
               <form method="POST" action="{{ url_for('portal.whatsapp_segment_remove_member', seg_id=segment.id, contact_id=c.id) }}"
@@ -161,7 +161,7 @@
           <div class="add-cand-name">{{ c.display_name or 'Unnamed' }}</div>
           <div class="add-cand-phone">{% if c.phone %}📞 {{ c.phone|phone_display }}{% endif %}{% if c.phone and c.whatsapp_number %} · {% endif %}{% if c.whatsapp_number %}💬 {{ c.whatsapp_number|phone_display }}{% endif %}{% if not c.phone and not c.whatsapp_number %}{{ c.email or '—' }}{% endif %}</div>
         </div>
-        <span class="status-badge badge-{{ c.status or 'lead' }}" style="flex-shrink:0">{{ (c.status or 'lead')|title }}</span>
+        <span class="status-badge badge-{{ c.status or 'lead' }}" style="flex-shrink:0">{{ c.status|contact_status }}</span>
         <form method="POST" action="{{ url_for('portal.whatsapp_segment_add_member', seg_id=segment.id) }}" style="flex-shrink:0">
           <input type="hidden" name="contact_id" value="{{ c.id }}">
           <button type="submit" class="btn-save" style="padding:4px 10px;font-size:11px">Add</button>

@@ -390,15 +390,7 @@
           <span class="pc-ic" aria-hidden="true">●</span><span class="pc-k">Status</span>
           <span class="pc-v">
             {% set st = contact.status or 'lead' %}
-            {% if can_edit_contact %}
-            <select id="pcStatus" class="pc-status st-{{ st }}" aria-label="Status" data-was="{{ st }}">
-              {% for val, label in [('lead','Lead'),('prospect','Prospect'),('customer','Customer'),('inactive','Inactive')] %}
-              <option value="{{ val }}" {% if st == val %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-            {% else %}
-            <span class="status-badge badge-{{ st }}"><span class="status-dot"></span>{{ st|title }}</span>
-            {% endif %}
+            <span class="status-badge badge-{{ st }}" title="Updates by itself from replies, demos and the deal"><span class="status-dot"></span>{{ st|contact_status }}</span>
           </span>
         </div>
         <div class="pc-row">
@@ -790,15 +782,7 @@
       </fieldset>
 
       <fieldset class="ep-sec">
-        <legend>Status and labels</legend>
-        <div class="field">
-          <label class="field-label" for="ep-status">Status</label>
-          <select class="field-select" name="status" id="ep-status">
-            {% for val, label in [('lead','Lead'),('prospect','Prospect'),('customer','Customer'),('inactive','Inactive')] %}
-            <option value="{{ val }}" {% if (contact.status or 'lead') == val %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
+        <legend>Labels</legend>
         <div class="field" style="margin-bottom:0">
           <label class="field-label">Labels <span class="field-hint">pick from your labels or create a new one</span></label>
           <div class="ep-labels" id="ep-labels"></div>
@@ -909,15 +893,6 @@ document.addEventListener('DOMContentLoaded', function () {
     })
   }
 
-  var st = document.getElementById('pcStatus')
-  if (st) st.addEventListener('change', function () {
-    var val = st.value, was = st.getAttribute('data-was')
-    st.className = 'pc-status st-' + val
-    showSaved('Saving…')
-    post('{{ url_for('portal.whatsapp_contact_set_status', contact_id=contact.id) }}', {status: val})
-      .then(function () { st.setAttribute('data-was', val); document.getElementById('ep-status').value = val; showSaved('✓ Saved') })
-      .catch(function (e) { st.value = was; st.className = 'pc-status st-' + was; showSaved(e.message, true) })
-  })
 })
 </script>
 {% endblock %}

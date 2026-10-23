@@ -517,7 +517,7 @@
           </button>
           <div class="msdd-panel">
             <div class="msdd-options">
-              {% set statuses = [('lead','Lead'),('prospect','Prospect'),('customer','Customer'),('inactive','Inactive')] %}
+              {% set statuses = [('lead','New'),('prospect','Prospect'),('customer','Customer'),('inactive','Not interested')] %}
               {% for val, label in statuses %}
               <label class="msdd-option">
                 <input type="checkbox" name="status_filter" value="{{ val }}" {{ 'checked' if val in status_filter else '' }} onchange="updateMsddLabel(this,'Status')">
@@ -712,7 +712,6 @@
       <input type="hidden" name="date_from" value="{{ date_from }}">
       <input type="hidden" name="date_to" value="{{ date_to }}">
       <input type="hidden" name="action" id="bulk-action-input" value="">
-      <input type="hidden" name="new_status" id="bulk-new-status" value="">
       <input type="hidden" name="new_tag" id="bulk-new-tag" value="">
       <input type="hidden" name="rem_tag" id="bulk-rem-tag" value="">
       <input type="hidden" name="segment_id" id="bulk-segment-id" value="">
@@ -855,7 +854,7 @@
                 <td data-col="email" style="font-size:12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ emails_cell(c.email, c.other_emails) }}</td>
                 <td data-col="status">
                   <span class="status-badge badge-{{ c.status or 'lead' }}">
-                    <span class="status-dot"></span>{{ (c.status or 'lead')|title }}
+                    <span class="status-dot"></span>{{ c.status|contact_status }}
                   </span>
                 </td>
                 <td data-col="tags">
@@ -962,10 +961,6 @@
         <span class="bulk-count" id="bulkCount">0 selected</span>
         <span class="bulk-sep"></span>
         {% if can_edit_contact %}
-        <button type="button" class="bulk-btn" onclick="openBulkStatus()">
-          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
-          Set Status
-        </button>
         <button type="button" class="bulk-btn" onclick="openBulkTag()">
           <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><circle cx="7" cy="7" r="1.5" fill="currentColor"/></svg>
           Add Label
@@ -1061,16 +1056,7 @@
       </fieldset>
 
       <fieldset class="ep-sec">
-        <legend>Status and labels</legend>
-        <div class="field">
-          <label class="field-label" for="af-status">Status</label>
-          <select class="field-select" name="status" id="af-status">
-            <option value="lead">Lead</option>
-            <option value="prospect">Prospect</option>
-            <option value="customer">Customer</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </div>
+        <legend>Labels</legend>
         <div class="field" style="margin-bottom:0">
           <label class="field-label">Labels <span class="field-hint">pick from your labels or create a new one</span></label>
           <div class="ep-labels" id="af-labels"></div>
@@ -1194,16 +1180,7 @@
         </fieldset>
 
         <fieldset class="ep-sec">
-          <legend>Status and labels</legend>
-          <div class="field">
-            <label class="field-label" for="ef-status">Status</label>
-            <select class="field-select" name="status" id="ef-status">
-              <option value="lead">Lead</option>
-              <option value="prospect">Prospect</option>
-              <option value="customer">Customer</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
+          <legend>Labels</legend>
           <div class="field" style="margin-bottom:0">
             <label class="field-label">Labels <span class="field-hint">pick from your labels or create a new one</span></label>
             <div class="ep-labels" id="ef-labels"></div>
@@ -1231,25 +1208,6 @@
   </div>
 </div>
 
-<!-- ── Bulk: Set Status modal ─────────────────────────────────────────────── -->
-<div class="mini-modal" id="bulkStatusModal">
-  <div class="mini-box">
-    <div class="mini-head"><h2>Set Status</h2></div>
-    <div class="mini-body">
-      <label class="field-label">New status for selected contacts</label>
-      <select class="field-select" id="bulkStatusSelect">
-        <option value="lead">Lead</option>
-        <option value="prospect">Prospect</option>
-        <option value="customer">Customer</option>
-        <option value="inactive">Inactive</option>
-      </select>
-    </div>
-    <div class="mini-foot">
-      <button type="button" class="btn-ghost" onclick="document.getElementById('bulkStatusModal').classList.remove('open')">Cancel</button>
-      <button type="button" class="btn-save" onclick="applyBulkStatus()">Apply</button>
-    </div>
-  </div>
-</div>
 
 <!-- ── Bulk: Add Tag modal ────────────────────────────────────────────────── -->
 <div class="mini-modal" id="bulkTagModal">
@@ -1447,17 +1405,9 @@ function clearSelection() {
 }
 
 /* ── Bulk actions ────────────────────────────────────────────────────── */
-function openBulkStatus()  { document.getElementById('bulkStatusModal').classList.add('open') }
 function openBulkTag()     { document.getElementById('bulkTagModal').classList.add('open'); document.getElementById('bulkTagInput').focus() }
 function openBulkSegment() { document.getElementById('bulkSegmentModal').classList.add('open') }
 
-function applyBulkStatus() {
-  const val = document.getElementById('bulkStatusSelect').value
-  document.getElementById('bulk-action-input').value = 'set_status'
-  document.getElementById('bulk-new-status').value   = val
-  document.getElementById('bulkStatusModal').classList.remove('open')
-  document.getElementById('bulkForm').submit()
-}
 function applyBulkTag() {
   const tag = document.getElementById('bulkTagInput').value.trim()
   if (!tag) return
@@ -1552,7 +1502,6 @@ function openEdit(id, name, notes, status, tagsStr, email, personalizationNote, 
   document.getElementById('ef-name').value     = name
   document.getElementById('ef-contact-person').value = contactPerson || ''
   document.getElementById('ef-notes').value    = notes
-  document.getElementById('ef-status').value   = status || 'lead'
   if (window.efLabelPicker) efLabelPicker.set((tagsStr || '').split(',').map(t => t.trim()).filter(Boolean))
   document.getElementById('ef-email').value    = email || ''
   document.getElementById('ef-personalization').value = personalizationNote || ''

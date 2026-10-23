@@ -15,6 +15,7 @@ are pre-grouped derived tables joined by hash, never per-row lookups, so a
 """
 import datetime as _dt
 import io
+from contact_status import STATUS_LABELS
 
 # ── Where the lead came from ─────────────────────────────────────────────────
 # 'import' and 'whatsapp'/'manual'/'instagram' are written on the lead; a
@@ -246,7 +247,7 @@ COL_GROUPS = [
     ]),
     ("Contact", [
         _c("cname", "Contact name", "c.display_name"),
-        _c("status", "Contact status", "c.status", "title"),
+        _c("status", "Contact status", "c.status", "contact_status"),
         _c("tags", "Tags", "tg.names", "text", ["tg"]),
         _c("csource", "How contact was added", "c.source", "title"),
         _c("caddedon", "Contact added on", "c.created_at", "date"),
@@ -546,6 +547,8 @@ def fmt_cell(val, fmt: str, ctx: dict, row: dict = None) -> str:
         return CAMPAIGN_STATUS_LABELS.get(val, str(val).title())
     if fmt == "action":
         return ACTION_LABELS.get(val, str(val).replace("_", " ").capitalize())
+    if fmt == "contact_status":
+        return STATUS_LABELS.get(val, str(val).title())
     if fmt == "title":
         return str(val).replace("_", " ").title()
     if fmt == "country":
@@ -856,7 +859,7 @@ def sec_contacts(cur, ctx, opts):
     customers = int(cur.fetchone()["n"])
     ctx["ls"](cur, "SELECT COALESCE(NULLIF(c.status, ''), 'none') AS s, COUNT(*) AS n FROM wa_contacts c "
                    "WHERE c.tenant_id = %s GROUP BY 1 ORDER BY 2 DESC", (t,))
-    statuses = [{"label": "No status" if r["s"] == "none" else str(r["s"]).replace("_", " ").title(),
+    statuses = [{"label": "No status" if r["s"] == "none" else STATUS_LABELS.get(r["s"], str(r["s"]).replace("_", " ").title()),
                  "n": int(r["n"])} for r in cur.fetchall()]
     ctx["ls"](cur, f"""
         SELECT co.id, co.name, COUNT(*) AS deals,

@@ -196,7 +196,7 @@
 <figure><img src="/static/portal/tutorial/crm/c02_filters.jpg" width="1100" height="818" alt="The filter panel. Pick what you want, then press Apply Filters." loading="lazy"><figcaption>The filter panel. Pick what you want, then press Apply Filters.</figcaption></figure>
 <div class="tbl"><table>
 <tr><th>Filter</th><th>How to use it</th></tr>
-<tr><td>Status</td><td class="wrapok">Tick one or more of Lead, Prospect, Customer, Inactive. The number beside each shows how many contacts have it.</td></tr>
+<tr><td>Status</td><td class="wrapok">Tick one or more of New, Prospect, Customer, Not interested. The number beside each shows how many contacts have it.</td></tr>
 <tr><td>Segment</td><td class="wrapok">Show only people in the CRM Segments you tick. You only see segments you're allowed to see (see <a href="#crm-s-kinds">section 9</a>).</td></tr>
 <tr><td>Labels</td><td class="wrapok">Show only people with the labels you tick. Type in the small search box to find a label in a long list.</td></tr>
 <tr><td>Date added</td><td class="wrapok">Pick a start date, an end date, or both.</td></tr>
@@ -223,7 +223,7 @@
 <tr><td>Contact Person</td><td class="wrapok">If the name is a business, who you actually speak to there.</td></tr>
 <tr><td>Phone Number</td><td class="wrapok">The number for calls (📞), with country code.</td></tr>
 <tr><td>WhatsApp Number</td><td class="wrapok">The number used for WhatsApp chats and campaigns (green 💬). It can be the same as the phone number or different. A number shown with an <b>Add country code</b> warning was saved without one; edit it.</td></tr>
-<tr><td>Status</td><td class="wrapok">Lead, Prospect, Customer or Inactive (see table below).</td></tr>
+<tr><td>Status</td><td class="wrapok">New, Prospect, Customer or Not interested. It updates by itself (see table below).</td></tr>
 <tr><td>Labels</td><td class="wrapok">Up to three labels; "+2" means two more.</td></tr>
 <tr><td>Stage</td><td class="wrapok">Where their deal is on the Pipeline Board. "+1 more" means they have more than one open deal.</td></tr>
 <tr><td>Added</td><td class="wrapok">The date they entered your CRM.</td></tr>
@@ -232,13 +232,13 @@
 
 <h4>What the four statuses mean</h4>
 <div class="tbl"><table>
-<tr><th>Status</th><th>Use it for</th></tr>
-<tr><td>Lead</td><td class="wrapok">Someone new you know little about yet. New contacts start here.</td></tr>
-<tr><td>Prospect</td><td class="wrapok">Someone who has shown real interest and you're talking to.</td></tr>
-<tr><td>Customer</td><td class="wrapok">Someone who has bought from you.</td></tr>
-<tr><td>Inactive</td><td class="wrapok">Someone who has gone quiet or you no longer deal with.</td></tr>
+<tr><th>Status</th><th>The contact gets it when…</th></tr>
+<tr><td>New</td><td class="wrapok">They haven't replied or shown interest yet. Every new contact starts here.</td></tr>
+<tr><td>Prospect</td><td class="wrapok">They replied on WhatsApp or by email, booked a demo, a reply or meeting was logged, or their deal is at Qualified or later. Automatic replies (out of office, support tickets) don't count.</td></tr>
+<tr><td>Customer</td><td class="wrapok">Their deal is marked Won, or they became a paying customer.</td></tr>
+<tr><td>Not interested</td><td class="wrapok">Their deal is closed as Not a Fit or Lost, or they unsubscribed. If they reply or book a demo later, they go back to Prospect.</td></tr>
 </table></div>
-<div class="box know"><b class="t">Good to know</b>Status is a simple label on the contact that you set yourself. It is separate from the deal <i>stage</i> on the Pipeline Board, and changing one does not change the other.</div>
+<div class="box know"><b class="t">Good to know</b>Nobody sets Status by hand. The portal updates it by itself within about 2 minutes (straight away when you open the contact). To change it, do the real thing: log the call result, mark Not a Fit, or move the deal on the Pipeline Board.</div>
 
 <h4>Choosing columns and page size</h4>
 <p>Press <span class="ui">Columns</span> and tick or untick columns. The portal remembers your choice on this computer.</p>
@@ -270,7 +270,7 @@
 <tr><td>Phone number</td><td class="wrapok">For phone calls. Full number with country code, for example <b>2348012345678</b> (Nigeria) or <b>447911123456</b> (UK). A number starting with 0 gets your business country's code added.</td></tr>
 <tr><td>WhatsApp number</td><td class="wrapok">For WhatsApp chats and campaigns. Fill it in even if it's the same as the phone number: WhatsApp never uses the Phone number box.</td></tr>
 <tr><td>Email</td><td class="wrapok">Needed to reach them by email campaign.</td></tr>
-<tr><td>Status</td><td class="wrapok">Lead, Prospect, Customer or Inactive. Starts as Lead.</td></tr>
+<tr><td>Status</td><td class="wrapok">Not on the form. Every new contact starts as New and then updates by itself.</td></tr>
 <tr><td>Labels</td><td class="wrapok">Press <span class="ui">+ Add label</span>, then pick from your labels or type a new one.</td></tr>
 <tr><td>Profile notes</td><td class="wrapok">Anything useful: "Interested in Plan B, follow up Friday".</td></tr>
 <tr><td>Personalization</td><td class="wrapok">A short description used inside WhatsApp campaign messages, such as "a fashion boutique in Lagos". Write it so it reads naturally in a sentence like "We help businesses like <i>a fashion boutique in Lagos</i>…".</td></tr>
@@ -283,7 +283,7 @@
   <li>"Similar contact(s) already exist, did you mean…". A close name, allowing for small typos.</li>
   <li>"Similar company already exists" or "Similar label already exists". Pick the existing one instead of making a near-duplicate (for example "Bello Fabric" vs "Bello Fabrics").</li>
 </ul>
-<div class="box careful"><b class="t">Careful</b>If either number or the email already belongs to a contact, saving <b>updates that contact</b> instead of making a second one, and you'll see "… was already in your contacts, so their details were updated". The name, contact person, notes, personalization and status you typed replace theirs, and fields you left blank blank them out. Numbers and email are only added where they were empty. If the warning appears, edit the existing contact instead.</div>
+<div class="box careful"><b class="t">Careful</b>If either number or the email already belongs to a contact, saving <b>updates that contact</b> instead of making a second one, and you'll see "… was already in your contacts, so their details were updated". The name, contact person, notes and personalization you typed replace theirs, and fields you left blank blank them out. Numbers and email are only added where they were empty. If the warning appears, edit the existing contact instead.</div>
 
 <h3 id="crm-c-import">Importing contacts from a spreadsheet</h3>
 <ol class="steps">
@@ -306,7 +306,7 @@
 <div class="box know"><b class="t">Good to know</b>
 <ul>
   <li>If a row's number or email is <b>already</b> in your CRM, the import updates that contact with what the file has. An empty cell keeps what's saved, and numbers are only filled in where missing, never replaced.</li>
-  <li>Status, company and contact person are <b>not</b> read from the file. Imported contacts start as Lead and their Source shows <b>CSV</b>.</li>
+  <li>Status, company and contact person are <b>not</b> read from the file. Imported contacts start as New and their Source shows <b>CSV</b>.</li>
   <li>If you see "Could not read the CSV file", save it again as <b>CSV UTF-8</b>.</li>
 </ul></div>
 <div class="box tip"><b class="t">Tip</b>Put a <b>labels</b> column in the file (for example "Trade fair Sept") so the whole batch is labelled as it comes in.</div>
@@ -325,7 +325,6 @@
 <figure><img src="/static/portal/tutorial/crm/c04_bulkbar.jpg" width="1100" height="818" alt="Two contacts selected; the action bar is at the bottom." loading="lazy"><figcaption>Two contacts selected; the action bar is at the bottom.</figcaption></figure>
 <div class="tbl"><table>
 <tr><th>Action</th><th>What it does</th></tr>
-<tr><td><span class="ui">Set Status</span></td><td class="wrapok">Pick one status and apply it to everyone selected.</td></tr>
 <tr><td><span class="ui">Add Label</span></td><td class="wrapok">Pick or type a label; it's added to everyone selected. Their other labels are kept.</td></tr>
 <tr><td><span class="ui">Add to Segment</span></td><td class="wrapok">Choose one of your CRM Segments and add everyone to it. Only shows once you have at least one.</td></tr>
 <tr><td><span class="ui">Create Sales Lead</span></td><td class="wrapok">Creates a new lead for each selected contact.</td></tr>
@@ -339,7 +338,7 @@
 <p><b>A contact with open Sales Leads can't be deleted.</b> The portal says, for example, "Tunde Bakare has 1 open Sales Lead. Close or delete those leads first, then delete the contact." Deals that are already Won, Lost or Dropped don't block it.</p>
 <p>When you delete a contact, these are removed with it: their notes, their labels, their segment memberships and their consent (opt-out) history.</p>
 <p>These are <b>kept</b>: their closed deals (with their own name and numbers, just no longer linked), their call log entries, and their WhatsApp conversation in the Inbox.</p>
-<p>If you just want to stop contacting someone, set them to <b>Inactive</b> or opt them out (see <a href="#crm-profile">Consent</a>) instead of deleting.</p></div>
+<p>If you just want to stop contacting someone, opt them out (see <a href="#crm-profile">Consent</a>) instead of deleting. Their status becomes <b>Not interested</b>.</p></div>
 <figure><img src="/static/portal/tutorial/crm/n09_delete_blocked.jpg" width="1100" height="818" alt="Trying to delete a contact who still has an open Sales Lead." loading="lazy"><figcaption>Trying to delete a contact who still has an open Sales Lead.</figcaption></figure>
 
 <h3 id="crm-c-auto">How contacts are added for you</h3>
@@ -366,7 +365,7 @@
 <div class="tbl"><table>
 <tr><th>Group</th><th>What's in it</th></tr>
 <tr><td>Contact details</td><td class="wrapok"><span class="f">Phone number</span>, <span class="f">WhatsApp number</span>, <span class="f">Email</span>, <span class="f">Contact person</span> and <span class="f">Company</span> (click to open it).</td></tr>
-<tr><td>About</td><td class="wrapok"><span class="f">Status</span>: change it right there from the drop-down; it saves at once. <span class="f">Source</span>: how they got into the CRM (WhatsApp, Web, Sales Lead, Manual or CSV). <span class="f">Labels</span>: press ✕ to take one off, or <span class="ui">+ Add label</span> to pick or create one; each change saves at once.</td></tr>
+<tr><td>About</td><td class="wrapok"><span class="f">Status</span>: New, Prospect, Customer or Not interested; it updates by itself. <span class="f">Source</span>: how they got into the CRM (WhatsApp, Web, Sales Lead, Manual or CSV). <span class="f">Labels</span>: press ✕ to take one off, or <span class="ui">+ Add label</span> to pick or create one; each change saves at once.</td></tr>
 <tr><td>Sales</td><td class="wrapok">Their deal's stage and value. <span class="ui">Open this Sales Lead →</span> opens the deal. If they have more than one, "+N more Sales Leads →" lists them on the Pipeline Board.</td></tr>
 <tr><td>Notes</td><td class="wrapok"><span class="f">Profile notes</span> and <span class="f">Personalization</span> (used in WhatsApp campaigns).</td></tr>
 </table></div>
@@ -784,7 +783,7 @@
 <tr><th>In Team › Roles</th><th>Tick</th><th>Allows</th></tr>
 <tr><td>Contact</td><td>View</td><td class="wrapok">See All Contacts and profiles, use search, filters and saved views.</td></tr>
 <tr><td></td><td>Create</td><td class="wrapok">Add Contact and Import CSV.</td></tr>
-<tr><td></td><td>Edit</td><td class="wrapok">Edit contacts, notes, consent, labels, status, CRM Segments on a profile; Create Sales Lead; bulk actions except delete.</td></tr>
+<tr><td></td><td>Edit</td><td class="wrapok">Edit contacts, notes, consent, labels, CRM Segments on a profile; Create Sales Lead; bulk actions except delete.</td></tr>
 <tr><td></td><td>Delete</td><td class="wrapok">Delete contacts, one or many (never ones with open Sales Leads).</td></tr>
 <tr><td></td><td>Export</td><td class="wrapok">Export CSV on All Contacts.</td></tr>
 <tr><td>Company</td><td>View / Create / Edit / Delete</td><td class="wrapok">See companies; add one; edit name, website and notes; delete a company (its people and deals are kept, just unlinked).</td></tr>
@@ -818,7 +817,7 @@
 <p>Pipeline Board › List › filter or search to find them › tick them › <span class="ui">➡️ Move Stage</span> › Contacted › channel WhatsApp and today's date › <span class="ui">Move Contacts</span>.</p></div>
 
 <div class="recipe"><h4>Win a deal</h4>
-<p>Pipeline Board › ⋮ on the deal › <b>Move to Won</b> (from Negotiating) › enter the Won Date and final value › <span class="ui">Confirm</span>. The contact automatically gets the <b>Customers</b> label; their status isn't changed.</p></div>
+<p>Pipeline Board › ⋮ on the deal › <b>Move to Won</b> (from Negotiating) › enter the Won Date and final value › <span class="ui">Confirm</span>. The contact automatically gets the <b>Customers</b> label and their status becomes Customer.</p></div>
 
 <div class="recipe"><h4>Someone asks you to stop sending offers</h4>
 <p>Open their contact › Consent › <span class="ui">Opt out of all</span> (or just the channel they mentioned). Don't delete them: the opt-out record is your proof.</p></div>
@@ -846,8 +845,8 @@
 <p>Segments are private to whoever made them. Ask them, or the business owner, who can see all segments.</p>
 <h4>I can't delete a contact.</h4>
 <p>They still have an open Sales Lead. Close it (Won, Lost or Not a Fit) or delete it on the Leads page first.</p>
-<h4>I changed the contact's status to Customer but the deal still shows Negotiating.</h4>
-<p>Status and deal stage are separate on purpose. Move the deal on the Pipeline Board.</p>
+<h4>How do I change a contact's status?</h4>
+<p>You don't: it follows what has happened. Mark the deal Won to make them a Customer, mark Not a Fit or Lost for Not interested. A reply or a booked demo makes them a Prospect.</p>
 <h4>Why is my good deal showing as Cold?</h4>
 <p>Probably nobody has touched it for over a week (−25), or the Sales Signals haven't been ticked. Open Edit Deal and tick what you know.</p>
 <h4>I can't move a deal backwards.</h4>

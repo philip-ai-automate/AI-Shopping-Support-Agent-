@@ -4,6 +4,7 @@ Extends the existing Flask app. db.py, app.py, invoice_pdf.py, portal_utils.py a
 """
 import psycopg2
 import staff_activity
+import contact_status as _contact_status
 import lead_linkedin as _li
 import lead_followups as _fu
 import psycopg2.extras
@@ -9971,7 +9972,7 @@ CUSTOM_REPORT_ENTITIES = {
             {"key": "phone",          "label": "Phone Number",   "expr": "c.phone"},
             {"key": "whatsapp_number", "label": "WhatsApp Number", "expr": "c.whatsapp_number"},
             {"key": "email",          "label": "Email",          "expr": "c.email"},
-            {"key": "status",         "label": "Status",         "expr": "c.status",      "fmt": "title"},
+            {"key": "status",         "label": "Status",         "expr": "c.status",      "fmt": "contact_status"},
             {"key": "company_name",   "label": "Company",        "expr": "co.name"},
             {"key": "business_category", "label": "Business Category", "expr": "c.business_category"},
             {"key": "employees",      "label": "Number of Employees", "expr": "c.employees"},
@@ -10182,6 +10183,8 @@ def _format_custom_report_value(val, fmt: str, stage_labels: dict = None):
                 "lost": "Lost", "dropped": "Dropped", "not_a_fit": "Not a Fit"}.get(val, val)
     if fmt == "campaign_status_label":
         return CAMPAIGN_STATUS_LABELS.get(val, val)
+    if fmt == "contact_status":
+        return _contact_status.STATUS_LABELS.get(val, str(val).title())
     if fmt == "title":
         return str(val).replace("_", " ").title()
     return str(val)
@@ -10769,7 +10772,8 @@ def _run_custom_report_grouped(tenant_id: int, entity: str, group_by: str, filte
                 ORDER BY n DESC
             """, params)
             for r in (cur.fetchall() or []):
-                rows.append({"label": str(r["grp"]).replace("_", " ").title(), "count": int(r["n"]), "value": None})
+                rows.append({"label": _contact_status.STATUS_LABELS.get(r["grp"], str(r["grp"]).replace("_", " ").title()),
+                             "count": int(r["n"]), "value": None})
 
         elif entity == "contacts" and group_by == "tag":
             _ls_exec(cur, f"""
@@ -16568,6 +16572,11 @@ def _money(val, code=None, tenant_id=None) -> str:
         return f"{prefix}{val}"
 
 
+@portal_bp.app_template_filter("contact_status")
+def _contact_status_filter(val):
+    return _contact_status.STATUS_LABELS.get(val or "lead", (val or "").title())
+
+
 @portal_bp.app_template_filter("money")
 def _money_filter(val, code=None):
     return _money(val, code or None)
@@ -17732,7 +17741,7 @@ def whatsapp_contacts():
         """, [tenant_id] + _seg_vis("s")[1])
         segments = cur.fetchall()
         selected_segments = [s for s in segments if str(s["id"]) in segment_filter]
-        selected_statuses = [{"value": v, "label": v.title()} for v in status_filter]
+        selected_statuses = [{"value": v, "label": _contact_status.STATUS_LABELS.get(v, v.title())} for v in status_filter]
 
         # All companies, for the Company field on the Add/Edit Contact forms
         _ls_exec(cur, "SELECT id, name FROM crm_companies WHERE tenant_id=%s ORDER BY name", (tenant_id,))
@@ -17832,9 +17841,6 @@ def whatsapp_contacts_add():
     contact_person  = (request.form.get("contact_person") or "").strip()[:200] or None
     notes           = (request.form.get("notes") or "").strip()
     personalization_note = (request.form.get("personalization_note") or "").strip()[:500] or None
-    status          = (request.form.get("status") or "lead").strip()
-    if status not in ("lead", "prospect", "customer", "inactive"):
-        status = "lead"
     tags_csv = (request.form.get("tags_csv") or "").strip()
 
     if num_err:
@@ -17881,19 +17887,19 @@ def whatsapp_contacts_add():
                 UPDATE wa_contacts
                 SET phone=COALESCE(%s, phone), whatsapp_number=COALESCE(%s, whatsapp_number),
                     email=COALESCE(%s, email), display_name=%s, contact_person=%s, notes=%s,
-                    personalization_note=%s, status=%s, company_id=COALESCE(%s, company_id), updated_at=NOW()
+                    personalization_note=%s, company_id=COALESCE(%s, company_id), updated_at=NOW()
                 WHERE id=%s AND tenant_id=%s
                 RETURNING id
             """, (phone, whatsapp_number, email, display_name or None, contact_person, notes or None,
-                  personalization_note, status, company_id, existing_id, tenant_id))
+                  personalization_note, company_id, existing_id, tenant_id))
         else:
             cur.execute("""
                 INSERT INTO wa_contacts (tenant_id, phone, whatsapp_number, email, display_name, contact_person,
                                          notes, personalization_note, status, source, company_id, added_by_key)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'manual', %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'lead', 'manual', %s, %s)
                 RETURNING id
             """, (tenant_id, phone, whatsapp_number, email, display_name or None, contact_person,
-                  notes or None, personalization_note, status, company_id, _added_by_key()))
+                  notes or None, personalization_note, company_id, _added_by_key()))
         new_contact_id = cur.fetchone()["id"]
         _sync_contact_tags(cur, tenant_id, new_contact_id, tags_csv)
         _save_biz_fields(cur, tenant_id, request.form, contact_id=new_contact_id)
@@ -17906,6 +17912,7 @@ def whatsapp_contacts_add():
             _oc = cur.fetchone()
             _addr.save_other_emails(cur, tenant_id, _addr.merge_other_emails(
                 _oc["other_emails"], _addr.other_emails_list(other_emails), _oc["email"]), contact_id=new_contact_id)
+        _contact_status.refresh(cur, tenant_id, [new_contact_id])
         conn.commit()
         cur.close(); conn.close()
         label = display_name or whatsapp_number or phone or email
@@ -17936,9 +17943,6 @@ def whatsapp_contacts_edit(contact_id: int):
     contact_person  = (request.form.get("contact_person") or "").strip()[:200] or None
     notes           = (request.form.get("notes") or "").strip()
     personalization_note = (request.form.get("personalization_note") or "").strip()[:500] or None
-    status          = (request.form.get("status") or "lead").strip()
-    if status not in ("lead", "prospect", "customer", "inactive"):
-        status = "lead"
     tags_csv = (request.form.get("tags_csv") or "").strip()
     # Address (2026-10-04): only forms that show the address boxes change it.
     address = None
@@ -17984,10 +17988,10 @@ def whatsapp_contacts_edit(contact_id: int):
                         (phone, whatsapp_number, contact_id, tenant_id))
         cur.execute("""
             UPDATE wa_contacts
-            SET display_name=%s, contact_person=%s, email=%s, notes=%s, personalization_note=%s, status=%s,
+            SET display_name=%s, contact_person=%s, email=%s, notes=%s, personalization_note=%s,
                 company_id=%s, updated_at=NOW()
             WHERE id=%s AND tenant_id=%s
-        """, (display_name or None, contact_person, email, notes or None, personalization_note, status,
+        """, (display_name or None, contact_person, email, notes or None, personalization_note,
               company_id, contact_id, tenant_id))
         _sync_contact_tags(cur, tenant_id, contact_id, tags_csv)
         _save_biz_fields(cur, tenant_id, request.form, contact_id=contact_id)
@@ -17999,6 +18003,7 @@ def whatsapp_contacts_edit(contact_id: int):
             _addr.save_address_family(cur, tenant_id, address, contact_id=contact_id, company_id=company_id)
         if _oe_sent:
             _addr.save_other_emails(cur, tenant_id, other_emails, contact_id=contact_id)
+        _contact_status.refresh(cur, tenant_id, [contact_id])
         conn.commit()
         cur.close(); conn.close()
         flash("Contact updated.", "success")
@@ -18439,6 +18444,13 @@ def whatsapp_contact_detail(contact_id: int):
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # Status is automatic (2026-10-23): catch up now rather than wait for the 2-minute job
+        try:
+            if _contact_status.refresh(cur, tenant_id, [contact_id]):
+                conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print("⚠️ contact status refresh:", e)
 
         _ls_exec(cur, """
             SELECT c.*, co.name AS company_name, co.website AS company_website,
@@ -19278,16 +19290,7 @@ def whatsapp_contacts_bulk_action():
                       "Close or delete those leads first.", "warning")
 
         elif action == "set_status":
-            new_status = request.form.get("new_status", "").strip()
-            if new_status not in ("lead", "prospect", "customer", "inactive"):
-                flash("Invalid status.", "danger")
-            else:
-                cur.execute(
-                    "UPDATE wa_contacts SET status=%s, updated_at=NOW() "
-                    "WHERE id = ANY(%s) AND tenant_id=%s",
-                    (new_status, contact_ids, tenant_id)
-                )
-                flash(f"{cur.rowcount} contact(s) updated to {new_status.title()}.", "success")
+            flash(_contact_status.AUTO_NOTE, "info")
 
         elif action == "add_tag":
             # Tags unification (2026-09-09): tags live in lead_labels/
@@ -19380,38 +19383,15 @@ def whatsapp_contacts_bulk_action():
 @portal_bp.route("/whatsapp/contacts/<int:contact_id>/set-status", methods=["POST"])
 @team_feature("crm.contacts_edit")
 def whatsapp_contact_set_status(contact_id: int):
+    # Status updates by itself now (2026-10-23), see contact_status.py
     r = _require_login()
     if r: return r
     _rperm = _require_team_permission("crm.contacts_edit")
     if _rperm: return _rperm
-    customer  = _get_customer(_customer_id())
-    tenant_id = int(customer["tenant_id"])
-    new_status = request.form.get("status", "").strip()
-    # Contact page About section changes Status in place (2026-09-28) and
-    # asks for a JSON answer instead of a page reload.
-    wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest"
-    if new_status not in ("lead", "prospect", "customer", "inactive"):
-        if wants_json:
-            return jsonify({"error": "Pick a status from the list."}), 400
-        flash("Invalid status.", "danger")
-        return redirect(url_for("portal.whatsapp_contacts"))
-    try:
-        conn = get_db_connection()
-        cur  = conn.cursor()
-        cur.execute(
-            "UPDATE wa_contacts SET status=%s, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
-            (new_status, contact_id, tenant_id)
-        )
-        updated = cur.rowcount
-        conn.commit(); cur.close(); conn.close()
-        if wants_json:
-            return (jsonify({"ok": True, "status": new_status}) if updated
-                    else (jsonify({"error": "Contact not found."}), 404))
-    except Exception as e:
-        print("⚠️ set_status error:", e)
-        if wants_json:
-            return jsonify({"error": "Could not save the status. Please try again."}), 500
-    return redirect(request.referrer or url_for("portal.whatsapp_contacts"))
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"error": _contact_status.AUTO_NOTE}), 400
+    flash(_contact_status.AUTO_NOTE, "info")
+    return redirect(url_for("portal.whatsapp_contact_detail", contact_id=contact_id))
 
 
 @portal_bp.route("/whatsapp/contacts/<int:contact_id>/tags", methods=["POST"])
