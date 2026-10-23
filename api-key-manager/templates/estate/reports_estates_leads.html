@@ -1,0 +1,39 @@
+{% extends "estate/base.html" %}
+{% block title %}{{ metric_label }} — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+.el-card{background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;box-shadow:0 2px 12px rgba(3,12,24,0.04);overflow:hidden}
+.el-row{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid rgba(3,12,24,0.05);font-size:13px;flex-wrap:wrap}
+.el-row:last-child{border-bottom:none}
+.el-row a{font-weight:750;color:#030C18;text-decoration:none}
+.el-row span{color:rgba(3,12,24,0.55)}
+.el-main{flex:1;min-width:180px}
+.el-rd{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px}
+.el-rd.ready{background:#E7F6EE;color:#12805C}.el-rd.considering{background:#FEF3E2;color:#A15C00}.el-rd.early{background:#E8EEF8;color:#5A6B85}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="flex-wrap:wrap;gap:12px;margin-bottom:14px">
+  <div>
+    <h1 class="section-title" style="margin-bottom:3px">{{ metric_label }}: {{ estate.title if estate else 'Estate' }}</h1>
+    <p class="muted" style="margin:0">{{ period[1] }} · {{ rows|length }} lead{{ 's' if rows|length != 1 }}</p>
+  </div>
+  <a href="{{ url_for('estate.reports_estates', period=period[0]) }}" class="btn btn-sm">← Back to Estates</a>
+</div>
+{% include 'estate/_reports_tabs.html' %}
+<div class="el-card">
+  {% for r in rows %}
+  <div class="el-row">
+    <div class="el-main"><a href="{{ url_for('estate.lead_detail', contact_id=r.id) }}">{{ r.name or r.phone_number }}</a>
+      {% if r.readiness %}<span class="el-rd {{ r.readiness }}">{{ readiness_names.get(r.readiness) }}</span>{% endif %}
+      <div><span>{{ r.phone_number if r.name else '' }} · came in {{ r.created_at.strftime('%d %b %Y') }}</span></div></div>
+    <span>{{ stage_map.get(r.stage, r.stage) }}</span>
+    <span>{{ r.agent or 'Unassigned' }}</span>
+  </div>
+  {% else %}
+  <div class="el-row"><span>No leads.</span></div>
+  {% endfor %}
+</div>
+{% endblock %}

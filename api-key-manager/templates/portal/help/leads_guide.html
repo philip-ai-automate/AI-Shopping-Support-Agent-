@@ -69,8 +69,8 @@
 </style>
 <div class="leadg" id="lead-top">
 <div class="g-head">
-  <p class="g-lede">Everything under <b>Leads</b> in the side menu, screen by screen and button by button: where leads come from, adding them, finding them, scoring them, deciding which ones are worth chasing (Qualify or Not a Fit), sharing them out to your team, seeing how each salesperson is doing (Team performance, call logging, targets and the 6 pm email), fixing phone numbers to check, and reading the Leads Overview and Leads Report. Every picture is from the live portal.</p>
-  <div class="g-meta">Last checked against the live portal: 11 October 2026</div>
+  <p class="g-lede">Everything under <b>Leads</b> in the side menu, screen by screen and button by button: where leads come from, adding them, finding them, scoring them, deciding which ones are worth chasing (Qualify or Not a Fit), following up on every lead (Log/Follow-up and the Follow-ups page), sharing them out to your team, seeing how each salesperson is doing (Team performance, call logging, targets and the 6 pm email), fixing phone numbers to check, and reading the Leads Overview and Leads Report. Every picture is from the live portal.</p>
+  <div class="g-meta">Last checked against the live portal: 23 October 2026</div>
 </div>
 <nav class="toc" aria-label="Contents"><details open><summary>Contents</summary>
   <p class="h">Contents</p>
@@ -100,23 +100,34 @@
         <li><a href="#lead-l-activity">Activity, conversations, history</a></li>
         <li><a href="#lead-l-check">⚠️ Numbers to check</a></li>
       </ol></li>
-    <li><a href="#lead-qualify">11. Qualify: turning a lead into an Opportunity</a></li>
-    <li><a href="#lead-naf">12. Not a Fit (and Reopen)</a>
+    <li><a href="#lead-fu">11. Follow-ups</a>
+      <ol>
+        <li><a href="#lead-fu-card">The follow-up card</a></li>
+        <li><a href="#lead-fu-log">Log/Follow-up: three steps</a></li>
+        <li><a href="#lead-fu-history">What happened</a></li>
+        <li><a href="#lead-fu-change">Changing the date</a></li>
+        <li><a href="#lead-fu-page">The Follow-ups page</a></li>
+        <li><a href="#lead-fu-pipeline">From the Sales Pipeline</a></li>
+        <li><a href="#lead-fu-auto">Dates set for you, and reminders</a></li>
+      </ol></li>
+    <li><a href="#lead-qualify">12. Qualify: turning a lead into an Opportunity</a></li>
+    <li><a href="#lead-naf">13. Not a Fit (and Reopen)</a>
       <ul>
         <li><a href="#lead-n-call">From a call: "Doesn't need us"</a></li>
         <li><a href="#lead-n-reopen">Reopen</a></li>
       </ul></li>
-    <li><a href="#lead-bulk">13. Many leads at once</a>
+    <li><a href="#lead-bulk">14. Many leads at once</a>
       <ol>
         <li><a href="#lead-b-select">Ticking leads</a></li>
         <li><a href="#lead-b-qualify">Qualify many</a></li>
         <li><a href="#lead-b-naf">Not a Fit many</a></li>
+        <li><a href="#lead-b-split">Split test (email)</a></li>
       </ol></li>
-    <li><a href="#lead-assign">14. Giving leads to your team</a></li>
-    <li><a href="#lead-after">15. After Qualify: the Sales Pipeline</a></li>
-    <li><a href="#lead-score">16. Lead score (Hot, Warm, Cold)</a></li>
-    <li><a href="#lead-overview">17. Leads Overview</a></li>
-    <li><a href="#lead-team">18. Team performance</a>
+    <li><a href="#lead-assign">15. Giving leads to your team</a></li>
+    <li><a href="#lead-after">16. After Qualify: the Sales Pipeline</a></li>
+    <li><a href="#lead-score">17. Lead score (Hot, Warm, Cold)</a></li>
+    <li><a href="#lead-overview">18. Leads Overview</a></li>
+    <li><a href="#lead-team">19. Team performance</a>
       <ol>
         <li><a href="#lead-t-who">Who sees what</a></li>
         <li><a href="#lead-t-page">Reading the page</a></li>
@@ -126,13 +137,13 @@
         <li><a href="#lead-t-email">The 6 pm email</a></li>
         <li><a href="#lead-t-count">How each number is counted</a></li>
       </ol></li>
-    <li><a href="#lead-report">19. Leads Report and Not a Fit Report</a>
+    <li><a href="#lead-report">20. Leads Report and Not a Fit Report</a>
       <ul>
         <li><a href="#lead-r-naf">Not a Fit Report</a></li>
       </ul></li>
-    <li><a href="#lead-roles">20. Who can do what</a></li>
-    <li><a href="#lead-recipes">21. Everyday tasks</a></li>
-    <li><a href="#lead-faq">22. Questions and problems</a></li>
+    <li><a href="#lead-roles">21. Who can do what</a></li>
+    <li><a href="#lead-recipes">22. Everyday tasks</a></li>
+    <li><a href="#lead-faq">23. Questions and problems</a></li>
   </ol>
 </details></nav>
 
@@ -176,7 +187,7 @@
 <tr><td><span class="ui">+ Create Lead</span> on a Hot Conversation (section 4)</td><td class="wrapok">A new lead for the person who chatted on WhatsApp, linked to their contact.</td><td>WhatsApp</td></tr>
 <tr><td><span class="ui">Create Sales Lead</span> on a contact in CRM › All Contacts</td><td class="wrapok">A new lead copied from the contact's details. Works even if they already have a lead.</td><td>WhatsApp if they have a WhatsApp number, otherwise Manual</td></tr>
 <tr><td>Someone replies "interested" to a WhatsApp campaign</td><td class="wrapok">A lead is made automatically, with their reply saved in its notes. If your campaign is set to check replies first, it's made when someone approves the reply under <span class="ui">Needs Review</span>. If that person already has an open lead, the reply is linked to it instead of making a second one.</td><td>WhatsApp, and the campaign's name under Campaign Source</td></tr>
-<tr><td><span class="ui">Move back to Leads</span> on the Sales Pipeline (section 14)</td><td class="wrapok">An opportunity goes back to being a lead, for example if it was qualified by mistake.</td><td>Unchanged</td></tr>
+<tr><td><span class="ui">Move back to Leads</span> on the Sales Pipeline (section 16)</td><td class="wrapok">An opportunity goes back to being a lead, for example if it was qualified by mistake.</td><td>Unchanged</td></tr>
 <tr><td><span class="ui">+ Add Lead</span> / <span class="ui">+ Add deal</span> on the Sales Pipeline</td><td class="wrapok">Opens the same Add Lead form on the Leads page.</td><td>Whatever you choose</td></tr>
 </tbody></table></div>
 
@@ -214,7 +225,7 @@
 </ul>
 
 <div class="box know"><b class="t">Two different scores</b>
-<p>The ring on a Hot Conversation card scores <b>the chat</b> (how much it sounds like buying). The Hot/Warm/Cold on <b>a lead</b> is a different score, built from your team's work on that lead (section 15). A hot chat can become a cold lead if nobody follows it up.</p></div>
+<p>The ring on a Hot Conversation card scores <b>the chat</b> (how much it sounds like buying). The Hot/Warm/Cold on <b>a lead</b> is a different score, built from your team's work on that lead (section 17). A hot chat can become a cold lead if nobody follows it up.</p></div>
 
 <p>You only see Hot Conversations once a WhatsApp number is connected. Without one, you see "No WhatsApp connection" and a <span class="ui">Connect WhatsApp →</span> button.</p>
 </section>
@@ -318,7 +329,7 @@
   <li><span class="ui">All</span>, <span class="ui">🔥 Hot</span>, <span class="ui">🌤️ Warm</span>, <span class="ui">❄️ Cold</span>: show only leads with that score. The number in brackets is how many there are.</li>
   <li><span class="ui">📊 Sort by Score</span>: highest score first. Press again to go back to newest first.</li>
   <li><span class="f">Per page</span>: 10, 25, 50, 100, 200, 500 or All. Page buttons (← Prev, 1 2 3…, Next →) appear underneath when there's more than one page.</li>
-  <li><span class="ui">🎯 How this works</span>: opens How Lead Scoring Works (section 15).</li>
+  <li><span class="ui">🎯 How this works</span>: opens How Lead Scoring Works (section 17).</li>
 </ul>
 
 <h3 id="lead-f-filters">Filters</h3>
@@ -351,7 +362,7 @@
 <div class="tbl"><table>
 <thead><tr><th>Column</th><th>What it shows</th></tr></thead>
 <tbody>
-<tr><td>Tick box</td><td class="wrapok">Only if your role can Qualify or Assign. Used for working on many leads at once (section 12).</td></tr>
+<tr><td>Tick box</td><td class="wrapok">Only if your role can Qualify or Assign. Used for working on many leads at once (section 14).</td></tr>
 <tr><td>Business</td><td class="wrapok">The lead's name. Click it to open the lead's page.</td></tr>
 <tr><td>Contact</td><td class="wrapok">The contact person.</td></tr>
 <tr><td>Phone Number / WhatsApp Number</td><td class="wrapok">The two numbers, kept separate. The WhatsApp number is in green. <b>⚠️ Check number</b> under a number means it needs fixing (section 9).</td></tr>
@@ -359,7 +370,7 @@
 <tr><td>Product / Service, Deal Value</td><td class="wrapok">From the lead's details.</td></tr>
 <tr><td>Assigned To</td><td class="wrapok">The team member responsible.</td></tr>
 <tr><td>Stage</td><td class="wrapok"><b>New Lead</b> for a lead waiting for a decision. A few older leads may show Contacted.</td></tr>
-<tr><td>Score</td><td class="wrapok">🔥 Hot, 🌤️ Warm or ❄️ Cold with the number (section 15).</td></tr>
+<tr><td>Score</td><td class="wrapok">🔥 Hot, 🌤️ Warm or ❄️ Cold with the number (section 17).</td></tr>
 <tr><td>Added</td><td class="wrapok">The date the lead was made. Newest are at the top.</td></tr>
 </tbody></table></div>
 
@@ -393,11 +404,11 @@
 
 <p>At the top: the lead's name, what they're interested in, and a status badge, with these buttons:</p>
 <ul>
-  <li><span class="ui">✅ Qualify</span>: only while the lead is waiting for a decision (section 11).</li>
-  <li><span class="ui">🚫 Not a Fit</span>: on any open lead, including one already Qualified onto the Sales Pipeline (section 12).</li>
+  <li><span class="ui">✅ Qualify</span>: only while the lead is waiting for a decision (section 12).</li>
+  <li><span class="ui">🚫 Not a Fit</span>: on any open lead, including one already Qualified onto the Sales Pipeline (section 13).</li>
   <li><span class="ui">✏️ Edit Lead</span>.</li>
 </ul>
-<p>Right under the header is <b>Activity</b>: notes, calls, stage history and emails. It's at the top so you see what has already happened before you call. Then come the details, Pipeline and Conversations. <span class="ui">Leads</span> in the breadcrumb takes you back to the list.</p>
+<p>Under the header is the <b>Next follow-up</b> card with the <span class="ui">Log/Follow-up</span> button (section 11). Then comes <b>Activity</b>: what happened, notes, follow-ups, calls, stage history and emails. It's at the top so you see what has already happened before you call. Then come the details, Pipeline and Conversations. <span class="ui">Leads</span> in the breadcrumb takes you back to the list.</p>
 
 <h3 id="lead-l-fields">The details</h3>
 <div class="tbl"><table>
@@ -431,8 +442,8 @@
 
 <h3 id="lead-l-activity">Activity, conversations and history</h3>
 <ul>
-  <li><b>Activity</b> (at the top, under the header): <span class="ui">📝 Notes</span> shows the lead's notes (change them with Edit Lead). <span class="ui">📞 Calls</span> is where you log a call and see every call logged on this lead (see <a href="#lead-t-calls">Logging calls</a>). <span class="ui">🕒 Stage History</span> lists every change: when the lead was made, qualified, moved or closed, by whom and when. <span class="ui">✉️ Emails</span> lists campaign emails sent to the lead. Tasks shows "NEW" and isn't built yet.</li>
-  <li><b>Pipeline</b>: for a waiting lead, "Not yet qualified — this Lead isn't in the Sales Pipeline yet" with the Qualify and Not a Fit buttons again. For an opportunity, a progress bar of the stages (section 14).</li>
+  <li><b>Activity</b> (at the top, under the follow-up card): <span class="ui">💬 What happened</span> lists every note written in Log/Follow-up, newest first (see <a href="#lead-fu-history">What happened</a>). <span class="ui">📝 Notes</span> shows the lead's notes (change them with Edit Lead). <span class="ui">⏰ Follow-ups</span> lists every follow-up date and whether it was done on time. <span class="ui">📞 Calls</span> lists every call logged on this lead, with <span class="ui">📞 Log a call</span> to log another (see <a href="#lead-t-calls">Logging calls</a>). <span class="ui">🕒 Stage History</span> lists every change: when the lead was made, qualified, moved or closed, by whom and when. <span class="ui">✉️ Emails</span> lists campaign emails sent to the lead.</li>
+  <li><b>Pipeline</b>: for a waiting lead, "Not yet qualified — this Lead isn't in the Sales Pipeline yet" with the Qualify and Not a Fit buttons again. For an opportunity, a progress bar of the stages (section 16).</li>
   <li><b>Conversations</b>: the last WhatsApp message with this number and <span class="ui">View full conversation →</span>. Instagram and Facebook show "SOON" (not built yet).</li>
 </ul>
 
@@ -463,8 +474,79 @@
 </section>
 
 <!-- 11 -->
+<section class="part" id="lead-fu">
+<h2><span class="num">11</span>Follow-ups</h2>
+<p class="where">A lead's page › Next follow-up · Side menu › CRM › Follow-ups · Sales Pipeline › ⋮ › Log/Follow-up</p>
+<p>Every open lead has <b>one next follow-up</b>: a date, how you'll do it (Call, WhatsApp, Email, LinkedIn or Meeting) and what to do. Each time anyone contacts the lead, they record what happened and choose the next follow-up in the same step. Nothing gets forgotten, and a colleague can pick up any lead and carry on.</p>
+
+<h3 id="lead-fu-card">The follow-up card</h3>
+<p>The card sits at the top of every lead's page, under the name. It shows the date, a pill saying how far away it is, how to follow up, what to do, and the <b>Last time</b> box with what was said at the last contact.</p>
+<figure><img src="/static/portal/tutorial/leads/f01_card.jpg" width="994" height="265" alt="The follow-up card on a lead: Monday 26 October, WhatsApp, what to do, and what was said last time." loading="lazy"><figcaption>The follow-up card: when, how, what to do, and what was said last time.</figcaption></figure>
+<ul>
+  <li>The card turns <b>amber</b> on the day it's due and <b>red</b> once it's overdue. A lead with no date has a dashed border and says <b>No date yet</b>.</li>
+  <li><span class="ui">Log/Follow-up</span>: the main button. Use it every time you contact the lead.</li>
+  <li><span class="ui">Change date</span> (or <span class="ui">Set a date</span> on a lead with none): moves the date without logging a contact. See <a href="#lead-fu-change">Changing the date</a>.</li>
+  <li>A closed lead (Won, Lost or Not a Fit) has no follow-up, and the card says so.</li>
+</ul>
+
+<h3 id="lead-fu-log">Log/Follow-up: three steps</h3>
+<p>Press <span class="ui">Log/Follow-up</span> on the card. The same box also opens from <span class="ui">📞 Log a call</span> on the Calls tab, <span class="ui">Log a LinkedIn step</span>, <span class="ui">↩️ They replied to our email</span>, the Follow-ups page, and the <span class="ui">⋮</span> menu on the Sales Pipeline.</p>
+<figure><img src="/static/portal/tutorial/leads/f02_log_box.jpg" width="640" height="1078" alt="The Log/Follow-up box: what you did, how it went, what was said, and the next follow-up." loading="lazy"><figcaption>Log/Follow-up: every box marked * must be filled in before you can save.</figcaption></figure>
+<ol class="steps">
+  <li><b>What did you do?</b> Called, WhatsApp, Email, LinkedIn or Meeting.</li>
+  <li><b>How did it go? *</b> Choose from the list. Each kind has its own answers (for a call: Answered, No answer, Busy / call back, Left a voicemail, Wrong number, Doesn't need us), and every list ends with <b>Other</b>. Then write <b>What was said *</b> (or <b>What happened *</b>). This can't be left empty: write enough that a colleague could carry on from here. For a call you can also add the minutes.</li>
+  <li><b>Next follow-up</b>: all three are required.
+    <ul>
+      <li><b>Date *</b>: pick a day on the calendar, or press <span class="ui">Tomorrow</span>, <span class="ui">In 3 working days</span> or <span class="ui">Next week</span>. The dots under a day show how many follow-ups that salesperson already has then, so you can choose a quieter day. Past days can't be picked.</li>
+      <li><b>How will you follow up? *</b>: nothing is chosen for you.</li>
+      <li><b>What to do *</b>: one line, such as "Send the proposal for 3 branches".</li>
+    </ul></li>
+</ol>
+<p>Press <span class="ui">Save and set next follow-up</span>. The current follow-up is ticked off (on time or late), the next one is set, and the note is kept on the lead. If anything is missing, the line at the bottom of the box says what, and nothing is saved.</p>
+
+<div class="box know"><b class="t">"Doesn't need us" closes the lead</b>
+<p>Choosing <b>Doesn't need us</b> on a call, or <b>Not a fit</b> on a meeting, swaps step 3 for <b>Close the lead</b>: choose the reason and press <span class="ui">Save and mark Not a Fit</span>. No next date is needed. If your role can't use Not a Fit, the box asks for a next date instead and your manager sees the call in the Not a Fit Report.</p></div>
+<figure><img src="/static/portal/tutorial/leads/f03_log_not_a_fit.jpg" width="640" height="778" alt="Choosing Doesn't need us replaces the next follow-up with Close the lead." loading="lazy"><figcaption>"Doesn't need us" closes the lead as Not a Fit instead of asking for a date.</figcaption></figure>
+
+<h3 id="lead-fu-history">What happened: the lead's history</h3>
+<p>Every note written in Log/Follow-up is kept in the <span class="ui">💬 What happened</span> tab under Activity, newest first, with the kind of contact, how it went, who wrote it and when. It's the first tab once a lead has notes. The <span class="ui">⏰ Follow-ups</span> tab lists every follow-up date the lead has had and whether it was done on time.</p>
+<figure><img src="/static/portal/tutorial/leads/f05_what_happened.jpg" width="994" height="83" alt="One entry in the What happened tab." loading="lazy"><figcaption>One entry in the What happened tab.</figcaption></figure>
+
+<h3 id="lead-fu-change">Changing the date</h3>
+<p>Use <span class="ui">Change date</span> only when you need to move the date without contacting the lead, for example when they've asked you to call after a holiday. If you did speak to them, use Log/Follow-up instead.</p>
+<figure><img src="/static/portal/tutorial/leads/f04_change_date.jpg" width="780" height="618" alt="Change follow-up date: calendar, how, what to do and why it's moving." loading="lazy"><figcaption>Change date: <b>Date *</b>, <b>How *</b>, <b>What to do *</b> and <b>Why it's moving *</b> are all required.</figcaption></figure>
+<p>Every move is counted. Once the same follow-up has been moved 3 times, it shows <b>Moved 3 times</b> on the Follow-ups page, and Team performance flags the person as "rescheduled often".</p>
+
+<h3 id="lead-fu-page">The Follow-ups page</h3>
+<p class="where">Side menu › CRM › Follow-ups</p>
+<p>Each salesperson's work list. Start here every morning and work down it.</p>
+<figure><img src="/static/portal/tutorial/leads/f06_followups_page.jpg" width="1090" height="640" alt="The Follow-ups page as the owner: a table per person, then the To do now list." loading="lazy"><figcaption>As the owner or a manager: one line per person, then the list.</figcaption></figure>
+<ul>
+  <li><b>To do now</b>: overdue first (red), then due today (amber).</li>
+  <li><b>Upcoming</b>: the next 60 days, grouped by day.</li>
+  <li><b>No date set</b>: open leads with no follow-up yet, mostly leads nobody has contacted since follow-ups started on 23 October 2026. <span class="ui">See them all on Leads ›</span> opens All Leads with the Follow-up filter set to "No follow-up date".</li>
+  <li><b>Done</b>: follow-ups ticked off in the last 7 days, each marked <b>On time</b> or how many days late.</li>
+</ul>
+<p>Each row shows how and what to do, the date, and the last note. The buttons on the right let you work without opening the lead: a contact button that matches how you planned to follow up (<span class="ui">Call</span>, <span class="ui">WhatsApp</span>, <span class="ui">Email</span> or <span class="ui">Open profile</span>), <span class="ui">Log/Follow-up</span>, and <span class="ui">Change date</span>.</p>
+<figure><img src="/static/portal/tutorial/leads/f07_upcoming.jpg" width="1044" height="528" alt="The Upcoming tab, grouped by day." loading="lazy"><figcaption>Upcoming, grouped by day.</figcaption></figure>
+<p>At the top right, <b>On time this week</b> shows how many of this week's follow-ups were done by their day. Staff see only their own follow-ups. People who can see all leads get <span class="f">Showing</span> (Everyone, Just mine, one person, or Unassigned leads) and, under Everyone, a table with each person's overdue, due today, next 7 days, on time this week and open leads with no date. Click a name to see that person's list.</p>
+
+<h3 id="lead-fu-pipeline">From the Sales Pipeline</h3>
+<p>On the Sales Pipeline, open a deal's <span class="ui">⋮</span> menu (List or Board) and press <span class="ui">Log/Follow-up</span>. The same box opens, and after saving you're back on the Pipeline.</p>
+<figure><img src="/static/portal/tutorial/leads/f08_pipeline_menu.jpg" width="600" height="480" alt="Log/Follow-up in a deal's ⋮ menu on the Sales Pipeline." loading="lazy"><figcaption>Log/Follow-up in a deal's ⋮ menu.</figcaption></figure>
+
+<h3 id="lead-fu-auto">Dates set for you, and reminders</h3>
+<ul>
+  <li>A reply sent from the Inbox (WhatsApp, Messenger or web chat) ticks off the open follow-up and sets the next one <b>3 working days</b> later, with no note. Change it from the lead if another day is better.</li>
+  <li>A demo outcome on the lead asks for the next date on the same calendar.</li>
+  <li>Won, Lost and Not a Fit cancel the follow-up. Reopening a lead starts a new one.</li>
+  <li>At <b>8am on working days</b> each person gets their overdue and due-today follow-ups by email, WhatsApp and phone notification (using their alert settings). Each line says the business, how, what to do and when. Follow-ups still not done the next morning also go to the owner and the person's line manager.</li>
+</ul>
+</section>
+
+<!-- 12 -->
 <section class="part" id="lead-qualify">
-<h2><span class="num">11</span>Qualify: turning a lead into an Opportunity</h2>
+<h2><span class="num">12</span>Qualify: turning a lead into an Opportunity</h2>
 <p class="where">A lead's page › ✅ Qualify</p>
 <p class="need">Needs the tick: "Qualify a Lead into an Opportunity / mark it Not a Fit"</p>
 
@@ -483,9 +565,9 @@
 <figure><img src="/static/portal/tutorial/leads/l16_after_qualify.jpg" width="1100" height="1200" alt="After Qualify: the progress bar shows where the deal is, and &quot;Open on Pipeline Board →&quot; takes you there." loading="lazy"><figcaption>After Qualify: the progress bar shows where the deal is, and "Open on Pipeline Board →" takes you there.</figcaption></figure>
 </section>
 
-<!-- 12 -->
+<!-- 13 -->
 <section class="part" id="lead-naf">
-<h2><span class="num">12</span>Not a Fit</h2>
+<h2><span class="num">13</span>Not a Fit</h2>
 <p class="where">A lead's page › 🚫 Not a Fit · Sales Pipeline › ⋮ › Not a Fit · a lead's page › 📞 Calls › Doesn't need us</p>
 <p class="need">Needs the tick: "Qualify a Lead into an Opportunity / mark it Not a Fit", or "Pipeline Board — Edit"</p>
 
@@ -513,16 +595,15 @@
 <p>Before calling, look at the lead's <b>Number of employees</b>, <b>Business category</b> and <b>Website</b>. If the business is clearly too small or doesn't sell in a way that needs us, mark it Not a Fit without calling. That saves your time and theirs.</p></div>
 
 <h3 id="lead-n-call">From a call: "Doesn't need us"</h3>
-<p class="where">A lead's page › Activity › 📞 Calls</p>
+<p class="where">A lead's page › Log/Follow-up</p>
 <p>When a call shows the business doesn't need you, close the lead in the same step as logging the call:</p>
 <ol class="steps">
-  <li>Open the lead and press <span class="ui">📞 Calls</span>.</li>
-  <li>Under <span class="f">How did it go?</span> choose <b>Doesn't need us</b>. A red box appears.</li>
-  <li>Leave <b>Also mark … as Not a Fit</b> ticked. The reason is set to "Doesn't use or need this type of service"; change it if another one fits better.</li>
-  <li>Add the minutes and what was said, then press <span class="ui">📞 Log call and mark Not a Fit</span>.</li>
+  <li>Open the lead and press <span class="ui">Log/Follow-up</span> (or <span class="ui">📞 Log a call</span> on the Calls tab).</li>
+  <li>Choose <b>Called</b>, then under <span class="f">How did it go?</span> choose <b>Doesn't need us</b>. Step 3 changes to <b>Close the lead</b>.</li>
+  <li>The reason is set to "Doesn't use or need this type of service"; change it if another one fits better.</li>
+  <li>Write what was said, then press <span class="ui">Save and mark Not a Fit</span>.</li>
 </ol>
-<figure><img src="/static/portal/tutorial/leads/t06b_calls_not_needed.jpg" width="994" height="303" alt="Logging a call as Doesn't need us closes the lead as Not a Fit in the same step." loading="lazy"><figcaption>Logging a call as "Doesn't need us" closes the lead as Not a Fit in the same step.</figcaption></figure>
-<p>Untick the box to log the call only, for example if your manager should decide. If your role can't use Not a Fit, the box says so and the call is just logged. Your manager will see it in the Not a Fit Report.</p>
+<p>A meeting with the result <b>Not a fit</b> works the same way. If your role can't use Not a Fit, the box asks for a next follow-up date instead and the call is just logged. Your manager will see it in the Not a Fit Report. See the picture in <a href="#lead-fu-log">Log/Follow-up</a>.</p>
 
 <figure><img src="/static/portal/tutorial/leads/l18_after_naf.jpg" width="1100" height="1219" alt="A lead marked Not a Fit, with its reason." loading="lazy"><figcaption>A lead marked Not a Fit, with its reason.</figcaption></figure>
 
@@ -536,9 +617,9 @@
 <p><b>Not a Fit</b> means you're stopping, because the business isn't right for you. You can use it on any open lead, including one already on the Sales Pipeline. <b>Lost</b> is only for a Qualified deal where the customer said no. See the CRM guide, section 7.</p></div>
 </section>
 
-<!-- 13 -->
+<!-- 14 -->
 <section class="part" id="lead-bulk">
-<h2><span class="num">13</span>Many leads at once</h2>
+<h2><span class="num">14</span>Many leads at once</h2>
 <p class="where">All Leads › List view › tick boxes</p>
 <p class="need">Tick boxes appear for anyone who can Qualify or Assign. Each button needs its own tick.</p>
 
@@ -564,7 +645,7 @@
   <li><b>✅ … will be qualified</b>.</li>
   <li><b>⚠️ … skipped: no phone, email or WhatsApp number</b>: a lead you can't contact won't be qualified. Add their details first. (This line only shows if there are any.)</li>
   <li><b>🏢 … have a company. It stays linked.</b></li>
-  <li><span class="f">Assign to</span> (optional, only with the Assign tick): <b>Leave as they are</b>, <b>One person</b>, or <b>Share evenly between…</b> (section 13).</li>
+  <li><span class="f">Assign to</span> (optional, only with the Assign tick): <b>Leave as they are</b>, <b>One person</b>, or <b>Share evenly between…</b> (section 15).</li>
   <li><span class="f">Product / service interested in</span> (optional): typed once, saved on all of them.</li>
 </ul>
 <p>Press <span class="ui">Qualify</span>. A message tells you how many were qualified and skipped, and the page reloads. Unlike one-at-a-time Qualify, you don't need a contact person or company here. Each lead's history shows "Qualified (bulk)", who did it and when.</p>
@@ -573,11 +654,15 @@
 <p>Press <span class="ui">Not a Fit</span> on the bar, choose one reason (it's saved on every lead you ticked), and press <span class="ui">Mark Not a Fit</span>. Their contacts stay in All Contacts.</p>
 
 <figure><img src="/static/portal/tutorial/leads/l09_bulk_naf.jpg" width="500" height="494" alt="Marking ticked leads Not a Fit with one reason." loading="lazy"><figcaption>Marking ticked leads Not a Fit with one reason.</figcaption></figure>
+
+<h3 id="lead-b-split">Split test (email)</h3>
+<p class="need">Needs the tick: "Edit sequences"</p>
+<p>Shares the ticked leads evenly and at random between two email sequences, so you can see which email gets more replies. Press <span class="ui">⚖️ Split test</span> on the bar, choose how many per group, the two sequences and a label for each group, and keep <b>Balance the groups</b> ticked. Leads with no email, unsubscribed or bounced, already in a sequence, or emailed in the last 30 days are left out, and the window tells you how many. The full steps are in the Email Campaigns guide, under Sequences › Split test.</p>
 </section>
 
-<!-- 14 -->
+<!-- 15 -->
 <section class="part" id="lead-assign">
-<h2><span class="num">14</span>Giving leads to your team</h2>
+<h2><span class="num">15</span>Giving leads to your team</h2>
 <p class="where">All Leads, a lead's page, and the Sales Pipeline</p>
 <p class="need">Needs the tick: "Assign Leads and Opportunities to team members"</p>
 
@@ -602,9 +687,9 @@
 <p>Assigning doesn't change a lead's score. Whether staff see <b>all</b> leads or <b>only the leads assigned to them</b> depends on the "See all leads" tick on their role (see Who can do what). Staff who see all leads use the "Assigned to me" filter to focus on theirs. Your staff never see your (the owner's) name: where you are the assigned person, they see your company name instead. If someone leaves your team, their old leads show their name with "(no longer active)" in Edit Lead, so you can give them to someone else.</p></div>
 </section>
 
-<!-- 15 -->
+<!-- 16 -->
 <section class="part" id="lead-after">
-<h2><span class="num">15</span>After Qualify: the Sales Pipeline</h2>
+<h2><span class="num">16</span>After Qualify: the Sales Pipeline</h2>
 <p class="where">Side menu › CRM › Pipeline Board</p>
 
 <p>Once qualified, a lead is worked on the Sales Pipeline, through the stages Opportunity (or New Opportunity) › Contacted › Qualified › Proposal Sent › Negotiating › Won, or closed as Not a Fit or Lost. The CRM guide (sections 6 to 8) explains the Pipeline in full. Two buttons there belong with Leads:</p>
@@ -617,9 +702,9 @@
 </ul>
 </section>
 
-<!-- 16 -->
+<!-- 17 -->
 <section class="part" id="lead-score">
-<h2><span class="num">16</span>Lead score (Hot, Warm, Cold)</h2>
+<h2><span class="num">17</span>Lead score (Hot, Warm, Cold)</h2>
 <p class="where">Side menu › Leads › How Lead Scoring Works</p>
 
 <p>Every lead gets a score from six signals. The score decides its colour:</p>
@@ -649,9 +734,9 @@
 <p>To rename "Hot", "Warm" and "Cold" (for example to "Ready", "Interested", "Early"), use Pipeline Settings. The points and the 60 / 30 limits can't be changed.</p>
 </section>
 
-<!-- 17 -->
+<!-- 18 -->
 <section class="part" id="lead-overview">
-<h2><span class="num">17</span>Leads Overview</h2>
+<h2><span class="num">18</span>Leads Overview</h2>
 <p class="where">Side menu › Leads › Leads Overview</p>
 
 <p>A one-page summary for managers. Pick the period at the top right: the same choices as the Dashboard (Today, This week, This month and so on, or <b>Custom…</b> with your own dates and <span class="ui">Apply</span>). Arrows compare with the period before (▲ up, ▼ down).</p>
@@ -670,9 +755,9 @@
 <p>When there aren't at least 3 records to work from, a tile says "Not enough data yet" instead of showing a misleading number. Filling in Source, Deal Value and Assigned Salesperson on your leads is what makes these tiles come alive.</p></div>
 </section>
 
-<!-- 18 -->
+<!-- 19 -->
 <section class="part" id="lead-team">
-<h2><span class="num">18</span>Team performance</h2>
+<h2><span class="num">19</span>Team performance</h2>
 <p class="where">Side menu › Leads › Team performance</p>
 <p class="need">Needs the tick: "Team performance" (Leads part of Roles). The owner always has it.</p>
 
@@ -735,11 +820,10 @@
 <p>Lunch, a meeting, or a call made from a phone and not logged all show as gaps. Use the day view to ask the right question, not to judge.</p></div>
 
 <h3 id="lead-t-calls">Logging calls</h3>
-<p class="where">A lead's page › Activity › 📞 Calls</p>
-<p>After calling a lead, open it, press the <span class="ui">📞 Calls</span> tab, choose <span class="f">How did it go?</span> (Answered, No answer, Busy / call back, Left a voicemail, Wrong number, Doesn't need us), add the <span class="f">Minutes</span> and what was said if you like, and press <span class="ui">📞 Log a call</span>. The call shows on the lead with your name and the time, and counts on Team performance. Anyone who can open the lead can log a call on it.</p>
-<p>Choosing <b>Doesn't need us</b> also lets you close the lead as Not a Fit in the same step. See <a href="#lead-n-call">From a call: "Doesn't need us"</a>.</p>
-
-<figure><img src="/static/portal/tutorial/leads/t06_calls.jpg" width="1042" height="252" alt="The Calls tab on a lead: the Log a call form and a logged call underneath." loading="lazy"><figcaption>The Calls tab on a lead: the Log a call form and a logged call underneath.</figcaption></figure>
+<p class="where">A lead's page › Log/Follow-up</p>
+<p>After calling a lead, open it and press <span class="ui">Log/Follow-up</span> (or <span class="ui">📞 Log a call</span> on the Calls tab), choose <b>Called</b>, choose how it went, write what was said, add the minutes if you like, and set the next follow-up (see <a href="#lead-fu-log">Log/Follow-up</a>). The call shows on the lead with your name and the time, and counts on Team performance. Anyone who can open the lead can log a call on it.</p>
+<p>A WhatsApp, email or meeting logged the same way also counts as <b>contacted personally</b> on Team performance, the same as a call.</p>
+<p>Choosing <b>Doesn't need us</b> lets you close the lead as Not a Fit in the same step. See <a href="#lead-n-call">From a call: "Doesn't need us"</a>.</p>
 
 <h3 id="lead-t-targets">Monthly targets</h3>
 <p>At the bottom of the page, under <b>Targets for</b> (this month), type each person's target for <b>New opportunities</b> and <b>Won (₦)</b>, then <span class="ui">Save targets</span>. Leave a box empty for no target. Targets are per month, so set them again at the start of each month. The owner can set everyone's; a manager can set the targets of the people under them, not their own.</p>
@@ -763,14 +847,14 @@
 <figure><img src="/static/portal/tutorial/leads/t05_email_box.jpg" width="1100" height="248" alt="The owner's Daily summary email settings." loading="lazy"><figcaption>The owner's Daily summary email settings.</figcaption></figure>
 
 <h3 id="lead-t-count">How each number is counted</h3>
-<p>The portal saves these actions with the name of the person who did them: logging a call, a WhatsApp, Messenger or web chat reply, taking over a chat, adding a note to a contact or company, adding people to an email sequence (and each sequence email that then goes out), creating, editing or assigning a lead, Qualify, every stage move, Won, Lost, Not a Fit and Reopen, and marking "They replied to our email".</p>
+<p>The portal saves these actions with the name of the person who did them: logging a call, a WhatsApp, Messenger or web chat reply, taking over a chat, adding a note to a contact or company, adding people to an email sequence (and each sequence email that then goes out), creating, editing or assigning a lead, Qualify, every stage move, Won, Lost, Not a Fit and Reopen, marking "They replied to our email", and everything logged with Log/Follow-up (calls, WhatsApp, emails, LinkedIn steps and meetings). Follow-ups add three numbers per person: follow-ups due, done on time, and missed, plus how many are overdue now and how many have been moved 3 or more times.</p>
 <div class="box careful"><b class="t">Not counted</b>
 <p>Calls made outside the portal and not logged, emails sent from Outlook or Gmail directly, AI replies, and bulk imports. If your team works a lead outside the portal, ask them to log it on the lead (a call, or a note) so it counts.</p></div>
 </section>
 
-<!-- 19 -->
+<!-- 20 -->
 <section class="part" id="lead-report">
-<h2><span class="num">19</span>Leads Report and Not a Fit Report</h2>
+<h2><span class="num">20</span>Leads Report and Not a Fit Report</h2>
 <p class="where">Side menu › Reports › Leads Report</p>
 <p class="need">Needs the tick: "Leads Sources" (in the Reports part of Roles)</p>
 
@@ -802,9 +886,9 @@
 <p>"Doesn't need us" was added on 15 October 2026. Calls logged before then as "Answered" aren't counted as wasted, even if the note says the business didn't need you.</p></div>
 </section>
 
-<!-- 20 -->
+<!-- 21 -->
 <section class="part" id="lead-roles">
-<h2><span class="num">20</span>Who can do what</h2>
+<h2><span class="num">21</span>Who can do what</h2>
 <p class="where">Side menu › Team › Roles</p>
 
 <p>The account owner can do everything. For staff, it depends on the ticks in their role. Leads has its own row in the Roles grid, and a few related ticks live under CRM and Reports.</p>
@@ -823,6 +907,7 @@
 <tr><td>Import leads and contacts (CSV or Excel)</td><td>CRM › Import (leads and contacts)</td><td class="wrapok">The Import button on All Leads and All Contacts, and the templates.</td></tr>
 <tr><td>Pipeline Board — Edit</td><td>CRM › Pipeline Board › Edit</td><td class="wrapok">Edit Lead (details and sales signals), Remove number on a number to check, Move back to Leads, and on the Sales Pipeline: Not a Fit, Mark as Lost and Reopen.</td></tr>
 <tr><td>Team performance</td><td>Leads › Team performance › View</td><td class="wrapok">Open Team performance and set targets for the people who report to them (their Line manager in Team is set to this person). Line managers with this tick also get the 6 pm email. Logging a call needs only "Leads — view".</td></tr>
+<tr><td>Follow-ups</td><td>Leads › View</td><td class="wrapok">Log/Follow-up, Change date and the Follow-ups page (under CRM). Staff see their own leads' follow-ups; people who see all leads can pick a person and see the team table.</td></tr>
 <tr><td>Leads Sources</td><td>Reports</td><td class="wrapok">Open the Leads Report and the Not a Fit Report, and download them.</td></tr>
 </tbody></table></div>
 
@@ -832,9 +917,9 @@
 <p>"Assign Leads and Opportunities to team members" was added on 2 October 2026. No existing role has it ticked. Tick it on your sales manager's role (and IT Admin's, if they should share out leads).</p></div>
 </section>
 
-<!-- 21 -->
+<!-- 22 -->
 <section class="part" id="lead-recipes">
-<h2><span class="num">21</span>Everyday tasks</h2>
+<h2><span class="num">22</span>Everyday tasks</h2>
 
 <div class="recipe"><h4>Morning: share out yesterday's new leads</h4>
 <ol class="steps">
@@ -851,12 +936,26 @@
   <li>When it's a real chance, <span class="ui">✅ Qualify</span>. If not, <span class="ui">🚫 Not a Fit</span> with the reason.</li>
 </ol></div>
 
-<div class="recipe"><h4>Salesperson: after every call</h4>
+<div class="recipe"><h4>Salesperson: start the day with your follow-ups</h4>
 <ol class="steps">
-  <li>Open the lead › <span class="ui">📞 Calls</span>.</li>
-  <li>Choose how it went, add the minutes and one line on what was said › <span class="ui">📞 Log a call</span>.</li>
-  <li>If it's now a real chance, <span class="ui">✅ Qualify</span> it.</li>
-  <li>If they don't need you, choose <b>Doesn't need us</b> and leave "Also mark … as Not a Fit" ticked, so nobody calls them again.</li>
+  <li>CRM › <span class="ui">Follow-ups</span> › <b>To do now</b>.</li>
+  <li>Work down the list: overdue first, then today. Use the contact button on the row (Call, WhatsApp, Email or Open profile).</li>
+  <li>After each one, press <span class="ui">Log/Follow-up</span> on the row: how it went, what was said, and the next follow-up.</li>
+</ol></div>
+
+<div class="recipe"><h4>Salesperson: after every call, message or meeting</h4>
+<ol class="steps">
+  <li>Open the lead › <span class="ui">Log/Follow-up</span> (or use the ⋮ menu on the Sales Pipeline).</li>
+  <li>Choose what you did and how it went, and write what was said so a colleague could carry on.</li>
+  <li>Choose the next follow-up: date, how, and what to do.</li>
+  <li>If it's now a real chance, <span class="ui">✅ Qualify</span> it. If they don't need you, choose <b>Doesn't need us</b> and the lead closes as Not a Fit.</li>
+</ol></div>
+
+<div class="recipe"><h4>Manager: check follow-ups every morning</h4>
+<ol class="steps">
+  <li>CRM › <span class="ui">Follow-ups</span> › <span class="f">Showing</span> › Everyone.</li>
+  <li>Look at <b>Overdue</b> and <b>On time this week</b> for each person. Click a name to see their list.</li>
+  <li>Open a lead's <span class="ui">💬 What happened</span> tab to see exactly what was said before you step in.</li>
 </ol></div>
 
 <div class="recipe"><h4>Manager: check wasted calls every week</h4>
@@ -922,15 +1021,15 @@
 </ol></div>
 </section>
 
-<!-- 22 -->
+<!-- 23 -->
 <section class="part" id="lead-faq">
-<h2><span class="num">22</span>Questions and problems</h2>
+<h2><span class="num">23</span>Questions and problems</h2>
 
 <h4>I qualified a lead and now I can't find it.</h4>
-<p>That's expected: qualified leads move to CRM › Pipeline Board. Search for them there. If it was a mistake, use <span class="ui">Move back to Leads</span> (section 14).</p>
+<p>That's expected: qualified leads move to CRM › Pipeline Board. Search for them there. If it was a mistake, use <span class="ui">Move back to Leads</span> (section 16).</p>
 
 <h4>Why are almost all my leads Cold?</h4>
-<p>Any lead nobody has saved a change to in 7 days loses 25 points. Work the lead and record it (Edit Lead) and it goes up again. See section 15.</p>
+<p>Any lead nobody has saved a change to in 7 days loses 25 points. Work the lead and record it (Edit Lead) and it goes up again. See section 17.</p>
 
 <h4>Why can't I see the tick boxes?</h4>
 <p>Your role needs either the Qualify tick or the Assign tick. Also, tick boxes are only in List view, not Board view.</p>
@@ -945,7 +1044,7 @@
 <p>One-at-a-time Qualify needs at least one of the two. Type the person's name or their company in the window.</p>
 
 <h4>I marked a lead Not a Fit by mistake.</h4>
-<p>Open it and press <span class="ui">↩️ Reopen as Lead</span> (or <span class="ui">↩️ Reopen on Sales Pipeline</span> for a Qualified deal). It goes straight back where it was (section 12).</p>
+<p>Open it and press <span class="ui">↩️ Reopen as Lead</span> (or <span class="ui">↩️ Reopen on Sales Pipeline</span> for a Qualified deal). It goes straight back where it was (section 13).</p>
 
 <h4>Where has "Mark as Dropped" gone?</h4>
 <p>Not a Fit replaced it on 15 October 2026, so there are only two ways to close: <b>Not a Fit</b> (you're stopping) and <b>Mark as Lost</b> (a Qualified deal said no). Deals closed as Dropped before then still show as Dropped.</p>
@@ -986,7 +1085,16 @@
 <p>Two things are needed: your <span class="f">Line manager</span> in Team must be set to them, and their role needs the <b>Team performance</b> tick. You also need open leads assigned to you, or sales work in that period.</p>
 
 <h4>I made calls but Team performance says 0.</h4>
-<p>Only calls logged on the lead's page count. Open each lead › <span class="ui">📞 Calls</span> › <span class="ui">Log a call</span>.</p>
+<p>Only calls logged in the portal count. Open each lead › <span class="ui">Log/Follow-up</span> › Called.</p>
+
+<h4>Log/Follow-up won't save.</h4>
+<p>The line at the bottom of the box says what's missing. Everything marked * is required: how it went, what was said, and for the next follow-up the date, how, and what to do.</p>
+
+<h4>Where has Follow-ups gone from the Leads menu?</h4>
+<p>It's under <b>CRM</b> in the side menu, below Pipeline Board.</p>
+
+<h4>Why does a lead show "No date yet"?</h4>
+<p>Nobody has contacted it since follow-ups started on 23 October 2026. The first Log/Follow-up gives it a date. You can also press <span class="ui">Set a date</span> on the card to plan a first contact.</p>
 
 <h4>Someone shows "Idle" but says they were working.</h4>
 <p>Idle means nothing was recorded in the portal for a while. Work done outside the portal (phone calls not logged, emails from Outlook) doesn't show. Logging calls and notes on the lead fixes this.</p>

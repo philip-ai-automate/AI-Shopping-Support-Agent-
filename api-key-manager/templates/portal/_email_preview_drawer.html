@@ -1,0 +1,70 @@
+{#- A saved email shown in a side panel, the same as on Saved Emails.
+    {% include "portal/_email_preview_drawer.html" %} once per page, then
+    emPreview(templateId, {seq: sequenceId, back: '/email/…', newTab: true}).
+    Edit shows only for people allowed to change that email. -#}
+<style>
+.em-scrim { position: fixed; inset: 0; background: rgba(11,29,64,.18); z-index: 900; }
+.em-drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(560px, 100%); background: #fff; border-left: 1px solid #DCE3EE;
+             box-shadow: -16px 0 40px rgba(11,29,64,.14); display: flex; flex-direction: column; z-index: 901;
+             font-family: "Inter","Segoe UI",Arial,sans-serif; color: #111E2D; }
+.em-drawer[hidden], .em-scrim[hidden] { display: none; }
+.em-dh { padding: calc(14px + env(safe-area-inset-top, 0px)) 20px 14px; border-bottom: 1px solid #DCE3EE; display: flex; gap: 12px; align-items: flex-start; }
+.em-dh h2 { font: 600 16px "Poppins","Segoe UI",Arial,sans-serif; margin: 0; overflow-wrap: anywhere; }
+.em-meta { font-size: 12px; color: #5A6B85; margin-top: 2px; }
+.em-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; font: 600 12.5px "Inter","Segoe UI",Arial,sans-serif;
+          border: 1px solid #cbd5e1; background: #fff; color: #0B1D40; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.em-btn.pri { background: #0B1D40; border-color: #0B1D40; color: #fff; }
+.em-dact { display: flex; gap: 8px; padding: 12px 20px; border-bottom: 1px solid #DCE3EE; flex-wrap: wrap; align-items: center; }
+.em-dact[hidden] { display: none; }
+.em-used { font-size: 12px; color: #7A4B00; }
+.em-dinbox { padding: 10px 20px; border-bottom: 1px solid #DCE3EE; font-size: 12.5px; display: grid; gap: 2px; overflow-wrap: anywhere; }
+.em-dinbox span { color: #5A6B85; }
+.em-dbody { overflow: auto; background: #F3F5F9; padding: 14px; flex: 1; }
+.em-dbody iframe { width: 100%; border: 0; min-height: 500px; background: #F3F5F9; }
+.em-dnote { padding: 10px 20px calc(10px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid #DCE3EE; font-size: 12px; color: #5A6B85; }
+</style>
+<div class="em-scrim" id="emScrim" hidden onclick="emClose()"></div>
+<aside class="em-drawer" id="emDrawer" hidden aria-label="Email preview">
+  <div class="em-dh"><div style="min-width:0"><h2 id="emName"></h2><div class="em-meta" id="emMeta"></div></div>
+    <button type="button" class="em-btn" style="margin-left:auto" onclick="emClose()">Close ✕</button></div>
+  <div class="em-dact" id="emActs" hidden><a class="em-btn pri" id="emEdit" href="#">✏️ Edit this email</a><span class="em-used" id="emUsed"></span></div>
+  <div class="em-dinbox"><div id="emFromRow"><span>From:</span> <b id="emFrom"></b></div><div><span>Subject:</span> <b id="emSubj"></b></div><div><span>Preview text:</span> <span id="emPre" style="color:#111E2D"></span></div></div>
+  <div class="em-dbody"><iframe id="emFrame" title="Email preview" sandbox="allow-same-origin"></iframe></div>
+  <div class="em-dnote" id="emNote"></div>
+</aside>
+<script>
+(function () {
+  const $ = id => document.getElementById(id)
+  window.emPreview = function (id, opt) {
+    opt = opt || {}
+    if (!id) return
+    $('emName').textContent = 'Loading…'; $('emMeta').textContent = ''; $('emActs').hidden = true
+    $('emFrom').textContent = ''; $('emSubj').textContent = ''; $('emPre').textContent = ''; $('emNote').textContent = 'Loading…'; $('emFrame').srcdoc = ''
+    $('emScrim').hidden = false; $('emDrawer').hidden = false
+    const q = new URLSearchParams()
+    if (opt.seq) q.set('seq', opt.seq)
+    if (opt.back) q.set('back', opt.back)
+    fetch('/email/saved-emails/' + id + '/preview?' + q, { credentials: 'same-origin' }).then(x => x.json()).then(d => {
+      if (d.error) { $('emName').textContent = ''; $('emNote').textContent = 'This email could not be shown.'; return }
+      $('emName').textContent = d.name || ''
+      $('emMeta').textContent = d.style === 'plain' ? 'Plain personal email' : 'Designed email'
+      const n = (d.used_in || []).length
+      $('emUsed').textContent = n > 1 ? 'Used in ' + n + ' sequence steps: ' + d.used_in.join(', ') + '. A change shows in all of them.' : ''
+      if (d.edit_url) {
+        const e = $('emEdit'); e.href = d.edit_url
+        if (opt.newTab) { e.target = '_blank'; e.rel = 'noopener'; e.textContent = '✏️ Edit (opens a new tab)' } else { e.removeAttribute('target'); e.textContent = '✏️ Edit this email' }
+        e.onclick = opt.beforeEdit || null
+        $('emActs').hidden = false
+      } else if (n > 1) { $('emEdit').hidden = true; $('emActs').hidden = false }
+      $('emEdit').hidden = !d.edit_url
+      $('emFrom').textContent = d.from_name ? d.from_name + (d.from_email ? ' <' + d.from_email + '>' : '') : ''; $('emFromRow').hidden = !d.from_name
+      $('emSubj').textContent = d.subject || '(no subject)'; $('emPre').textContent = d.preheader || '—'
+      const fr = $('emFrame'); fr.onload = () => { try { fr.style.height = (fr.contentDocument.documentElement.scrollHeight + 4) + 'px' } catch (e) {} }
+      fr.srcdoc = d.html
+      $('emNote').textContent = d.shown_as ? 'Shown with the names of a real lead: ' + d.shown_as + '. Each person sees their own.' : 'Names show as "there" here. Each person sees their own when it is sent.'
+    }).catch(() => { $('emNote').textContent = 'Could not load the preview. Check your connection.' })
+  }
+  window.emClose = function () { $('emScrim').hidden = true; $('emDrawer').hidden = true }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('emDrawer').hidden) emClose() })
+})()
+</script>

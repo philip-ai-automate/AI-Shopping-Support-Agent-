@@ -76,6 +76,34 @@
 {% endif %}
 {%- endmacro %}
 
+{% macro fs_linkedin(bs, counts, options) -%}
+{# LinkedIn steps on the lead page (2026-10-21): only once the business has clicked one #}
+{% if counts and counts.linkedin and (counts.linkedin.any or bs.linkedin_list) %}
+<section>
+  <h3>LinkedIn</h3>
+  {%- for v, label in options %}
+  <label class="spf-opt"><span>{{ label }}</span><small>{{ '{:,}'.format(counts.linkedin[v]) }}</small><input type="checkbox" name="linkedin" value="{{ v }}" {% if v in (bs.linkedin_list or []) %}checked{% endif %}></label>
+  {%- endfor %}
+</section>
+{% endif %}
+{%- endmacro %}
+
+{% macro fs_followup(bs, counts) -%}
+{# Next follow-up date (2026-10-23): always shown, so "No follow-up date" can be found #}
+{% if counts and counts.followup %}
+<section>
+  <h3>Follow-up</h3>
+  {%- for v, label in [('overdue', 'Overdue'), ('today', 'Due today'), ('week', 'Due in the next 7 days'), ('later', 'Due later'), ('none', 'No follow-up date')] %}
+  <label class="spf-opt"><span>{{ label }}</span><small>{{ '{:,}'.format(counts.followup[v]) }}</small><input type="checkbox" name="followup" value="{{ v }}" {% if v in (bs.followup_list or []) %}checked{% endif %}></label>
+  {%- endfor %}
+</section>
+{% endif %}
+{%- endmacro %}
+
+{% macro followup_badge(f) -%}
+{% if f and f.state != 'later' %}<div style="margin-top:4px"><span style="display:inline-block;{% if f.state == 'overdue' %}background:#FDECEC;color:#B91C1C;border:1px solid #F3C2C2{% else %}background:#FFF4E5;color:#92400E;border:1px solid #F5C98B{% endif %};font-weight:700;font-size:11px;border-radius:6px;padding:2px 7px;white-space:nowrap">⏰ Follow-up {{ 'overdue · ' ~ f.when if f.state == 'overdue' else 'due today' }}</span></div>{% endif %}
+{%- endmacro %}
+
 {% macro demo_badge(d) -%}
 {% if d %}<div style="margin-top:4px">{% if d.state == 'due' %}<span style="display:inline-block;background:#FFF4E5;color:#92400E;border:1px solid #F5C98B;font-weight:700;font-size:11px;border-radius:6px;padding:2px 7px;white-space:nowrap">Demo due · {{ d.when }} — mark as done?</span>{% else %}<span style="display:inline-block;background:#0B1D40;color:#fff;font-weight:700;font-size:11px;border-radius:6px;padding:2px 7px;white-space:nowrap">📅 Demo booked · {{ d.when }}</span>{% endif %}</div>{% endif %}
 {%- endmacro %}

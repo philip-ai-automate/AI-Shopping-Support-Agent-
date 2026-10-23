@@ -26,6 +26,14 @@
 .pd-ic.won{background:rgba(18,183,106,0.12);color:#0d7a4d}
 .pd-ic.gap{background:rgba(247,144,9,0.14);color:#93540a}
 .pd-ic.in{background:rgba(3,12,24,.06);color:var(--muted)}
+.pd-ic.auto{background:rgba(3,12,24,.06);color:var(--muted)}
+.pd-biz{list-style:none;margin:0 0 6px;padding:0}
+.pd-biz li{padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;display:grid;grid-template-columns:52px 1fr;gap:10px}
+.pd-biz li:last-child{border-bottom:0}
+.pd-biz time{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600}
+.pd-biz a{color:var(--ink);font-weight:700}
+.pd-biz .w{color:var(--muted);font-size:12.5px}
+.pd-h{font-size:14px;font-weight:800;color:var(--ink);margin:0 0 8px}
 .pd-tl b{color:var(--ink)}
 .pd-tl a{color:var(--ink);font-weight:600}
 .pd-tl .m{color:var(--muted);font-size:12px}
@@ -58,10 +66,12 @@
       <span>Active time</span><span class="v">{% if dd.presence %}{{ (dd.presence.active_minutes // 60) }}h {{ '%02d' % (dd.presence.active_minutes % 60) }}m{% else %}—{% endif %}</span>
       <span>Longest break</span><span class="v">{% if dd.presence and dd.presence.longest_gap_min %}{{ (dd.presence.longest_gap_min // 60) }}h {{ '%02d' % (dd.presence.longest_gap_min % 60) }}m{% else %}—{% endif %}</span>
       <span class="hd">Activity</span>
-      <span>Leads worked</span><span class="v">{{ dd.leads_worked }}</span>
+      <span><b>Businesses contacted personally</b></span><span class="v">{{ dd.contacted|length }}</span>
+      <span>Leads touched</span><span class="v">{{ dd.leads_worked }}</span>
       <span>Calls logged</span><span class="v">{{ c.get('call', 0) }}</span>
       <span>Messages sent</span><span class="v">{{ c.get('wa_sent', 0) + c.get('messenger_sent', 0) + c.get('webchat_sent', 0) }}</span>
-      <span>Emails sent</span><span class="v">{{ c.get('email_sent', 0) }}</span>
+      <span>LinkedIn</span><span class="v">{{ c.get('linkedin', 0) }}</span>
+      <span>Sequence emails (automatic)</span><span class="v" style="color:var(--muted)">{{ '{:,}'.format(dd.auto_emails) }}</span>
       <span>Notes added</span><span class="v">{{ c.get('note_added', 0) }}</span>
       <span class="hd">Results</span>
       <span>New opportunities</span><span class="v">{{ c.get('opportunity', 0) }}</span>
@@ -72,7 +82,23 @@
     </div>
     <div style="margin-top:14px"><a class="pd-back" href="{{ url_for('portal.leads_page', assigned=person.key) }}">See their leads ›</a></div>
   </div>
+  <div style="display:flex;flex-direction:column;gap:18px;min-width:0">
   <div class="pd-card">
+    <div class="pd-h">Businesses contacted personally · {{ dd.contacted|length }}</div>
+    {% if dd.contacted %}
+    <ul class="pd-biz">
+      {% for b in dd.contacted %}
+      <li><time>{{ b.first.strftime('%H:%M') }}</time>
+        <span>{% if b.lead_id %}<a href="{{ url_for('portal.lead_detail', lead_id=b.lead_id) }}">{{ b.business }}</a>{% else %}<b>{{ b.business }}</b>{% endif %}{% if b.person %} <span class="w">({{ b.person }})</span>{% endif %}
+          <br><span class="w">{{ b.what|join(' · ') }}</span></span></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="pd-empty">No call, message, LinkedIn step or reply logged by {{ person.name.split()[0] }} on this day.</div>
+    {% endif %}
+  </div>
+  <div class="pd-card">
+    <div class="pd-h">Everything that day</div>
     {% if dd.events %}
     <ul class="pd-tl">
       {% for e in dd.events %}
@@ -88,6 +114,7 @@
     {% else %}
     <div class="pd-empty">No activity recorded for {{ person.name.split()[0] }} on this day.</div>
     {% endif %}
+  </div>
   </div>
 </div>
 {% endblock %}

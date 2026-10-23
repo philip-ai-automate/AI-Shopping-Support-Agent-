@@ -1,0 +1,15 @@
+{# AI brief before a call (2026-10-22). Needs: brief (estate_brief row), tz. #}
+{% set b = brief.brief %}
+<div class="br-meta">Written by the AI for {{ brief.made_by or 'the team' }}, {{ brief.made_at.astimezone(tz).strftime('%a %d %b, %H:%M') }}{% if not brief.fresh %} · <b class="br-old">something new has happened since, refresh it</b>{% endif %}</div>
+{% if b.headline %}<p class="br-head">{{ b.headline }}</p>{% endif %}
+<div class="br-grid">
+  {% if b.wants %}<div class="br-sec"><h4>Wants</h4><ul>{% for x in b.wants %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+  {% if b.money %}<div class="br-sec"><h4>Money</h4><p>{{ b.money }}</p></div>{% endif %}
+  {% if b.worries %}<div class="br-sec"><h4>Worries</h4><ul>{% for w in b.worries %}<li>{{ w.point if w is mapping else w }}{% if w is mapping and w.quote %} <i>“{{ w.quote }}”</i>{% endif %}</li>{% endfor %}</ul></div>{% endif %}
+  {% if b.so_far %}<div class="br-sec"><h4>So far</h4><ul>{% for x in b.so_far %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+</div>
+{% if b.say %}<div class="br-say"><h4>Open the call with</h4><p>{{ b.say }}</p></div>{% endif %}
+<div class="br-grid">
+  {% if b.ask %}<div class="br-sec"><h4>Ask</h4><ul>{% for x in b.ask %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+  {% if b.careful %}<div class="br-sec br-warn"><h4>Be careful</h4><ul>{% for x in b.careful %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+</div>

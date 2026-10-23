@@ -34,10 +34,13 @@ async def send_estate_property_list(
                  listing.get("state") or "")
 
         desc_parts = []
-        if beds:
-            desc_parts.append(f"{beds}BR")
-        if price:
-            desc_parts.append(price)
+        if listing.get("estate_summary"):
+            desc_parts.append(listing["estate_summary"])
+        else:
+            if beds:
+                desc_parts.append(f"{beds}BR")
+            if price:
+                desc_parts.append(price)
         if area:
             desc_parts.append(area)
         description = _trunc(" · ".join(desc_parts), 72)
@@ -112,11 +115,16 @@ def _build_property_card_text(listing: dict) -> str:
     type_parts = [p for p in [ptype, f"for {trans}" if trans else ""] if p]
     if type_parts:
         lines.append(f"🏠 Type: {' '.join(type_parts)}")
-    if beds is not None:
+    estate = listing.get("estate_summary") or ""
+    if estate:
+        parts = estate.split(" · ")
+        for p_ in parts[1:]:
+            lines.append(("📐 Plots: " if "sqm" in p_ else "📅 Payment ") + (p_ if "sqm" in p_ else p_))
+    if beds is not None and not estate:
         lines.append(f"🛏 Bedrooms: {beds}")
     if baths is not None:
         lines.append(f"🚿 Bathrooms: {baths}")
-    if size:
+    if size and not estate:
         lines.append(f"📐 Size: {size} sqm")
     if title_doc:
         lines.append(f"📜 Title: {title_doc}")
@@ -128,7 +136,8 @@ def _build_property_card_text(listing: dict) -> str:
         if feat_str:
             lines += ["", f"✅ Features: {feat_str}"]
 
-    lines += ["", "─────────────────", "💬 Reply *BOOK* to schedule a viewing for this property."]
+    visit = "site inspection" if (listing.get("property_type") == "land") else "viewing"
+    lines += ["", "─────────────────", f"💬 Reply *BOOK* to schedule a {visit} for this property."]
     return "\n".join(lines)
 
 
@@ -138,6 +147,7 @@ async def send_inspection_slot_list(
     to: str,
     slots: list,
     listing_title: str = "",
+    visit_word: str = "viewing",
 ) -> bool:
     """
     Send available inspection slots as a WhatsApp Interactive List Message.
@@ -156,7 +166,7 @@ async def send_inspection_slot_list(
         dur  = s.get("duration_mins") or 60
 
         title       = _trunc(f"{day} · {time}", 24)
-        description = _trunc(f"{dur} min viewing", 72)
+        description = _trunc(f"{dur} min {visit_word}", 72)
 
         rows.append({
             "id":          f"islot_{s['id']}",
@@ -167,7 +177,7 @@ async def send_inspection_slot_list(
     if not rows:
         return False
 
-    header = _trunc(listing_title or "Property Viewing", 60)
+    header = _trunc(listing_title or ("Site Inspection" if visit_word != "viewing" else "Property Viewing"), 60)
 
     return await _send(phone_number_id, access_token, {
         "messaging_product": "whatsapp",
@@ -177,8 +187,8 @@ async def send_inspection_slot_list(
         "interactive": {
             "type":   "list",
             "header": {"type": "text", "text": header},
-            "body":   {"text": "Tap a time slot to confirm your viewing appointment:"},
-            "footer": {"text": "An agent will contact you before the viewing"},
+            "body":   {"text": f"Tap a time slot to confirm your {visit_word}:"},
+            "footer": {"text": f"An agent will contact you before the {visit_word}"},
             "action": {
                 "button":   "Choose a Slot",
                 "sections": [{"title": "Available Times", "rows": rows}],

@@ -1,0 +1,109 @@
+{% extends "portal/base.html" %}
+{% block title %}Calls Report — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+.cr-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.cr-head h1{font-size:22px;font-weight:800;margin:0}
+.cr-head p{margin:4px 0 0;color:var(--muted);font-size:13.5px;max-width:70ch}
+.cr-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.cr-bar select,.cr-bar input{padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:9px;font-size:13px;background:#fff;color:var(--ink)}
+.cr-btn{display:inline-flex;align-items:center;padding:8px 14px;border-radius:9px;font-size:13px;font-weight:700;border:1.5px solid #cbd5e1;background:#fff;color:#0B1D40;text-decoration:none;cursor:pointer}
+.cr-btn.pri{background:#0B1D40;border-color:#0B1D40;color:#fff}
+.cr-kpis{display:grid;grid-template-columns:repeat(7,1fr);gap:12px;margin-bottom:18px}
+.cr-kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.cr-kpi .k{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.cr-kpi .v{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums}
+.cr-kpi .s{font-size:12px;color:var(--muted)}
+.cr-two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.cr-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:16px}
+.cr-card h3{font-size:14px;font-weight:700;margin:0 0 10px}
+.cr-card h3 small{font-weight:400;color:var(--muted);font-size:12px;margin-left:4px}
+.cr-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.cr-tbl th{font-size:11px;color:var(--muted);font-weight:700;text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);text-transform:uppercase;letter-spacing:.05em}
+.cr-tbl td{padding:8px;border-bottom:1px solid #eef2f6}
+.cr-tbl .num{text-align:right;font-variant-numeric:tabular-nums}
+.cr-empty{font-size:13px;color:var(--muted);padding:8px 0}
+.heat{display:grid;grid-template-columns:36px repeat(13,1fr);gap:3px;font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.heat span{display:grid;place-items:center}
+.heat i{display:block;height:22px;border-radius:4px;background:#0B1D40}
+.heat i.z{background:#f1f5f9}
+.heat-key{display:flex;gap:4px;align-items:center;font-size:11px;color:var(--muted);margin-top:8px}
+.heat-key i{width:16px;height:12px;border-radius:3px;background:#0B1D40;display:inline-block}
+@media(max-width:1000px){.cr-kpis{grid-template-columns:repeat(3,1fr)}.cr-two{grid-template-columns:1fr}}
+@media(max-width:520px){.cr-kpis{grid-template-columns:1fr 1fr}}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set k = d.k %}
+<div class="cr-head">
+  <div><h1>📞 Calls Report</h1>
+    <p>How many WhatsApp calls came in, how many the team answered, who answered them, how fast missed calls were called back, and the busiest times.</p></div>
+  <a class="cr-btn" href="{{ url_for('calls.calls_report_export') }}?days={{ days }}&from={{ start }}&to={{ end }}&pnid={{ pnid }}">Download (Excel)</a>
+</div>
+
+<form class="cr-bar" method="GET">
+  <select name="days" onchange="document.getElementById('crDates').hidden = this.value !== 'custom'; if (this.value !== 'custom') this.form.submit()" aria-label="Period">
+    <option value="7" {{ 'selected' if days == '7' }}>Last 7 days</option>
+    <option value="30" {{ 'selected' if days == '30' }}>Last 30 days</option>
+    <option value="90" {{ 'selected' if days == '90' }}>Last 90 days</option>
+    <option value="custom" {{ 'selected' if days == 'custom' }}>Pick dates…</option>
+  </select>
+  <span id="crDates" {% if days != 'custom' %}hidden{% endif %}><input type="date" name="from" value="{{ start }}" aria-label="From"> to <input type="date" name="to" value="{{ end }}" aria-label="To"></span>
+  {% if numbers|length > 1 %}<select name="pnid" aria-label="Number" onchange="this.form.submit()"><option value="">All WhatsApp numbers</option>{% for n in numbers %}<option value="{{ n.phone_number_id }}" {{ 'selected' if pnid == n.phone_number_id }}>{{ n.display_phone_number }}{% if n.label %} · {{ n.label }}{% endif %}</option>{% endfor %}</select>{% endif %}
+  <select name="member" aria-label="Team member" onchange="this.form.submit()"><option value="">Whole team</option>{% for m in members %}<option value="{{ m.k }}" {{ 'selected' if member == m.k }}>{{ m.n }}</option>{% endfor %}</select>
+  <button class="cr-btn pri" type="submit">Show</button>
+  <span style="font-size:12.5px;color:var(--muted)">{{ start.strftime('%-d %b %Y') }} to {{ end.strftime('%-d %b %Y') }}</span>
+</form>
+
+{% set ans_pct = ((k.answered or 0) * 100 / k.calls_in)|round|int if k.calls_in else 0 %}
+<div class="cr-kpis">
+  <div class="cr-kpi"><div class="k">Calls in</div><div class="v">{{ k.calls_in or 0 }}</div>
+    <div class="s">{% if d.prev_in %}{{ '%+d' % (((k.calls_in or 0) - d.prev_in) * 100 / d.prev_in) }}% on the period before{% else %}–{% endif %}</div></div>
+  <div class="cr-kpi"><div class="k">Answered</div><div class="v">{{ ans_pct }}%</div><div class="s">{{ k.answered or 0 }} calls</div></div>
+  <div class="cr-kpi"><div class="k">Missed</div><div class="v">{{ k.missed or 0 }}</div><div class="s">{{ k.called_back or 0 }} called back</div></div>
+  <div class="cr-kpi"><div class="k">Time to answer</div><div class="v">{{ (k.to_answer|int ~ 's') if k.to_answer is not none else '–' }}</div><div class="s">average</div></div>
+  {% set _due_total = (k.on_time or 0) + (k.late or 0) %}
+  <div class="cr-kpi"><div class="k">Called back on time</div><div class="v">{{ ((k.on_time or 0) * 100 / _due_total)|round|int ~ '%' if _due_total else '–' }}</div><div class="s">{{ k.on_time or 0 }} on time · {{ k.late or 0 }} late</div></div>
+  <div class="cr-kpi"><div class="k">Call-back time</div><div class="v">{% if k.to_callback is none %}–{% elif k.to_callback < 3600 %}{{ (k.to_callback / 60)|round|int }}m{% else %}{{ (k.to_callback / 3600)|round(1) }}h{% endif %}</div><div class="s">average, missed calls</div></div>
+  <div class="cr-kpi"><div class="k">Talk time</div><div class="v">{% if k.talk %}{{ (k.talk|int) // 60 }}:{{ '%02d' % ((k.talk|int) % 60) }}{% else %}–{% endif %}</div><div class="s">average per call</div></div>
+</div>
+
+<div class="cr-two">
+  <div>
+    <div class="cr-card"><h3>By team member</h3>
+      {% if d.people %}<table class="cr-tbl"><tr><th>Who</th><th class="num">Answered</th><th class="num">Avg. talk</th><th class="num">Call-backs</th><th class="num">Outgoing</th></tr>
+        {% for p in d.people %}<tr><td><b>{{ p.who }}</b></td><td class="num">{{ p.answered or 0 }}</td>
+          <td class="num">{% if p.talk %}{{ (p.talk|int) // 60 }}:{{ '%02d' % ((p.talk|int) % 60) }}{% else %}–{% endif %}</td>
+          <td class="num">{{ p.callbacks or 0 }}</td><td class="num">{{ p.outgoing or 0 }}</td></tr>{% endfor %}</table>
+      {% else %}<div class="cr-empty">No calls handled in this period.</div>{% endif %}</div>
+    <div class="cr-card"><h3>What happened after the call <small>people who called</small></h3>
+      {% set a = d.after %}
+      <table class="cr-tbl">
+        <tr><td>Called in this period</td><td class="num"><b>{{ a.all_callers or 0 }}</b></td></tr>
+        <tr><td>Became a new lead around their first call</td><td class="num">{{ a.new_leads or 0 }}</td></tr>
+        <tr><td>Became a deal on the Pipeline</td><td class="num">{{ a.deals or 0 }}</td></tr>
+        {% if a.demos is not none %}<tr><td>Booked a demo after calling</td><td class="num">{{ a.demos }}</td></tr>{% endif %}
+        <tr><td>Were won</td><td class="num">{{ a.won or 0 }}</td></tr>
+      </table></div>
+  </div>
+  <div>
+    <div class="cr-card"><h3>Busiest times <small>calls in, by day and hour (Nigeria time)</small></h3>
+      {% set hrs = range(7, 20) %}
+      {% set mx = (d.heat.values()|max) if d.heat else 0 %}
+      <div class="heat" role="img" aria-label="Calls by day and hour">
+        <span></span>{% for h in hrs %}<span>{{ (h ~ 'a') if h < 12 else ('12p' if h == 12 else ((h - 12) ~ 'p')) }}</span>{% endfor %}
+        {% for dn, dl in [(1,'Mon'),(2,'Tue'),(3,'Wed'),(4,'Thu'),(5,'Fri'),(6,'Sat'),(7,'Sun')] %}
+          <span>{{ dl }}</span>{% for h in hrs %}{% set n = d.heat.get((dn, h), 0) %}<i class="{{ 'z' if not n }}" {% if n %}style="opacity:{{ '%.2f' % (0.2 + 0.8 * n / mx) }}"{% endif %} title="{{ dl }} {{ h }}:00 · {{ n }} call{{ 's' if n != 1 }}"></i>{% endfor %}
+        {% endfor %}
+      </div>
+      <div class="heat-key"><span>Fewer</span><i style="opacity:.25"></i><i style="opacity:.5"></i><i style="opacity:.75"></i><i></i><span>More</span></div>
+    </div>
+    <div class="cr-card"><h3>Missed calls, and why</h3>
+      {% if d.reasons %}<table class="cr-tbl">
+        {% for r in d.reasons %}<tr><td>{{ {'no_answer': 'Rang, nobody answered', 'out_of_hours': 'Outside calling hours', 'nobody_online': 'Nobody had the portal open', 'calls_off': 'Calls switched off for the number', 'declined': 'Declined'}.get(r.why, r.why) }}</td><td class="num">{{ r.n }}</td></tr>{% endfor %}
+      </table>{% else %}<div class="cr-empty">No missed calls in this period.</div>{% endif %}</div>
+  </div>
+</div>
+{% endblock %}

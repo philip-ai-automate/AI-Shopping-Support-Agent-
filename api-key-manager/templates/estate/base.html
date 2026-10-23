@@ -4,6 +4,10 @@
   <meta charset="utf-8"/>
   <title>{% block title %}PhiXtra Real Estate{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link rel="manifest" href="/estate/manifest.json"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-title" content="KeyLand"/>
+  <link rel="apple-touch-icon" href="/estate/app-icon-192.png"/>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='portal/favicon.png') }}"/>
   <style>
     :root{
@@ -210,27 +214,20 @@
       <span class="sb-icon">🏠</span> Dashboard
     </a>
 
+    <a class="sb-link {% if request.endpoint == 'estate.sandbox' %}active{% endif %}"
+       href="{{ url_for('estate.sandbox') }}">
+      <span class="sb-icon">🧪</span> AI Playground
+    </a>
+
     {% set _plan = _re_tenant.plan_slug if _re_tenant else 'free' %}
     {% set _growth_plus = _plan in ('growth','pro') %}
     {% set _starter_plus = _plan in ('starter','growth','pro') %}
-
-    <a class="sb-link {% if request.endpoint in ('estate.pipeline','estate.lead_detail') %}active{% endif %}"
-       href="{{ url_for('estate.pipeline') }}"
-       {% if not _growth_plus %}style="opacity:.45"{% endif %}>
-      <span class="sb-icon">📊</span> Pipeline
-      {% if not _growth_plus %}<span style="margin-left:auto;font-size:11px">🔒</span>{% endif %}
-    </a>
-
-    <a class="sb-link {% if request.endpoint in ('estate.listings','estate.listing_new','estate.listing_edit') %}active{% endif %}"
-       href="{{ url_for('estate.listings') }}">
-      <span class="sb-icon">🏘️</span> My Listings
-    </a>
 
     <a class="sb-link {% if request.endpoint in ('estate.inbox','estate.inbox_detail') %}active{% endif %}"
        href="{{ url_for('estate.inbox') }}"
        style="justify-content:space-between">
       <span style="display:flex;align-items:center;gap:10px">
-        <span class="sb-icon">💬</span> Leads &amp; Inbox
+        <span class="sb-icon">💬</span> Inbox
       </span>
       {% if _re_inbox_count and _re_inbox_count > 0 %}
       <span style="background:#F04438;color:#fff;font-size:11px;font-weight:700;
@@ -240,30 +237,56 @@
       {% endif %}
     </a>
 
+    <a class="sb-link {% if request.endpoint in ('estate.listings','estate.listing_new','estate.listing_edit') %}active{% endif %}"
+       href="{{ url_for('estate.listings') }}">
+      <span class="sb-icon">🏘️</span> My Listings
+    </a>
+
+    {% if _re_is_admin and _growth_plus %}
+    {# Segments sits inside Contacts; only admins on Growth+ can use it #}
+    {% set _contacts_group = request.endpoint in ('estate.contacts','estate.contact_segments') %}
+    <div class="sb-group">
+      <div class="sb-group-toggle {% if _contacts_group %}open{% endif %}" onclick="sbToggle(this)">
+        <span class="sb-gtitle"><span class="sb-icon">👤</span> Contacts</span>
+        <span class="sb-arrow">▾</span>
+      </div>
+      <div class="sb-sub {% if _contacts_group %}open{% endif %}">
+        <a href="{{ url_for('estate.contacts') }}"
+           class="{% if request.endpoint == 'estate.contacts' %}active{% endif %}">
+          All Contacts
+        </a>
+        <a href="{{ url_for('estate.contact_segments') }}"
+           class="{% if request.endpoint == 'estate.contact_segments' %}active{% endif %}">
+          Segments
+        </a>
+      </div>
+    </div>
+    {% else %}
     <a class="sb-link {% if request.endpoint == 'estate.contacts' %}active{% endif %}"
        href="{{ url_for('estate.contacts') }}"
        {% if not _growth_plus %}style="opacity:.45"{% endif %}>
       <span class="sb-icon">👤</span> Contacts
       {% if not _growth_plus %}<span style="margin-left:auto;font-size:11px">🔒</span>{% endif %}
     </a>
-    {% if _re_is_admin and _growth_plus %}
-    <a class="sb-link {% if request.endpoint == 'estate.contact_segments' %}active{% endif %}"
-       href="{{ url_for('estate.contact_segments') }}"
-       style="padding-left:2.2rem;font-size:13px;color:{% if request.endpoint == 'estate.contact_segments' %}#030C18{% else %}rgba(3,12,24,0.50){% endif %}">
-      <span class="sb-icon" style="font-size:13px">🏷️</span> Segments
-    </a>
     {% endif %}
+
+    <a class="sb-link {% if request.endpoint in ('estate.leads','estate.lead_detail') %}active{% endif %}"
+       href="{{ url_for('estate.leads') }}">
+      <span class="sb-icon">🎯</span> Leads
+    </a>
+
+    <a class="sb-link {% if request.endpoint == 'estate.pipeline' %}active{% endif %}"
+       href="{{ url_for('estate.pipeline') }}"
+       {% if not _growth_plus %}style="opacity:.45"{% endif %}>
+      <span class="sb-icon">📊</span> Pipeline
+      {% if not _growth_plus %}<span style="margin-left:auto;font-size:11px">🔒</span>{% endif %}
+    </a>
 
     <a class="sb-link {% if request.endpoint == 'estate.broadcast' %}active{% endif %}"
        href="{{ url_for('estate.broadcast') }}"
        {% if not _growth_plus %}style="opacity:.45"{% endif %}>
       <span class="sb-icon">📣</span> Broadcast
       {% if not _growth_plus %}<span style="margin-left:auto;font-size:11px">🔒</span>{% endif %}
-    </a>
-
-    <a class="sb-link {% if request.endpoint == 'estate.qr_code' %}active{% endif %}"
-       href="{{ url_for('estate.qr_code') }}">
-      <span class="sb-icon">📲</span> QR Code
     </a>
 
     <a class="sb-link {% if request.endpoint == 'estate.inspections' %}active{% endif %}"
@@ -273,19 +296,7 @@
       {% if not _growth_plus %}<span style="margin-left:auto;font-size:11px">🔒</span>{% endif %}
     </a>
 
-    <a class="sb-link {% if request.endpoint == 'estate.reports' %}active{% endif %}"
-       href="{{ url_for('estate.reports') }}"
-       {% if not _growth_plus %}style="opacity:.45"{% endif %}>
-      <span class="sb-icon">📊</span> Reports
-      {% if not _growth_plus %}<span style="margin-left:auto;font-size:11px">🔒</span>{% endif %}
-    </a>
-
     <div class="sb-divider"></div>
-
-    <a class="sb-link {% if request.endpoint == 'estate.sandbox' %}active{% endif %}"
-       href="{{ url_for('estate.sandbox') }}">
-      <span class="sb-icon">🧪</span> AI Playground
-    </a>
 
     {% set _ai_group = request.endpoint in ('estate.agents','estate.agents_new','estate.agents_edit','estate.system_instruction','estate.handoff_rules') %}
     <div class="sb-group">
@@ -314,16 +325,23 @@
     <div class="sb-divider"></div>
 
     {% if _re_is_admin %}
-    <a class="sb-link {% if request.endpoint == 'estate.billing_plans' %}active{% endif %}"
-       href="{{ url_for('estate.billing_plans') }}">
-      <span class="sb-icon">💳</span> Plan &amp; Billing
-    </a>
+    {% set _bill_group = request.endpoint == 'estate.billing_plans' %}
+    <div class="sb-group">
+      <div class="sb-group-toggle {% if _bill_group %}open{% endif %}" onclick="sbToggle(this)">
+        <span class="sb-gtitle"><span class="sb-icon">💳</span> Plan &amp; Billing</span>
+        <span class="sb-arrow">▾</span>
+      </div>
+      <div class="sb-sub {% if _bill_group %}open{% endif %}">
+        <a href="{{ url_for('estate.billing_plans') }}"
+           class="{% if _bill_group %}active{% endif %}">
+          My Plan
+        </a>
+        <a href="https://phixtra.com/real-estate-pricing/" target="_blank" rel="noopener">
+          View Pricing
+        </a>
+      </div>
+    </div>
     {% endif %}
-
-    <a class="sb-link {% if request.endpoint == 'estate.settings' %}active{% endif %}"
-       href="{{ url_for('estate.settings') }}">
-      <span class="sb-icon">⚙️</span> Settings
-    </a>
 
     {% if _re_is_admin %}
     <a class="sb-link {% if request.endpoint == 'estate.team' %}active{% endif %}"
@@ -334,8 +352,40 @@
     </a>
     {% endif %}
 
+    {% if not _re_is_admin %}
     <a class="sb-link" href="https://phixtra.com/real-estate-pricing/" target="_blank" rel="noopener">
       <span class="sb-icon">💰</span> View Pricing
+    </a>
+    {% endif %}
+
+    <a class="sb-link {% if request.endpoint in ('estate.reports','estate.reports_estates','estate.reports_estates_leads') %}active{% endif %}"
+       href="{{ url_for('estate.reports') }}"
+       {% if not _growth_plus %}style="opacity:.45"{% endif %}>
+      <span class="sb-icon">📊</span> Reports
+      {% if not _growth_plus %}<span style="margin-left:auto;font-size:11px">🔒</span>{% endif %}
+    </a>
+
+    {% if _re_is_admin %}
+    <a class="sb-link {% if request.endpoint == 'estate.automation' %}active{% endif %}"
+       href="{{ url_for('estate.automation') }}">
+      <span class="sb-icon">⚡</span> Automation
+    </a>
+    {% endif %}
+
+    <a class="sb-link {% if request.endpoint == 'estate.estate_calls_page' %}active{% endif %}"
+       href="{{ url_for('estate.estate_calls_page') }}">
+      <span class="sb-icon">📞</span> Calls
+    </a>
+
+    <a class="sb-link {% if request.endpoint == 'estate.my_alerts' %}active{% endif %}"
+       href="{{ url_for('estate.my_alerts') }}">
+      <span class="sb-icon">🔔</span> My alerts
+    </a>
+
+    {# QR Code lives in Settings › WhatsApp #}
+    <a class="sb-link {% if request.endpoint in ('estate.settings','estate.qr_code') %}active{% endif %}"
+       href="{{ url_for('estate.settings') }}">
+      <span class="sb-icon">⚙️</span> Settings
     </a>
 
     <a class="sb-link" href="https://phixtra.com" target="_blank" rel="noopener">
@@ -464,5 +514,6 @@ if(closeBtn)closeBtn.addEventListener('click',closeSB);
 if(overlay)overlay.addEventListener('click',closeSB);
 </script>
 {% block scripts %}{% endblock %}
+{% if _re_tenant %}<script src="/estate/keyland-calls.js?v=2" defer></script>{% endif %}
 </body>
 </html>

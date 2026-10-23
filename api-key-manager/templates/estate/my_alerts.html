@@ -1,0 +1,245 @@
+{% extends "estate/base.html" %}
+{% block title %}My alerts — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+.ma-wrap{max-width:760px;display:flex;flex-direction:column;gap:18px}
+.ma-card{background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;box-shadow:0 2px 12px rgba(3,12,24,0.04);padding:20px 22px}
+.ma-card h2{font-size:15px;font-weight:800;margin:0 0 4px;color:#030C18}
+.ma-sub{margin:0 0 14px;color:rgba(3,12,24,0.55);font-size:13px;line-height:1.55}
+.ma-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ma-note{font-size:12.5px;color:rgba(3,12,24,0.55);margin:10px 0 0}
+.ma-box{border-radius:10px;padding:11px 13px;font-size:13px;margin:0 0 12px;line-height:1.5}
+.ma-box b{display:block;margin-bottom:2px}
+.ma-good{background:#E7F7EF}.ma-warn{background:#FFF4D6}
+.ma-steps{margin:6px 0 0;padding-left:20px;font-size:13px}.ma-steps li{margin:3px 0}
+.ma-devices{border:1px solid rgba(3,12,24,0.10);border-radius:10px;margin:0 0 12px}
+.ma-dev{display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid rgba(3,12,24,0.08)}
+.ma-dev:last-child{border-bottom:0}
+.ma-ic{width:32px;height:32px;border-radius:8px;background:#E8EEF8;display:grid;place-items:center;font-size:16px;flex:0 0 auto}
+.ma-t{flex:1;min-width:0}.ma-t b{display:block;font-size:13.5px}.ma-t span{font-size:12px;color:rgba(3,12,24,0.55)}
+.ma-pill{font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 8px;background:#E7F7EF;color:#0F9F5F;white-space:nowrap}
+.ma-msg{font-size:12.5px;font-weight:600;margin:10px 0 0}
+.ma-msg.ok{color:#0F9F5F}.ma-msg.bad{color:#B42318}
+.ma-card [hidden]{display:none!important}
+.ma-set{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ma-set label.l{display:block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:rgba(3,12,24,0.4);margin-bottom:5px}
+.ma-set input[type=text]{width:100%;padding:9px 12px;border:1.5px solid rgba(3,12,24,0.12);border-radius:9px;font:inherit;font-size:13.5px;background:#fafbfc;box-sizing:border-box}
+.ma-ch{display:flex;gap:14px;flex-wrap:wrap;font-size:13px}
+.ma-ch label{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.ma-card input[type=checkbox]{width:auto!important;margin:0;flex:none}
+.ma-facts{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13px;margin:0}
+.ma-facts dt{color:rgba(3,12,24,0.5)}.ma-facts dd{margin:0;font-weight:650;color:#030C18}
+.ma-list{list-style:none;margin:0;padding:0}
+.ma-list li{padding:9px 0;border-bottom:1px solid rgba(3,12,24,0.06);font-size:13px}
+.ma-list li:last-child{border-bottom:none}
+.ma-list span{color:rgba(3,12,24,0.55)}
+@media(max-width:600px){.ma-set{grid-template-columns:1fr}.ma-card{padding:16px}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:4px">My alerts</h1>
+    <p class="muted">How KeyLand tells you when a lead needs you.</p>
+  </div>
+</div>
+
+<div class="ma-wrap">
+
+  {% if not al.alerts_on %}
+  <div class="ma-box ma-warn" style="margin:0"><b>Alerts are off for {{ tenant.business_name }}</b>{% if _re_is_admin %}Switch them on in <a href="{{ url_for('estate.automation') }}" style="color:inherit;font-weight:750">Automation</a>. You can still set everything up here first.{% else %}The owner or an admin can switch them on. You can still turn on phone notifications now.{% endif %}</div>
+  {% endif %}
+
+  <!-- ── My settings ── -->
+  <div class="ma-card">
+    <h2>My settings</h2>
+    {% if can_edit %}
+    <p class="ma-sub">You're told at the same moment as the agent when a buyer is handed over or a Ready buyer isn't contacted. Settings for the rest of the team are on the <a href="{{ url_for('estate.team') }}#alerts" style="color:inherit;font-weight:750">Team page</a>.</p>
+    <form method="POST" action="{{ url_for('estate.my_alerts') }}">
+      <div class="ma-set">
+        <div><label class="l">Alerts</label><label class="ma-ch"><span><input type="checkbox" name="alerts_on" {{ 'checked' if p.alerts_on }}> Alert me</span></label></div>
+        <div><label class="l" for="maWa">My WhatsApp number</label><input type="text" id="maWa" name="wa_phone" value="{{ p.wa_phone or '' }}" placeholder="+234 803 123 4567" inputmode="tel"></div>
+        <div style="grid-column:1 / -1"><label class="l">Send them by</label>
+          <div class="ma-ch">
+            <label><input type="checkbox" name="by_email" {{ 'checked' if p.by_email }}> Email ({{ p.email }})</label>
+            <label><input type="checkbox" name="by_wa" {{ 'checked' if p.by_wa }}> WhatsApp</label>
+            <label><input type="checkbox" name="by_push" {{ 'checked' if p.by_push }}> Phone notification</label>
+          </div>
+        </div>
+      </div>
+      <div class="ma-row" style="margin-top:14px"><button class="btn btn-primary" type="submit">Save</button></div>
+    </form>
+    {% else %}
+    <p class="ma-sub">Your manager sets these on the Team page. Ask them if anything needs to change.</p>
+    <dl class="ma-facts">
+      <dt>Alerts</dt><dd>{{ 'On' if p.alerts_on else 'Off' }}</dd>
+      <dt>Email</dt><dd>{{ p.email if p.by_email else 'Off' }}</dd>
+      <dt>WhatsApp</dt><dd>{{ (p.wa_phone or 'No number yet') if p.by_wa else 'Off' }}</dd>
+      <dt>Phone notification</dt><dd>{{ 'On' if p.by_push else 'Off' }}</dd>
+    </dl>
+    {% endif %}
+  </div>
+
+  <!-- ── Phone notifications ── -->
+  {% if vapid_key %}
+  <div class="ma-card" id="push-card">
+    <h2>🔔 Phone notifications</h2>
+    <p class="ma-sub">Get a pop-up on this phone or computer when a lead needs you, even when KeyLand is closed. Turn it on once on each phone or computer you use.</p>
+
+    <div data-pn="loading"><p class="ma-note">Checking this device…</p></div>
+    <div data-pn="off" hidden>
+      <div class="ma-row"><button type="button" class="btn btn-primary" id="pnTurnOn">Turn on phone notifications</button></div>
+      <p class="ma-note">Your phone or browser will ask "Allow notifications?" Tap <b>Allow</b>.</p>
+    </div>
+    <div data-pn="on" hidden>
+      <div class="ma-box ma-good"><b>On for this device</b>You'll get a pop-up when a lead needs you.</div>
+    </div>
+    <div data-pn="ios" hidden>
+      <div class="ma-box ma-warn"><b>On iPhone, add KeyLand to your Home Screen first</b>Apple only allows notifications from apps on the Home Screen.</div>
+      <ol class="ma-steps">
+        <li>Tap the <b>Share</b> button at the bottom of Safari.</li>
+        <li>Tap <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+        <li>Open KeyLand from your Home Screen, log in and come back to My alerts.</li>
+      </ol>
+    </div>
+    <div data-pn="blocked" hidden>
+      <div class="ma-box ma-warn"><b>Notifications are blocked for KeyLand in this browser</b>The browser was told not to allow them, so we can't ask again.</div>
+      <ol class="ma-steps">
+        <li>Tap the padlock next to the web address.</li>
+        <li>Set <b>Notifications</b> to <b>Allow</b>.</li>
+        <li>Reload this page and tap <b>Turn on phone notifications</b>.</li>
+      </ol>
+    </div>
+    <div data-pn="unsupported" hidden>
+      <div class="ma-box ma-warn"><b>This browser can't show notifications</b>Use Chrome or Edge on a computer or Android phone, or Safari on iPhone after adding KeyLand to your Home Screen.</div>
+    </div>
+
+    {% if devices %}
+    <div class="ma-devices">
+      {% for d in devices %}
+      <div class="ma-dev" data-endpoint="{{ d.endpoint }}">
+        <span class="ma-ic" aria-hidden="true">{{ '📱' if d.device_label in ('iPhone', 'iPad', 'Android phone') else '💻' }}</span>
+        <div class="ma-t"><b>{{ d.device_label or 'Device' }}</b><span>Turned on {{ d.created_at.strftime('%-d %b %Y') if d.created_at else '' }}</span></div>
+        <span class="ma-pill" data-this hidden>This device</span>
+        <form method="POST" action="{{ url_for('estate.estate_push_remove') }}" data-remove-form>
+          <input type="hidden" name="device_id" value="{{ d.id }}">
+          <button type="submit" class="btn btn-sm" style="color:#B42318">Remove</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div data-pn="on-actions" hidden>
+      <div class="ma-row">
+        <button type="button" class="btn" id="pnTest">Send me a test</button>
+        <button type="button" class="btn" id="pnTurnOff" style="color:#B42318">Turn off for this device</button>
+      </div>
+    </div>
+    <p class="ma-msg" id="pnMsg" role="status" hidden></p>
+  </div>
+  {% endif %}
+
+  <!-- ── Recent alerts ── -->
+  <div class="ma-card">
+    <h2>Alerts sent to me</h2>
+    {% if recent %}
+    <ul class="ma-list">
+      {% for a in recent %}
+      <li><a href="{{ url_for('estate.lead_detail', contact_id=a.contact_id) }}" style="font-weight:750;color:#030C18">{{ a.name or a.phone_number }}</a>
+        · {{ 'Hand-over' if a.reason == 'handoff' else 'Ready buyer' }}
+        <span>· {{ a.first_at.astimezone(tz).strftime('%a %d %b, %H:%M') }}{% if a.reminder_at %} · reminder sent{% endif %}
+        · {% if a.stopped_at %}acted on: {{ a.stop_note }}{% else %}not acted on yet{% endif %}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="ma-sub" style="margin:0">None yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if vapid_key %}
+<script>
+(function(){
+  var KEY = {{ vapid_key|tojson }};
+  var card = document.getElementById('push-card');
+  var msg = document.getElementById('pnMsg');
+  var current = null;
+  function show(state){
+    card.querySelectorAll('[data-pn]').forEach(function(el){
+      var s = el.getAttribute('data-pn');
+      el.hidden = !(s === state || (s === 'on-actions' && state === 'on'));
+    });
+  }
+  function say(text, ok){ msg.textContent = text; msg.className = 'ma-msg ' + (ok ? 'ok' : 'bad'); msg.hidden = false; }
+  function post(url, body){
+    return fetch(url, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body || {})}).then(function(r){ return r.json().catch(function(){ return {}; }); });
+  }
+  function keyBytes(b64){
+    var p = '='.repeat((4 - b64.length % 4) % 4), raw = atob((b64 + p).replace(/-/g,'+').replace(/_/g,'/'));
+    var out = new Uint8Array(raw.length); for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i); return out;
+  }
+  function markThis(endpoint){
+    card.querySelectorAll('.ma-dev').forEach(function(row){
+      var mine = endpoint && row.getAttribute('data-endpoint') === endpoint;
+      row.querySelector('[data-this]').hidden = !mine;
+      row.querySelector('[data-remove-form]').hidden = mine;
+    });
+  }
+  var isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+  function refresh(){
+    if (!supported) { show(isIOS ? 'ios' : 'unsupported'); return; }
+    if (Notification.permission === 'denied') { show('blocked'); return; }
+    navigator.serviceWorker.register('/estate/sw.js', {scope:'/estate/'}).then(function(){ return navigator.serviceWorker.ready; })
+      .then(function(reg){ return reg.pushManager.getSubscription(); })
+      .then(function(sub){
+        current = sub;
+        var known = sub && Array.prototype.some.call(card.querySelectorAll('.ma-dev'), function(r){ return r.getAttribute('data-endpoint') === sub.endpoint; });
+        markThis(known ? sub.endpoint : null);
+        show(known && Notification.permission === 'granted' ? 'on' : 'off');
+      }).catch(function(){ show('off'); });
+  }
+
+  document.getElementById('pnTurnOn').addEventListener('click', function(){
+    var btn = this; btn.disabled = true; btn.textContent = 'Turning on…';
+    Notification.requestPermission().then(function(perm){
+      if (perm !== 'granted') { show(perm === 'denied' ? 'blocked' : 'off'); btn.disabled = false; btn.textContent = 'Turn on phone notifications'; return; }
+      return navigator.serviceWorker.ready.then(function(reg){
+        return reg.pushManager.getSubscription().then(function(old){ return old ? old.unsubscribe() : null; })
+          .then(function(){ return reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:keyBytes(KEY)}); });
+      }).then(function(sub){ return post('{{ url_for("estate.estate_push_add") }}', {subscription: sub.toJSON()}); })
+        .then(function(res){
+          if (res && res.ok) { location.reload(); }
+          else { say((res && res.error) || 'Could not turn on notifications. Try again.', false); btn.disabled = false; btn.textContent = 'Turn on phone notifications'; }
+        });
+    }).catch(function(){ say('Could not turn on notifications on this device.', false); btn.disabled = false; btn.textContent = 'Turn on phone notifications'; });
+  });
+
+  document.getElementById('pnTest').addEventListener('click', function(){
+    var btn = this; btn.disabled = true;
+    post('{{ url_for("estate.estate_push_test") }}', {endpoint: current ? current.endpoint : null}).then(function(res){
+      btn.disabled = false;
+      say(res && res.ok ? 'Sent. It should pop up in a few seconds.' : 'The test did not reach this device. Try turning it off and on again.', res && res.ok);
+    });
+  });
+
+  document.getElementById('pnTurnOff').addEventListener('click', function(){
+    if (!current) { refresh(); return; }
+    var ep = current.endpoint;
+    current.unsubscribe().catch(function(){}).then(function(){
+      return post('{{ url_for("estate.estate_push_remove") }}', {endpoint: ep});
+    }).then(function(){ location.reload(); });
+  });
+
+  refresh();
+})();
+</script>
+{% endif %}
+{% endblock %}

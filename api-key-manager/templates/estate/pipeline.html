@@ -49,6 +49,10 @@
   .pb-card-name{font-size:13px;font-weight:700;color:var(--ink);
                 white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .pb-card-phone{font-size:11px;color:var(--muted);margin-top:1px}
+  .pb-rd{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;margin-top:3px}
+  .pb-rd.ready{background:#E7F6EE;color:#12805C}
+  .pb-rd.considering{background:#FEF3E2;color:#A15C00}
+  .pb-rd.early{background:#E8EEF8;color:#5A6B85}
   .pb-src-badge{font-size:11px;border-radius:6px;padding:2px 6px;flex-shrink:0;margin-top:1px;
                 background:rgba(22,163,74,0.10);color:#15803d;font-weight:650}
   .pb-src-badge.wa{background:rgba(22,163,74,0.12);color:#15803d}
@@ -77,6 +81,10 @@
             overflow:hidden;text-overflow:ellipsis;flex:1}
   .pb-fup{font-size:11px;font-weight:650;white-space:nowrap;flex-shrink:0}
   .pb-fup.late{color:#b02020}
+  .pb-act{font-size:11.5px;color:rgba(3,12,24,0.6);margin:6px 0 2px;line-height:1.4}
+  .pb-act.late{color:#b02020;font-weight:650}
+  .pb-att{font-size:11px;font-weight:700;color:#B42318;background:#FEF0EF;border-radius:7px;padding:3px 7px;margin:6px 0 2px;line-height:1.35}
+  .pb-attbtn.on{background:#B42318;color:#fff;border-color:#B42318}
 
   /* Advance button */
   .pb-advance{display:block;width:100%;margin-top:9px;padding:6px 10px;
@@ -132,6 +140,11 @@
     </div>
   </div>
   <div class="pb-actions">
+    {% if only_attention %}
+    <a href="{{ url_for('estate.pipeline') }}" class="btn btn-sm pb-attbtn on">⚠️ Needs attention · {{ attention_count }} ✕</a>
+    {% else %}
+    <a href="{{ url_for('estate.pipeline', attention=1) }}" class="btn btn-sm pb-attbtn">⚠️ Needs attention · {{ attention_count }}</a>
+    {% endif %}
     <a href="{{ url_for('estate.contacts') }}" class="btn btn-sm">
       👤 All Contacts
     </a>
@@ -221,6 +234,7 @@
             {% if c.name %}
             <div class="pb-card-phone">{{ c.phone_number }}</div>
             {% endif %}
+            {% if c.readiness %}<span class="pb-rd {{ c.readiness }}">{{ readiness_names.get(c.readiness) }}</span>{% endif %}
           </div>
           <span class="pb-src-badge {% if c.source == 'whatsapp' %}wa{% else %}manual{% endif %}">
             {% if c.source == 'whatsapp' %}WA{% else %}Manual{% endif %}
@@ -228,10 +242,10 @@
         </div>
 
         <!-- Property snippet -->
-        {% if c.preferred_area or c.property_type_pref %}
+        {% if c.preferred_area or c.property_type_pref or c.is_land %}
         <div class="pb-card-prop">
           {% if c.preferred_area %}📍 {{ c.preferred_area }}{% endif %}
-          {% if c.property_type_pref %} · {{ c.property_type_pref }}{% endif %}
+          {% if c.is_land %} · Land{% elif c.property_type_pref %} · {{ c.property_type_pref }}{% endif %}
         </div>
         {% endif %}
 
@@ -284,13 +298,19 @@
         </div>
         {% endif %}
 
+        {% if c.attention %}<div class="pb-att">{{ c.attention }}</div>{% endif %}
+        {% if c.action_title and slug not in ('allocated','lost') %}
+        <div class="pb-act {% if c.overdue %}late{% endif %}">Next: {{ c.action_title|truncate(60, true, '…') }}</div>
+        {% elif slug not in ('allocated','lost') %}
+        <div class="pb-act late">No next action</div>
+        {% endif %}
         <!-- Footer: agent + follow-up -->
         <div class="pb-card-foot">
           <span class="pb-agent">
             👤 {{ c.agent_name if c.agent_name else 'Unassigned' }}
           </span>
           {% if c.follow_up_at %}
-          <span class="pb-fup {% if c.overdue %}late{% endif %}">
+          <span class="pb-fup {% if c.overdue %}late{% endif %}" title="{{ c.action_title or 'Next action' }}">
             {% if c.overdue %}⚠️{% else %}📅{% endif %}
             {{ c.follow_up_at.strftime('%d %b') }}
           </span>

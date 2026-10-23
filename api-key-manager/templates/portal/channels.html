@@ -157,35 +157,30 @@
     </div>
   </div>
 
-  <!-- PressOne (business phone calls) -->
+  <!-- WhatsApp calls (2026-10-20, replaced PressOne) — customers call the
+       business's WhatsApp number and it rings for the team in the portal -->
+  {% if call_numbers %}
   <div class="channel-card">
     <div class="channel-card-top">
-      <div class="channel-logo" style="background:#111827">
+      <div class="channel-logo" style="background:#0B1D40">
         <svg viewBox="0 0 24 24" fill="#fff"><path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24c1.12.37 2.33.57 3.57.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.4 21 3 13.6 3 4.5a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.24.2 2.45.57 3.57a1 1 0 0 1-.25 1.02z"/></svg>
       </div>
       <div>
-        <div class="channel-name">Phone (PressOne)</div>
-        {% if pressone_account and pressone_account.active %}
-        <div class="channel-status on">🟢 Connected — Account {{ pressone_account.account_id }}</div>
-        {% else %}
-        <div class="channel-status">Not connected</div>
-        {% endif %}
+        <div class="channel-name">WhatsApp calls</div>
+        {% set _on = call_numbers|selectattr('incoming_on')|list %}
+        {% if _on %}<div class="channel-status on">🟢 On for {{ _on|length }} number{{ 's' if _on|length != 1 }}</div>
+        {% else %}<div class="channel-status">Off · customers can't call yet</div>{% endif %}
       </div>
     </div>
+    <div style="font-size:13px;color:var(--muted);padding:0 2px 10px">
+      {% for n in call_numbers %}<div>{{ n.display_phone_number }}{% if n.label %} · {{ n.label }}{% endif %}: {{ 'calls on' if n.incoming_on else 'off' }}
+        {% if staff_can_open('calls.calls_settings') %} · <a href="{{ url_for('calls.calls_settings', pnid=n.phone_number_id) }}">Settings</a>{% endif %}</div>{% endfor %}
+    </div>
     <div class="channel-card-foot" style="display:flex;gap:8px;flex-wrap:wrap">
-      {% set _po_on = pressone_account and pressone_account.active %}
-      {% if staff_can_open('pressone.connect_submit') %}
-      <a href="{{ url_for('pressone.connect') }}" class="btn {% if not _po_on %}btn-primary{% endif %}">
-        {{ 'Manage' if _po_on else 'Connect PressOne' }} →
-      </a>
-      {% elif _po_on and staff_can_open('pressone.connect') %}
-      <a href="{{ url_for('pressone.connect') }}" class="btn">View →</a>
-      {% endif %}
-      {% if _po_on and staff_can_open('pressone.call_log') %}
-      <a href="{{ url_for('pressone.call_log') }}" class="btn">Call Log</a>
-      {% endif %}
+      {% if staff_can_open('calls.calls_page') %}<a href="{{ url_for('calls.calls_page') }}" class="btn">Calls →</a>{% endif %}
     </div>
   </div>
+  {% endif %}
 
   <!-- Buffer (2026-09-25) — the business's own Buffer account, for Social Media -->
   <div class="channel-card">

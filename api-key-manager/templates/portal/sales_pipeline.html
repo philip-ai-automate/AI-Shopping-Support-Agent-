@@ -12,7 +12,7 @@
 {% set can_bulk_sms_seg   = staff_can_open('portal.sms_pipeline_segments_bulk_add_members') %}
 {% from "portal/_labels_ui.html" import label_chip %}
 {% from "portal/_columns_ui.html" import cc_head, cc_cell %}
-{% from "portal/_filter_ui.html" import fs_business, fs_columns, fs_contact, fs_labels, fs_location, fs_demo, demo_badge with context %}
+{% from "portal/_filter_ui.html" import fs_business, fs_columns, fs_contact, fs_labels, fs_location, fs_demo, fs_followup, demo_badge, followup_badge with context %}
 {% set can_bulk_label     = staff_can_open('portal.lead_labels_bulk_add_members') and 'crm.tags_assign' in (granted_features or []) %}
 {% set can_bulk_assign = staff_can('leads.assign') %}
 {% set can_bulk_cols = all_lead_cols|selectattr('can_fill')|list|length > 0 %}
@@ -561,6 +561,8 @@
       <div class="spf-body">
         {{ fs_demo(biz_state, opt_counts) }}
 
+        {{ fs_followup(biz_state, opt_counts) }}
+
         {% if can_filter_assigned %}
         <section>
           <h3>Assigned to</h3>
@@ -662,6 +664,7 @@
   {% if can_bulk_label %}<button type="button" class="btn btn-sm btn-primary" onclick="LabelUI.bulk(this, 'add', bpLabelForm, bpLabelDone)">🏷️ Add label</button>
   <button type="button" class="btn btn-sm" onclick="LabelUI.bulk(this, 'remove', bpLabelForm, bpLabelDone)">Remove label</button>{% endif %}
   {% if can_bulk_cols %}<button type="button" class="btn btn-sm" onclick="ColumnUI.bulkFill(this, bpLabelForm, bpLabelDone)">▦ Fill a column</button>{% endif %}
+  {% if staff_can('crm.pipeline_board_edit') %}<button type="button" class="btn btn-sm" onclick="openBpCat()">🗂️ Set category</button>{% endif %}
   <button type="button" class="btn btn-sm" onclick="clearLeadSelection()">Clear</button>
 </div>
 
@@ -713,7 +716,7 @@
           <td>
             <div class="cust-cell">
               <span class="cust-avatar" style="background:{{ cust_color(l.customer_name) }}">{{ cust_initials(l.customer_name) }}</span>
-              <div><a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" class="biz-name-cell lead-name-link" title="Open this Sales Lead">{{ l.customer_name }}</a>{{ demo_badge(l.demo) }}</div>
+              <div><a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" class="biz-name-cell lead-name-link" title="Open this Sales Lead">{{ l.customer_name }}</a>{{ demo_badge(l.demo) }}{{ followup_badge(l.followup) }}</div>
             </div>
           </td>
           <td data-col="segment" class="col-hidden" style="font-size:11px">
@@ -781,6 +784,12 @@
                   Open Lead Page
                 </a>
                 <div class="row-action-divider"></div>
+{%- if not l.outcome and not l.dropped_at and staff_can_open('portal.lead_log_contact') %}
+                <button type="button" class="row-action-item primary" data-fx-log="{{ {'leadId': l.id, 'name': l.customer_name, 'hasEmail': (l.email and true) or false}|tojson|forceescape }}" onclick="closeAllRowMenus()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18v16H3zM16 3v4M8 3v4M3 10h18M8 15l2.5 2.5L16 13"/></svg>
+                  Log/Follow-up
+                </button>
+{%- endif %}
                 {% if target and can_edit_deal %}
                 <button type="button" class="row-action-item primary"
                         onclick='closeAllRowMenus(); openAdvanceModal({{ l.id }}, "{{ l.customer_name|e }}", "{{ target }}", {{ (l.deal_value or "null") }})'>
@@ -964,6 +973,12 @@
                 Open Lead Page
               </a>
               <div class="row-action-divider"></div>
+{%- if not l.outcome and not l.dropped_at and staff_can_open('portal.lead_log_contact') %}
+                <button type="button" class="row-action-item primary" data-fx-log="{{ {'leadId': l.id, 'name': l.customer_name, 'hasEmail': (l.email and true) or false}|tojson|forceescape }}" onclick="closeAllRowMenus()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18v16H3zM16 3v4M8 3v4M3 10h18M8 15l2.5 2.5L16 13"/></svg>
+                  Log/Follow-up
+                </button>
+{%- endif %}
               {% set target = next_stage(l.stage) %}
               {% if target and can_edit_deal %}
               <button type="button" class="row-action-item primary"
@@ -1941,7 +1956,7 @@ function spTourOpenFirstRowMenu() {
 
     { sel: '[data-sptour="stage-funnel"]', pos: 'bottom',
       title: '📊 The 6 Pipeline Stages',
-      body: 'Every deal moves left to right: <b>New Opportunity → Contacted → Qualified → Proposal Sent → Negotiating → Won</b>. Close one at any time with a reason: <b>Not a Fit</b> if the business isn't right for you, or <b>Lost</b> if a Qualified deal said no.<br><br>' +
+      body: 'Every deal moves left to right: <b>New Opportunity → Contacted → Qualified → Proposal Sent → Negotiating → Won</b>. Close one at any time with a reason: <b>Not a Fit</b> if the business is not right for you, or <b>Lost</b> if a Qualified deal said no.<br><br>' +
             '<i>Example: a customer asks about a sofa set in your showroom → add them as a Lead → once you confirm it\'s a real opportunity, Qualify it on the Leads page → it appears here as a New Opportunity → call them → once they confirm budget and need, move them to Qualified.</i><br><br>' +
             'Next, let\'s open the real form for each stage.' },
 
@@ -2182,6 +2197,55 @@ function spTourOpenFirstRowMenu() {
   </div>
 </div>
 {% endif %}
+{% if staff_can('crm.pipeline_board_edit') %}
+<div class="modal-over" id="bpCatModal" onclick="if(event.target===this)closeBpCat()">
+  <div class="modal-card" role="dialog" aria-labelledby="bpCatTitle">
+    <div class="modal-title" id="bpCatTitle">Set the business category for <span id="bpCatCount">0</span> deal(s)</div>
+    <div class="modal-sub" style="margin-bottom:12px">For deals in the same line of business. It's also saved on each deal's contact.</div>
+    <label for="bpCatVal" style="display:block;font-size:13px;font-weight:600;margin-bottom:4px">Business category</label>
+    <input type="text" id="bpCatVal" class="finp" list="bpCatList" maxlength="120" placeholder="Pick or type, e.g. Legal" autocomplete="off" style="margin-bottom:10px">
+    <datalist id="bpCatList">{% for v in biz_field_options().business_category %}<option value="{{ v }}">{% endfor %}</datalist>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:6px"><input type="checkbox" id="bpCatReplace" style="width:16px !important;flex:none;margin:0"> Replace the category on deals that already have one</label>
+    <div class="modal-sub">Deals that already have a category are skipped unless you tick the box above.</div>
+    <div class="modal-actions" style="display:flex;gap:10px;margin-top:12px">
+      <button type="button" class="modal-cancel" onclick="closeBpCat()">Cancel</button>
+      <button type="button" class="modal-confirm" id="bpCatGo" onclick="submitBpCat()">Set category</button>
+    </div>
+  </div>
+</div>
+<script>
+function openBpCat(){
+  var n = getSelectedLeadIds().length; if (!n) return;
+  document.getElementById('bpCatCount').textContent = n;
+  document.getElementById('bpCatVal').value = '';
+  document.getElementById('bpCatReplace').checked = false;
+  document.getElementById('bpCatGo').disabled = false;
+  document.getElementById('bpCatModal').classList.add('open');
+  document.body.classList.add('sh-hide');
+  document.getElementById('bpCatVal').focus();
+}
+function closeBpCat(){ document.getElementById('bpCatModal').classList.remove('open'); document.body.classList.remove('sh-hide'); }
+function submitBpCat(){
+  var v = document.getElementById('bpCatVal').value.trim();
+  if (!v) { alert('Pick or type a category.'); return; }
+  var fd = new FormData();
+  fd.append('scope', 'opps'); fd.append('business_category', v);
+  getSelectedLeadIds().forEach(function(id){ fd.append('lead_ids', id); });
+  if (document.getElementById('bpCatReplace').checked) fd.append('replace', '1');
+  document.getElementById('bpCatGo').disabled = true;
+  fetch('/leads/bulk/set-category', { method: 'POST', body: fd, credentials: 'same-origin' })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.error) { alert(d.error); document.getElementById('bpCatGo').disabled = false; return; }
+      var msg = 'Category "' + v + '" saved on ' + d.saved + ' deal(s).';
+      if (d.skipped) msg += ' ' + d.skipped + ' skipped (they already had a category).';
+      alert(msg); location.reload();
+    })
+    .catch(function(){ alert('Could not reach the server. Nothing was changed.'); document.getElementById('bpCatGo').disabled = false; });
+}
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') { var m = document.getElementById('bpCatModal'); if (m && m.classList.contains('open')) closeBpCat(); } });
+</script>
+{% endif %}
 <script>
 function openBpAssign(){
   var n = getSelectedLeadIds().length; if (!n) return;
@@ -2230,6 +2294,7 @@ function bpMoveToLeads(){
 </script>
 
 {% if staff_can('inbox.send_new') %}{% include 'portal/_send_one_wa.html' %}{% endif %}
+{% include "portal/_followup_ui.html" %}
 {% include "portal/_labels_ui.html" %}
 {% include "portal/_columns_ui.html" %}
 {% include "portal/_filter_ui.html" %}

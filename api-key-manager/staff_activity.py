@@ -44,6 +44,7 @@ def ensure_tables(cur) -> None:
             qty         INTEGER NOT NULL DEFAULT 1,
             value       NUMERIC(14,2),
             detail      TEXT,
+            auto        BOOLEAN NOT NULL DEFAULT FALSE,   -- done by the system for them (sequence email), not by the person
             created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )""")
     cur.execute("CREATE INDEX IF NOT EXISTS staff_activity_tenant_time ON staff_activity (tenant_id, created_at)")
@@ -58,6 +59,7 @@ def ensure_tables(cur) -> None:
             last_seen        TIMESTAMPTZ NOT NULL,
             active_minutes   INTEGER NOT NULL DEFAULT 0,
             longest_gap_min  INTEGER NOT NULL DEFAULT 0,
+            from_actions     BOOLEAN NOT NULL DEFAULT FALSE,  -- 11–22 Oct 2026 rows rebuilt from their own actions
             PRIMARY KEY (tenant_id, actor_key, day)
         )""")
     cur.execute("""
@@ -100,10 +102,33 @@ def _session_actor():
             return None
         tm = session.get("team_member_id")
         if tm:
-            return f"team:{int(tm)}", session.get("team_member_name") or "Team member", int(cid)
+            return f"team:{int(tm)}", _member_name(int(tm)) or session.get("team_member_name") or "Team member", int(cid)
         return f"owner:{int(cid)}", _owner_display(int(cid)), int(cid)
     except Exception as e:
         print("⚠️ staff_activity._session_actor error:", e)
+        return None
+
+
+_member_names = {}            # team member id → (name, fetched at)
+
+
+def _member_name(tm_id: int):
+    """The team member's saved name (sessions once carried a wrong one, e.g. "t", 16 Oct 2026)."""
+    hit = _member_names.get(tm_id)
+    if hit and _time.time() - hit[1] < 600:
+        return hit[0]
+    try:
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT name FROM team_members WHERE id=%s", (tm_id,))
+            r = cur.fetchone()
+        finally:
+            conn.close()
+        name = (r[0] or "").strip() if r else ""
+        _member_names[tm_id] = (name or None, _time.time())
+        return name or None
+    except Exception:
         return None
 
 
@@ -231,9 +256,13 @@ def current_name(default: str = None) -> str:
 
 def log(action: str, tenant_id: int = None, lead_id: int = None, contact_id: int = None,
         company_id: int = None, qty: int = 1, value=None, detail: str = None,
-        actor_key: str = None, actor_name: str = None, phone: str = None) -> None:
+        actor_key: str = None, actor_name: str = None, phone: str = None, auto: bool = False) -> None:
     """Save one action. Uses the logged-in person unless actor_key is given
-    (background jobs acting for someone, e.g. a sequence email going out)."""
+    (background jobs acting for someone, e.g. a sequence email going out).
+    auto=True: the system did it for them (a sequence email) — shown apart
+    from their own work, and never counts as them being online (22 Oct 2026:
+    automatic emails had made people look online at weekends)."""
+    from_session = not actor_key
     try:
         if not actor_key:
             a = _session_actor()
@@ -271,18 +300,37 @@ def log(action: str, tenant_id: int = None, lead_id: int = None, contact_id: int
                 r = cur.fetchone()
                 lead_id = r[0] if r else None
             cur.execute("""INSERT INTO staff_activity
-                               (tenant_id, actor_key, actor_name, action, lead_id, contact_id, company_id, qty, value, detail)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                               (tenant_id, actor_key, actor_name, action, lead_id, contact_id, company_id, qty, value, detail, auto)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                         (int(tenant_id), actor_key, (actor_name or "")[:200] or None, action[:40],
                          lead_id, contact_id, company_id, int(qty or 1), value,
-                         (detail or None) and str(detail)[:500]))
+                         (detail or None) and str(detail)[:500], bool(auto)))
+            if lead_id and not auto:
+                _followup_hook(cur, int(tenant_id), lead_id, action, actor_key, actor_name)
             cur.close()
         finally:
             conn.close()
-        if actor_key and not actor_key.startswith("system"):
+        # Online time only from the person really using the portal
+        if from_session and not auto and actor_key and not actor_key.startswith("system"):
             _presence(tenant_id, actor_key, actor_name, force=True)
     except Exception as e:
         print(f"⚠️ staff_activity.log error ({action}):", e)
+
+
+def _followup_hook(cur, tenant_id, lead_id, action, actor_key, actor_name):
+    """Next follow-up date (2026-10-23): contact ticks the open one off and
+    opens the next; closing a lead cancels it; reopening starts a new one."""
+    try:
+        import lead_followups
+        if action in lead_followups.CONTACT_ACTIONS:
+            lead_followups.on_contact(cur, tenant_id, lead_id, action, actor_key, actor_name)
+        elif action in lead_followups.CLOSE_ACTIONS:
+            lead_followups.on_close(cur, lead_id)
+        elif action == "reopened":
+            lead_followups.on_close(cur, lead_id)
+            lead_followups.on_contact(cur, tenant_id, lead_id, action, actor_key, actor_name)
+    except Exception as e:
+        print(f"⚠️ staff_activity follow-up error ({action}):", e)
 
 
 STAGE_ACTIONS = {"opportunity": "opportunity", "proposal_sent": "proposal", "won": "won",

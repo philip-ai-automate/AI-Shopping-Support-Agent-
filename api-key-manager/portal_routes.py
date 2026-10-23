@@ -4,6 +4,8 @@ Extends the existing Flask app. db.py, app.py, invoice_pdf.py, portal_utils.py a
 """
 import psycopg2
 import staff_activity
+import lead_linkedin as _li
+import lead_followups as _fu
 import psycopg2.extras
 import psycopg2.errors
 import os, secrets, string, json as _json
@@ -136,6 +138,7 @@ def _inject_granted_features():
         print("⚠️ _inject_granted_features error:", e)
 
     return {"granted_features": granted,
+            "platform_only_modules": PLATFORM_ONLY_MODULES,
             "ai_instruction_channels": _ai_instruction_channels(tenant_id)}
 
 
@@ -385,6 +388,8 @@ PLAN_FEATURE_CATALOG = {
         ("crm.tags_view",              "Labels — view"),
         ("crm.tags_assign",            "Add and remove labels on leads (and make their own private or group labels)"),
         ("crm.bookings_connect",       "Connect Microsoft Bookings so booked demos show on leads automatically"),
+        ("crm.demos_view",             "Demos page — their own demos and numbers"),
+        ("crm.demos_all",              "See all demos — every salesperson's demos, plus manager alerts and the Monday summary"),
         ("crm.tags_create",            "Create a label for everyone / import bounces"),
         ("crm.tags_edit",              "Edit a label for everyone — rename, colour, meaning"),
         ("crm.tags_delete",            "Delete a label for everyone"),
@@ -423,8 +428,12 @@ PLAN_FEATURE_CATALOG = {
         ("accounts.notes",   "Add notes and log calls on an account"),
         ("accounts.see_all", "See every assigned account, not just their own"),
     ],
-    "Voice Calls": [
-        ("voice.calls", "Voice Calls (PressOne)"),
+    "Calls": [
+        ("calls.answer",   "Answer WhatsApp calls (it rings for them)"),
+        ("calls.make",     "Call customers on WhatsApp (where Meta allows)"),
+        ("voice.calls",    "Calls page — see calls and call back missed ones"),
+        ("calls.report",   "Calls report"),
+        ("calls.settings", "Manage call settings for each WhatsApp number"),
     ],
     "Email Campaigns": [
         ("legacy:feat_email_campaigns",  "Email Campaigns (plan unlock)"),
@@ -584,9 +593,6 @@ PLAN_FEATURE_CATALOG = {
         ("wa.connect_manage",                 "Connect / configure your WhatsApp number"),
         ("wa.connect_delete",                 "Delete your WhatsApp connection"),
         ("channels.connect_messenger",        "Connect Messenger (no separate disconnect exists)"),
-        ("channels.connect_pressone_view",    "PressOne — view connect page"),
-        ("channels.connect_pressone_manage",  "Connect / test / configure PressOne"),
-        ("channels.connect_pressone_remove",  "Disconnect PressOne"),
         ("channels.connect_buffer_view",      "Buffer — view connect page"),
         ("channels.connect_buffer_manage",    "Connect Buffer / change key / choose accounts"),
         ("channels.connect_buffer_remove",    "Disconnect Buffer"),
@@ -653,6 +659,7 @@ ROLE_FORM_GRID = {
         {"label": "Duplicate Merge Review", "view": "crm.merge_review_view", "other": ["crm.merge_review_confirm", "crm.merge_review_reject"]},
         {"label": "Pipeline Settings", "view": "crm.pipeline_settings_view", "edit": "crm.pipeline_settings_edit"},
         {"label": "Microsoft Bookings (demos)", "other": ["crm.bookings_connect"]},
+        {"label": "Demos", "view": "crm.demos_view", "other": ["crm.demos_all"]},
     ],
     "Leads": [
         {"label": "Leads", "view": "leads.page", "create": "leads.create", "other": ["leads.qualify", "leads.assign", "leads.see_all"]},
@@ -666,8 +673,10 @@ ROLE_FORM_GRID = {
     "Accounts": [
         {"label": "Accounts", "view": "accounts.view", "other": ["accounts.notes", "accounts.see_all"]},
     ],
-    "Voice Calls": [
-        {"label": "Voice Calls (PressOne)", "view": "voice.calls"},
+    "Calls": [
+        {"label": "Calls page", "view": "voice.calls", "other": ["calls.answer", "calls.make"]},
+        {"label": "Calls report", "view": "calls.report"},
+        {"label": "Call settings", "edit": "calls.settings"},
     ],
     "Email Campaigns": [
         {"label": "Email Campaigns (plan unlock)", "other": ["legacy:feat_email_campaigns"]},
@@ -767,8 +776,6 @@ ROLE_FORM_GRID = {
         {"label": "Channels",  "view": "channels.page"},
         {"label": "WhatsApp",  "view": "wa.connect_view", "edit": "wa.connect_manage", "delete": "wa.connect_delete"},
         {"label": "Messenger", "create": "channels.connect_messenger"},
-        {"label": "PressOne",  "view": "channels.connect_pressone_view", "edit": "channels.connect_pressone_manage",
-         "delete": "channels.connect_pressone_remove"},
         {"label": "Buffer",    "view": "channels.connect_buffer_view", "edit": "channels.connect_buffer_manage",
          "delete": "channels.connect_buffer_remove"},
     ],
@@ -1542,7 +1549,7 @@ STAFF_HOME_PAGES = [
     ("social.posts_view",       "buffer.posts"),
     ("campaigns_wa.all_view",   "portal.whatsapp_campaigns"),
     ("campaigns_email.all_view", "portal.email_campaigns"),
-    ("voice.calls",             "pressone.call_log"),
+    ("voice.calls",             "calls.calls_page"),
     ("analytics.page",          "portal.analytics"),
     ("ecom.orders_view",        "portal.orders"),
     ("ecom.products_view",      "portal.products"),
@@ -5886,6 +5893,20 @@ def dashboard():
         dash_attention = _get_dashboard_needs_attention(tenant_id)
         dash_activity  = _get_dashboard_recent_activity(tenant_id)
 
+    # Demos card (2026-10-22): managers only — owner or "See all demos"
+    dash_demos = {}
+    try:
+        if ((not session.get("team_member_id") or _team_member_has_permission("crm.demos_all"))
+                and _plan_grants_feature(_get_tenant_plan(tenant_id), "crm.demos_view")):
+            import bookings_crm
+            _dc = get_db_connection(); _dcur = _dc.cursor()
+            try:
+                dash_demos = bookings_crm.dashboard_card(_dcur, tenant_id)
+            finally:
+                _dcur.close(); _dc.close()
+    except Exception as e:
+        print("⚠️ dashboard demos card:", e)
+
     return render_template(
         "portal/dashboard.html",
         dash_top_plan        = dash_top_plan,
@@ -5915,6 +5936,7 @@ def dashboard():
         dash_campaigns           = dash_campaigns,
         dash_attention           = dash_attention,
         dash_activity            = dash_activity,
+        dash_demos               = dash_demos,
         dashboard_period_options = DASHBOARD_PERIOD_LABELS,
         setup                    = setup,
     )
@@ -18524,15 +18546,14 @@ def whatsapp_contact_detail(contact_id: int):
         for m in recent_messages:
             timeline.append({"kind": "message", "created_at": m["created_at"],
                               "direction": m["direction"], "body": m["content"]})
-        # PressOne calls (2026-09-12) — lazy import to avoid a circular
-        # import, since pressone_routes.py itself imports helpers from this
-        # module. See project_phixtra_pressone_integration memory.
-        from pressone_routes import get_contact_calls as _pressone_get_calls
-        for c in _pressone_get_calls(tenant_id, contact_id):
-            timeline.append({"kind": "call", "created_at": c["started_at"],
+        # WhatsApp calls (2026-10-20, replaced PressOne) — lazy import: the
+        # calls module imports helpers from this one.
+        from calls_routes import contact_calls as _contact_calls
+        for c in _contact_calls(tenant_id, [contact.get("whatsapp_number"), contact.get("phone")]):
+            timeline.append({"kind": "call", "created_at": c["created_at"],
                               "direction": c["direction"], "status": c["status"],
-                              "duration_seconds": c["duration_seconds"],
-                              "recording_url": c["recording_url"]})
+                              "duration_seconds": c["duration"],
+                              "who": c["answered_by_name"] or c["started_by_name"]})
         timeline.append({"kind": "created", "created_at": contact["created_at"]})
         timeline.sort(key=lambda t: t["created_at"], reverse=True)
 
@@ -25587,7 +25608,26 @@ def lead_email_replied(lead_id: int):
     if not lead:
         flash("Lead not found.", "danger")
         return redirect(url_for("portal.leads_page"))
-    actor = _current_actor(customer)["label"]
+    follow_up, why = _followup_from_form(lead, tenant_id)
+    if why:
+        flash(why + " Nothing was saved.", "danger")
+        return redirect(url_for("portal.lead_detail", lead_id=lead_id) + "#emails")
+    actor_d = _current_actor(customer)
+    if _record_email_reply(tenant_id, lead, actor_d):
+        flash("Marked as replied — it's on this lead's history." + (f" Next follow-up {follow_up:%a %-d %b}." if follow_up else ""), "success")
+        if follow_up:
+            _fu.set_next(tenant_id, lead_id, follow_up, actor_d, "reply_logged")
+    else:
+        flash("Could not save that. Please try again.", "danger")
+    return redirect(url_for("portal.lead_detail", lead_id=lead_id) + "#emails")
+
+
+def _record_email_reply(tenant_id: int, lead: dict, actor_d: dict) -> bool:
+    """'They replied to our email': on the lead's history, the latest campaign
+    email marked replied, sequences stopped, a New lead moved to Contacted,
+    and the open follow-up ticked off. Shared by the Emails tab and Log what happened."""
+    lead_id = lead["id"]
+    actor = actor_d["label"]
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -25609,12 +25649,11 @@ def lead_email_replied(lead_id: int):
         _seq_stop_matching(cur, tenant_id, "Replied", email=lead.get("email"), lead_id=lead_id)
         cur.execute("UPDATE merchant_pipeline_leads SET updated_at=NOW() WHERE id=%s", (lead_id,))
         conn.commit(); cur.close(); conn.close()
-        flash("Marked as replied — it's on this lead's history.", "success")
         staff_activity.log("reply_logged", tenant_id, lead_id=lead_id)
+        return True
     except Exception as e:
         print("⚠️ lead_email_replied error:", e)
-        flash("Could not save that. Please try again.", "danger")
-    return redirect(url_for("portal.lead_detail", lead_id=lead_id) + "#emails")
+        return False
 
 
 def _lead_email_history(tenant_id: int, lead_id: int) -> list:
@@ -25979,10 +26018,14 @@ def _seq_deliver(cur, camp, tenant_id: int, email: str, sender: dict, lead_id=No
     return ok, err
 
 
-def _seq_send_next(person_id: int):
+def _seq_send_next(person_id: int, due_step=None):
     """Send one person their next email now (automatic step that's due, or a
     team member pressing Send). Claims the row first, so two portal workers
-    can never send the same email twice. Returns (ok, message)."""
+    can never send the same email twice. Returns (ok, message).
+    due_step = the scheduler's steps_sent when it found them due: only send if
+    they're still on that step and still due. Both workers run the scheduler,
+    so without it the second one sent Email 2 the moment the first had sent
+    Email 1 (21 Oct 2026, 33 people in one sequence)."""
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
@@ -25990,8 +26033,12 @@ def _seq_send_next(person_id: int):
         p = cur.fetchone()
         if not p or p["status"] not in ("active", "ready"):
             return False, "Already sent or stopped."
+        if due_step is not None and p["steps_sent"] != due_step:
+            return False, "Already sent."
         cur.execute("""UPDATE email_sequence_people SET status='sending', updated_at=NOW()
-                       WHERE id=%s AND status=%s AND steps_sent=%s""", (p["id"], p["status"], p["steps_sent"]))
+                       WHERE id=%s AND status=%s AND steps_sent=%s
+                         AND (%s IS NULL OR next_due_at <= NOW())""",
+                    (p["id"], p["status"], p["steps_sent"], due_step))
         conn.commit()
         if not cur.rowcount:
             return False, "Already being sent."
@@ -26033,8 +26080,8 @@ def _seq_send_next(person_id: int):
         elif p["steps_sent"] + 1 < len(steps):
             nxt = steps[p["steps_sent"] + 1]
             cur.execute("""UPDATE email_sequence_people SET steps_sent=steps_sent+1, last_sent_at=NOW(),
-                               status='active', next_due_at=NOW() + make_interval(days => %s), updated_at=NOW()
-                           WHERE id=%s""", (int(nxt["wait_days"] or 0), p["id"]))
+                               status='active', next_due_at=%s, updated_at=NOW()
+                           WHERE id=%s""", (_seq_due_after(_seq_schedule(seq), int(nxt["wait_days"] or 0)), p["id"]))
         else:
             cur.execute("""UPDATE email_sequence_people SET steps_sent=steps_sent+1, last_sent_at=NOW(),
                                status='finished', next_due_at=NULL, updated_at=NOW() WHERE id=%s""", (p["id"],))
@@ -26045,7 +26092,7 @@ def _seq_send_next(person_id: int):
                 _a_key, _a_name = staff_activity.actor_by_name(tenant_id, p.get("added_by"))
             if _a_key or staff_activity.in_staff_request():
                 staff_activity.log("email_sent", tenant_id, lead_id=p.get("lead_id"), contact_id=p.get("contact_id"),
-                                   actor_key=_a_key, actor_name=_a_name,
+                                   actor_key=_a_key, actor_name=_a_name, auto=True,
                                    detail=f"{seq.get('name') or 'Sequence'} · email {step['position']}")
         return (True, f"Email {step['position']} sent.") if ok else (False, f"Couldn't deliver: {err or 'unknown error'}")
     except Exception as e:
@@ -26110,6 +26157,25 @@ def _seq_window(sch, now=None):
         return False, 0.0, day0
     span = max(1 / 60, sch["to_h"] - sch["from_h"])
     return True, min(1.0, (hour - sch["from_h"] + 1 / 60) / span), day0
+
+
+def _seq_due_after(sch, days: int, since=None):
+    """When the next email is due, `days` after `since` (default now). With a
+    schedule whose follow-ups keep to it, only its sending days count (Mon–Thu
+    → 3 days after a Wednesday is the next Tuesday), at the same time of day,
+    so follow-ups never pile up on the first day after a gap."""
+    since = since or _sqdt.datetime.now(_sqdt.timezone.utc)
+    if not sch or not sch["follow"] or days <= 0 or len(sch["days"]) >= 7:
+        return since + _sqdt.timedelta(days=max(0, days))
+    from zoneinfo import ZoneInfo
+    local = since.astimezone(ZoneInfo(sch["tz"]))
+    d, left = local.date(), days
+    while left:
+        d += _sqdt.timedelta(days=1)
+        if (d.isoweekday() % 7) in sch["days"]:
+            left -= 1
+    due = _sqdt.datetime.combine(d, local.timetz().replace(tzinfo=None), tzinfo=ZoneInfo(sch["tz"]))
+    return due.astimezone(_sqdt.timezone.utc)
 
 
 def _seq_first_quota(cur, seq_id: int, sch):
@@ -26201,13 +26267,15 @@ def _email_sequence_tick():
                 reason = _seq_stop_reason(cur, p)
                 if reason:
                     cur.execute("""UPDATE email_sequence_people SET status='stopped', stop_reason=%s, next_due_at=NULL,
-                                       updated_at=NOW() WHERE id=%s AND status='active'""", (reason, p["id"]))
+                                       updated_at=NOW() WHERE id=%s AND status='active' AND steps_sent=%s""",
+                                (reason, p["id"], p["steps_sent"]))
                 else:
                     cur.execute("UPDATE email_sequence_people SET status='ready', updated_at=NOW() "
-                                "WHERE id=%s AND status='active'", (p["id"],))
+                                "WHERE id=%s AND status='active' AND steps_sent=%s AND next_due_at <= NOW()",
+                                (p["id"], p["steps_sent"]))
                 conn.commit()
                 continue
-            ok, msg = _seq_send_next(p["id"])
+            ok, msg = _seq_send_next(p["id"], due_step=p["steps_sent"])
             if not ok and msg.startswith("No sending address"):
                 # Nothing can go out for this business; try it again next minute.
                 no_sender.add(p["tenant_id"])
@@ -26617,11 +26685,15 @@ def email_sequence_detail(seq_id: int):
                 t["emails"] = sorted(x for x in t.get("emails", ()) if x)
             p["track"] = t
         vis, vp = _tpl_vis("t")
-        cur.execute("SELECT t.id, t.name, t.fields->>'subject' AS subject FROM email_templates t WHERE t.tenant_id=%s AND "
+        cur.execute("SELECT t.id, t.name, t.fields->>'subject' AS subject, t.created_by_key FROM email_templates t WHERE t.tenant_id=%s AND "
                     "(t.id IN (SELECT template_id FROM email_sequence_steps WHERE sequence_id=%s AND template_id IS NOT NULL)"
                     + (" OR TRUE" if not vis else " OR (TRUE" + vis + ")") + ") ORDER BY t.name",
                     [tenant_id, seq_id] + vp)
         templates = cur.fetchall()
+        # Edit shows beside an email only for people allowed to change it.
+        can_write = _team_member_has_permission("campaigns_email.all_create")
+        for t in templates:
+            t["editable"] = can_write and _tpl_is_mine(t)
         _ls_exec(cur, "SELECT DISTINCT business_category FROM merchant_pipeline_leads WHERE tenant_id=%s "
                  "AND business_category IS NOT NULL AND business_category <> '' AND email IS NOT NULL "
                  "ORDER BY business_category LIMIT 300", (tenant_id,))
@@ -27291,17 +27363,37 @@ def email_saved_email_preview(template_id: int):
     tenant_id = int(customer["tenant_id"])
     conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     vis, vp = _tpl_vis("t")
-    cur.execute("SELECT t.name, t.fields FROM email_templates t WHERE t.id=%s AND t.tenant_id=%s" + vis,
+    cur.execute("SELECT t.name, t.fields, t.created_by_key FROM email_templates t WHERE t.id=%s AND t.tenant_id=%s" + vis,
                 [template_id, tenant_id] + vp)
-    row = cur.fetchone(); cur.close(); conn.close()
+    row = cur.fetchone()
     if not row:
+        cur.close(); conn.close()
         return jsonify({"error": "not found"}), 404
+    cur.execute("""SELECT s.name || ' · Email ' || st.position AS u FROM email_sequence_steps st
+                   JOIN email_sequences s ON s.id = st.sequence_id
+                   WHERE st.template_id=%s AND s.tenant_id=%s ORDER BY s.name, st.position""", (template_id, tenant_id))
+    used_in = [r["u"] for r in cur.fetchall()]
+    # Opened from a sequence: show it from that sequence's "Send as" person.
+    sender = _get_email_sender(tenant_id)
+    seq_raw = request.args.get("seq") or ""
+    if seq_raw.isdigit():
+        seq = _seq_get(cur, tenant_id, int(seq_raw))
+        if seq:
+            sender = _seq_sender(seq, sender)
+    cur.close(); conn.close()
     f = row["fields"] or {}
     fields = {k: f.get(k) or "" for k in ("hero_heading", "body_html", "cta_text", "cta_url",
                                            "image_url", "video_url", "video_picture_url")}
     fields["signoff"] = f.get("signoff")
-    sender = _get_email_sender(tenant_id)
+    fields["style"] = f.get("style")
     from_name = sender["from_name"] if sender else (customer.get("business_name") or "")
+    edit_url = None
+    if _team_member_has_permission("campaigns_email.all_create") and _tpl_is_mine(row):
+        edit_url = url_for("portal.email_saved_email_edit", template_id=template_id)
+        back = _email_back_path(request.args.get("back"))
+        if back:
+            from urllib.parse import quote as _quote
+            edit_url += "?back=" + _quote(back, safe="")
     html_out = _render_builder(fields, from_name, tenant_id).replace("{{UNSUBSCRIBE_URL}}", "#")
     ctx, shown_as = {}, None
     try:
@@ -27318,7 +27410,17 @@ def email_saved_email_preview(template_id: int):
     return jsonify({"name": row["name"], "html": email_outreach.apply_merge(html_out, ctx, as_html=True),
                     "subject": email_outreach.apply_merge(f.get("subject") or "", ctx, as_html=False),
                     "preheader": email_outreach.apply_merge(f.get("preheader") or "", ctx, as_html=False),
-                    "shown_as": shown_as, "from_name": from_name})
+                    "shown_as": shown_as, "from_name": from_name,
+                    "from_email": sender["from_email"] if sender else None,
+                    "style": "plain" if fields["style"] == "plain" else "designed",
+                    "used_in": used_in, "edit_url": edit_url})
+
+
+def _email_back_path(raw) -> str:
+    """A page inside Email to come back to after editing (e.g. the sequence
+    it was opened from), or "" — never another site."""
+    raw = (raw or "").strip()
+    return raw if raw.startswith("/email/") and "//" not in raw and "\\" not in raw else ""
 
 
 @portal_bp.route("/email/saved-emails/<int:template_id>/add-to-sequence", methods=["POST"])
@@ -27564,11 +27666,21 @@ def email_saved_email_edit(template_id: int):
     vis, vp = _tpl_vis("t")
     cur.execute("SELECT t.id, t.name, t.fields, t.created_by_key FROM email_templates t WHERE t.id=%s AND t.tenant_id=%s" + vis,
                 [template_id, int(customer["tenant_id"])] + vp)
-    tpl = cur.fetchone(); cur.close(); conn.close()
+    tpl = cur.fetchone()
+    used_in = []
+    if tpl:
+        cur.execute("""SELECT s.name || ' · Email ' || st.position AS u FROM email_sequence_steps st
+                       JOIN email_sequences s ON s.id = st.sequence_id
+                       WHERE st.template_id=%s AND s.tenant_id=%s ORDER BY s.name, st.position""",
+                    (template_id, int(customer["tenant_id"])))
+        used_in = [r["u"] for r in cur.fetchall()]
+    cur.close(); conn.close()
+    back = _email_back_path(request.args.get("back"))
     if not tpl or not _tpl_is_mine(tpl):
         flash("You can only edit saved emails you made yourself.", "warning")
-        return redirect(url_for("portal.email_saved_emails"))
-    return _render_email_editor(customer, {"id": tpl["id"], "name": tpl["name"], "fields": tpl["fields"] or {}})
+        return redirect(back or url_for("portal.email_saved_emails"))
+    return _render_email_editor(customer, {"id": tpl["id"], "name": tpl["name"], "fields": tpl["fields"] or {},
+                                           "used_in": used_in, "back": back})
 
 
 @portal_bp.route("/email/saved-emails/save", methods=["POST"])
@@ -27626,7 +27738,8 @@ def email_saved_email_save():
     finally:
         cur.close(); conn.close()
     flash(msg, "success")
-    return jsonify({"ok": True, "id": tid, "next": url_for("portal.email_saved_emails") + f"#se-{tid}"})
+    back = _email_back_path(request.form.get("back"))
+    return jsonify({"ok": True, "id": tid, "next": back or (url_for("portal.email_saved_emails") + f"#se-{tid}")})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -32938,12 +33051,12 @@ def channels_page():
     except Exception as e:
         print("⚠️ channels_page fb_pages lookup error:", e)
 
-    from pressone_routes import get_account as _pressone_get_account
-    pressone_account = None
+    call_numbers = []
     try:
-        pressone_account = _pressone_get_account(tenant_id)
+        from calls_routes import channels_card as _calls_card
+        call_numbers = _calls_card(tenant_id)
     except Exception as e:
-        print("⚠️ channels_page pressone_account lookup error:", e)
+        print("⚠️ channels_page call settings lookup error:", e)
 
     buffer_account, buffer_channel_count = None, 0
     try:
@@ -32960,7 +33073,7 @@ def channels_page():
         customer=customer,
         wa_connection=wa_connection,
         fb_pages=fb_pages,
-        pressone_account=pressone_account,
+        call_numbers=call_numbers,
         buffer_account=buffer_account,
         buffer_channel_count=buffer_channel_count,
         mailbox_only=False,
@@ -35093,6 +35206,66 @@ def team_performance_email_settings():
     return redirect(back)
 
 
+@portal_bp.route("/team-performance/contacted")
+@team_feature("leads.team_performance")
+def team_performance_contacted():
+    """Daily record (22 Oct 2026): every business each person contacted
+    personally, day by day, back to when recording started. CSV with ?csv=1."""
+    customer, tenant_id, err = _tp_guard()
+    if err: return err
+    _rperm = _require_team_permission("leads.team_performance")
+    if _rperm: return _rperm
+    import datetime as _dtm
+    viewer = _current_actor(customer)
+    tz = _tp.tz_for(tenant_id)
+    scope, people_rows = _tp.viewer_scope(tenant_id, viewer)
+    period = request.args.get("period") or "week"
+    today = _tp.now_local(tz).date()
+    if period == "all":
+        start, end, label = _tp.RECORDING_STARTED, today, f"Since {_tp.RECORDING_STARTED:%-d %B %Y}"
+    elif period == "custom":
+        try:
+            start = _dtm.date.fromisoformat(request.args.get("from") or "")
+            end = _dtm.date.fromisoformat(request.args.get("to") or "")
+        except ValueError:
+            start, end = today - _dtm.timedelta(days=6), today
+        start, end = max(start, _tp.RECORDING_STARTED), min(end, today)
+        label = f"{start:%-d %b} – {end:%-d %b %Y}"
+    else:
+        key, start, end, _ps, _pe, label, _vs = _tp.resolve_period(period, tz)
+        period = key
+    person = request.args.get("person") or ""
+    keys = None if scope is None else set(scope)
+    if person:
+        if keys is not None and person not in keys:
+            return _team_member_denied("You can only see the people who report to you.")
+        keys = {person}
+    groups = _tp.contacted_list(tenant_id, keys, start, end)
+    names = {}
+    for r in people_rows:
+        names[f"team:{r['id']}"] = r["name"]
+    for g in groups:
+        names.setdefault(g["actor_key"], g["actor_name"])
+    if request.args.get("csv"):
+        import csv, io
+        buf = io.StringIO(); w = csv.writer(buf)
+        w.writerow(["Day", "Team member", "Business", "Contact person", "Phone", "First contact (time)", "What they did"])
+        for g in groups:
+            for it in g["items"]:
+                w.writerow([g["day"].isoformat(), g["actor_name"], it["business"], it["person"] or "", it["phone"] or "",
+                            it["first"].strftime("%H:%M"), " | ".join(it["what"])])
+        from flask import Response
+        return Response(buf.getvalue(), mimetype="text/csv",
+                        headers={"Content-Disposition": f"attachment;filename=businesses_contacted_{start}_{end}.csv"})
+    totals = {}
+    for g in groups:
+        totals[g["actor_key"]] = totals.get(g["actor_key"], 0) + g["count"]
+    return render_template("portal/team_performance_contacted.html", customer=customer, groups=groups, viewer=viewer,
+                           period=period, label=label, start=start, end=end, person=person,
+                           people=sorted(names.items(), key=lambda x: x[1] or ""), totals=totals,
+                           tz_label=_tp.tz_label(tz), recording_started=_tp.RECORDING_STARTED, today=today)
+
+
 @portal_bp.route("/team-performance/person/<path:actor_key>")
 @team_feature("leads.team_performance")
 def team_performance_person(actor_key: str):
@@ -35155,6 +35328,18 @@ def team_performance_targets():
     return redirect(url_for("portal.team_performance", period="month") + "#targets")
 
 
+def _lead_is_open(lead: dict) -> bool:
+    return not lead.get("outcome") and not lead.get("dropped_at")
+
+
+def _followup_from_form(lead: dict, tenant_id: int):
+    """The required "Next follow-up" calendar box (2026-10-23) → (date, None),
+    (None, None) for a closed lead, or (None, why not)."""
+    if not _lead_is_open(lead):
+        return None, None
+    return _fu.parse_date(request.form.get("next_followup"), tenant_id)
+
+
 @portal_bp.route("/leads/<int:lead_id>/log-call", methods=["POST"])
 @team_feature("leads.page")
 def lead_log_call(lead_id: int):
@@ -35198,17 +35383,413 @@ def lead_log_call(lead_id: int):
         if naf_reason not in PIPELINE_NOT_A_FIT_REASONS or naf_reason == "Other":
             flash("Please choose a Not a Fit reason.", "danger")
             return redirect(back)
+    follow_up, why = (None, None) if naf_reason else _followup_from_form(lead, tenant_id)
+    if why:
+        flash(why + " The call was not logged.", "danger")
+        return redirect(back)
     actor = _current_actor(customer)
     _tp.log_call(tenant_id, lead_id, actor, outcome, minutes, note)
     label = _tp.CALL_OUTCOME_LABELS[outcome]
     staff_activity.log("call", tenant_id, lead_id=lead_id,
                        detail=label + (f" · {minutes} min" if minutes else "") + (f"\n{note[:300]}" if note else ""))
+    if follow_up:
+        _fu.set_next(tenant_id, lead_id, follow_up, actor, "call")
     if naf_reason:
         _lead_mark_not_a_fit(lead, naf_reason, actor["label"])
         flash(f"Call logged. {lead['customer_name']} marked Not a Fit.", "success")
     else:
-        flash(f"Call logged: {label.lower()}.", "success")
+        flash(f"Call logged: {label.lower()}." + (f" Next follow-up {follow_up:%a %-d %b}." if follow_up else ""), "success")
     return redirect(back)
+
+
+def _lead_linkedin_start(lead_id: int):
+    """Shared checks for the LinkedIn buttons on the lead page → (customer, tenant_id, lead, back) or a redirect.
+    Each route checks login + role itself first."""
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
+    if not lead:
+        flash("Lead not found.", "danger")
+        return redirect(url_for("portal.leads_page"))
+    return customer, tenant_id, lead, url_for("portal.lead_detail", lead_id=lead_id) + "#linkedin"
+
+
+@portal_bp.route("/leads/<int:lead_id>/linkedin-step", methods=["POST"])
+@team_feature("leads.page")
+def lead_linkedin_step(lead_id: int):
+    """One click on the lead page: Request sent / Accepted / Messaged / Not accepted."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    got = _lead_linkedin_start(lead_id)
+    if not isinstance(got, tuple): return got
+    customer, tenant_id, lead, back = got
+    step = (request.form.get("step") or "").strip()
+    if step not in _li.STEP_LABELS:
+        flash("Choose a LinkedIn step.", "danger")
+        return redirect(back)
+    follow_up, why = _followup_from_form(lead, tenant_id)
+    if why:
+        flash(why + " The LinkedIn step was not saved.", "danger")
+        return redirect(back)
+    actor = _current_actor(customer)
+    _li.add_step(tenant_id, lead_id, step, actor)
+    label = _li.STEP_LABELS[step]
+    staff_activity.log("linkedin", tenant_id, lead_id=lead_id, detail=f"LinkedIn: {label.lower()}")
+    if follow_up:
+        _fu.set_next(tenant_id, lead_id, follow_up, actor, "linkedin")
+    flash(f"LinkedIn: {label.lower()}, saved." + (f" Next follow-up {follow_up:%a %-d %b}." if follow_up else ""), "success")
+    return redirect(back)
+
+
+@portal_bp.route("/leads/<int:lead_id>/linkedin-undo", methods=["POST"])
+@team_feature("leads.page")
+def lead_linkedin_undo(lead_id: int):
+    """Take back the newest LinkedIn step (a wrong click), only by the person who made it."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    got = _lead_linkedin_start(lead_id)
+    if not isinstance(got, tuple): return got
+    customer, tenant_id, lead, back = got
+    actor = _current_actor(customer)
+    try:
+        step_id = int(request.form.get("step_id") or 0)
+    except ValueError:
+        step_id = 0
+    label = _li.undo_step(tenant_id, lead_id, step_id, actor["key"])
+    if not label:
+        flash("Only the newest step can be taken back, by the person who clicked it.", "danger")
+        return redirect(back)
+    # The matching line in Team performance goes too, so it isn't counted.
+    conn = get_db_connection()
+    try:
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute("""DELETE FROM staff_activity WHERE id = (
+                           SELECT id FROM staff_activity WHERE tenant_id=%s AND lead_id=%s AND actor_key=%s
+                              AND action='linkedin' ORDER BY created_at DESC LIMIT 1)""",
+                    (tenant_id, lead_id, actor["key"]))
+    finally:
+        conn.close()
+    flash(f"Taken back: {label.lower()}.", "success")
+    return redirect(back)
+
+
+@portal_bp.route("/leads/<int:lead_id>/linkedin-link", methods=["POST"])
+@team_feature("leads.page")
+def lead_linkedin_link(lead_id: int):
+    """Add, change or remove the person's LinkedIn profile link."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    got = _lead_linkedin_start(lead_id)
+    if not isinstance(got, tuple): return got
+    customer, tenant_id, lead, back = got
+    raw = (request.form.get("url") or "").strip()
+    url = _li.clean_url(raw)
+    if raw and not url:
+        flash("That isn't a LinkedIn link. It should look like linkedin.com/in/their-name.", "danger")
+        return redirect(back)
+    _li.save_url(tenant_id, lead_id, url, _current_actor(customer)["label"])
+    staff_activity.log("lead_edited", tenant_id, lead_id=lead_id,
+                       detail="LinkedIn link " + ("saved" if url else "removed"))
+    flash("LinkedIn link saved." if url else "LinkedIn link removed.", "success")
+    return redirect(back)
+
+
+@portal_bp.route("/leads/<int:lead_id>/followup", methods=["POST"])
+@team_feature("leads.page")
+def lead_followup_set(lead_id: int):
+    """Change the next follow-up date on the lead page (2026-10-23)."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
+    if not lead or not _lead_visible(tenant_id, lead_id):
+        flash("Lead not found.", "danger")
+        return redirect(url_for("portal.leads_page"))
+    back = url_for("portal.lead_detail", lead_id=lead_id) + "#followup"
+    if not _lead_is_open(lead):
+        flash("This lead is closed, so it has no follow-up.", "danger")
+        return redirect(_fu_back(back))
+    follow_up, why = _fu.parse_date(request.form.get("next_followup"), tenant_id)
+    if why:
+        flash(why, "danger")
+        return redirect(_fu_back(back))
+    note = (request.form.get("note") or "").strip()[:300]
+    why_moved = (request.form.get("why") or "").strip()[:300]
+    channel = (request.form.get("channel") or "").strip()
+    # Change date (user 2026-10-23): how, what to do and — when an existing
+    # date moves — why, are all required.
+    had = _fu.lead_view(tenant_id, lead_id, _tp.tz_for(tenant_id))["current"]
+    if channel not in _fu.CHANNEL_LABELS:
+        flash("Choose how you will follow up. Nothing was saved.", "danger")
+        return redirect(_fu_back(back))
+    if not note:
+        flash("Write what to do at the follow-up. Nothing was saved.", "danger")
+        return redirect(_fu_back(back))
+    if had and had["due_date"] != follow_up and not why_moved:
+        flash("Say why the date is moving. Nothing was saved.", "danger")
+        return redirect(_fu_back(back))
+    _fu.set_next(tenant_id, lead_id, follow_up, _current_actor(customer), "manual", note=note or None,
+                 channel=channel, reschedule=True)
+    staff_activity.log("lead_edited", tenant_id, lead_id=lead_id,
+                       detail=f"Next follow-up set for {follow_up:%a %-d %b}" + (f" · {why_moved}" if why_moved else ""))
+    flash(f"{lead['customer_name']}: next follow-up {follow_up:%A %-d %B}.", "success")
+    return redirect(_fu_back(back))
+
+
+
+def _fu_back(default: str) -> str:
+    """Where the follow-up boxes send you after saving: the page they were
+    opened from (lead page or Follow-ups), never another site."""
+    nxt = (request.form.get("back") or "").strip()
+    return nxt if nxt.startswith("/") and not nxt.startswith("//") else default
+
+
+# "Log what happened" (redesign 2026-10-23): one box for every kind of contact.
+# Each kind's results; ("call" uses the Calls tab's own results.)
+LOG_RESULTS = {
+    "whatsapp": [("sent", "Sent them a message"), ("replied", "They replied"), ("called", "WhatsApp call")],
+    "email": [("sent", "Sent them an email"), ("replied", "They replied to our email")],
+    "meeting": [("held", "Meeting held"), ("another", "Needs another meeting"), ("no_show", "Didn't show up"),
+                ("not_fit", "Not a fit")],
+}
+
+
+def _log_results() -> dict:
+    out = {"call": list(_tp.CALL_OUTCOMES), "linkedin": list(_li.STEPS)}
+    out.update(LOG_RESULTS)
+    # "Other" on every list (user 2026-10-23); the required note says what happened.
+    return {k: [r for r in v if r[0] != "other"] + [("other", "Other")] for k, v in out.items()}
+
+
+@portal_bp.route("/leads/<int:lead_id>/log", methods=["POST"])
+@team_feature("leads.page")
+def lead_log_contact(lead_id: int):
+    """Log what happened: what you did → how it went → next follow-up (or close
+    as Not a Fit when they don't need us). Ticks off the open follow-up."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
+    if not lead or not _lead_visible(tenant_id, lead_id):
+        flash("Lead not found.", "danger")
+        return redirect(url_for("portal.leads_page"))
+    back = _fu_back(url_for("portal.lead_detail", lead_id=lead_id) + "#followup")
+    name = lead["customer_name"]
+    kind = (request.form.get("kind") or "").strip()
+    result = (request.form.get("result") or "").strip()
+    results = dict(_log_results().get(kind) or [])
+    if not results:
+        flash("Choose what you did: call, WhatsApp, email, LinkedIn or meeting. Nothing was saved.", "danger")
+        return redirect(back)
+    if result not in results:
+        flash("Choose how it went. Nothing was saved.", "danger")
+        return redirect(back)
+    note = (request.form.get("note") or "").strip()[:2000]
+    if not note:
+        flash(("Write what was said" if kind == "call" else "Write what happened") +
+              ", so a colleague can carry on. Nothing was saved.", "danger")
+        return redirect(back)
+    minutes = None
+    if kind == "call":
+        raw = (request.form.get("minutes") or "").strip()
+        try:
+            minutes = int(raw) if raw else None
+            if minutes is not None and not 0 <= minutes <= 600:
+                raise ValueError
+        except ValueError:
+            flash("Minutes must be a number between 0 and 600. Nothing was saved.", "danger")
+            return redirect(back)
+    if kind == "email" and result == "replied" and not lead.get("email"):
+        flash(f"{name} has no email address saved, so a reply can't be recorded. Nothing was saved.", "danger")
+        return redirect(back)
+
+    # They don't need us → close as Not a Fit instead of choosing a next date.
+    closing = (kind, result) in (("call", "not_needed"), ("meeting", "not_fit")) and _lead_is_open(lead) \
+        and _can_mark_not_a_fit() and _lead_can_be_not_a_fit(lead)
+    naf_reason = None
+    if closing:
+        naf_reason = (request.form.get("naf_reason") or "").strip() or PIPELINE_NOT_NEEDED_REASON
+        if naf_reason not in PIPELINE_NOT_A_FIT_REASONS or naf_reason == "Other":
+            flash("Choose why they are Not a Fit. Nothing was saved.", "danger")
+            return redirect(back)
+        follow_up = None
+    else:
+        follow_up, why = _followup_from_form(lead, tenant_id)
+        if why:
+            flash(why + " Nothing was saved.", "danger")
+            return redirect(back)
+    channel = (request.form.get("next_channel") or "").strip()
+    next_note = (request.form.get("next_note") or "").strip()[:300] or None
+    # Next follow-up: date, how and what to do are all required (user 2026-10-23)
+    if follow_up and channel not in _fu.CHANNEL_LABELS:
+        flash("Choose how you will follow up next time. Nothing was saved.", "danger")
+        return redirect(back)
+    if follow_up and not next_note:
+        flash("Write what to do at the next follow-up. Nothing was saved.", "danger")
+        return redirect(back)
+
+    actor = _current_actor(customer)
+    label = results[result]
+    if kind == "call":
+        _tp.log_call(tenant_id, lead_id, actor, result, minutes, note)
+        staff_activity.log("call", tenant_id, lead_id=lead_id,
+                           detail=label + (f" · {minutes} min" if minutes else "") + (f"\n{note[:300]}" if note else ""))
+        source = "call"
+    elif kind == "linkedin":
+        if result != "other":          # "Other" isn't a LinkedIn step, so the LinkedIn status stays as it was
+            _li.add_step(tenant_id, lead_id, result, actor)
+        staff_activity.log("linkedin", tenant_id, lead_id=lead_id, detail=f"LinkedIn: {label.lower()}")
+        if note:
+            staff_activity.log("note_added", tenant_id, lead_id=lead_id, detail=f"LinkedIn: {note}"[:500])
+        source = "linkedin"
+    elif kind == "email" and result == "replied":
+        if not _record_email_reply(tenant_id, lead, actor):
+            flash("Could not save that. Please try again.", "danger")
+            return redirect(back)
+        source = "reply_logged"
+    else:
+        action = {"whatsapp": "wa_logged", "email": "email_logged", "meeting": "meeting_logged"}[kind]
+        staff_activity.log(action, tenant_id, lead_id=lead_id, detail=label + (f"\n{note[:300]}" if note else ""))
+        source = action
+    _fu.add_note(tenant_id, lead_id, kind, label, note, actor)
+    if follow_up:
+        _fu.set_next(tenant_id, lead_id, follow_up, actor, source, note=next_note, channel=channel)
+    if naf_reason:
+        _lead_mark_not_a_fit(lead, naf_reason, actor["label"])
+        flash(f"{name}: {label.lower()}, saved. Marked Not a Fit, so no more follow-ups.", "success")
+    else:
+        flash(f"{name}: {label.lower()}, saved." + (f" Next follow-up {follow_up:%a %-d %b}." if follow_up else ""), "success")
+    return redirect(back)
+
+
+@portal_bp.route("/follow-ups/workload")
+@team_feature("leads.page")
+def follow_ups_workload():
+    """Busy days for the calendar dots: the open follow-ups the lead's
+    salesperson (or you, if it's unassigned) already has each day."""
+    r = _require_login()
+    if r: return jsonify({"days": {}})
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    try:
+        lead_id = int(request.args.get("lead_id") or 0)
+    except ValueError:
+        lead_id = 0
+    lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id) if lead_id else None
+    if lead_id and (not lead or not _lead_visible(tenant_id, lead_id)):
+        return jsonify({"days": {}})
+    me = _current_actor(customer)
+    key = (lead or {}).get("assigned_key") or me["key"]
+    person = "You" if key == me["key"] else ((lead or {}).get("assigned_to") or "They")
+    return jsonify({"days": _fu.workload(tenant_id, key, skip_lead=lead_id), "person": person})
+
+
+@portal_bp.route("/follow-ups")
+@team_feature("leads.page")
+def follow_ups_page():
+    """Follow-ups (redesign 2026-10-23): each salesperson's work list.
+    Tabs: To do now (overdue + today), Upcoming, No date set, Done. Each row
+    has its contact button, Log what happened and Reschedule. People who see
+    all leads get a summary per person above it and can pick a person."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "leads.page", "Leads")
+    if r2: return r2
+    actor = _current_actor(customer)
+    see_all = _leads_see_all()
+    people = _lead_assignees(tenant_id, customer) if see_all else []
+    keys = {p["key"] for p in people}
+    who = (request.args.get("who") or ("all" if see_all else "me")).strip()
+    if not see_all:
+        who = "me"
+    if who not in ("me", "none", "all") and who not in keys:
+        who = "all"
+    assigned = actor["key"] if who == "me" else (None if who == "all" else who)
+    tab = request.args.get("tab") if request.args.get("tab") in ("now", "upcoming", "nodate", "done") else "now"
+    scope_sql, scope_params = _lead_scope("mpl")
+    data = _fu.due_list(tenant_id, scope_sql, scope_params, assigned=assigned, days_ahead=60)
+    nodate = _fu.no_date_list(tenant_id, scope_sql, scope_params, assigned=assigned)
+    done = _fu.done_list(tenant_id, scope_sql, scope_params, assigned=assigned)
+    summary = _fu.team_summary(tenant_id, scope_sql, scope_params, assigned=None if who == "all" else assigned)
+    shown = {p["key"]: p["display"] for p in people}
+    rows_all = data["overdue"] + data["today"] + data["soon"] + nodate["rows"] + done
+    for row in rows_all:
+        row["who"] = shown.get(row.get("assigned_key")) or row.get("assigned_to") or "Unassigned"
+    # LinkedIn profile links for the "Open profile" buttons
+    ids = list({row["lead_id"] for row in rows_all})
+    li_urls = {}
+    if ids:
+        _li.ensure_tables()
+        conn = get_db_connection()
+        try:
+            conn.autocommit = True
+            cur = conn.cursor()
+            cur.execute("SELECT lead_id, profile_url FROM lead_linkedin WHERE tenant_id=%s AND lead_id = ANY(%s) AND profile_url IS NOT NULL",
+                        (tenant_id, ids))
+            li_urls = dict(cur.fetchall())
+        finally:
+            conn.close()
+    last_notes = _fu.latest_notes(tenant_id, ids, _tp.tz_for(tenant_id))
+    # Upcoming grouped by day
+    upcoming = []
+    for row in data["soon"]:
+        if not upcoming or upcoming[-1][0] != row["due_date"]:
+            upcoming.append((row["due_date"], []))
+        upcoming[-1][1].append(row)
+    me_sum = summary.get("" if who == "none" else assigned, {}) if who != "all" else None
+    if who == "all":
+        tot = {"on_time": 0, "due_week": 0}
+        for v in summary.values():
+            tot["on_time"] += v["on_time"]; tot["due_week"] += v["due_week"]
+        me_sum = dict(tot, pct=round(100 * tot["on_time"] / tot["due_week"]) if tot["due_week"] else None)
+    team_rows = []
+    if see_all and who == "all":
+        for p in people:
+            v = summary.get(p["key"])
+            if v and (v["overdue"] or v["today"] or v["week"] or v["no_date"] or v["due_week"]):
+                team_rows.append(dict(v, key=p["key"], display=p["display"]))
+        if summary.get(""):
+            team_rows.append(dict(summary[""], key="none", display="Unassigned"))
+    who_name = {"me": "Just mine", "all": "Everyone", "none": "Unassigned leads"}.get(who) or shown.get(who, "")
+    return render_template("portal/follow_ups.html", d=data, nodate=nodate, done=done, upcoming=upcoming,
+                           tab=tab, who=who, who_name=who_name, people=people, see_all=see_all,
+                           team_rows=team_rows, me_sum=me_sum or {}, li_urls=li_urls, last_notes=last_notes,
+                           tz=_tp.tz_for(tenant_id), **_fu_ui_context(tenant_id))
+
+
+def _fu_ui_context(tenant_id: int) -> dict:
+    """What the shared follow-up boxes (_followup_ui.html) need."""
+    import datetime as _fudt
+    today = _fu._today(tenant_id)
+    return {"fu_ui": {
+        "today": today.isoformat(),
+        "max": (today + _fudt.timedelta(days=_fu.MAX_DAYS_AHEAD)).isoformat(),
+        "channels": _fu.CHANNELS,
+        "results": _log_results(),
+        "naf_reasons": [x for x in PIPELINE_NOT_A_FIT_REASONS if x != "Other"],
+        "naf_default": PIPELINE_NOT_NEEDED_REASON,
+        "can_naf": _can_mark_not_a_fit(),
+        "log_url": url_for("portal.lead_log_contact", lead_id=0),
+        "set_url": url_for("portal.lead_followup_set", lead_id=0),
+        "workload_url": url_for("portal.follow_ups_workload"),
+    }}
 
 
 def _lead_can_be_not_a_fit(lead: dict) -> bool:
@@ -35522,10 +36103,11 @@ def leads_page():
         lf["biz"].get("labels") or [], lf["biz"].get("hide_labels") or [], all_labels,
         [], [], [], [], [], [], {}, endpoint="portal.leads_page", cols=lead_cols, extra=_extra)
     bookings_crm.attach(cur, tenant_id, real_leads)
+    _fu.attach(cur, tenant_id, real_leads)
     cur.close(); conn.close()
 
     return render_template(
-        "portal/leads.html", addr_opts=addr_opts,
+        "portal/leads.html", addr_opts=addr_opts, linkedin_filter_options=_li.FILTER_OPTIONS,
         opt_counts=opt_counts, all_labels=all_labels, assignee_options=assignee_options,
         can_filter_assigned=_leads_see_all(), filter_chips=filter_chips, lead_imports=lead_imports,
         biz_state=lf["biz"], addr_state=lf["addr"],
@@ -35778,7 +36360,7 @@ def leads_reopen(lead_id: int):
 
 LEADS_LIST_FILTER_ARGS = ("q", "tier", "has_phone", "has_email", "has_whatsapp", "check_numbers",
                           "has_company", "assigned", "added_from", "added_to",
-                          "biz_category", "employees", "label", "import", "demo")
+                          "biz_category", "employees", "label", "import", "demo", "linkedin", "followup", "lf_job")
 
 
 def _biz_filter_clauses(alias: str, args, tenant_id: int, label_link: str = "lead", with_label: bool = True):
@@ -35796,6 +36378,8 @@ def _biz_filter_clauses(alias: str, args, tenant_id: int, label_link: str = "lea
     hide_labs = [int(v) for v in args.getlist("hide_label") if v.isdigit()] if (with_label and label_link == "lead") else []
     imp = (args.get("import") or "").strip()
     demos = [v for v in args.getlist("demo") if v in dict(bookings_crm.DEMO_FILTER_OPTIONS)] if label_link == "lead" else []
+    lis = [v for v in args.getlist("linkedin") if v in dict(_li.FILTER_OPTIONS)] if label_link == "lead" else []
+    fus = [v for v in args.getlist("followup") if v in dict(_fu.FILTER_OPTIONS)] if label_link == "lead" else []
     cat, emp = (cats[0] if cats else ""), (emps[0] if emps else "")   # single-value callers (Contacts)
     def _one_or_many(key, vals):
         if vals:
@@ -35825,11 +36409,21 @@ def _biz_filter_clauses(alias: str, args, tenant_id: int, label_link: str = "lea
     import_id = int(imp) if imp.isdigit() else None
     if import_id:
         clauses.append(f"{alias}.import_id=%s"); params.append(import_id); fargs["import"] = str(import_id)
+    lfj = (args.get("lf_job") or "").strip() if label_link == "lead" else ""
+    lf_job = int(lfj) if lfj.isdigit() else None
+    if lf_job:   # "Open these people in Leads" after a Lead Finder import (2026-10-21)
+        clauses.append(f"""{alias}.id IN (SELECT (r->>'lead_id')::int FROM lead_finder_jobs j, jsonb_array_elements(j.results) r
+                                          WHERE j.id=%s AND j.tenant_id=%s AND r->>'outcome' IN ('added','merged'))""")
+        params += [lf_job, tenant_id]; fargs["lf_job"] = str(lf_job)
     if demos:   # "Demo booking" (Microsoft Bookings, 2026-10-18)
         clauses.append(bookings_crm.filter_clause(alias, demos)); _one_or_many("demo", demos)
-    state = {"biz_category": cat, "employees": emp, "label": label_id, "import": import_id, "cols": {},
+    if lis:     # "LinkedIn" (2026-10-21): the lead's newest LinkedIn step
+        clauses.append(_li.filter_clause(alias, lis)); _one_or_many("linkedin", lis)
+    if fus:     # "Follow-up" (2026-10-23): the lead's open follow-up date
+        clauses.append(_fu.filter_clause(alias, fus, tenant_id)); _one_or_many("followup", fus)
+    state = {"biz_category": cat, "employees": emp, "label": label_id, "import": import_id, "lf_job": lf_job, "cols": {},
              "biz_categories": cats, "employees_list": emps, "labels": labs, "hide_labels": hide_labs,
-             "demo_list": demos}
+             "demo_list": demos, "linkedin_list": lis, "followup_list": fus}
     # People's own columns (cf<id>=…, 2026-10-16) — Leads + Sales Pipeline only.
     if label_link == "lead" and any(k.startswith("cf") for k in args.keys()):
         _c = get_db_connection(); _cc = _c.cursor()
@@ -36553,6 +37147,49 @@ def leads_bulk_set_address():
     return jsonify({"ok": True, "saved": done, "skipped": len(ids) - done, "selected": len(ids)})
 
 
+@portal_bp.route("/leads/bulk/set-category", methods=["POST"])
+@team_feature("crm.pipeline_board_edit")
+def leads_bulk_set_category():
+    """Give ticked Leads (or all matching) or ticked Pipeline deals
+    (scope=opps) one Business category (2026-10-19). Ones that already have
+    one are skipped unless replace=1. Each lead's contact gets the same
+    category, as when one lead is edited. Never touches updated_at (that
+    feeds the score)."""
+    if not _team_member_has_permission("crm.pipeline_board_edit"):
+        return jsonify({"error": "Your role doesn't allow this."}), 403
+    customer, tenant_id, err = _bulk_json_guard("crm.pipeline_board_edit")
+    if err: return err
+    f = request.form
+    category = _clean_biz_field(f.get("business_category"), 120)
+    if not category:
+        return jsonify({"error": "Pick or type a category."}), 400
+    replace = f.get("replace") == "1"
+    scope = f.get("scope") if f.get("scope") in ("leads", "opps") else "leads"
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        ids = _bulk_selected_lead_ids(cur, tenant_id, f, scope, _current_actor(customer)["key"])
+        if not ids:
+            return jsonify({"error": "Nothing selected."}), 400
+        cur.execute("UPDATE merchant_pipeline_leads SET business_category=%s "
+                    "WHERE tenant_id=%s AND id = ANY(%s) "
+                    + ("" if replace else "AND COALESCE(TRIM(business_category),'')='' ")
+                    + "RETURNING id, wa_contact_id", (category, tenant_id, ids))
+        rows = cur.fetchall()
+        contact_ids = [r["wa_contact_id"] for r in rows if r["wa_contact_id"]]
+        if contact_ids:
+            cur.execute("UPDATE wa_contacts SET business_category=%s WHERE tenant_id=%s AND id = ANY(%s)",
+                        (category, tenant_id, contact_ids))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ leads_bulk_set_category error:", e)
+        return jsonify({"error": "Something went wrong — nothing was changed."}), 500
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "saved": len(rows), "skipped": len(ids) - len(rows), "selected": len(ids)})
+
+
 _SPLIT_SHARED_RE = __import__("re").compile(
     r"^(info|sales|contact|hello|admin|enquir|inquir|support|office|customer|cs|mail|team|marketing|orders?|booking|reservations?|help)")
 
@@ -37036,6 +37673,8 @@ def _filter_option_counts(cur, where_sql: str, params: list, cols: list) -> dict
     out["contact"] = {"has_phone": r[0], "has_email": r[1], "has_whatsapp": r[2], "has_company": r[3]}
     out["total"] = r[4]
     out["demo"] = bookings_crm.option_counts(cur, where_sql, params)
+    out["linkedin"] = _li.option_counts(cur, where_sql, params)
+    out["followup"] = _fu.option_counts(cur, where_sql, params)
     out["labels"] = dict(q(f"""SELECT ll.label_id, count(*) FROM lead_label_leads ll
                                 JOIN merchant_pipeline_leads mpl ON mpl.id = ll.lead_id
                                WHERE {where_sql} AND label_visible(ll.label_id) GROUP BY 1"""))
@@ -37105,6 +37744,10 @@ def _pipeline_filter_chips(stage_filter, search, assigned, assignee_options, tie
         add("Employees", "Not filled in" if v == "__none__" else v, without("employees", value=v))
     for v in biz_state.get("demo_list") or []:
         add("Demo booking", dict(bookings_crm.DEMO_FILTER_OPTIONS).get(v, v), without("demo", value=v))
+    for v in biz_state.get("linkedin_list") or []:
+        add("LinkedIn", dict(_li.FILTER_OPTIONS).get(v, v), without("linkedin", value=v))
+    for v in biz_state.get("followup_list") or []:
+        add("Follow-up", dict(_fu.FILTER_OPTIONS).get(v, v), without("followup", value=v))
     for label, value, key in (extra or []):
         add(label, value, without(key))
     for cc in _cc_filter_chips(cols or [], biz_state.get("cols") or {}):
@@ -37113,6 +37756,8 @@ def _pipeline_filter_chips(stage_filter, search, assigned, assignee_options, tie
         add(nm, val, without(f"cf{cid}", f"cf{cid}_from", f"cf{cid}_to") if cid else cc["url"])
     if biz_state.get("import"):
         add("Import", f"#{biz_state['import']}", without("import"))
+    if biz_state.get("lf_job"):
+        add("Lead Finder import", f"#{biz_state['lf_job']}", without("lf_job"))
     label_names = {r["id"]: r["name"] for r in all_labels}
     for i in show_label_ids:
         add("Only label", label_names.get(i, "Label"), without("label", value=i))
@@ -37749,6 +38394,7 @@ def sales_pipeline():
         hide_sms_segment_ids, all_sms_segments,
         pipeline_effective_stage_labels(tenant_id), cols=lead_cols)
     bookings_crm.attach(cur, tenant_id, leads)
+    _fu.attach(cur, tenant_id, leads)
 
     cur.close(); conn.close()
 
@@ -37809,6 +38455,7 @@ def sales_pipeline():
         assignee_snapshot     = assignee_snapshot,
         stage_counts_filtered = stage_counts_filtered,
         filter_chips          = filter_chips,
+        **_fu_ui_context(tenant_id),
     )
 
 
@@ -38686,8 +39333,14 @@ def lead_detail(lead_id: int):
         email_history=_lead_email_history(tenant_id, lead_id),
         lead_sequences=_lead_sequences(tenant_id, lead),
         lead_calls=_tp.lead_calls(tenant_id, lead_id),
+        linkedin=_li.lead_view(tenant_id, lead, _tp.tz_for(tenant_id)),
+        followup=_fu.lead_view(tenant_id, lead_id, _tp.tz_for(tenant_id)),
+        contact_notes=_fu.lead_notes(tenant_id, lead_id, _tp.tz_for(tenant_id)),
+        lead_open=_lead_is_open(lead),
+        my_actor_key=_current_actor(customer)["key"],
         call_outcomes=_tp.CALL_OUTCOMES,
         not_needed_reason=PIPELINE_NOT_NEEDED_REASON,
+        **_fu_ui_context(tenant_id),
     )
 
 

@@ -99,7 +99,7 @@
   <!-- 1 Emails -->
   <div class="wz-pane" data-s="0">
     <h2>Which emails, and how far apart?</h2>
-    <p class="wz-sub">Required. Pick from your saved emails. Write new ones in Email › New Email.</p>
+    <p class="wz-sub">Required. Pick from your saved emails. Press Preview to read one before you choose it. Write new ones in Email › New Email.</p>
     {% if not templates %}<div class="warnline">You don't have any saved emails yet. <a href="{{ url_for('portal.email_new') }}">Write one first</a>, then come back.</div>{% endif %}
     <label class="wf" for="wzName">Name this sequence<input id="wzName" maxlength="255" value="{{ seq.name if seq else '' }}" placeholder="e.g. Retail outreach"></label>
     <div id="wzEmails"></div>
@@ -170,7 +170,7 @@
       </div></div>
       <label class="wf" for="wzTz">Time zone<select id="wzTz">{% for t, l in tz_choices %}<option value="{{ t }}" {% if (schedule.tz or 'Africa/Lagos') == t %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
     </div>
-    <label class="ck"><input type="checkbox" id="wzFollow" {% if not schedule.on or schedule.follow %}checked{% endif %}><span>Follow-ups keep to these days and hours too<small>A follow-up due outside them waits for the next sending time.</small></span></label>
+    <label class="ck"><input type="checkbox" id="wzFollow" {% if not schedule.on or schedule.follow %}checked{% endif %}><span>Follow-ups keep to these days and hours too<small>Waits between emails count sending days only, at the same time of day as the email before. Wait 3 days after a Wednesday email (Mon–Thu sending) = the next Tuesday.</small></span></label>
     <div class="okline" id="wzPlan"></div>
     <div class="mcal" id="wzCal" aria-label="Sending calendar"></div>
     <p class="wz-sub" style="margin:0">Tip: click a date in the calendar to make it the end date.</p>
@@ -195,6 +195,7 @@
 
 <form method="POST" id="wzStartForm" hidden><input type="hidden" name="status" value="active"></form>
 
+{% include "portal/_email_preview_drawer.html" %}
 <script>
 (function () {
   const $ = id => document.getElementById(id)
@@ -235,12 +236,17 @@
     const opts = '<option value="">Choose a saved email…</option>' + TNAMES.map(t => `<option value="${t.id}" ${t.id === tid ? 'selected' : ''}>${esc(t.name)}</option>`).join('')
     return (i ? `<div class="wz-wait">⏱ then wait <input type="number" class="w-wait" min="1" max="365" value="${wait || 3}" aria-label="Days to wait"> days, only if they haven't replied, and
         <select class="w-mode" aria-label="How it is sent"><option value="auto" ${mode !== 'manual' ? 'selected' : ''}>send it automatically</option><option value="manual" ${mode === 'manual' ? 'selected' : ''}>I'll send it myself</option></select></div>` : '')
-      + `<div class="wz-row w-row"><span class="wz-num">${i + 1}</span><label class="wf">Email ${i + 1}<select class="w-tpl">${opts}</select></label>${i ? '<button type="button" class="wz-x" title="Remove this email">✕</button>' : ''}</div>`
+      + `<div class="wz-row w-row"><span class="wz-num">${i + 1}</span><label class="wf">Email ${i + 1}<select class="w-tpl">${opts}</select></label><button type="button" class="btn2 sm w-pv" style="margin-bottom:3px" ${tid ? '' : 'disabled'}>👁 Preview</button>${i ? '<button type="button" class="wz-x" title="Remove this email">✕</button>' : ''}</div>`
   }
   function drawEmails() {
     const box = $('wzEmails'); box.innerHTML = ''
     const n = Math.max(1, STATE.emails.length)
     for (let i = 0; i < n; i++) { const w = document.createElement('div'); w.className = 'w-item'; w.style.cssText = 'display:flex;flex-direction:column;gap:10px'; w.innerHTML = emailRow(i, STATE.emails[i], STATE.waits[i], STATE.modes[i]); box.appendChild(w) }
+    box.querySelectorAll('.w-item').forEach(it => {
+      const sel = it.querySelector('.w-tpl'), pv = it.querySelector('.w-pv')
+      sel.addEventListener('change', () => { pv.disabled = !sel.value })
+      pv.onclick = () => emPreview(sel.value, { seq: STATE.seq, newTab: true })
+    })
     box.querySelectorAll('.wz-x').forEach((b, k) => b.onclick = () => { readEmails(); STATE.emails.splice(k + 1, 1); STATE.waits.splice(k + 1, 1); STATE.modes.splice(k + 1, 1); drawEmails() })
   }
   function readEmails() {

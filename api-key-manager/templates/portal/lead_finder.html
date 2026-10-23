@@ -18,7 +18,8 @@
   /* search bar: one row of dropdowns, one row of text boxes + Search */
   .lf-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px }
   .lf-row + .lf-row { margin-top:12px }
-  .lf-row.two { grid-template-columns:minmax(200px,1.2fr) minmax(200px,1fr) auto auto; align-items:end }
+  .lf-row.two { grid-template-columns:minmax(200px,1.2fr) minmax(200px,1fr) minmax(170px,.8fr) auto auto; align-items:end }
+  .lf-text select { font:inherit; font-size:14px; border:1px solid var(--line); border-radius:10px; padding:0 10px; background:#fff; width:100%; height:40px }
   .lf-text { display:flex; flex-direction:column; gap:5px; min-width:0 }
   .lf-text label, .dd-lab { font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.4px }
   .lf-text input { font:inherit; font-size:14px; border:1px solid var(--line); border-radius:10px; padding:9px 11px; background:#fff; width:100%; height:40px }
@@ -70,14 +71,43 @@
   .lf-in { background:#E8EEF8; color:#0B1D40; text-decoration:none }
   .lf-li { font-size:12px; font-weight:700; color:#0B1D40; border:1px solid var(--line); border-radius:6px; padding:2px 7px; text-decoration:none; white-space:nowrap }
   .lf-pager { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; font-size:13px; color:var(--muted); margin-top:12px }
-  .lf-addbar { position:sticky; bottom:0; z-index:5; background:#fff; border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin-top:14px;
-               display:flex; gap:10px 14px; flex-wrap:wrap; align-items:end; box-shadow:0 -6px 20px rgba(11,29,64,.06) }
-  .lf-addbar .lf-text select, .lf-addbar .lf-text input { font:inherit; font-size:13.5px; border:1px solid var(--line); border-radius:10px; padding:0 10px; background:#fff; height:40px; min-width:170px }
-  .lf-addbar .btn { height:40px }
-  .lf-addbar .lf-hint { flex-basis:100%; font-size:12px; color:var(--muted) }
+  .lf-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:14px }
+  .lf-stat { background:#fff; border:1px solid var(--line); border-radius:14px; padding:12px 16px }
+  .lf-stat span { display:block; font-size:12.5px; color:var(--muted) }
+  .lf-stat b { font-size:24px; font-weight:800; color:#0B1D40; font-variant-numeric:tabular-nums }
+  .lf-split { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start }
+  .lf-results { flex:999 1 620px; min-width:0 }
+  .lf-imp { flex:1 1 320px; max-width:420px; background:#fff; border:2px solid #0B1D40; border-radius:14px; padding:18px; display:flex; flex-direction:column; gap:16px; position:sticky; top:12px }
+  .lf-imp h2 { font-size:18px; font-weight:800; margin:0; color:#0B1D40 }
+  .lf-imp fieldset { border:0; padding:0; margin:0; display:flex; flex-direction:column; gap:6px; min-width:0 }
+  .lf-imp legend { font-weight:800; font-size:14px; padding:0 0 6px }
+  .lf-who-opt { display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:9px; font-size:13.5px; cursor:pointer; min-height:40px; box-sizing:border-box }
+  .lf-who-opt.on { background:#E8EEF8 }
+  .lf-who-opt span { flex:1 }
+  .lf-who-opt b { font-variant-numeric:tabular-nums }
+  .lf-imp input[type=radio], .lf-imp input[type=checkbox] { accent-color:#0B1D40; width:16px; height:16px; margin:0; flex-shrink:0 }
+  .lf-free { background:#F5F7FB; border-radius:9px; padding:9px 11px; font-size:12.5px; line-height:1.5 }
+  .lf-chk { display:flex; align-items:center; gap:10px; font-size:13.5px; min-height:38px; cursor:pointer }
+  .lf-chk span { flex:1 } .lf-chk small { color:var(--muted); font-size:12px }
+  .lf-chk.lf-sub { padding-left:26px }
+  .lf-imp .lf-text select, .lf-imp .lf-text input { font:inherit; font-size:13.5px; border:1px solid var(--line); border-radius:10px; padding:0 10px; background:#fff; height:40px; width:100% }
+  .lf-note { font-size:12px; color:var(--muted) }
+  .lf-sum { background:#E8EEF8; border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; gap:5px; font-size:13.5px }
+  .lf-sum b { font-size:15.5px; color:#0B1D40 }
+  .lf-go { height:46px; font-size:15px; font-weight:800 }
+  #lf-dlg { border:0; border-radius:14px; padding:24px; width:min(540px, calc(100vw - 32px)); box-sizing:border-box; color:var(--ink) }
+  #lf-dlg::backdrop { background:rgba(11,29,64,.55) }
+  #lf-dlg h2 { font-size:20px; font-weight:800; margin:0 0 14px; color:#0B1D40 }
+  .lf-dlg-rows { border:1px solid var(--line); border-radius:10px; font-size:13.5px; margin-bottom:14px }
+  .lf-dlg-rows div { display:flex; justify-content:space-between; gap:14px; padding:10px 12px; border-bottom:1px solid var(--line) }
+  .lf-dlg-rows div:last-child { border-bottom:0 }
+  .lf-dlg-rows span { color:var(--muted); flex-shrink:0 } .lf-dlg-rows strong { text-align:right }
+  .lf-dlg-cost { background:#E8EEF8; border-radius:10px; padding:12px 14px; font-size:13.5px; line-height:1.5; margin-bottom:16px }
+  .lf-dlg-btns { display:flex; justify-content:flex-end; gap:10px }
+  .lf-dlg-btns .btn { height:44px; padding:0 18px }
   .lf-error { background:#FDECEC; color:#B42318; border-radius:10px; padding:10px 14px; font-size:13.5px; margin-bottom:12px }
   .lf-empty { text-align:center; padding:34px 20px; color:var(--muted) }
-  @media (max-width:760px) { .lf-row.two { grid-template-columns:1fr } .lf-addbar { position:static; box-shadow:none } .lf-addbar .lf-text { flex:1 1 100% } }
+  @media (max-width:760px) { .lf-row.two { grid-template-columns:1fr } .lf-imp { position:static; max-width:none } .lf-stats { grid-template-columns:1fr } }
 </style>
 {% endblock %}
 
@@ -108,11 +138,11 @@
     <div class="lf-hero-icon">🔎</div>
     <div>
       <h1>Find New Leads</h1>
-      <p>Search business decision-makers by country, industry, job and company size. Emails and mobiles stay hidden until you add someone to Leads.</p>
+      <p>Search business decision-makers by country, industry, job and company size. Import the people you find to Leads. Emails and mobiles are only revealed when you ask.</p>
     </div>
   </div>
   <div class="lf-pills">
-    {% if account %}<span class="lf-pill">Prospeo credits left: <b>{{ account.credits_left }}</b>{% if account.renews %} · renews {{ account.renews }}{% endif %}</span>{% endif %}
+    {% if account %}<span class="lf-pill">PhiXtra Credit Left: <b>{{ account.credits_left }}</b>{% if account.renews %} · renews {{ account.renews }}{% endif %}</span>{% endif %}
     <span class="lf-pill">Added this month: <b>{{ usage.added }}</b> · {{ usage.emails }} emails · {{ usage.mobiles }} mobiles</span>
   </div>
 </div>
@@ -152,7 +182,7 @@
     {{ dd('sen', 'sen', 'Job level', 'Any level', seniorities, f.seniority) }}
     {{ dd('size', 'size', 'Company size (staff)', 'Any size', headcounts, f.sizes) }}
     <div class="right">{{ dd('wa', 'wa', 'WhatsApp tools', 'Any', wa_tools, f.wa_tools,
-          note='Tools Prospeo saw on the company website. Needs the paid Prospeo plan; on the free plan, use the keyword "whatsapp" instead.') }}</div>
+          note='Tools Prospeo saw on the company website.') }}</div>
   </div>
   <div class="lf-row two">
     <div class="lf-text">
@@ -163,12 +193,18 @@
       <label for="lf-kw">Company keyword</label>
       <input type="text" id="lf-kw" name="kw" value="{{ f.keyword }}" placeholder="Optional, e.g. whatsapp, logistics">
     </div>
+    <div class="lf-text">
+      <label for="lf-contact">Contact details</label>
+      <select id="lf-contact" name="contact">
+        {% for v, t in contact_choices %}<option value="{{ v }}" {% if f.contact == v %}selected{% endif %}>{{ t }}</option>{% endfor %}
+      </select>
+    </div>
     <label class="lf-one"><input type="checkbox" name="one" value="1" {% if f.one_per_company %}checked{% endif %}> One person per company</label>
     <button type="submit" class="btn btn-primary" {% if not configured %}disabled{% endif %}>Search</button>
   </div>
   {% if jobs %}
-  <div class="lf-jobs">Recent adds:
-    {% for j in jobs %}<a href="{{ url_for('leadfinder.job', job_id=j.id) }}">{{ j.created_at.strftime('%d %b %H:%M') }} · {{ j.added }} added{% if j.status == 'running' %} (working…){% endif %}</a>{% endfor %}
+  <div class="lf-jobs">Recent imports:
+    {% for j in jobs %}<a href="{{ url_for('leadfinder.job', job_id=j.id) }}">{{ j.created_at.strftime('%d %b %H:%M') }} · {{ j.added }} imported{% if j.status in ('running', 'stopping') %} (working…){% endif %}</a>{% endfor %}
   </div>
   {% endif %}
 </form>
@@ -176,24 +212,33 @@
 {% if res %}
   {% if res.error %}<div class="lf-error">{{ res.error }}</div>{% endif %}
   {% if res.rows %}
+  <div class="lf-stats">
+    <div class="lf-stat"><span>People found</span><b>{{ "{:,}".format(res.total) }}</b></div>
+    <div class="lf-stat"><span>Have an email</span><b data-count="email">…</b></div>
+    <div class="lf-stat"><span>Have a mobile</span><b data-count="mobile">…</b></div>
+  </div>
+  <div class="lf-split">
+  <div class="lf-results">
   <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-    <h2 style="font-size:17px;font-weight:800;margin:0">{{ "{:,}".format(res.total) }} people found</h2>
-    <span class="lf-muted">Page {{ page }} of {{ "{:,}".format(res.pages) }} · each new page uses 1 Prospeo credit</span>
+    <h2 style="font-size:17px;font-weight:800;margin:0">Results · page {{ page }} of {{ "{:,}".format(res.pages) }}</h2>
+    <span class="lf-muted">Each new page uses 1 credit · <span id="lf-ticked-n">0</span> ticked</span>
   </div>
   <div class="lf-wrap">
     <table class="lf-table">
       <thead><tr>
-        <th>{% if can_add %}<input type="checkbox" id="lf-all" aria-label="Select everyone on this page">{% endif %}</th>
+        <th>{% if can_add %}<input type="checkbox" id="lf-all" aria-label="Tick everyone on this page">{% endif %}</th>
         <th>Person</th><th>Company</th><th>Industry</th><th>Staff</th><th>Location</th><th>LinkedIn</th><th>Email</th><th>Mobile</th>
       </tr></thead>
       <tbody>
       {% for x in res.rows %}
         {% set in_leads = added.get(x.person_id) %}
         <tr>
-          <td>{% if can_add and not in_leads and (x.email or x.mobile) %}<input type="checkbox" class="lf-pick" id="lf-p{{ loop.index }}" aria-label="Select {{ x.name }}"
-                 data-person='{{ {"person_id": x.person_id, "name": x.name, "title": x.title, "company": x.company, "linkedin": x.linkedin}|tojson|forceescape }}'>{% endif %}</td>
+          <td>{% if can_add and not in_leads %}<input type="checkbox" class="lf-pick" id="lf-p{{ loop.index }}" aria-label="Tick {{ x.name }}"
+                 data-email="{{ 1 if x.email else 0 }}" data-mobile="{{ 1 if x.mobile else 0 }}"
+                 data-person='{{ {"person_id": x.person_id, "name": x.name, "title": x.title, "company": x.company, "linkedin": x.linkedin, "src": x.src}|tojson|forceescape }}'>{% endif %}</td>
           <td class="lf-who"><b>{{ x.name }}</b><span>{{ x.title }}</span></td>
           <td>{{ x.company }}{% if x.domain %}<div class="lf-muted">{{ x.domain }}</div>{% endif %}
+              {% if x.in_company and not in_leads %}<div><a class="lf-in" href="{{ url_for('portal.lead_detail', lead_id=x.in_company.lead_id) }}" title="Importing this person puts them on that lead">Company in your Leads ↗</a></div>{% endif %}
               {% for t in x.wa_tools %}<div><span class="lf-tool">Uses {{ t }}</span></div>{% endfor %}</td>
           <td>{{ x.industry }}</td>
           <td style="white-space:nowrap">{{ x.size }}</td>
@@ -217,38 +262,79 @@
       {% if page < res.pages %}<a class="btn btn-sm" href="{{ url_for('leadfinder.page', page=page+1, **page_args) }}">Next ›</a>{% endif %}
     </span>
   </div>
+  </div>
 
   {% if can_add %}
-  <form class="lf-addbar" method="POST" action="{{ url_for('leadfinder.add') }}" id="lf-add">
-    <input type="hidden" name="people" id="lf-people">
+  <form class="lf-imp" method="POST" action="{{ url_for('leadfinder.add') }}" id="lf-add"
+        data-total="{{ res.total }}" data-max="{{ max_add_all }}" data-max-ticked="{{ max_per_add }}"
+        data-credits="{{ account.credits_left if account and account.credits_left is not none else '' }}"
+        data-counts-url="{{ url_for('leadfinder.counts') }}">
+    <input type="hidden" name="people" id="lf-people" value="[]">
     <input type="hidden" name="back" value="{{ request.full_path }}">
-    <input type="hidden" name="mobile" id="lf-mobile" value="">
-    <input type="hidden" name="wa_too" id="lf-wa-too" value="">
-    <div class="lf-text">
-      <label for="lf-get">Get</label>
-      <select id="lf-get">
-        <option value="email">Email only (1 credit)</option>
-        <option value="mobile">Email + mobile (up to 11 credits)</option>
-        <option value="mobile_wa">Email + mobile, save mobile as WhatsApp too</option>
-      </select>
+    <h2>Import to Leads</h2>
+
+    <fieldset>
+      <legend>1. Who to import</legend>
+      {% for v, t in who_choices %}
+      <label class="lf-who-opt"><input type="radio" name="who" value="{{ v }}" {% if loop.first %}checked{% endif %}>
+        <span>{{ t }}</span><b data-who="{{ v }}">{% if v == 'all' %}{{ "{:,}".format(res.total) }}{% elif v == 'ticked' %}0{% else %}…{% endif %}</b></label>
+      {% endfor %}
+      <div class="lf-note">Nobody already in your Leads is imported twice.{% if res.total > max_add_all %} One import takes up to {{ "{:,}".format(max_add_all) }} people.{% endif %}</div>
+    </fieldset>
+
+    <fieldset>
+      <legend>2. What to get for each person</legend>
+      <div class="lf-free"><b>Always included, free:</b> name, job title, company, LinkedIn link, industry, company size, city, website.</div>
+      <label class="lf-chk"><input type="checkbox" name="reveal_email" value="1" id="lf-rev-email" checked><span>Reveal email</span><small>1 credit, only if found</small></label>
+      <label class="lf-chk"><input type="checkbox" name="reveal_mobile" value="1" id="lf-rev-mobile"><span>Reveal mobile</span><small>10 credits, only if found</small></label>
+      <label class="lf-chk lf-sub" id="lf-wa-row"><input type="checkbox" name="wa_too" value="1" id="lf-wa" disabled><span>Also save the mobile as their WhatsApp number</span></label>
+    </fieldset>
+
+    <fieldset>
+      <legend>3. Where they go</legend>
+      {% if can_assign %}
+      <div class="lf-text">
+        <label for="lf-assign">Assign to</label>
+        <select name="assign" id="lf-assign">
+          <option value="">Nobody yet</option>
+          {% for p in people %}<option value="{{ p.key }}" {% if p.key == me_key %}selected{% endif %}>{{ p.display }}</option>{% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      <div class="lf-text">
+        <label for="lf-label">Extra label</label>
+        <select name="label" id="lf-label" onchange="var n=document.getElementById('lf-label-new');n.style.display=this.value==='__new__'?'':'none';if(this.value==='__new__')n.focus()">
+          <option value="">No extra label</option>
+          {% for n in label_names %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+          <option value="__new__">+ New label…</option>
+        </select>
+        <input type="text" name="label_new" id="lf-label-new" maxlength="60" placeholder="New label name, e.g. Lagos fintech" style="display:none;margin-top:6px" oninput="lfLabelCheck(this)">
+        <span id="lf-label-msg" style="display:none;font-size:12px;color:#92400E;margin-top:4px"></span>
+      </div>
+      <div class="lf-note">Everyone imported also gets the “Lead Finder” label.</div>
+    </fieldset>
+
+    <div class="lf-sum" aria-live="polite">
+      <b id="lf-sum-n"></b>
+      <div id="lf-sum-split"></div>
+      <div><strong>Credits:</strong> <span id="lf-sum-credits"></span>{% if account and account.credits_left is not none %} · you have {{ "{:,}".format(account.credits_left) }}{% endif %}</div>
+      <div class="lf-note" id="lf-sum-pages"></div>
     </div>
-    {% if can_assign %}
-    <div class="lf-text">
-      <label for="lf-assign">Assign to</label>
-      <select name="assign" id="lf-assign">
-        <option value="">Nobody yet</option>
-        {% for p in people %}<option value="{{ p.key }}" {% if p.key == me_key %}selected{% endif %}>{{ p.display }}</option>{% endfor %}
-      </select>
-    </div>
-    {% endif %}
-    <div class="lf-text">
-      <label for="lf-label">Extra label</label>
-      <input type="text" name="label" id="lf-label" maxlength="60" placeholder="Optional, e.g. Lagos fintech">
-    </div>
-    <button type="submit" class="btn btn-primary" id="lf-add-btn" disabled>Add 0 to Leads</button>
-    <span class="lf-hint">Everyone added gets the "Lead Finder" label. Nobody found = not charged. Already in Leads (same email or number) = skipped. Up to {{ max_per_add }} at a time.</span>
+    <button type="button" class="btn btn-primary lf-go" id="lf-go">Import to Leads</button>
+    <div class="lf-note" style="text-align:center">You get a check screen first. The import runs in the background.</div>
+
+    <dialog id="lf-dlg" aria-labelledby="lf-dlg-h">
+      <h2 id="lf-dlg-h"></h2>
+      <div class="lf-dlg-rows" id="lf-dlg-rows"></div>
+      <div class="lf-dlg-cost" id="lf-dlg-cost"></div>
+      <div class="lf-dlg-btns">
+        <button type="button" class="btn" id="lf-dlg-back">Go back</button>
+        <button type="submit" class="btn btn-primary" id="lf-dlg-yes"></button>
+      </div>
+    </dialog>
   </form>
   {% endif %}
+  </div>
   {% elif not res.error %}
   <div class="lf-card lf-empty">Nobody matches this search. Try fewer filters, another country, or a broader job level.</div>
   {% endif %}
@@ -328,28 +414,147 @@
     });
   }
 
-  // ── Picking people → Add button ────────────────────────────────────────
-  const picks = [...document.querySelectorAll('.lf-pick')], all = document.getElementById('lf-all'),
-        btn = document.getElementById('lf-add-btn');
-  const MAX = {{ max_per_add }};
-  function upd(){
-    picks.forEach(c => c.closest('tr').classList.toggle('sel', c.checked));
-    const n = picks.filter(c => c.checked).length;
-    if (btn) { btn.textContent = n > MAX ? 'Pick up to ' + MAX : 'Add ' + n + ' to Leads'; btn.disabled = !n || n > MAX; }
-    if (all) all.checked = n > 0 && n === picks.length;
-  }
-  picks.forEach(c => c.addEventListener('change', upd));
-  if (all) all.addEventListener('change', () => { picks.forEach(c => c.checked = all.checked); upd(); });
+  // ── Import to Leads (approved design 2026-10-21) ───────────────────────
+  // "Extra label": "Lead Finder" is on everyone already; a name that's in the list just gets picked from it.
+  window.lfLabelCheck = function(inp){
+    var v = inp.value.trim().toLowerCase(), msg = document.getElementById('lf-label-msg'), sel = document.getElementById('lf-label');
+    msg.style.display = 'none';
+    if (v === 'lead finder') {
+      msg.textContent = 'Everyone imported already gets the "Lead Finder" label. Type a different name, or choose No extra label.';
+      msg.style.display = '';
+      return;
+    }
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value && sel.options[i].value !== '__new__' && sel.options[i].value.toLowerCase() === v) {
+        msg.textContent = '"' + sel.options[i].value + '" is already a label, so it has been chosen from the list.';
+        msg.style.display = '';
+        sel.value = sel.options[i].value; inp.value = ''; inp.style.display = 'none';
+        return;
+      }
+    }
+  };
   const form = document.getElementById('lf-add');
-  if (form) form.addEventListener('submit', e => {
-    const chosen = picks.filter(c => c.checked).map(c => JSON.parse(c.dataset.person));
-    if (!chosen.length) { e.preventDefault(); return; }
-    const get = document.getElementById('lf-get').value;
-    document.getElementById('lf-mobile').value = get === 'email' ? '' : '1';
-    document.getElementById('lf-wa-too').value = get === 'mobile_wa' ? '1' : '';
-    document.getElementById('lf-people').value = JSON.stringify(chosen);
-    btn.disabled = true; btn.textContent = 'Adding…';
-  });
+  if (form) {
+    const picks = [...document.querySelectorAll('.lf-pick')], all = document.getElementById('lf-all');
+    const total = +form.dataset.total, MAX = +form.dataset.max, MAXT = +form.dataset.maxTicked;
+    const left = form.dataset.credits === '' ? null : +form.dataset.credits;
+    const remail = document.getElementById('lf-rev-email'), rmob = document.getElementById('lf-rev-mobile'),
+          wa = document.getElementById('lf-wa'), waRow = document.getElementById('lf-wa-row');
+    const fmt = x => Number(x).toLocaleString('en-GB');
+    const C = {all: total, email: null, mobile: null, either: null};
+    const who = () => (form.querySelector('input[name=who]:checked') || {}).value || 'all';
+    const ticked = () => picks.filter(c => c.checked);
+
+    // What each choice holds: [people, with an email, with a mobile, with either] (search counts, so "up to")
+    function pool(w){
+      if (w === 'ticked') {
+        const t = ticked();
+        return [t.length, t.filter(c => c.dataset.email === '1').length, t.filter(c => c.dataset.mobile === '1').length,
+                t.filter(c => c.dataset.email === '1' || c.dataset.mobile === '1').length];
+      }
+      const e = C.email, m = C.mobile, x = C.either;
+      const n = w === 'all' ? C.all : C[w];
+      if (n == null) return null;
+      const both = (e != null && m != null && x != null) ? Math.max(0, e + m - x) : null;
+      const cap = v => v == null ? null : Math.min(v, Math.min(n, MAX));
+      const row = w === 'all' ? [n, e, m, x] : w === 'email' ? [n, n, both, n] : w === 'mobile' ? [n, both, n, n] : [n, e, m, n];
+      return [Math.min(n, MAX), cap(row[1]), cap(row[2]), cap(row[3])];
+    }
+    function est(){
+      const w = who(), p = pool(w);
+      if (!p) return null;
+      const [n, e, m, x] = p, wantE = remail.checked, wantM = rmob.checked;
+      const gotE = wantE ? e : 0, gotM = wantM ? m : 0;
+      const gotAny = wantE && wantM ? x : Math.max(gotE || 0, gotM || 0);
+      const known = [gotE, gotM, gotAny].every(v => v != null);
+      const credits = known ? (gotE || 0) + 10 * (gotM || 0) : null;
+      const pages = w === 'ticked' ? 0 : Math.ceil(n / 25);
+      return {w, n, gotE, gotM, li: known ? n - gotAny : null, credits, pages, wantE, wantM};
+    }
+    function upd(){
+      picks.forEach(c => c.closest('tr').classList.toggle('sel', c.checked));
+      const t = ticked().length;
+      document.getElementById('lf-ticked-n').textContent = t;
+      form.querySelector('[data-who=ticked]').textContent = fmt(t);
+      if (all) all.checked = t > 0 && t === picks.length;
+      wa.disabled = !rmob.checked; if (!rmob.checked) wa.checked = false;
+      waRow.style.opacity = rmob.checked ? 1 : .5;
+      form.querySelectorAll('.lf-who-opt').forEach(l => l.classList.toggle('on', l.querySelector('input').checked));
+      const s = est(), go = document.getElementById('lf-go');
+      if (!s) { document.getElementById('lf-sum-n').textContent = 'Counting…'; go.disabled = true; return; }
+      const noun = s.n === 1 ? 'person' : 'people';
+      document.getElementById('lf-sum-n').textContent = (s.w === 'ticked' ? '' : 'Up to ') + fmt(s.n) + ' ' + noun + ' will be imported';
+      const parts = [];
+      if (s.wantE) parts.push((s.gotE == null ? '?' : fmt(s.gotE)) + ' with an email');
+      if (s.wantM) parts.push((s.gotM == null ? '?' : fmt(s.gotM)) + ' with a mobile');
+      if (s.li == null || s.li > 0) parts.push((s.li == null ? '?' : fmt(s.li)) + ' LinkedIn only (no email or mobile)');
+      document.getElementById('lf-sum-split').textContent = parts.join(' · ');
+      document.getElementById('lf-sum-credits').textContent = s.credits == null ? 'counting…' : s.credits === 0 ? 'none (free)' : 'up to ' + fmt(s.credits);
+      document.getElementById('lf-sum-pages').textContent = s.pages
+        ? 'Plus 1 credit for each results page not opened in the last 30 days (up to ' + fmt(s.pages) + ').' : '';
+      const tooMany = s.w === 'ticked' && s.n > MAXT;
+      go.textContent = tooMany ? 'Tick up to ' + MAXT + ' at a time' : 'Import ' + fmt(s.n) + ' ' + noun + ' to Leads';
+      go.disabled = !s.n || tooMany;
+    }
+    picks.forEach(c => c.addEventListener('change', () => {
+      if (c.checked) form.querySelector('input[name=who][value=ticked]').checked = true;
+      upd();
+    }));
+    if (all) all.addEventListener('change', () => {
+      picks.forEach(c => c.checked = all.checked);
+      if (all.checked) form.querySelector('input[name=who][value=ticked]').checked = true;
+      upd();
+    });
+    form.addEventListener('change', upd);
+
+    // The counts for "Have an email / mobile" and each choice (1 credit each the first time, then free)
+    fetch(form.dataset.countsUrl + location.search).then(r => r.json()).then(d => {
+      ['email', 'mobile', 'either'].forEach(k => { C[k] = d[k] == null ? null : d[k]; });
+      if (d.all != null) C.all = d.all;
+      document.querySelectorAll('[data-count]').forEach(b => { const v = C[b.dataset.count]; b.textContent = v == null ? '—' : fmt(v); });
+      ['email', 'mobile', 'either'].forEach(k => { const b = form.querySelector('[data-who=' + k + ']'); if (b) b.textContent = C[k] == null ? '—' : fmt(C[k]); });
+      upd();
+    }).catch(() => {
+      document.querySelectorAll('[data-count]').forEach(b => b.textContent = '—');
+      ['email', 'mobile', 'either'].forEach(k => { const b = form.querySelector('[data-who=' + k + ']'); if (b) b.textContent = '—'; });
+    });
+
+    // Check screen, then import
+    const dlg = document.getElementById('lf-dlg');
+    document.getElementById('lf-go').addEventListener('click', () => {
+      const s = est(); if (!s || !s.n) return;
+      const noun = s.n === 1 ? 'person' : 'people';
+      const label = document.getElementById('lf-label'), assign = document.getElementById('lf-assign');
+      const lab = label.value === '__new__' ? document.getElementById('lf-label-new').value.trim() : label.value;
+      const whoText = form.querySelector('input[name=who]:checked').closest('label').querySelector('span').textContent;
+      const reveal = s.wantE && s.wantM ? 'Email and mobile' + (wa.checked ? ' (mobile saved as WhatsApp too)' : '')
+                   : s.wantE ? 'Email only' : s.wantM ? 'Mobile' + (wa.checked ? ' (saved as WhatsApp too)' : '') : 'Nothing: LinkedIn only';
+      const rows = [['Who', whoText], ['How many', (s.w === 'ticked' ? '' : 'Up to ') + fmt(s.n) + ' (anyone already in your Leads is skipped)'],
+                    ['Reveal', reveal], ['Expected result', document.getElementById('lf-sum-split').textContent]];
+      if (assign) rows.push(['Assign to', assign.options[assign.selectedIndex].text]);
+      rows.push(['Labels', 'Lead Finder' + (lab ? ', ' + lab : '')]);
+      document.getElementById('lf-dlg-h').textContent = 'Import ' + fmt(s.n) + ' ' + noun + ' to Leads?';
+      const box = document.getElementById('lf-dlg-rows'); box.innerHTML = '';
+      rows.forEach(([k, v]) => { const r = document.createElement('div'); const a = document.createElement('span'); const b = document.createElement('strong');
+        a.textContent = k; b.textContent = v; r.append(a, b); box.appendChild(r); });
+      const cost = document.getElementById('lf-dlg-cost');
+      cost.textContent = '';
+      const strong = document.createElement('strong');
+      strong.textContent = 'Credits: ' + (s.credits === 0 ? 'none' : 'up to ' + fmt(s.credits)) + (left != null ? ' of your ' + fmt(left) : '') + '.';
+      cost.append(strong, document.createElement('br'),
+        document.createTextNode((s.wantE || s.wantM ? 'You are only charged for emails and mobiles actually found. ' : '') +
+          'Importing names and LinkedIn links is free.' + (s.pages ? ' Results pages not opened in the last 30 days use 1 credit each (up to ' + fmt(s.pages) + ').' : '')));
+      if (left != null && s.credits != null && s.credits + s.pages > left) {
+        cost.append(document.createElement('br'), document.createTextNode('This could use all your credits. It stops by itself when they run out.'));
+      }
+      document.getElementById('lf-dlg-yes').textContent = 'Yes, import ' + fmt(s.n);
+      document.getElementById('lf-people').value = s.w === 'ticked' ? JSON.stringify(ticked().map(c => JSON.parse(c.dataset.person))) : '[]';
+      dlg.showModal();
+    });
+    document.getElementById('lf-dlg-back').addEventListener('click', () => dlg.close());
+    form.addEventListener('submit', () => { const y = document.getElementById('lf-dlg-yes'); setTimeout(() => { y.disabled = true; y.textContent = 'Starting…'; }, 0); });
+    upd();
+  }
 })();
 </script>
 {% endblock %}

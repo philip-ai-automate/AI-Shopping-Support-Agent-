@@ -694,7 +694,7 @@
                                               'portal.whatsapp_segments', 'portal.whatsapp_segment_detail',
                                               'portal.sales_pipeline', 'portal.report_pipeline_overview',
                                               'portal.sales_pipeline_settings', 'portal.lead_labels_page',
-                                              'portal.lead_labels_import_bounces') %}
+                                              'portal.lead_labels_import_bounces', 'bookings.demos', 'portal.follow_ups_page') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _crm_group %}open{% endif %}"
            data-tour="nav-contacts" onclick="sbToggle(this)">
@@ -730,6 +730,21 @@
            class="{% if request.endpoint == 'portal.sales_pipeline' %}active{% endif %}">
           Pipeline Board
           {% if 'crm.pipeline_board_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </a>
+        {% endif %}
+        {# Follow-ups moved here from Leads (user 2026-10-23) #}
+        {% if staff_can_open('portal.follow_ups_page') %}
+        <a href="{{ url_for('portal.follow_ups_page') }}"
+           class="{% if request.endpoint == 'portal.follow_ups_page' %}active{% endif %}">
+          Follow-ups
+          {% if 'leads.page' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </a>
+        {% endif %}
+        {% if staff_can_open('bookings.demos') %}
+        <a href="{{ url_for('bookings.demos') }}"
+           class="{% if request.endpoint == 'bookings.demos' %}active{% endif %}">
+          Demos
+          {% if 'crm.demos_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
         {% if staff_can_open('portal.whatsapp_segments') %}
@@ -820,15 +835,25 @@
     </a>
     {% endif %}
 
-    <!-- Voice Calls (PressOne, 2026-09-12) — its own top-level item, not
-         buried in the CRM submenu — the user specifically asked for this
-         to be its own dedicated, visible page rather than nested. -->
-    {% if staff_can_open('pressone.call_log') %}
-    <a class="sb-link {% if request.endpoint == 'pressone.call_log' %}active{% endif %}"
-       href="{{ url_for('pressone.call_log') }}">
-      <span class="sb-icon">📞</span> Voice Calls
-      {% if 'voice.calls' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-    </a>
+    <!-- Calls (WhatsApp calls, 2026-10-20 — replaced PressOne's Voice Calls) —
+         its own top-level item, like Voice Calls was. -->
+    {% if staff_can_open('calls.calls_page') or staff_can_open('calls.calls_settings_index') %}
+    {% set _calls_group = request.endpoint in ('calls.calls_page', 'calls.calls_settings', 'calls.calls_settings_index') %}
+    <div class="sb-group">
+      <div class="sb-group-toggle {% if _calls_group %}open{% endif %}" onclick="sbToggle(this)">
+        <span class="sb-gtitle"><span class="sb-icon">📞</span> Calls
+          {% if 'voice.calls' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}</span>
+        <span class="sb-arrow">▾</span>
+      </div>
+      <div class="sb-sub {% if _calls_group %}open{% endif %}">
+        {% if staff_can_open('calls.calls_page') %}
+        <a href="{{ url_for('calls.calls_page') }}" class="{% if request.endpoint == 'calls.calls_page' %}active{% endif %}">Call Log</a>
+        {% endif %}
+        {% if staff_can_open('calls.calls_settings_index') %}
+        <a href="{{ url_for('calls.calls_settings_index') }}" class="{% if request.endpoint in ('calls.calls_settings', 'calls.calls_settings_index') %}active{% endif %}">Call Settings</a>
+        {% endif %}
+      </div>
+    </div>
     {% endif %}
 
     <!-- ── Social Media group (Buffer + AI Post Designer, 2026-09-25) — only
@@ -1289,7 +1314,7 @@
          other report — including Leads Report, moved here from the Leads
          menu — is consolidated here so there's exactly one place to look
          for any report. ── -->
-    {% set _rep_group = request.endpoint in ('portal.reports', 'portal.report_usage', 'portal.report_cart', 'portal.report_billing', 'portal.report_ai_performance', 'portal.report_custom_picker', 'portal.report_custom_entity', 'portal.report_leads_sources', 'portal.report_not_a_fit', 'portal.email_campaigns_reports', 'portal.email_campaign_report') %}
+    {% set _rep_group = request.endpoint in ('portal.reports', 'portal.report_usage', 'portal.report_cart', 'portal.report_billing', 'portal.report_ai_performance', 'portal.report_custom_picker', 'portal.report_custom_entity', 'portal.report_leads_sources', 'portal.report_not_a_fit', 'portal.email_campaigns_reports', 'portal.email_campaign_report', 'calls.calls_report') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _rep_group %}open{% endif %}"
            onclick="sbToggle(this)">
@@ -1318,6 +1343,13 @@
            class="{% if request.endpoint == 'portal.report_not_a_fit' %}active{% endif %}">
           Not a Fit Report
           {% if 'reports.leads_sources' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </a>
+        {% endif %}
+        {% if staff_can_open('calls.calls_report') %}
+        <a href="{{ url_for('calls.calls_report') }}"
+           class="{% if request.endpoint == 'calls.calls_report' %}active{% endif %}">
+          Calls Report
+          {% if 'calls.report' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
         {% if staff_can_open('portal.report_cart') %}
@@ -1595,6 +1627,7 @@
          'portal.sales_pipeline': 'crm-board',
          'portal.lead_scoring_explainer': 'lead-score',
          'portal.lead_detail': 'lead-lead',
+         'portal.follow_ups_page': 'lead-fu-page',
          'portal.leads_page': 'lead-page',
          'portal.leads_overview': 'lead-overview',
          'portal.team_performance': 'lead-team',
@@ -2260,5 +2293,9 @@ document.addEventListener('DOMContentLoaded', function() {
   document.addEventListener('DOMContentLoaded', function(){ document.querySelectorAll('.ph-num').forEach(sync); });
 })();
 </script>
+<script src="{{ url_for('static', filename='portal/pw-toggle.js') }}?v=1"></script>
+{% if staff_can_open('calls.calls_live') and ('calls.answer' in granted_features or 'calls.make' in granted_features) %}
+<script src="{{ url_for('static', filename='portal/wa-calls.js') }}?v=2" defer></script>
+{% endif %}
 </body>
 </html>

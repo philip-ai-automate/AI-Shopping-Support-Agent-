@@ -25,7 +25,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import psycopg2.extras
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from db import get_db_connection
 
@@ -43,6 +43,7 @@ from .handoff import (
 )
 from .llm import estate_ask_llm
 from .inspections import book_slot
+from . import land as LAND
 
 estate_router = APIRouter()
 
@@ -56,7 +57,7 @@ _INSPECTION_TAG_PATTERN = r'<<<BOOK_INSPECTION:(\{.*?\})>>>'
 
 # ── Structured field extraction (runs before search) ─────────────────────────
 
-def _extract_buyer_fields(message: str, existing_profile: dict) -> dict:
+def _extract_buyer_fields(message: str, existing_profile: dict, land_hint: str = "") -> dict:
     """
     Cheap LLM call (gpt-4o-mini) to extract area, budget, bedrooms from the
     buyer's current message. Handles Pidgin, aliases (FCT=Abuja, PH=Port Harcourt,
@@ -83,12 +84,31 @@ def _extract_buyer_fields(message: str, existing_profile: dict) -> dict:
             "  budget_max: integer — maximum budget in Naira. Convert shorthand "
             "    (50M → 50000000, 1.5B → 1500000000). Omit if not mentioned.\n"
             "  bedrooms_pref: integer — number of bedrooms. Omit if not mentioned.\n"
+            "LAND BUYERS (plots, land, estates, sqm, C of O, 'to build'):\n"
+            "  buyer_kind: 'land' if they want land/plots/an estate plot; 'property' if they want a house, flat, "
+            "    duplex, room, rent or shortlet. Omit if unclear.\n"
+            "  purpose: 'build' | 'invest' | 'farm' | 'commercial'. Omit if not said.\n"
+            "  plot_size_sqm: number, ONLY when this message states a size or a number of plots "
+            "    ('450', '450sqm', 'two plots', 'half plot'). 1 plot = 600 sqm, half plot = 300 sqm. "
+            "    'a plot of land' or 'land' alone is NOT a size — omit.\n"
+            "  start_amount: integer Naira they can pay NOW / start with / as deposit ('I fit start with 4m' → 4000000).\n"
+            "  total_budget: integer Naira for the whole purchase, only when clearly the total.\n"
+            "  pay_mode: 'outright' (pay at once) | 'instalment' (spread, plan, monthly).\n"
+            "  monthly_amount: integer Naira they can pay each month.\n"
+            "  timeframe: 'now' (this month, ready now, immediately) | '1-3 months' | '3-6 months' | 'later' (next year, not soon).\n"
+            "  estate_name: name of an estate they pick or ask about. Omit if none.\n"
+            "  wants_inspection: true if they ask to see/inspect/visit the land or when they can come.\n"
+            "  asks_how_to_pay: true if they ask how to pay, for account details, or how to reserve/secure a plot.\n"
+            "  wants_agent: true if they ask to talk to a person, agent or for a call.\n"
+            "For a land buyer, do not use budget_max for an amount they will 'start with' — use start_amount.\n"
             "Return {} if nothing is extractable. No explanation, only JSON."
         )
 
         profile_hint = ""
         if existing_profile.get("preferred_area"):
             profile_hint = f" (buyer previously mentioned: {existing_profile['preferred_area']})"
+        if land_hint:
+            profile_hint += f" ({land_hint})"
 
         resp = client.chat.completions.create(
             model="gpt-5.6-luna",
@@ -96,9 +116,10 @@ def _extract_buyer_fields(message: str, existing_profile: dict) -> dict:
                 {"role": "system", "content": system},
                 {"role": "user",   "content": f"Message{profile_hint}: {message}"},
             ],
-            max_completion_tokens=80,
+            max_completion_tokens=250,
         )
         raw = (resp.choices[0].message.content or "").strip()
+        raw = raw.strip("`").removeprefix("json").strip()
         return _json.loads(raw) if raw else {}
     except Exception as e:
         print(f"⚠️ [ESTATE] _extract_buyer_fields error: {e}")
@@ -197,6 +218,7 @@ def _build_system_prompt(
     buyer_profile: dict,
     has_listings: bool,
     listing_note: str,
+    land_block: str = "",
 ) -> str:
     business = (tenant.get("business_name") or "our agency").strip()
     custom   = (agent_prompt or tenant.get("system_prompt") or "").strip()
@@ -215,7 +237,7 @@ def _build_system_prompt(
         mem_lines.append(f"- Property type: {buyer_profile['property_type_pref'].replace('_', ' ')}")
     if buyer_profile.get("transaction_pref"):
         mem_lines.append(f"- Transaction: {buyer_profile['transaction_pref']}")
-    if buyer_profile.get("bedrooms_pref"):
+    if buyer_profile.get("bedrooms_pref") and not land_block:
         mem_lines.append(f"- Bedrooms needed: {buyer_profile['bedrooms_pref']}")
     if buyer_profile.get("payment_method"):
         mem_lines.append(f"- Payment method: {buyer_profile['payment_method']}")
@@ -388,7 +410,81 @@ When any of the following situations arise, close your response warmly and appen
 
 Tell the buyer an agent will be in touch shortly."""
 
+    if land_block:
+        prompt = _apply_land_rules(prompt, land_block)
     return prompt.strip()
+
+
+def _apply_land_rules(prompt: str, land_block: str) -> str:
+    """Land buyer: add the estate figures and swap the house-only rules."""
+    swaps = [
+        ("PAYMENT PLANS AND MORTGAGE\nBriefly explain the three main options in Nigeria (outright, instalment, mortgage), then let the buyer know an agent will provide exact terms for the specific property they are interested in.",
+         "PAYMENT PLANS\nFor the estates in LAND BUYER below, quote the exact deposit, monthly amount and total given there, then add \"subject to confirmation by our team\". "
+         "Never work out an amount yourself and never change a figure. For land without payment plans listed, explain the options briefly and say an agent will give the exact terms."),
+        ("- The buyer asks about specific payment plans, instalment terms, or mortgage options\n",
+         "- The buyer asks about payment plans for land or property that has no payment plans listed in LAND BUYER (questions about the listed estate plans: answer them yourself, no hand-over)\n"
+         "- The buyer wants to pay, reserve or secure a plot, or asks for account details (never give bank details or take payment yourself)\n"
+         "- The buyer asks for a discount or to negotiate the price (never agree a different price)\n"
+         "- The buyer asks detailed title or legal questions you cannot answer from the listing\n"
+         "- The buyer is READY (see LAND BUYER): offer the site inspection and tell them our sales team will call\n"),
+        ("STRICT RULE — NEVER DESCRIBE PROPERTIES IN TEXT.",
+         "STRICT RULE — NEVER DESCRIBE PROPERTIES IN TEXT (one exception: for estates in LAND BUYER, write the estate name and the deposit/monthly amounts in your text; the card only shows a summary)."),
+        ("VIEWING APPOINTMENTS\nWhen the buyer asks about booking a viewing or inspection,",
+         "SITE INSPECTIONS AND VIEWINGS\nFor land, call it a \"site inspection\", never a \"viewing\". When the buyer asks about booking a site inspection or viewing,"),
+    ]
+    for old, new in swaps:
+        if new is not None and old in prompt:
+            prompt = prompt.replace(old, new)
+    marker = "\n---\n\nCURRENT PROPERTY SEARCH CONTEXT"
+    if marker in prompt:
+        prompt = prompt.replace(marker, "\n---\n\n" + land_block.strip() + "\n" + marker, 1)
+    else:
+        prompt += "\n\n---\n\n" + land_block.strip()
+    return prompt
+
+
+def _build_land_block(land: dict, opts: dict, area: str, estates_in_area: list) -> str:
+    """The LAND BUYER section: what we know, estate figures, what to ask, rules."""
+    known = LAND.summary_lines(land) or ["Buyer type: Land"]
+    lines = ["LAND BUYER",
+             "This buyer wants land or a plot, not a house. Never ask about bedrooms.",
+             "What we know: " + "; ".join(k for k in known if not k.startswith(("Buyer type", "Readiness")))
+             if len(known) > 1 else "What we know: nothing about the land they want yet."]
+    if estates_in_area:
+        lines.append("")
+        lines.append("ESTATES YOU CAN OFFER (exact figures worked out by our system — copy them, never calculate):")
+        for e in estates_in_area[:4]:
+            lines.append(LAND.estate_facts(e))
+        fits = opts.get("fits") or []
+        if fits:
+            lines.append("")
+            lines.append("BEST FITS FOR THIS BUYER — in this reply write each one as a short bullet with the estate, plot size, deposit and monthly amount (or outright price), at most 3:")
+            for r in fits:
+                lines.append(f"  - {r['estate']['title']} (estate #{r['estate']['id']}), {r['size']['label']}: {LAND._amount_line(r)}")
+        elif opts.get("closest") and (land.get("start_amount") or land.get("total_budget") or land.get("monthly_amount")):
+            r = opts["closest"][0]
+            lines.append("")
+            lines.append(f"NOTHING FITS what the buyer said they have. Be honest and show the closest: "
+                         f"{r['estate']['title']}, {r['size']['label']}: {LAND._amount_line(r)} — about {LAND.naira(r['gap'])} more than they mentioned. "
+                         "Ask if they could stretch to that, or prefer a smaller plot or a longer plan.")
+        lines.append("To show an estate card add the estate's number in the ESTATE_LISTINGS tag, e.g. <<<ESTATE_LISTINGS:[%d]>>>." % estates_in_area[0]["id"])
+    elif area:
+        lines.append(f"We have no estate with plots and payment plans in {area}. Say so honestly; offer other land listed below if any, or ask about nearby areas.")
+    ask = LAND.missing_questions(land, area)
+    if ask:
+        lines.append("")
+        lines.append("STILL MISSING (ask at most TWO of these in this reply, naturally, only if the buyer hasn't said them): " + "; ".join(ask[:4]) + ".")
+    if land.get("readiness") == "ready":
+        lines.append("")
+        lines.append("This buyer is READY: offer a site inspection (they reply *BOOK*) and say our sales team will call them.")
+    lines += ["",
+              "LAND RULES:",
+              "- Quote only figures from this section. End any quote with \"subject to confirmation by our team\".",
+              "- Never offer a SOLD OUT size. If the buyer asks for one, say plainly that size is sold out and offer the sizes still available (no hand-over needed for that).",
+              "- When a size says only a few are left you may say \"only a few plots left\" — never a number.",
+              "- Never agree a discount or a different price; that goes to our team.",
+              "- Say \"site inspection\", not \"viewing\"."]
+    return "\n".join(lines)
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
@@ -493,6 +589,9 @@ def _parse_listing_cards(raw_listings: list[dict], ids: list) -> list[dict]:
             "images":           images[:3],
             "status":           L.get("status") or "available",
         })
+        if L.get("sizes"):                       # estate: summary instead of bedrooms
+            cards[-1]["estate_summary"] = LAND.card_summary(L)
+            cards[-1]["price"] = LAND.card_summary(L).split(" · ")[0]
     return cards
 
 
@@ -624,6 +723,36 @@ class EstateChatRequest(BaseModel):
     phone_number:           str
     message:                str
     override_system_prompt: str | None = None
+    voice_note:             bool = False     # message is a transcribed WhatsApp voice note
+
+
+class EstateTranscribeRequest(BaseModel):
+    api_key:   str
+    audio_b64: str
+    filename:  str = "voice.ogg"
+
+
+@estate_router.post("/estate-transcribe")
+def estate_transcribe(req: EstateTranscribeRequest):
+    """Buyer's WhatsApp voice note → text (see estate/voice.py)."""
+    import base64
+    from . import voice as VOICE
+    tenant, error = verify_re_api_key(req.api_key)
+    if error:
+        raise HTTPException(status_code=401, detail=error)
+    try:
+        audio = base64.b64decode(req.audio_b64)
+    except Exception:
+        raise HTTPException(status_code=400, detail="bad audio")
+    if not audio or len(audio) > VOICE.MAX_BYTES:
+        raise HTTPException(status_code=400, detail="audio missing or too large")
+    try:
+        text = VOICE.transcribe(int(tenant["tenant_id"]), audio, req.filename)
+    except Exception as e:
+        print(f"⚠️ [ESTATE VOICE] tenant={tenant['tenant_id']} transcription failed: {e}")
+        raise HTTPException(status_code=502, detail="transcription failed")
+    print(f"🎤 [ESTATE VOICE] tenant={tenant['tenant_id']} {len(audio)} bytes → {len(text)} chars")
+    return {"text": text}
 
 
 # ── Main endpoint ─────────────────────────────────────────────────────────────
@@ -679,9 +808,22 @@ def estate_chat(req: EstateChatRequest):
         or _extract_budget(req.message)
         or _budget_from_history(history)
     )
+    effective_budget = float(effective_budget) if effective_budget else None
 
     # ── Extract structured fields from current message (before search) ────────
-    extracted = _extract_buyer_fields(req.message, buyer_profile)
+    land_hint = ""
+    try:
+        _land0 = LAND.get_land(tenant_id, customer_id)
+        _estates0 = LAND.load_estates(tenant_id)
+        _sizes = sorted({s["size_sqm"] for e in _estates0 for s in e["sizes"] if s["size_sqm"]})
+        if _land0.get("buyer_kind") == "land":
+            land_hint = "this buyer is a LAND buyer"
+        if _sizes:
+            land_hint += ("; " if land_hint else "") + ("this agency sells plots of " + ", ".join(f"{x:g}" for x in _sizes)
+                          + " sqm, so if THIS message contains one of those numbers on its own it is plot_size_sqm")
+    except Exception as e:
+        print(f"⚠️ [ESTATE] land hint error: {e}")
+    extracted = _extract_buyer_fields(req.message, buyer_profile, land_hint)
     if extracted:
         update_fields = {}
         if extracted.get("area"):
@@ -700,6 +842,40 @@ def estate_chat(req: EstateChatRequest):
                 print(f"   [ESTATE] Pre-search extraction: {update_fields}")
             except Exception as e:
                 print(f"⚠️ [ESTATE] pre-search update error: {e}")
+
+    # ── Land buyer: save land details, find estates that fit ──────────────────
+    land, land_mode, estates, land_opts, estates_in_area = {}, False, [], {}, []
+    try:
+        land = LAND.get_land(tenant_id, customer_id)
+        found = LAND.clean_extracted(extracted or {})
+        estates = LAND.load_estates(tenant_id)
+        if extracted and extracted.get("estate_name"):
+            e = LAND.estate_by_name(estates, extracted["estate_name"])
+            if e:
+                found["estate_listing_id"] = e["id"]
+        if found:
+            LAND.save_land(tenant_id, customer_id, found)
+            land.update(found)
+        land_mode = land.get("buyer_kind") == "land"
+        if land_mode:
+            if land.get("total_budget"):
+                effective_budget = land["total_budget"]
+            elif land.get("start_amount") and effective_budget and abs(effective_budget - land["start_amount"]) < 1:
+                effective_budget = None          # money to start with is not the total budget
+            land_opts = LAND.options(estates, land, buyer_profile.get("preferred_area"), effective_budget)
+            estates_in_area = land_opts.get("in_area", [])
+            # One estate in the area and the buyer has picked a size or plan → that's their estate
+            if not land.get("estate_listing_id") and len(estates_in_area) == 1 and (found.get("plot_size_sqm") or found.get("pay_mode")):
+                land["estate_listing_id"] = estates_in_area[0]["id"]
+                LAND.save_land(tenant_id, customer_id, {"estate_listing_id": land["estate_listing_id"]})
+                land_opts = LAND.options(estates, land, buyer_profile.get("preferred_area"), effective_budget)
+            level, why = LAND.compute_readiness(land, buyer_profile.get("preferred_area"), land_opts)
+            if LAND.set_readiness(tenant_id, customer_id, level, why, by="ai"):
+                print(f"   [ESTATE] Readiness → {level}: {why}")
+            land.update({k: v for k, v in LAND.get_land(tenant_id, customer_id).items() if k.startswith("readiness")})
+            print(f"   [ESTATE] Land buyer: {found} · estates in area {len(estates_in_area)} · fits {len(land_opts.get('fits', []))}")
+    except Exception as e:
+        print(f"⚠️ [ESTATE] land step error: {e}")
 
     try:
         maybe_summarize(tenant_id, customer_id, keep_last_n=keep_n)
@@ -791,6 +967,12 @@ def estate_chat(req: EstateChatRequest):
             f"consider nearby areas or a different property type."
         )
 
+    estate_ids = {e["id"] for e in estates}
+    if land_mode and estate_ids:
+        raw_listings = [L for L in raw_listings if L.get("id") not in estate_ids]
+        if estates_in_area:
+            listing_note = ("CONTEXT: The estates in LAND BUYER are this buyer's main options. "
+                            "Other land listings below (if any) can be mentioned too.")
     context_chunks = format_listings_for_context(raw_listings)
 
     # ── System prompt ─────────────────────────────────────────────────────────
@@ -802,8 +984,9 @@ def estate_chat(req: EstateChatRequest):
             tenant        = tenant,
             agent_prompt  = agent_prompt,
             buyer_profile = buyer_profile,
-            has_listings  = bool(raw_listings),
+            has_listings  = bool(raw_listings) or bool(estates_in_area),
             listing_note  = listing_note,
+            land_block    = _build_land_block(land, land_opts, buyer_profile.get("preferred_area"), estates_in_area) if land_mode else "",
         )
 
     try:
@@ -812,9 +995,13 @@ def estate_chat(req: EstateChatRequest):
             system_prompt += "\n" + hf_block
     except Exception as e:
         print(f"⚠️ [ESTATE] handoff instruction error: {e}")
+    if req.voice_note:
+        from .voice import VOICE_RULE
+        system_prompt += "\n\n" + VOICE_RULE
 
-    # ── Store user message ────────────────────────────────────────────────────
-    add_message(tenant_id, customer_id, "user", req.message, embedding=embedding)
+    # ── Store user message (voice notes marked so staff see where it came from) ─
+    add_message(tenant_id, customer_id, "user",
+                ("🎤 Voice note: " + req.message) if req.voice_note else req.message, embedding=embedding)
 
     # ── LLM call ─────────────────────────────────────────────────────────────
     answer, needs_handoff, _usage = estate_ask_llm(
@@ -824,6 +1011,10 @@ def estate_chat(req: EstateChatRequest):
         history            = history,
         structured_handoff = True,
     )
+
+    if not (answer or "").strip():
+        answer = ("Sorry, I couldn't answer that just now. A member of our team will get back to you shortly.")
+        needs_handoff = True
 
     # ── Parse BUYER_PROFILE tag ───────────────────────────────────────────────
     if _re.search(_BUYER_TAG_PATTERN, answer, _re.DOTALL):
@@ -841,7 +1032,7 @@ def estate_chat(req: EstateChatRequest):
     if _re.search(_LISTING_TAG_PATTERN, answer, _re.DOTALL):
         try:
             ids = _json.loads(_re.search(_LISTING_TAG_PATTERN, answer, _re.DOTALL).group(1))
-            listing_cards = _parse_listing_cards(raw_listings, ids)
+            listing_cards = _parse_listing_cards(raw_listings + estates, ids)
             print(f"   [ESTATE] Cards built: {len(listing_cards)}")
         except Exception as e:
             print(f"   ⚠️ [ESTATE] ESTATE_LISTINGS parse error: {e}")
@@ -868,6 +1059,24 @@ def estate_chat(req: EstateChatRequest):
             print(f"   ⚠️ [ESTATE] BOOK_INSPECTION parse error: {e}")
         finally:
             answer = _re.sub(_INSPECTION_TAG_PATTERN, "", answer, flags=_re.DOTALL).strip()
+
+    # The old text marker still slips into replies: act on it, never show it
+    if _re.search(r"\[\s*HANDOFF[ _]REQUESTED\s*\]", answer or "", _re.I):
+        needs_handoff = True
+        answer = _re.sub(r"\[\s*HANDOFF[ _]REQUESTED\s*\]", "", answer, flags=_re.I)
+    answer = _re.sub(r"\n{3,}", "\n\n", answer or "").strip()
+
+    # ── Readiness (land buyers): fixed rules, saved with the reason ───────────
+    if land_mode and booking_confirmation:
+        try:
+            if not land.get("wants_inspection"):
+                land["wants_inspection"] = True
+                LAND.save_land(tenant_id, customer_id, {"wants_inspection": True})
+            level, why = LAND.compute_readiness(land, buyer_profile.get("preferred_area"), land_opts)
+            if LAND.set_readiness(tenant_id, customer_id, level, why, by="ai"):
+                print(f"   [ESTATE] Readiness → {level}: {why}")
+        except Exception as e:
+            print(f"⚠️ [ESTATE] readiness error: {e}")
 
     # ── Handoff detection ─────────────────────────────────────────────────────
     handoff_triggered = False
@@ -900,3 +1109,94 @@ def estate_chat(req: EstateChatRequest):
         "messages_used":     quota["used"] + 1,
         "messages_limit":    quota["limit"],
     }
+
+
+# ── Readiness refresh (gateway after a slot booking; portal after staff edits) ─
+
+class EstateReadinessRequest(BaseModel):
+    tenant_id:   int
+    customer_id: int
+    wants_inspection: bool = False
+
+
+def _local_only(request):
+    """Internal endpoints: only our own services on this server, never the
+    internet (chat.phixtra.com proxies to this service and adds X-Forwarded-For)."""
+    host = (request.client.host if request.client else "") or ""
+    if request.headers.get("x-forwarded-for") or request.headers.get("x-real-ip") or host not in ("127.0.0.1", "::1", "testclient"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+class EstateAgentNoteRequest(BaseModel):
+    tenant_id:   int
+    customer_id: int
+    transcript:  str
+    now_local:   str          # e.g. "Thursday 22 October 2026, 21:10 (Africa/Lagos)"
+
+
+@estate_router.post("/estate-agent-note")
+def estate_agent_note(req: EstateAgentNoteRequest, request: Request):
+    _local_only(request)
+    """Read an agent's voice note into a proposal for the lead (nothing is saved
+    here; the portal saves what the agent confirms). Local callers only."""
+    from . import voice as VOICE
+    try:
+        data = VOICE.read_agent_note(req.tenant_id, req.transcript, req.now_local)
+    except Exception as e:
+        print(f"⚠️ [ESTATE AGENT NOTE] tenant={req.tenant_id} read failed: {e}")
+        return {"ok": False}
+    # What readiness these facts point to (same fixed rules as WhatsApp chats)
+    land = LAND.get_land(req.tenant_id, req.customer_id) or {}
+    merged = dict(land)
+    for k in VOICE.LAND_KEYS + ("estate_listing_id", "wants_inspection", "asks_how_to_pay"):
+        if data.get(k) not in (None, ""):
+            merged[k] = data[k]
+    profile = _get_buyer_profile(req.tenant_id, req.customer_id)
+    area = data.get("area") or profile.get("preferred_area")
+    level, why = None, None
+    if (merged.get("buyer_kind") or "") == "land":
+        opts = LAND.options(LAND.load_estates(req.tenant_id), merged, area, data.get("budget_max") or profile.get("budget_max"))
+        level, why = LAND.compute_readiness(merged, area, opts)
+    return {"ok": True, "proposal": data, "readiness": level, "readiness_reason": why}
+
+
+class EstateBriefRequest(BaseModel):
+    tenant_id:   int
+    customer_id: int
+    tz:          str = "Africa/Lagos"
+
+
+@estate_router.post("/estate-brief")
+def estate_brief(req: EstateBriefRequest, request: Request):
+    """AI brief for an agent before they call a buyer (estate/brief.py). Local callers only."""
+    _local_only(request)
+    from zoneinfo import ZoneInfo
+    from . import brief as BRIEF
+    try:
+        tz = ZoneInfo(req.tz)
+    except Exception:
+        tz = ZoneInfo("Africa/Lagos")
+    try:
+        data = BRIEF.write(req.tenant_id, req.customer_id, tz)
+    except Exception as e:
+        print(f"⚠️ [ESTATE BRIEF] tenant={req.tenant_id} lead={req.customer_id}: {e}")
+        return {"ok": False}
+    return {"ok": bool(data and data.get("headline")), "brief": data}
+
+
+@estate_router.post("/estate-readiness-refresh")
+def estate_readiness_refresh(req: EstateReadinessRequest, request: Request):
+    _local_only(request)
+    """Re-run the readiness rules for one land buyer. Local callers only
+    (the service listens on 127.0.0.1)."""
+    land = LAND.get_land(req.tenant_id, req.customer_id)
+    if req.wants_inspection and not land.get("wants_inspection"):
+        LAND.save_land(req.tenant_id, req.customer_id, {"wants_inspection": True})
+        land["wants_inspection"] = True
+    if land.get("buyer_kind") != "land":
+        return {"ok": True, "readiness": land.get("readiness"), "changed": False}
+    profile = _get_buyer_profile(req.tenant_id, req.customer_id)
+    opts = LAND.options(LAND.load_estates(req.tenant_id), land, profile.get("preferred_area"), profile.get("budget_max"))
+    level, why = LAND.compute_readiness(land, profile.get("preferred_area"), opts)
+    changed = LAND.set_readiness(req.tenant_id, req.customer_id, level, why, by="ai")
+    return {"ok": True, "readiness": level, "reason": why, "changed": changed}

@@ -24,7 +24,7 @@
   font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
   padding:4px 10px;border-radius:999px;background:rgba(3,12,24,0.06);color:rgba(3,12,24,0.55)
 }
-.lv-topbar-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.lv-topbar-actions{display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;max-width:100%}
 .lv-btn{
   display:inline-flex;align-items:center;gap:6px;padding:9px 18px;
   border-radius:9px;font-size:13px;font-weight:700;font-family:inherit;
@@ -101,6 +101,14 @@
 
 /* ── Layout ── */
 .lv-wrap{display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start}
+.lv-wrap>*{min-width:0}
+.est-v-wrap{overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px}
+.est-v{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.est-v th,.est-v td{padding:9px 12px;border-bottom:1px solid #eef2f7;text-align:left;white-space:nowrap}
+.est-v th{background:#f8fafc;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:rgba(3,12,24,0.45)}
+.est-v tr:last-child td{border-bottom:0}
+.est-v td small{display:block;color:rgba(3,12,24,0.45);font-size:11.5px}
+.est-sold{color:#b42318;font-weight:650}
 @media(max-width:900px){.lv-wrap{grid-template-columns:1fr}}
 
 /* ── Cards ── */
@@ -384,6 +392,34 @@
 
 <!-- ═══════════════════ LEFT COLUMN ═══════════════════ -->
 <div>
+
+  {% if estate %}
+  <!-- Estate: plot sizes + what buyers pay -->
+  <div class="lv-card">
+    <div class="lv-card-title">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Plot sizes and payment plans
+    </div>
+    {% if estate.sizes %}
+    <div class="est-v-wrap" style="margin-bottom:14px"><table class="est-v">
+      <thead><tr><th>Plot size</th><th>Outright price</th><th>Plots left</th></tr></thead>
+      <tbody>{% for z in estate.sizes %}
+        <tr><td>{{ z.label }}</td><td>₦{{ '{:,.0f}'.format(z.price) }}</td>
+            <td>{% if z.plots_left is none %}–{% elif z.plots_left == 0 %}<span class="est-sold">Sold out</span>{% else %}{{ z.plots_left }}{% endif %}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+    {% endif %}
+    {% if estate_grid %}
+    <div class="est-v-wrap"><table class="est-v">
+      <thead><tr><th>Plan</th>{% for z in estate.sizes %}<th>{{ z.label }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for row in estate_grid %}
+        <tr><td>{{ row.plan.name }}{% if row.plan.months %}<small>{{ '%g'|format(row.plan.deposit_pct) }}% deposit{% if row.plan.premium_pct %} · +{{ '%g'|format(row.plan.premium_pct) }}%{% endif %}</small>{% endif %}</td>
+          {% for w in row.cells %}<td>{% if w.months %}₦{{ '{:,.0f}'.format(w.deposit) }} then ₦{{ '{:,.0f}'.format(w.monthly) }}/mo<small>Total ₦{{ '{:,.0f}'.format(w.total) }}</small>{% else %}₦{{ '{:,.0f}'.format(w.total) }}{% endif %}</td>{% endfor %}</tr>
+      {% endfor %}</tbody>
+    </table></div>
+    {% endif %}
+  </div>
+  {% endif %}
 
   {% if listing.property_type == 'land' %}
   <!-- Land highlights -->

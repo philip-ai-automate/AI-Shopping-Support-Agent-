@@ -267,6 +267,8 @@
   </div>
 </div>
 
+{% include 'estate/_reports_tabs.html' %}
+
 <!-- Period selector -->
 <div class="period-bar print-hide" style="margin-bottom:16px">
   {% for p, lbl in [('30d','30 Days'),('90d','90 Days'),('6m','6 Months'),('ytd','Year to Date'),('1y','12 Months'),('all','All Time')] %}

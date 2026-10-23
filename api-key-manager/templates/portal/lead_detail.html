@@ -2,6 +2,7 @@
 {% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% from "portal/_address_box.html" import emails_cell, other_emails_box, address_box, location_cell with context %}
 {% from "portal/_biz_fields.html" import biz_inputs with context %}
+{% set _fx_lead = {'leadId': lead.id, 'name': lead.customer_name, 'open': lead_open, 'canClose': lead_open, 'hasEmail': (lead.email and true) or false} %}
 {% block title %}{{ lead.customer_name }} — Lead — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -44,6 +45,27 @@
 .finp{width:100%;padding:9px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:13px;font-family:inherit}
 .modal-actions{display:flex;gap:10px;margin-top:6px}
 .modal-cancel{flex:1;padding:10px;border:1.5px solid var(--line);background:#fff;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+.li-strip{padding:14px 24px;border-bottom:1px solid var(--line)}
+.li-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.li-badge{width:22px;height:22px;border-radius:5px;background:#0A66C2;color:#fff;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;font-family:Arial,sans-serif}
+.li-title{font-size:13px;font-weight:800;color:var(--ink)}
+.li-open{font-size:12.5px;font-weight:700;color:#0A66C2;text-decoration:none;border:1.5px solid #0A66C2;border-radius:8px;padding:5px 11px}
+.li-open:hover{background:#0A66C2;color:#fff}
+.li-muted{font-size:12.5px;color:var(--muted)}
+.li-now{font-size:12px;font-weight:700;padding:4px 10px;border-radius:20px;background:#f1f5f9;color:#475569}
+.li-now.li-request_sent{background:#e8f1fb;color:#0A66C2}
+.li-now.li-accepted,.li-now.li-messaged{background:#dcfce7;color:#15803d}
+.li-now.li-not_accepted{background:#fef2f2;color:#b91c1c}
+.li-by{font-weight:500}
+.li-link-btn{background:none;border:0;padding:0;color:#2563eb;font:inherit;font-size:12px;font-weight:700;cursor:pointer;margin-left:auto}
+.li-link-form{gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.li-steps{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.li-step{background:#fff;border:1.5px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;color:var(--ink);cursor:pointer;font-family:inherit}
+.li-step:hover{border-color:#0A66C2;color:#0A66C2}
+.li-step.on{background:#0A66C2;border-color:#0A66C2;color:#fff}
+.li-undo{background:none;border:0;padding:0 4px;color:var(--muted);font:inherit;font-size:11.5px;text-decoration:underline;cursor:pointer}
+.li-hist{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.7}
+.li-arrow{color:#cbd5e1}
 .modal-confirm{flex:1;padding:10px;border:none;background:var(--ink);color:#fff;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
 </style>
 {% endblock %}
@@ -62,10 +84,6 @@
       <div>
         <div class="lc-name">{{ lead.customer_name }}</div>
         <div class="lc-sub">{{ lead.product_interest or 'Sales Lead' }}</div>
-        <div class="lbl-cell" style="margin-top:6px" data-lbl-lead="{{ lead.id }}" data-removable="{{ '1' if can_assign_labels else '0' }}" data-ids="{{ lead_labels|map(attribute='id')|join(',') }}">
-          <span class="lbl-chips">{% for lb in lead_labels %}{{ label_chip(lb, lead.id, can_assign_labels) }}{% endfor %}</span>
-          {% if can_assign_labels %}<button type="button" class="lbl-add" onclick="LabelUI.editLead(this, {{ lead.id }})">+ Add label</button>{% endif %}
-        </div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
@@ -97,6 +115,74 @@
     </div>
   </div>
 
+  {# Next follow-up card (redesign 2026-10-23): first thing on the lead — when, how, what, and the two actions #}
+  {% set fu = followup.current %}
+  {% set _fx_can = staff_can_open('portal.lead_followup_set') %}
+  <div id="followup" class="fuc {{ ('fuc-' ~ fu.state) if fu else ('fuc-none' if lead_open else 'fuc-closed') }}">
+    <div class="fuc-main">
+      <div class="fuc-top"><span class="fuc-eye">Next follow-up</span>
+        {% if not lead_open %}<span class="fuc-pill">Lead closed</span>
+        {% elif fu and fu.state == 'overdue' %}<span class="fuc-pill red">{{ fu.when_words|capitalize }}</span>
+        {% elif fu and fu.state == 'today' %}<span class="fuc-pill amber">Due today</span>
+        {% elif fu %}<span class="fuc-pill">{{ fu.when_words|capitalize }}</span>
+        {% else %}<span class="fuc-pill amber">Not set</span>{% endif %}
+      </div>
+      {% if not lead_open %}
+      <div class="fuc-date muted">No follow-up needed</div>
+      <div class="fuc-what">This lead is closed{% if lead.outcome %} ({{ stage_labels.get(lead.outcome, lead.outcome)|lower }}){% endif %}.</div>
+      {% elif fu %}
+      <div class="fuc-date">{{ fu.due_date.strftime('%A %-d %B') }}</div>
+      <div class="fuc-how-row">
+        <span class="fuc-how"><svg><use href="#fx-{{ fu.channel or 'call' }}"/></svg>{{ fu.channel_label or 'Call' }}</span>
+        <span class="fuc-what">{{ fu.note or ('Follow up after ' ~ fu.after_words if fu.after_words else 'Follow up') }}</span>
+      </div>
+      {% else %}
+      <div class="fuc-date muted">No date yet</div>
+      <div class="fuc-what">Nobody will be reminded about this lead until a date is set.</div>
+      {% endif %}
+      {% if contact_notes %}{% set ln = contact_notes[0] %}
+      <div class="fuc-last"><b>Last time · {{ ln.kind_label }}{% if ln.result %}, {{ ln.result|lower }}{% endif %}</b> · {{ ln.actor_name or 'the team' }}, {{ ln.local_at.strftime('%a %-d %b') }}
+        <span>{{ ln.note }}</span>
+        {% if contact_notes|length > 1 %}<a href="#notes-history" onclick="lcShowTab('said')">See all {{ contact_notes|length }} ›</a>{% endif %}</div>
+      {% endif %}
+    </div>
+    {% if lead_open %}
+    <div class="fuc-side">
+      <div class="fuc-actions">
+        <button type="button" class="fx-btn primary" data-fx-log="{{ _fx_lead|tojson|forceescape }}">Log/Follow-up</button>
+      </div>
+      {% if _fx_can %}<button type="button" class="fuc-link" data-fx-resched="{{ {'leadId': lead.id, 'name': lead.customer_name, 'due': fu.due_date.isoformat() if fu else None, 'channel': fu.channel if fu else None, 'note': fu.note if fu else None, 'moved': fu.reschedule_count if fu else 0}|tojson|forceescape }}">{{ 'Change date' if fu else 'Set a date' }}</button>{% endif %}
+      <div class="fuc-help">{% if fu %}{% if fu.auto %}Set automatically, 3 working days after {{ fu.after_words or 'the last contact' }}.{% else %}Set by {{ fu.set_by_name or 'the team' }}{% if fu.after_words %} after {{ fu.after_words }}{% endif %} on {{ fu.updated_local.strftime('%a %-d %b') }}.{% endif %}{% if fu.state == 'overdue' %} The salesperson and their line manager are reminded at 8am.{% endif %} {% endif %}Log/Follow-up after a call, WhatsApp, email, LinkedIn step or meeting ticks this off and asks for the next date.</div>
+    </div>
+    {% endif %}
+  </div>
+  <style>
+    .fuc { margin:18px 24px; border:1.5px solid var(--line); border-radius:14px; padding:16px 18px; background:#fff;
+           display:grid; grid-template-columns:minmax(0,1fr) minmax(0,360px); gap:16px 24px; align-items:center }
+    .fuc-overdue { border-color:#F3C2C2; background:#FDECEC } .fuc-today { border-color:#F5C98B; background:#FFF4E5 }
+    .fuc-none { border-style:dashed; border-color:#9DB8E8 } .fuc-closed { background:#F8FAFD; grid-template-columns:minmax(0,1fr) }
+    .fuc-top { display:flex; align-items:center; gap:10px; flex-wrap:wrap }
+    .fuc-eye { font-size:11.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--muted) }
+    .fuc-pill { font-size:11.5px; font-weight:800; border-radius:999px; padding:3px 10px; background:#E8EEF8; color:#0B1D40; white-space:nowrap }
+    .fuc-pill.red { background:#fff; color:#B42318; box-shadow:inset 0 0 0 1px #F3C2C2 } .fuc-pill.amber { background:#fff; color:#92400E; box-shadow:inset 0 0 0 1px #F5C98B }
+    .fuc-date { font-size:22px; font-weight:800; color:#0B1D40; line-height:1.25; margin-top:4px }
+    .fuc-overdue .fuc-date { color:#B42318 } .fuc-today .fuc-date { color:#92400E } .fuc-date.muted { color:var(--muted) }
+    .fuc-how-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:6px }
+    .fuc-how { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:700; color:#0B1D40; background:#E8EEF8; border-radius:7px; padding:3px 8px }
+    .fuc-how svg { width:13px; height:13px }
+    .fuc-what { font-size:14px; font-weight:600; color:var(--ink); margin-top:2px }
+    .fuc-side { display:grid; gap:10px }
+    .fuc-last { margin-top:10px; padding:9px 12px; background:rgba(255,255,255,.75); border:1px solid var(--line); border-radius:10px; font-size:12.5px; color:var(--muted) }
+    .fuc-last b { color:var(--ink) } .fuc-last span { display:block; color:var(--ink); font-size:13px; margin-top:3px; white-space:pre-line;
+      display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden }
+    .fuc-last a { display:inline-block; margin-top:4px; font-weight:700; color:#0B1D40; font-size:12px }
+    .fuc-actions { display:flex; gap:8px; flex-wrap:wrap }
+    .fuc-actions .fx-btn { min-width:200px }
+    .fuc-link { justify-self:start; background:none; border:0; padding:0; font:inherit; font-size:12.5px; font-weight:700; color:#0B1D40; text-decoration:underline; cursor:pointer }
+    .fuc-help { font-size:12px; color:var(--muted); line-height:1.5 }
+    @media (max-width:820px) { .fuc { grid-template-columns:minmax(0,1fr); margin:16px } }
+  </style>
+
   {# Microsoft Bookings demo (2026-10-18): booked / due / cancelled #}
   {% set dc = demo.current %}
   {% if dc and dc.state == 'booked' %}
@@ -111,15 +197,65 @@
     {% if dc.join_url %}<a href="{{ dc.join_url }}" target="_blank" rel="noopener" style="color:#fff;font-weight:700;font-size:13px">Join link</a>{% endif %}
   </div>
   {% elif dc and dc.state == 'due' %}
-  <div style="margin:0 24px 18px;background:#FFF4E5;border:1px solid #F5C98B;border-radius:12px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
-    <div><div style="font-weight:800;font-size:15px;color:#7C2D12">Demo was due · {{ dc.when }}</div>
-      <div style="font-size:12.5px;color:#92400E">Did it happen? Marking it keeps the pipeline accurate.</div></div>
+  <div id="demo" style="margin:0 24px 18px;background:#FFF4E5;border:1px solid #F5C98B;border-radius:12px;padding:14px 18px">
+    <div style="font-weight:800;font-size:15px;color:#7C2D12">How did the demo go? · {{ dc.when }}</div>
+    <div style="font-size:12.5px;color:#92400E;margin-bottom:10px">Your answer moves the lead through the pipeline for you. Until it's recorded, your manager sees it as "outcome missing".</div>
     {% if staff_can_open('bookings.mark') %}
-    <div style="display:flex;gap:8px">
-      <form method="POST" action="{{ url_for('bookings.mark', lead_id=lead.id, appt_id=dc.id) }}" style="margin:0"><input type="hidden" name="outcome" value="done"><button type="submit" class="lc-edit-btn" style="background:#030C18;color:#fff;border-color:#030C18">Demo done</button></form>
-      <form method="POST" action="{{ url_for('bookings.mark', lead_id=lead.id, appt_id=dc.id) }}" style="margin:0"><input type="hidden" name="outcome" value="no_show"><button type="submit" class="lc-edit-btn">They didn't show up</button></form>
-    </div>
+    <form method="POST" action="{{ url_for('bookings.mark', lead_id=lead.id, appt_id=dc.id) }}" id="demoOutcome" style="margin:0;display:grid;gap:10px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px" role="radiogroup" aria-label="Demo outcome">
+        {% for v, l, hint in [('interested','Interested, good fit','→ Qualified'),('proposal','Proposal sent','→ Proposal Sent'),('another','Needs another meeting','stays, next date'),('not_fit','Not a fit','closes as Not a Fit'),('no_show',"Didn't show up",'stays, marked no-show')] %}
+        <label style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:#fff;border:1.5px solid #F5C98B;border-radius:9px;padding:7px 11px;font-size:13px;font-weight:700;color:#3B1D0A;cursor:pointer;width:auto;margin:0">
+          <input type="radio" name="outcome" value="{{ v }}" required style="accent-color:#0B1D40;width:16px;height:16px;flex:none;margin:0;padding:0"> {{ l }} <span style="font-weight:500;color:#92400E;font-size:11.5px">{{ hint }}</span></label>
+        {% endfor %}
+      </div>
+      <div id="doNext" style="display:none;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:8px">
+        <input name="next_step" id="doNextStep" maxlength="300" placeholder="Next step, e.g. send proposal, second call with their manager" style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px" aria-label="Next step">
+        <div style="position:relative"><input type="hidden" name="next_date" id="doNextDate">
+          <button type="button" class="fx-datebtn empty" id="doNextBtn" aria-label="Next follow-up date">Choose a date<svg><use href="#fx-cal"/></svg></button>
+          <div hidden style="position:absolute;z-index:50;top:calc(100% + 6px);right:0;width:300px;max-width:80vw;background:#fff;border:1px solid #E3E8F1;border-radius:12px;padding:8px;box-shadow:0 12px 30px rgba(3,12,24,.18)"><div class="fx-cal" id="doNextCal" style="border:0;padding:0"></div></div></div>
+      </div>
+      <div id="doReason" style="display:none">
+        <select name="reason" id="doReasonSel" style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;max-width:100%" aria-label="Why not a fit">
+          <option value="">Why not a fit?</option>
+          {% for r in not_a_fit_reasons %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+        </select>
+        <input name="reason_other" id="doReasonOther" maxlength="200" placeholder="If Other, say why" style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;margin-top:6px;width:100%" aria-label="Other reason">
+      </div>
+      <input name="note" id="doNote" maxlength="2000" placeholder="Anything to remember from the demo (optional)" style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px" aria-label="Note">
+      <div><button type="submit" class="lc-edit-btn" style="background:#0B1D40;color:#fff;border-color:#0B1D40">Save outcome</button></div>
+    </form>
+    <script>
+    (function () {
+      var f = document.getElementById('demoOutcome'); if (!f) return;
+      var next = document.getElementById('doNext'), why = document.getElementById('doReason');
+      var date = document.getElementById('doNextDate'), sel = document.getElementById('doReasonSel');
+      function sync() {
+        var v = (f.querySelector('input[name=outcome]:checked') || {}).value;
+        next.style.display = (v && v !== 'not_fit') ? 'grid' : 'none';
+        why.style.display = v === 'not_fit' ? 'block' : 'none';
+        sel.required = v === 'not_fit';
+      }
+      f.addEventListener('change', sync); sync();
+      document.addEventListener('DOMContentLoaded', function () {
+        if (window.FU) FU.picker(date, document.getElementById('doNextBtn'), document.getElementById('doNextCal'));
+      });
+      f.addEventListener('submit', function (e) {
+        var v = (f.querySelector('input[name=outcome]:checked') || {}).value;
+        if (v && v !== 'not_fit' && !date.value) { e.preventDefault(); alert('Choose the next follow-up date.'); }
+      });
+    })();
+    </script>
     {% endif %}
+  </div>
+  {% elif dc and dc.state == 'outcome' %}
+  {% set o = dc.outcome or {} %}
+  <div id="demo" style="margin:0 24px 18px;background:#fff;border:1px solid #C9D6EE;border-radius:12px;padding:14px 18px">
+    <div style="font-weight:800;font-size:15px;color:#0B1D40">Demo {{ dc.when }} · {{ o.label or ("Didn't show up" if dc.status == 'no_show' else 'Done') }}</div>
+    <div style="font-size:12.5px;color:var(--ink)">
+      {% if o.next_step or o.next_date %}Next: {{ o.next_step or 'follow up' }}{% if o.next_date %} on {{ o.next_date.strftime('%a %-d %b') }}{% endif %} · {% endif %}
+      {% if o.stage_to %}moved to {{ o.stage_to|replace('_',' ')|title }} · {% endif %}recorded by {{ o.marked_by or dc.marked_by or 'the team' }}
+      {% if o.note %}<br>“{{ o.note }}”{% endif %}
+    </div>
   </div>
   {% elif dc and dc.state == 'cancelled' %}
   <div style="margin:0 24px 18px;background:#fff;border:1px solid #F3C2C2;border-radius:12px;padding:14px 18px">
@@ -128,63 +264,136 @@
   </div>
   {% endif %}
 
+
+  {# LinkedIn (2026-10-21): open the profile, then one click per step so the CRM keeps up with LinkedIn #}
+  {% set li = linkedin %}
+  {% set li_can = staff_can_open('portal.lead_linkedin_step') %}
+  <div id="linkedin" class="li-strip">
+    <div class="li-row">
+      <span class="li-badge" aria-hidden="true">in</span>
+      <span class="li-title">LinkedIn</span>
+      {% if li.url %}
+      <a href="{{ li.url }}" target="_blank" rel="noopener" class="li-open">Open LinkedIn profile ↗</a>
+      {% else %}
+      <span class="li-muted">No profile link yet</span>
+      {% endif %}
+      {% if li.current %}
+      <span class="li-now li-{{ li.current.step }}">{{ li.current.label }} · {{ li.current.local_at.strftime('%-d %b') }}<span class="li-by"> by {{ li.current.actor_name or 'Unknown' }}</span></span>
+      {% endif %}
+      {% if li_can %}
+      <button type="button" class="li-link-btn" onclick="var f=document.getElementById('liLinkForm');f.style.display=f.style.display==='none'?'flex':'none'">{{ 'Change link' if li.url else '+ Add link' }}</button>
+      {% endif %}
+    </div>
+    {% if li_can %}
+    <form id="liLinkForm" method="POST" action="{{ url_for('portal.lead_linkedin_link', lead_id=lead.id) }}" class="li-link-form" style="display:none">
+      <input name="url" value="{{ li.url }}" placeholder="linkedin.com/in/their-name" maxlength="500" class="finp" style="max-width:380px">
+      <button type="submit" class="lc-edit-btn">Save link</button>
+      {% if li.url %}<span class="li-muted" style="font-size:11.5px">Leave it empty and save to remove the link.</span>{% endif %}
+    </form>
+    <div class="li-steps">
+      <button type="button" class="li-step" data-fx-log="{{ dict(_fx_lead, kind='linkedin')|tojson|forceescape }}">Log a LinkedIn step</button>
+      {% if li.current and li.current.actor_key == my_actor_key %}
+      <form method="POST" action="{{ url_for('portal.lead_linkedin_undo', lead_id=lead.id) }}" style="margin:0">
+        <input type="hidden" name="step_id" value="{{ li.current.id }}">
+        <button type="submit" class="li-undo">Undo last click</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if li.steps|length > 1 %}
+    <div class="li-hist">
+      {% for st in li.steps|reverse %}<span>{{ st.label }} · {{ st.local_at.strftime('%-d %b') }}{% if st.actor_name %} ({{ st.actor_name }}){% endif %}</span>{% if not loop.last %} <span class="li-arrow">→</span> {% endif %}{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {# Lead Finder (2026-10-21): people imported without an email / mobile can have them revealed here #}
+  {% set lfp = lead_finder_people_for(lead.id) if lead_finder_people_for is defined else [] %}
+  {% if lfp %}
+  <div class="lfp-box">
+    <div class="lfp-head"><span class="lfp-title">Found with Lead Finder</span><span class="lfp-muted">Only charged if one is found</span></div>
+    {% for x in lfp %}
+    <div class="lfp-row">
+      <div class="lfp-who"><b>{{ x.name or 'Contact person' }}</b>{% if x.title %}<span>{{ x.title }}</span>{% endif %}</div>
+      <div class="lfp-btns">
+        {% if x.email_found %}<span class="lfp-done">✓ Email revealed</span>{% else %}
+        <form method="POST" action="{{ url_for('leadfinder.reveal') }}" style="margin:0" onsubmit="this.querySelector('button').disabled=true">
+          <input type="hidden" name="lead_id" value="{{ lead.id }}"><input type="hidden" name="person_id" value="{{ x.person_id }}"><input type="hidden" name="what" value="email">
+          <button type="submit" class="lfp-btn main">Reveal email · 1 credit</button>
+        </form>{% endif %}
+        {% if x.mobile_found %}<span class="lfp-done">✓ Mobile revealed</span>{% else %}
+        <form method="POST" action="{{ url_for('leadfinder.reveal') }}" style="margin:0" onsubmit="if(!confirm('Reveal the mobile? It uses 10 credits if one is found.'))return false;this.querySelector('button').disabled=true">
+          <input type="hidden" name="lead_id" value="{{ lead.id }}"><input type="hidden" name="person_id" value="{{ x.person_id }}"><input type="hidden" name="what" value="mobile">
+          <button type="submit" class="lfp-btn">Reveal mobile · 10 credits</button>
+        </form>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <style>
+    .lfp-box { margin:0 24px 18px; background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 16px }
+    .lfp-head { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:6px }
+    .lfp-title { font-weight:800; font-size:14px; color:var(--ink) } .lfp-muted { font-size:12px; color:var(--muted) }
+    .lfp-row { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 0; border-top:1px solid var(--line) }
+    .lfp-row:first-of-type { border-top:0 }
+    .lfp-who b { display:block; font-size:14px } .lfp-who span { font-size:12.5px; color:var(--muted) }
+    .lfp-btns { display:flex; gap:8px; flex-wrap:wrap; align-items:center }
+    .lfp-btn { font:inherit; font-size:13px; font-weight:700; border-radius:8px; padding:8px 12px; cursor:pointer; background:#fff; color:#0B1D40; border:1px solid #9DB8E8 }
+    .lfp-btn.main { background:#0B1D40; color:#fff; border-color:#0B1D40 }
+    .lfp-done { font-size:12.5px; font-weight:700; color:#15803D }
+  </style>
+  {% endif %}
+
   <!-- Activity — moved to the top, under the header (2026-10-15), so the team sees calls and notes first -->
   <div class="lc-sec-head">Activity</div>
   <div style="padding:16px 24px 22px;border-bottom:1px solid var(--line)">
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-      <button type="button" class="lc-tab active" id="lcNotesTab" onclick="lcShowTab('notes')">📝 Notes</button>
-      <button type="button" class="lc-tab disabled">✅ Tasks <span class="lc-soon">NEW</span></button>
+      <button type="button" class="lc-tab {{ 'active' if contact_notes }}" id="lcSaidTab" onclick="lcShowTab('said')">💬 What happened{% if contact_notes %} ({{ contact_notes|length }}){% endif %}</button>
+      <button type="button" class="lc-tab {{ 'active' if not contact_notes }}" id="lcNotesTab" onclick="lcShowTab('notes')">📝 Notes</button>
+      <button type="button" class="lc-tab" onclick="lcShowTab('followups')" id="lcFollowupsTab">⏰ Follow-ups{% if followup.history %} ({{ followup.history|length + (1 if followup.current else 0) }}){% endif %}</button>
       <button type="button" class="lc-tab" onclick="lcShowTab('calls')" id="lcCallsTab">📞 Calls{% if lead_calls %} ({{ lead_calls|length }}){% endif %}</button>
       <button type="button" class="lc-tab" onclick="lcShowTab('history')" id="lcHistoryTab">🕒 Stage History</button>
       <button type="button" class="lc-tab" onclick="lcShowTab('emails')" id="lcEmailsTab">✉️ Emails{% if email_history %} ({{ email_history|length }}){% endif %}</button>
       {% if demo.events %}<button type="button" class="lc-tab" onclick="lcShowTab('demos')" id="lcDemosTab">📅 Demo bookings ({{ demo.events|length }})</button>{% endif %}
     </div>
-    <div id="lcNotesPane">
+    <div id="lcSaidPane" {% if not contact_notes %}style="display:none"{% endif %}>
+      <span id="notes-history"></span>
+      {% for n in contact_notes %}
+      <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:8px">
+        <strong>{{ n.kind_label }}{% if n.result %} · {{ n.result }}{% endif %}</strong>
+        <span style="color:var(--muted)"> — {{ n.actor_name or 'the team' }}, {{ n.local_at.strftime('%a %-d %b %Y, %H:%M') }}</span>
+        <div style="margin-top:4px;white-space:pre-line">{{ n.note }}</div>
+      </div>
+      {% else %}
+      <div style="font-size:12.5px;color:var(--muted)">Nothing logged yet. Each time someone uses "Log/Follow-up", what was said is kept here, so anyone can carry on with this lead.</div>
+      {% endfor %}
+    </div>
+    <div id="lcNotesPane" {% if contact_notes %}style="display:none"{% endif %}>
       {% if lead.notes %}
       <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;white-space:pre-line">{{ lead.notes }}</div>
       {% else %}
       <div style="font-size:12.5px;color:var(--muted)">No notes yet{% if staff_can_open('portal.sales_pipeline_edit') %} — click "✏️ Edit Lead" above to add some{% endif %}.</div>
       {% endif %}
     </div>
+    <div id="lcFollowupsPane" style="display:none">
+      {% set _fall = ([followup.current] if followup.current else []) + followup.history %}
+      {% for f in _fall %}
+      <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:8px">
+        <strong>{{ f.due_date.strftime('%a %-d %b %Y') }}</strong>
+        · <span style="{% if f.status == 'Open' and f.state == 'overdue' %}color:#B91C1C;font-weight:700{% elif f.status.startswith('Done') and 'late' in f.status %}color:#93540a;font-weight:700{% elif f.status == 'Done on time' %}color:#15803D;font-weight:700{% endif %}">{{ f.status }}{% if f.status == 'Open' %} ({{ f.when_words }}){% endif %}</span>
+        <span style="color:var(--muted)"> — {% if f.auto %}set automatically{% else %}set by {{ f.set_by_name or 'the team' }}{% endif %}{% if f.after_words %} after {{ f.after_words }}{% endif %}</span>
+        {% if f.done_at %}<div style="color:var(--muted);margin-top:3px">Done by {{ f.done_by_name or 'the team' }} on {{ f.done_local.strftime('%a %-d %b, %H:%M') }}{% if f.done_label %} ({{ f.done_label|lower }}){% endif %}</div>{% endif %}
+        {% if f.note %}<div style="color:var(--muted);margin-top:3px">“{{ f.note }}”</div>{% endif %}
+      </div>
+      {% else %}
+      <div style="font-size:12.5px;color:var(--muted)">No follow-ups yet. Each call, message or LinkedIn step asks for the next date.</div>
+      {% endfor %}
+    </div>
     <div id="lcCallsPane" style="display:none">
-      <form method="POST" action="{{ url_for('portal.lead_log_call', lead_id=lead.id) }}" style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-        <div style="display:flex;flex-direction:column;gap:3px">
-          <label for="lcCallOutcome" style="font-size:11.5px;color:var(--muted);font-weight:600">How did it go?</label>
-          <select id="lcCallOutcome" name="outcome" required style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12.5px">
-            <option value="">— choose —</option>
-            {% for k, label in call_outcomes %}<option value="{{ k }}">{{ label }}</option>{% endfor %}
-          </select>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:3px">
-          <label for="lcCallMinutes" style="font-size:11.5px;color:var(--muted);font-weight:600">Minutes</label>
-          <input id="lcCallMinutes" name="minutes" type="number" min="0" max="600" placeholder="e.g. 5" style="width:90px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12.5px">
-        </div>
-        <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:200px">
-          <label for="lcCallNote" style="font-size:11.5px;color:var(--muted);font-weight:600">What was said (optional)</label>
-          <input id="lcCallNote" name="note" maxlength="2000" placeholder="e.g. Interested, wants a demo next week" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12.5px">
-        </div>
-        {# "Doesn't need us" (2026-10-15): close the Lead as Not a Fit in the same step #}
-        <div id="lcNafBox" style="display:none;flex-basis:100%;border:1.5px solid #b91c1c;background:#fdecec;border-radius:10px;padding:10px 12px">
-          <div style="font-size:12.5px;font-weight:700;color:#b91c1c;margin-bottom:6px">🚫 This business doesn't need us</div>
-          {% if lead.outcome or lead.dropped_at %}
-          <div style="font-size:12.5px;color:var(--ink)">This lead is already closed, so the call will just be logged.</div>
-          {% elif not staff_can_open('portal.leads_not_a_fit') %}
-          <div style="font-size:12.5px;color:var(--ink)">The call will be logged. Your manager will see it in the Not a Fit report.</div>
-          {% else %}
-          <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--ink);cursor:pointer">
-            <input type="checkbox" id="lcNafTick" name="also_not_a_fit" value="1" checked style="margin:3px 0 0;width:auto;flex:0 0 auto">
-            <span style="flex:1 1 auto">Also mark <strong>{{ lead.customer_name }}</strong> as Not a Fit, so nobody calls them again</span>
-          </label>
-          <div id="lcNafReasonWrap" style="display:flex;flex-direction:column;gap:3px;margin-top:8px">
-            <label for="lcNafReason" style="font-size:11.5px;color:var(--muted);font-weight:600">Reason</label>
-            <select id="lcNafReason" name="naf_reason" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12.5px;max-width:360px">
-              {% for reason in not_a_fit_reasons if reason != 'Other' %}<option value="{{ reason }}"{% if reason == not_needed_reason %} selected{% endif %}>{{ reason }}</option>{% endfor %}
-            </select>
-          </div>
-          {% endif %}
-        </div>
-        <button type="submit" id="lcCallSubmit" class="lc-tab active" style="cursor:pointer">📞 Log a call</button>
-      </form>
+      <div style="margin:0 0 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button type="button" class="lc-tab active" style="cursor:pointer" data-fx-log="{{ dict(_fx_lead, kind='call')|tojson|forceescape }}">📞 Log a call</button>
+        <span style="font-size:12px;color:var(--muted)">How it went, what was said, and the next follow-up, in one box.</span>
+      </div>
       {% for c in lead_calls %}
       <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:8px">
         <strong>{{ c.outcome_label }}</strong>{% if c.minutes %} · {{ c.minutes }} min{% endif %}
@@ -229,10 +438,10 @@
     {% endif %}
     <div id="lcEmailsPane" style="display:none">
       {% if lead.email %}
-      <form method="POST" action="{{ url_for('portal.lead_email_replied', lead_id=lead.id) }}" style="margin:0 0 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <button type="submit" class="lc-tab" style="cursor:pointer">↩️ They replied to our email</button>
+      <div style="margin:0 0 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button type="button" class="lc-tab" style="cursor:pointer" data-fx-log="{{ dict(_fx_lead, kind='email', result='replied')|tojson|forceescape }}">↩️ They replied to our email</button>
         <span style="font-size:12px;color:var(--muted)">{% if 'campaigns_email.mailbox_connect' in granted_features %}Replies show here by themselves when your Outlook is connected (Integration › Microsoft 365). Use this for replies that came another way.{% else %}Replies arrive in your own mailbox. Tick this so the team can see it here.{% endif %}</span>
-      </form>
+      </div>
       {% endif %}
       {% if 'campaigns_email.sequences_view' in granted_features and staff_can('campaigns_email.sequences_view') and lead.email %}
       {% set _seq_can_edit = staff_can('campaigns_email.sequences_edit') %}
@@ -312,6 +521,14 @@
         {% endif %}
       </div>
       {% endif %}
+    </div>
+    <div>
+      <div class="lc-field-label">Labels</div>
+      <div class="lbl-cell lc-field-value" data-lbl-lead="{{ lead.id }}" data-removable="{{ '1' if can_assign_labels else '0' }}" data-ids="{{ lead_labels|map(attribute='id')|join(',') }}">
+        <span class="lbl-chips">{% for lb in lead_labels %}{{ label_chip(lb, lead.id, can_assign_labels) }}{% endfor %}</span>
+        {% if can_assign_labels %}<button type="button" class="lbl-add" onclick="LabelUI.editLead(this, {{ lead.id }})">+ Add label</button>{% endif %}
+        {% if not lead_labels and not can_assign_labels %}—{% endif %}
+      </div>
     </div>
     <div><div class="lc-field-label">Contact Person</div><div class="lc-field-value">{{ lead.contact_person or '—' }}</div></div>
     <div><div class="lc-field-label">Phone Number</div><div class="lc-field-value" style="font-family:'SF Mono','Fira Code',monospace">{{ lead.phone|phone_display or '—' }}{{ phone_flag(lead.phone) }}{% if lead.phone and phone_problem(lead.phone) and staff_can_open('portal.lead_remove_number') %}<form method="POST" action="{{ url_for('portal.lead_remove_number', lead_id=lead.id) }}" style="display:inline;margin:0" onsubmit="return confirm('Remove this number? Only the number is removed — the lead is kept.')"><input type="hidden" name="field" value="phone"><button type="submit" style="margin-left:6px;background:none;border:0;padding:0;color:#b91c1c;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:underline">Remove number</button></form>{% endif %}</div></div>
@@ -504,7 +721,7 @@
 
 </div>
 
-<p style="font-size:11.5px;color:var(--muted);margin:14px 4px 0;line-height:1.6;max-width:900px">Instagram/Facebook conversations and Tasks aren't built yet — shown here so you know where they'll slot in. Ambassador only applies to PhiXtra's own account.</p>
+<p style="font-size:11.5px;color:var(--muted);margin:14px 4px 0;line-height:1.6;max-width:900px">Instagram/Facebook conversations aren't built yet — shown here so you know where they'll slot in. Ambassador only applies to PhiXtra's own account.</p>
 
 <!-- Edit Lead modal -->
 <div class="modal-over" id="editLeadModal" onclick="if(event.target===this)this.classList.remove('open')">
@@ -623,7 +840,7 @@
 
 <script>
 function lcShowTab(which) {
-  ['notes', 'calls', 'history', 'emails', 'demos'].forEach(function (t) {
+  ['said', 'notes', 'followups', 'calls', 'history', 'emails', 'demos'].forEach(function (t) {
     var cap = t.charAt(0).toUpperCase() + t.slice(1);
     var pane = document.getElementById('lc' + cap + 'Pane'), tab = document.getElementById('lc' + cap + 'Tab');
     if (!pane || !tab) return;
@@ -634,22 +851,9 @@ function lcShowTab(which) {
 if (location.hash === '#demos') lcShowTab('demos');
 if (location.hash === '#emails') lcShowTab('emails');
 if (location.hash === '#calls') lcShowTab('calls');
-(function () {
-  var sel = document.getElementById('lcCallOutcome'), box = document.getElementById('lcNafBox');
-  if (!sel || !box) return;
-  var tick = document.getElementById('lcNafTick'), wrap = document.getElementById('lcNafReasonWrap'),
-      btn = document.getElementById('lcCallSubmit');
-  function sync() {
-    var needed = sel.value === 'not_needed', closing = needed && tick && tick.checked;
-    box.style.display = needed ? 'block' : 'none';
-    if (wrap) wrap.style.display = closing ? 'flex' : 'none';
-    btn.textContent = closing ? '📞 Log call and mark Not a Fit' : '📞 Log a call';
-  }
-  sel.addEventListener('change', sync);
-  if (tick) tick.addEventListener('change', sync);
-  sync();
-})();
+if (location.hash === '#followups') lcShowTab('followups');
 </script>
 {% include "portal/_labels_ui.html" %}
 {% include "portal/_columns_ui.html" %}
+{% include "portal/_followup_ui.html" %}
 {% endblock %}

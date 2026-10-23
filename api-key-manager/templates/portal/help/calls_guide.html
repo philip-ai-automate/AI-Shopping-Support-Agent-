@@ -1,0 +1,433 @@
+{# Calls How-To Guide (2026-10-21): ids are prefixed call-, pictures live in static/portal/tutorial/calls/. #}
+<style>
+.callg{
+  --g-ink:#030C18; --g-navy:#0E2240; --g-gold:#B8860B; --g-gold-soft:#FBF3DE;
+  --g-card:#FFFFFF; --g-txt:#1A2433; --g-muted:#5B6678; --g-line:#DDE3EB;
+  --g-chip:#EEF2F7; --g-good:#0F9F5F; --g-good-soft:#E7F7EF; --g-bad:#D92D20; --g-bad-soft:#FDECEA;
+  --g-link:#1D4ED8; --g-shadow:0 1px 2px rgba(3,12,24,.06);
+  color:var(--g-txt); font-size:15px; line-height:1.65;
+}
+.callg *{box-sizing:border-box}
+.callg a{color:var(--g-link)}
+.callg .g-head{margin:0 0 18px}
+.callg .g-lede{max-width:72ch;color:var(--g-muted);margin:0 0 6px;font-size:14px}
+.callg .g-meta{font-size:12px;color:var(--g-muted)}
+.callg nav.toc{background:var(--g-card);border:1px solid var(--g-line);border-radius:12px;padding:6px 14px;margin:0 0 26px;font-size:13.5px}
+.callg nav.toc summary{cursor:pointer;font-weight:750;color:var(--g-ink);padding:8px 0;list-style-position:inside}
+.callg nav.toc .h{display:none}
+.callg nav.toc ol{list-style:none;margin:0;padding:0 0 8px;columns:3 220px;column-gap:18px}
+.callg nav.toc ol > li{break-inside:avoid;margin:0}
+.callg nav.toc ol ol{columns:1;padding:0 0 6px 12px;font-size:12.5px}
+.callg nav.toc a{display:block;padding:4px 8px;border-radius:6px;color:var(--g-txt);text-decoration:none}
+.callg nav.toc a:hover{background:var(--g-chip)}
+.callg nav.toc ol ol a{color:var(--g-muted);padding:2px 8px}
+.callg main{display:block;max-width:860px}
+.callg section.part{padding-top:8px;margin-bottom:52px}
+.callg h2{font-size:23px;line-height:1.25;color:var(--g-ink);margin:0 0 6px;scroll-margin-top:80px;font-weight:800}
+.callg h2 .num{color:var(--g-gold);font-weight:800;margin-right:8px}
+.callg .where{font-size:13px;color:var(--g-muted);margin:0 0 16px}
+.callg h3{font-size:18px;color:var(--g-ink);margin:32px 0 8px;scroll-margin-top:80px;font-weight:750}
+.callg h4{font-size:15px;color:var(--g-ink);margin:20px 0 6px;font-weight:700}
+.callg p,.callg li{max-width:72ch}
+.callg p{margin:0 0 12px}
+.callg ul,.callg ol{padding-left:22px;margin:0 0 12px}
+.callg li{margin:4px 0}
+.callg .ui{display:inline-block;font-size:.88em;font-weight:650;padding:1px 7px;border:1px solid var(--g-line);border-radius:5px;background:var(--g-card);color:var(--g-ink);white-space:nowrap;box-shadow:var(--g-shadow)}
+.callg .f{font-weight:650;color:var(--g-ink)}
+.callg figure{margin:16px 0 24px}
+.callg figure img{display:block;width:100%;max-width:100%;height:auto;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card)}
+.callg figcaption{font-size:13px;color:var(--g-muted);margin-top:8px}
+.callg .box{border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px;border:1px solid var(--g-line);background:var(--g-card)}
+.callg .box > :first-child{margin-top:0}.callg .box > :last-child{margin-bottom:0}
+.callg .box b.t{display:block;font-size:12px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px}
+.callg .tip{background:var(--g-good-soft);border-color:transparent}.callg .tip b.t{color:var(--g-good)}
+.callg .careful{background:var(--g-bad-soft);border-color:transparent}.callg .careful b.t{color:var(--g-bad)}
+.callg .know{background:var(--g-gold-soft);border-color:transparent}.callg .know b.t{color:var(--g-gold)}
+.callg .tbl{overflow-x:auto;margin:14px 0 22px;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card)}
+.callg table{border-collapse:collapse;width:100%;font-size:13.5px}
+.callg th,.callg td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--g-line)}
+.callg th{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--g-muted);background:var(--g-chip);font-weight:700}
+.callg tr:last-child td{border-bottom:0}
+.callg td:first-child{font-weight:650;color:var(--g-ink);white-space:nowrap}
+.callg td.wrapok{white-space:normal}
+.callg .need{display:inline-block;font-size:12px;color:var(--g-muted);border:1px dashed var(--g-line);border-radius:999px;padding:1px 9px;margin-top:2px}
+.callg ol.steps{counter-reset:s;list-style:none;padding-left:0}
+.callg ol.steps > li{counter-increment:s;position:relative;padding-left:36px;margin:10px 0}
+.callg ol.steps > li::before{content:counter(s);position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:50%;background:var(--g-navy);color:#fff;font-size:12.5px;font-weight:700;display:grid;place-items:center}
+.callg .map{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:18px 0}
+.callg .map div{background:var(--g-card);border:1px solid var(--g-line);border-radius:8px;padding:12px 14px;font-size:14px}
+.callg .map b{display:block;color:var(--g-ink);margin-bottom:2px}
+.callg .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0;font-size:14px}
+.callg .flow span{background:var(--g-card);border:1px solid var(--g-line);border-radius:6px;padding:6px 10px;font-weight:600;color:var(--g-ink)}
+.callg .flow i{font-style:normal;color:var(--g-muted)}
+.callg .recipe{border-left:3px solid var(--g-navy);padding:2px 0 2px 16px;margin:20px 0}
+.callg .recipe h4{margin-top:0}
+.callg{scroll-margin-top:80px}
+.callg .g-top{position:sticky;bottom:90px;float:right;margin-top:-8px;font-size:12px;font-weight:700;background:var(--g-card);border:1px solid var(--g-line);border-radius:999px;padding:5px 12px;text-decoration:none;color:var(--g-ink);box-shadow:0 2px 8px rgba(3,12,24,.08)}
+</style>
+<div class="callg" id="call-top">
+<div class="g-head">
+  <p class="g-lede">Everything under <b>Calls</b> in the side menu: letting customers call your WhatsApp number, answering those calls in the portal, what happens when nobody answers, calling customers back, the Call Log, Call Settings for each number, the Calls report, and which ticks your team needs. Every picture is from the live portal (the caller's number is hidden).</p>
+  <div class="g-meta">Last checked against the live portal: 21 October 2026</div>
+</div>
+<nav class="toc" aria-label="Contents"><details open><summary>Contents</summary>
+  <p class="h">Contents</p>
+  <ol>
+    <li><a href="#call-start">1. How WhatsApp calls work</a></li>
+    <li><a href="#call-plan">2. Who can use calls</a></li>
+    <li><a href="#call-ready">3. Before you switch calls on</a></li>
+    <li><a href="#call-settings">4. Call Settings</a>
+      <ol>
+        <li><a href="#call-s-numbers">Numbers and checks</a></li>
+        <li><a href="#call-s-in">Incoming calls</a></li>
+        <li><a href="#call-s-route">Who it rings for</a></li>
+        <li><a href="#call-s-hours">Calling hours</a></li>
+        <li><a href="#call-s-msg">Missed-call message</a></li>
+        <li><a href="#call-s-cb">Call-back deadline</a></li>
+        <li><a href="#call-s-out">Outgoing calls</a></li>
+        <li><a href="#call-s-save">Saving</a></li>
+      </ol></li>
+    <li><a href="#call-answer">5. Answering a call</a></li>
+    <li><a href="#call-missed">6. When nobody answers</a></li>
+    <li><a href="#call-log">7. The Call Log</a></li>
+    <li><a href="#call-out">8. Calling a customer</a></li>
+    <li><a href="#call-where">9. Where calls show up</a></li>
+    <li><a href="#call-report">10. The Calls Report</a></li>
+    <li><a href="#call-ticks">11. Team access: every Calls tick</a></li>
+    <li><a href="#call-recipes">12. Step-by-step recipes</a></li>
+    <li><a href="#call-faq">13. Questions and problems</a></li>
+  </ol>
+</details></nav>
+
+<main>
+
+<!-- 1 -->
+<section class="part" id="call-start">
+<h2><span class="num">1</span>How WhatsApp calls work</h2>
+<p class="where">Customers press the call button in their WhatsApp chat with you. It rings in the portal for your team.</p>
+
+<p>There is no phone line, SIM or extra app. When calls are switched on for one of your WhatsApp numbers, customers see a <b>call button</b> at the top of their WhatsApp chat with you. When they press it, the call rings <b>in the portal</b>, on the computer of every team member who is allowed to answer and can see that chat. It works like a shared phone line: the first person to press <span class="ui">📞 Answer</span> takes the call, and everyone else sees who answered.</p>
+
+<div class="map">
+  <div><b>Call Log</b>Every call: answered, missed and made. Missed calls wait here until someone presses <span class="ui">I'll call back</span>.</div>
+  <div><b>Call Settings</b>One page for each WhatsApp number: switch calls on, choose who it rings for, calling hours, the missed-call message, the call-back deadline and outgoing calls.</div>
+  <div><b>Calls Report</b>Under Reports. How many calls came in, how many were answered, who answered, call-back times and the busiest hours.</div>
+  <div><b>The ringing pop-up</b>Shows on every portal page, bottom right, for people allowed to answer. Answer, mute and hang up from here.</div>
+</div>
+
+<div class="flow"><span>📞 Customer calls</span><i>→</i><span>Their salesperson first (optional)</span><i>→</i><span>Everyone with access</span><i>→</i><span>Answered, or missed-call message</span></div>
+
+<p>Everything is saved automatically: the call goes into the Call Log, a line goes into the WhatsApp chat in your Inbox, and if the caller is one of your leads, the call is added to that lead's history.</p>
+</section>
+
+<!-- 2 -->
+<section class="part" id="call-plan">
+<h2><span class="num">2</span>Who can use calls</h2>
+<p class="where">WhatsApp calls are part of the Enterprise plan.</p>
+<ul>
+  <li><b>Enterprise plans</b> (Enterprise, Enterprise — Dual Agent, Enterprise — Website) include calls.</li>
+  <li>Businesses on a <b>free trial</b> get Enterprise features, so they can use calls during the trial.</li>
+  <li>On other plans, <b>Calls</b> shows a 🔒 in the side menu and opens an upgrade page. Calls to your number are not put through; the customer gets your missed-call message instead.</li>
+</ul>
+<div class="box know"><b class="t">Good to know</b><p>If you move to a lower plan, your call settings are kept. They work again as soon as you are back on Enterprise.</p></div>
+</section>
+
+<!-- 3 -->
+<section class="part" id="call-ready">
+<h2><span class="num">3</span>Before you switch calls on</h2>
+<p class="where">Five things to get right first, so no call is missed.</p>
+<ol class="steps">
+  <li><b>Your WhatsApp number must be fully on PhiXtra.</b> Meta doesn't allow calls in the portal on a number that also uses the WhatsApp Business phone app ("keep using the phone app"). Call Settings shows this as <span class="f">Connection</span>.</li>
+  <li><b>Meta's messaging limit.</b> Meta allows calling on numbers that can message at least 2,000 people a day. If your number is below this, Meta refuses when you save, and the page tells you.</li>
+  <li><b>Give your team the ticks.</b> In <b>Team › Roles</b>, tick <span class="f">Answer WhatsApp calls</span> for everyone who should answer (see <a href="#call-ticks">section 11</a>). They also need to be able to see the chat (Team › channel access).</li>
+  <li><b>Keep the portal open.</b> Calls ring in the browser. Someone with access must have the portal open in a browser tab (any page) during your calling hours. If nobody has it open, the call counts as missed.</li>
+  <li><b>Allow sound and the microphone.</b> Each person should click once anywhere on the portal page after opening it (browsers only play the ringtone after a click), and allow the microphone the first time they answer. A headset is best.</li>
+</ol>
+</section>
+
+<!-- 4 -->
+<section class="part" id="call-settings">
+<h2><span class="num">4</span>Call Settings</h2>
+<p class="where">Side menu › <b>Calls › Call Settings</b>. Needs the <span class="f">Call settings</span> tick.</p>
+
+<p>Every WhatsApp number has its own settings. The page opens on your first number; pick another from the list on the left.</p>
+
+<figure><img src="/static/portal/tutorial/calls/calls-settings.png" width="1050" height="1940" alt="The Call Settings page for one WhatsApp number." loading="lazy"><figcaption>Call Settings for one number: the numbers list, the status header, four checks, and the settings sections.</figcaption></figure>
+
+<h3 id="call-s-numbers">Numbers and checks</h3>
+<ul>
+  <li><b>WhatsApp numbers (left).</b> Each of your numbers with its flag and name. A green <span class="ui">● On</span> means customers can call it; <span class="ui">Off</span> means they can't.</li>
+  <li><b>Status header.</b> The number with <span class="f">Taking calls</span>, <span class="f">Needs attention</span> or <span class="f">Calls off</span>; its name; <span class="f">Calling at Meta</span> (On, Off or Not set up); and who last saved the settings, and when.</li>
+  <li><b>Four checks.</b>
+    <div class="tbl"><table>
+      <tr><th>Check</th><th>What it means</th></tr>
+      <tr><td>Connection</td><td class="wrapok"><b>Fully on PhiXtra</b> is needed. <b>Phone app number</b> means the number also uses the WhatsApp Business phone app, and calls keep ringing on the phone instead.</td></tr>
+      <tr><td>Messaging limit</td><td class="wrapok"><b>2,000+ a day</b> is needed. <b>Meta didn't say</b> means Meta didn't share it; Meta tells you when you save if it's a problem.</td></tr>
+      <tr><td>Calling customers</td><td class="wrapok">Whether your team can call customers from this number. <b>Not allowed here</b> for Nigerian (+234), US and Canadian (+1), Egyptian (+20) and Vietnamese (+84) business numbers. Customers can still call you.</td></tr>
+      <tr><td>Meta switch</td><td class="wrapok"><b>On</b>: Meta shows the call button to customers. It turns on when you save with calls switched on.</td></tr>
+    </table></div></li>
+</ul>
+
+<h3 id="call-s-in">Incoming calls</h3>
+<p>The main switch. <b>On</b> shows the call button in customers' WhatsApp chat with you and rings your team in the portal. <b>Off</b> hides the button. A number whose settings have never been saved counts as <b>off</b>.</p>
+
+<h3 id="call-s-route">Who it rings for</h3>
+<p>A call rings for everyone with the <span class="f">Answer WhatsApp calls</span> tick who can see that customer's chat. If the switch here is on, and the caller is a lead with a salesperson assigned, the call rings for <b>that salesperson alone first</b>, for the time you choose in <span class="f">Ring the assigned salesperson alone for</span> (10, 15 or 20 seconds). Then it rings for everyone. The row of boxes under it shows the ringing order.</p>
+
+<h3 id="call-s-hours">Calling hours</h3>
+<p>Switch on to take calls only at set times. Pick the <span class="f">Days</span> (dark = on), the <span class="f">Opens</span> and <span class="f">Closes</span> times and the <span class="f">Time zone</span>. The line underneath sums it up, for example "Calls go through Mon, Tue, Wed, Thu, Fri, 9am to 5pm." Outside these hours the call isn't put through and the customer gets your missed-call message. When it is off, calls go through any time.</p>
+
+<h3 id="call-s-msg">Missed-call message</h3>
+<p>Sent on WhatsApp straight away to anyone whose call wasn't answered, or who called outside your hours. Type your own (up to 1,000 characters); the preview on the right shows how it looks on the customer's phone. Keep it short and say how they'll hear back.</p>
+
+<h3 id="call-s-cb">Call-back deadline</h3>
+<p>How quickly a missed call must be called back: 15 minutes, 30 minutes, 1 hour or 2 hours (30 minutes to start with). The time only counts inside your calling hours, so a call missed just before closing is due soon after you open the next day. If nobody presses <span class="ui">I'll call back</span> in time, the business owner and everyone whose role has the <span class="f">Calls report</span> tick get a phone notification and an email, once per missed call.</p>
+
+<h3 id="call-s-out">Outgoing calls</h3>
+<p>Adds a <span class="ui">📞 Call</span> button to chats in the Inbox for people with the <span class="f">Call customers on WhatsApp</span> tick. Not available on Nigerian, US, Canadian, Egyptian or Vietnamese business numbers (the switch is greyed out). See <a href="#call-out">section 8</a>.</p>
+<div class="box careful"><b class="t">Careful</b><p>Meta charges per minute for calls your team makes to customers.</p></div>
+
+<h3 id="call-s-save">Saving</h3>
+<p>As soon as you change anything, a bar appears at the bottom of the page.</p>
+<figure><img src="/static/portal/tutorial/calls/calls-settings-savebar.png" width="1210" height="85" alt="The save bar: Discard and Save and update Meta." loading="lazy"><figcaption>The save bar appears only when something has changed.</figcaption></figure>
+<ul>
+  <li><span class="ui">Save and update Meta</span> saves the settings and sends them to Meta (call button, calling hours, outgoing calls). You'll see "Call settings saved, and Meta has the new settings."</li>
+  <li><span class="ui">Discard</span> throws your changes away.</li>
+  <li>If you try to leave the page with unsaved changes, your browser asks you first.</li>
+  <li>If Meta refuses, the page says why ("Meta refused the last change …") and calls stay off for that number until it's fixed.</li>
+</ul>
+</section>
+
+<!-- 5 -->
+<section class="part" id="call-answer">
+<h2><span class="num">5</span>Answering a call</h2>
+<p class="where">On any portal page. Needs the <span class="f">Answer WhatsApp calls</span> tick.</p>
+
+<p>When a customer calls, a pop-up appears at the bottom right of whatever portal page you're on, a ringtone plays and the browser tab flashes "📞 Incoming WhatsApp call".</p>
+<figure><img src="/static/portal/tutorial/calls/calls-ringing.png" width="380" height="200" alt="The ringing pop-up: name is calling, Answer, Not me, Add as lead." loading="lazy" style="max-width:380px"><figcaption>A call ringing in the portal.</figcaption></figure>
+<div class="tbl"><table>
+  <tr><th>Button</th><th>What it does</th></tr>
+  <tr><td>📞 Answer</td><td class="wrapok">Takes the call. The first time, your browser asks to use the microphone: allow it. The pop-up changes to <b>On a call with …</b> with a timer.</td></tr>
+  <tr><td>Not me</td><td class="wrapok">Hides it for you only: "You passed. It keeps ringing for the others."</td></tr>
+  <tr><td>＋ Add as lead</td><td class="wrapok">Shown when the caller isn't in your Leads yet. Adds them as a new lead assigned to you (source WhatsApp, note "Added from a WhatsApp call"). Becomes <b>✓ Lead added ↗</b>. Needs the Leads create tick.</td></tr>
+  <tr><td>Lead ↗</td><td class="wrapok">Shown instead when the caller is already a lead. Opens the lead in a new tab.</td></tr>
+</table></div>
+<p>The small line under the name shows <b>"· your customer"</b> when the call is ringing for you first because you're the lead's salesperson.</p>
+
+<h4>During the call</h4>
+<ul>
+  <li><span class="ui">🎙 Mute</span> / <span class="ui">🎙 Unmute</span> turns your microphone off and on.</li>
+  <li><span class="ui">Hang up</span> ends the call. The pop-up shows "Call ended · Saved on the chat, the lead and the Calls page."</li>
+  <li>If you open that customer's chat in the Inbox, the chat header shows <b>📞 You're on a call</b>.</li>
+  <li>You can only be on one call at a time. A second call shows "Finish your current call first."</li>
+</ul>
+
+<h4>When someone else answers</h4>
+<p>The pop-up stops ringing for everyone else and shows who took it. Anyone who opens that customer's chat sees <b>📞 On a call with …</b> in the header.</p>
+<figure><img src="/static/portal/tutorial/calls/calls-taken.png" width="380" height="160" alt="Answered by Erica: the call stopped ringing for you." loading="lazy" style="max-width:380px"><figcaption>Someone else answered first.</figcaption></figure>
+
+<div class="box tip"><b class="t">Tip</b><p>If you've switched on phone notifications, your phone also gets "📞 <i>name</i> is calling on WhatsApp · Tap to answer. Ringing for your team." The call is answered in the portal.</p></div>
+</section>
+
+<!-- 6 -->
+<section class="part" id="call-missed">
+<h2><span class="num">6</span>When nobody answers</h2>
+<p class="where">What happens automatically, and what your team should do.</p>
+<ol class="steps">
+  <li>The customer gets your <b>missed-call message</b> on WhatsApp straight away.</li>
+  <li>The call goes into the <b>Call Log</b> under <span class="ui">Missed · needs a call-back</span>, with the reason and a countdown (<span class="f">⏱ Call back within 25 min</span>, or <span class="f">⏰ Overdue by 10 min</span> once late).</li>
+  <li>People who can answer get a phone notification "📵 Missed call from …" (not for calls outside hours or with calls switched off).</li>
+  <li>One person presses <span class="ui">I'll call back</span> so everyone knows it's taken, then replies in the chat or calls back.</li>
+  <li>If nobody presses it before the deadline, the managers get an alert: "⏰ Missed call not called back".</li>
+</ol>
+<div class="tbl"><table>
+  <tr><th>Reason shown</th><th>What it means</th></tr>
+  <tr><td>Rang, nobody answered</td><td class="wrapok">It rang in the portal but nobody pressed Answer before the customer hung up.</td></tr>
+  <tr><td>Nobody had the portal open</td><td class="wrapok">No one allowed to answer had the portal open, so nobody heard it.</td></tr>
+  <tr><td>Outside calling hours</td><td class="wrapok">The call came outside the hours set in Call Settings. The Call Log shows it as <b>Outside hours</b>.</td></tr>
+  <tr><td>Calls switched off for this number</td><td class="wrapok">Incoming calls are off for that number in Call Settings (or your plan doesn't include calls). Shown as <b>Calls off</b>.</td></tr>
+</table></div>
+<p>The reason line also says <b>message sent</b> or <b>message not sent</b> for the missed-call message.</p>
+</section>
+
+<!-- 7 -->
+<section class="part" id="call-log">
+<h2><span class="num">7</span>The Call Log</h2>
+<p class="where">Side menu › <b>Calls › Call Log</b>. Needs the <span class="f">Calls page</span> View tick.</p>
+<figure><img src="/static/portal/tutorial/calls/calls-log.png" width="1075" height="665" alt="The Call Log with four summary boxes, filter chips and the list of calls." loading="lazy"><figcaption>The Call Log.</figcaption></figure>
+<h4>Summary boxes</h4>
+<ul>
+  <li><b>Calls today</b>, <b>Answered today</b>.</li>
+  <li><b>Need a call-back</b>: missed calls nobody has taken yet (red when there are any), with how many are overdue.</li>
+  <li><b>Avg. talk time</b>: over the last 30 days.</li>
+</ul>
+<h4>Filters</h4>
+<p><span class="ui">All</span>, <span class="ui">Missed · needs a call-back</span>, <span class="ui">Answered</span>, <span class="ui">Outgoing</span> and <span class="ui">Mine</span> (calls you answered, made or are calling back). 50 calls show per page; use <span class="ui">Older →</span> and <span class="ui">← Newer</span>.</p>
+<h4>Columns and buttons</h4>
+<div class="tbl"><table>
+  <tr><th>Column</th><th>What it shows</th></tr>
+  <tr><td>Caller</td><td class="wrapok">Name (a link when they're a lead) and number. With several WhatsApp numbers, also which number they called.</td></tr>
+  <tr><td>Call</td><td class="wrapok"><b>Answered</b>, <b>Missed</b>, <b>Outside hours</b>, <b>Calls off</b>, <b>Outgoing</b> (or "Outgoing · not answered"), or <b>Call back</b> once someone has taken it. Missed calls also show the countdown and the reason.</td></tr>
+  <tr><td>When</td><td class="wrapok">Date and time of the call.</td></tr>
+  <tr><td>Length</td><td class="wrapok">Minutes and seconds talked.</td></tr>
+  <tr><td>Handled by</td><td class="wrapok">Who answered or made the call, or "<i>name</i> is calling back".</td></tr>
+  <tr><td>Buttons</td><td class="wrapok"><span class="ui">I'll call back</span> (missed calls nobody has taken; the first person to press it gets it), <span class="ui">＋ Add as lead</span> (caller not in Leads), <span class="ui">Open chat</span> (their chat in the Inbox).</td></tr>
+</table></div>
+<p>If calls aren't on for any of your numbers, a yellow note at the top says so, with a link to Call Settings.</p>
+</section>
+
+<!-- 8 -->
+<section class="part" id="call-out">
+<h2><span class="num">8</span>Calling a customer</h2>
+<p class="where">Inbox › open the chat › chat header. Needs the <span class="f">Call customers on WhatsApp</span> tick, and <b>Outgoing calls</b> switched on for a number Meta allows.</p>
+<p>WhatsApp only lets a business call a customer who has agreed to it. The button in the chat header changes as you go:</p>
+<ol class="steps">
+  <li><span class="ui">📞 Ask to call</span> sends WhatsApp's "Can we call you?" request into the chat. It becomes <span class="ui">✓ Asked</span>.</li>
+  <li>While you wait, it shows <span class="ui">📞 Asked</span> (greyed out). Meta allows one request a day per customer.</li>
+  <li>When the customer accepts, it becomes <span class="ui">📞 Call</span>. Press it, allow the microphone, and the pop-up shows "Calling…" then "Ringing…". Mute and Hang up work the same as for incoming calls.</li>
+</ol>
+<div class="box know"><b class="t">Good to know</b><p>Meta doesn't allow calling customers from business numbers in Nigeria (+234), the US and Canada (+1), Egypt (+20) or Vietnam (+84), so the button never shows for those numbers. Customers can still call you on them.</p></div>
+</section>
+
+<!-- 9 -->
+<section class="part" id="call-where">
+<h2><span class="num">9</span>Where calls show up</h2>
+<div class="tbl"><table>
+  <tr><th>Place</th><th>What you see</th></tr>
+  <tr><td>Inbox chat</td><td class="wrapok">A line in the conversation: "📞 WhatsApp call answered by <i>name</i> · 2:15", "📞 WhatsApp call by <i>name</i>" (outgoing) or "📵 Missed WhatsApp call" (with "outside calling hours" or "calls switched off" when that's why), plus the missed-call message sent.</td></tr>
+  <tr><td>Lead page</td><td class="wrapok">In the lead's Calls list: "📞 WhatsApp call (incoming) · 4:10" by whoever answered, or "📵 Missed WhatsApp call" by "WhatsApp".</td></tr>
+  <tr><td>Team performance</td><td class="wrapok">Answered and outgoing WhatsApp calls count as calls for the person who handled them.</td></tr>
+  <tr><td>Contact page</td><td class="wrapok">The contact's history includes their WhatsApp calls.</td></tr>
+  <tr><td>Calls Report</td><td class="wrapok">All the numbers, below.</td></tr>
+</table></div>
+<p>When you press <span class="ui">＋ Add as lead</span>, all earlier calls from that number are linked to the new lead and added to its history.</p>
+</section>
+
+<!-- 10 -->
+<section class="part" id="call-report">
+<h2><span class="num">10</span>The Calls Report</h2>
+<p class="where">Side menu › <b>Reports › Calls Report</b>, or the <span class="ui">Calls report</span> button on the Call Log. Needs the <span class="f">Calls report</span> tick.</p>
+<figure><img src="/static/portal/tutorial/calls/calls-report.png" width="1075" height="880" alt="The Calls Report: filters, seven summary boxes, team table, busiest times and missed-call reasons." loading="lazy"><figcaption>The Calls Report.</figcaption></figure>
+<h4>Filters</h4>
+<p>Period (<span class="ui">Last 7 days</span>, <span class="ui">Last 30 days</span>, <span class="ui">Last 90 days</span> or <span class="ui">Pick dates…</span>), WhatsApp number (when you have more than one) and team member. <span class="ui">Download (Excel)</span> gives every call in the period, one per row (times in the file are UTC).</p>
+<h4>Summary boxes</h4>
+<div class="tbl"><table>
+  <tr><th>Box</th><th>What it counts</th></tr>
+  <tr><td>Calls in</td><td class="wrapok">Calls from customers, and the change against the period before.</td></tr>
+  <tr><td>Answered</td><td class="wrapok">Share of calls in that were answered.</td></tr>
+  <tr><td>Missed</td><td class="wrapok">Missed calls, and how many were called back.</td></tr>
+  <tr><td>Time to answer</td><td class="wrapok">Average seconds from ringing to answered.</td></tr>
+  <tr><td>Called back on time</td><td class="wrapok">Missed calls taken before the call-back deadline (on time / late).</td></tr>
+  <tr><td>Call-back time</td><td class="wrapok">Average time from a missed call to someone pressing I'll call back.</td></tr>
+  <tr><td>Talk time</td><td class="wrapok">Average length of a call.</td></tr>
+</table></div>
+<h4>Tables</h4>
+<ul>
+  <li><b>By team member</b>: calls answered, average talk, call-backs and outgoing calls for each person.</li>
+  <li><b>What happened after the call</b>: of the people who called, how many became a new lead, became a deal on the Pipeline, booked a demo, and were won.</li>
+  <li><b>Busiest times</b>: calls in by day and hour (Nigeria time, 7am to 7pm). Darker squares mean more calls; use it to plan who covers which hours.</li>
+  <li><b>Missed calls, and why</b>: missed calls split by reason (see <a href="#call-missed">section 6</a>).</li>
+</ul>
+</section>
+
+<!-- 11 -->
+<section class="part" id="call-ticks">
+<h2><span class="num">11</span>Team access: every Calls tick</h2>
+<p class="where">Team › Roles › edit a role › <b>Calls</b>. The account owner always has all of them.</p>
+<figure><img src="/static/portal/tutorial/calls/calls-roles.png" width="844" height="260" alt="The Calls area in the role editor with its five ticks." loading="lazy"><figcaption>The Calls area in the role editor.</figcaption></figure>
+<div class="tbl"><table>
+  <tr><th>Tick</th><th>Lets the person</th><th>Give it to</th></tr>
+  <tr><td>Answer WhatsApp calls</td><td class="wrapok">Hear calls ring and answer them (only for chats they can see).</td><td class="wrapok">Sales and support staff who take calls</td></tr>
+  <tr><td>Call customers on WhatsApp</td><td class="wrapok">Use Ask to call and 📞 Call in the Inbox.</td><td class="wrapok">Staff who call customers back</td></tr>
+  <tr><td>Calls page (View)</td><td class="wrapok">Open the Call Log and press I'll call back.</td><td class="wrapok">Everyone who answers calls</td></tr>
+  <tr><td>Calls report (View)</td><td class="wrapok">Open the Calls Report. Also gets the overdue call-back alerts.</td><td class="wrapok">Managers and team leads</td></tr>
+  <tr><td>Call settings (Edit)</td><td class="wrapok">Change Call Settings for every number.</td><td class="wrapok">The owner or IT only</td></tr>
+</table></div>
+<div class="box careful"><b class="t">Careful</b><p>Give <b>Calls page</b> to everyone with <b>Answer WhatsApp calls</b>. Without it they hear calls ring but can't see or take the missed ones.</p></div>
+<p>If your plan doesn't include calls, the Calls area shows <span class="ui">🔒 Not in your plan</span>; ticks there only start working after you upgrade.</p>
+</section>
+
+<!-- 12 -->
+<section class="part" id="call-recipes">
+<h2><span class="num">12</span>Step-by-step recipes</h2>
+
+<div class="recipe"><h4>Switch on calls for a number</h4>
+<ol class="steps">
+  <li>Open <b>Calls › Call Settings</b> and pick the number on the left.</li>
+  <li>Check the four boxes: Connection should say <b>Fully on PhiXtra</b>.</li>
+  <li>Switch on <b>Incoming calls</b>.</li>
+  <li>Set <b>Calling hours</b> if you want them, and check the <b>Missed-call message</b>.</li>
+  <li>Press <span class="ui">Save and update Meta</span>. The header should change to <b>Taking calls</b> and the number on the left to <b>● On</b>.</li>
+</ol></div>
+
+<div class="recipe"><h4>Get your sales team answering calls</h4>
+<ol class="steps">
+  <li>Team › Roles › edit their role › Calls: tick <b>Answer WhatsApp calls</b> and <b>Calls page</b> View. Save.</li>
+  <li>Tick <b>Calls report</b> on the manager's role so they get overdue alerts.</li>
+  <li>Ask each person to open the portal in their browser at the start of their shift, click once on the page, and keep the tab open.</li>
+  <li>Do a test call from your own phone (below).</li>
+</ol></div>
+
+<div class="recipe"><h4>Test it with your own phone</h4>
+<ol class="steps">
+  <li>On a computer, open the portal and click once anywhere on the page.</li>
+  <li>From your own phone, open WhatsApp, open the chat with your business number and press the call button.</li>
+  <li>The pop-up should ring within a few seconds. Press <span class="ui">📞 Answer</span> and allow the microphone.</li>
+  <li>Talk for a few seconds both ways, try <span class="ui">🎙 Mute</span>, then press <span class="ui">Hang up</span>.</li>
+  <li>Check the Call Log shows <b>Answered</b> with the length, and the chat shows the call line.</li>
+</ol></div>
+
+<div class="recipe"><h4>Handle a missed call</h4>
+<ol class="steps">
+  <li>Open <b>Calls › Call Log</b> › <span class="ui">Missed · needs a call-back</span>.</li>
+  <li>Press <span class="ui">I'll call back</span> on the oldest one first.</li>
+  <li>Press <span class="ui">Open chat</span> and reply, or call them back if outgoing calls are allowed on that number.</li>
+  <li>If they're a new enquiry, press <span class="ui">＋ Add as lead</span>.</li>
+</ol></div>
+
+<div class="recipe"><h4>Close for a holiday</h4>
+<ol class="steps">
+  <li>In Call Settings, switch off <b>Incoming calls</b> (customers won't see the call button), or untick that day in Calling hours.</li>
+  <li>Change the <b>Missed-call message</b> to say when you're back.</li>
+  <li>Save, and remember to switch it back after the holiday.</li>
+</ol></div>
+</section>
+
+<!-- 13 -->
+<section class="part" id="call-faq">
+<h2><span class="num">13</span>Questions and problems</h2>
+
+<h4>Customers don't see a call button.</h4>
+<p>Check Call Settings for that number: Incoming calls must be on and saved, and <b>Meta switch</b> must say On.</p>
+
+<h4>The call rang on my phone, not in the portal.</h4>
+<p>The number is still using the WhatsApp Business phone app. Connection shows <b>Phone app number</b>. Meta doesn't allow portal calls on these numbers.</p>
+
+<h4>No ringtone.</h4>
+<p>Click once anywhere on the portal page after opening it. Browsers block sound until you've clicked. Also check your computer isn't muted. The pop-up and the flashing tab still show either way.</p>
+
+<h4>"Your browser blocked the microphone."</h4>
+<p>Click the 🔒 or 🎙 icon next to the web address, allow the microphone for the portal, then press Answer again. While you fix it, the call keeps ringing for others.</p>
+
+<h4>"Answered by …" when I pressed Answer.</h4>
+<p>Someone pressed it a moment before you. Only one person can take a call.</p>
+
+<h4>"Meta didn't connect the call."</h4>
+<p>Meta refused to connect it. The call shows as <b>Failed</b> in the Call Log, with Meta's reason underneath.</p>
+
+<h4>A call shows "Calls off" but I switched calls on.</h4>
+<p>Calls are set separately for each number. Check the number the customer called (shown under the caller as "to …") is on.</p>
+
+<h4>Calls stopped coming in.</h4>
+<p>Check Call Settings for a red "Meta refused the last change" note, check calling hours, and check your plan still includes calls (Enterprise).</p>
+
+<h4>I don't see Calls in the side menu.</h4>
+<p>Your role needs the Calls ticks in <a href="#call-ticks">section 11</a>. Ask the account owner.</p>
+
+<h4>Can calls be recorded?</h4>
+<p>No. Calls are not recorded. Write anything important as a note on the lead after the call.</p>
+</section>
+
+</main>
+<a class="g-top" href="#call-top">↑ Top</a>
+</div>

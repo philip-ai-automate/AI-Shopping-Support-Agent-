@@ -1,0 +1,285 @@
+{% extends "estate/base.html" %}
+{% block title %}Automation — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+.au-wrap{max-width:860px;display:flex;flex-direction:column;gap:18px}
+.au-card{background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;box-shadow:0 2px 12px rgba(3,12,24,0.04);overflow:hidden}
+.au-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:18px 22px;border-bottom:1px solid rgba(3,12,24,0.07)}
+.au-title{font-size:15px;font-weight:800;color:#030C18}
+.au-sub{font-size:13px;color:rgba(3,12,24,0.5);margin-top:3px;line-height:1.55;max-width:60ch}
+.au-body{padding:18px 22px;display:flex;flex-direction:column;gap:16px}
+.au-off .au-body{opacity:.55}
+.sw{position:relative;display:inline-flex;align-items:center;gap:10px;cursor:pointer;flex-shrink:0;font-size:12.5px;font-weight:750;color:rgba(3,12,24,0.55)}
+.sw input{position:absolute;opacity:0;width:1px;height:1px}
+.sw i{width:42px;height:24px;border-radius:999px;background:rgba(3,12,24,0.18);position:relative;transition:.15s}
+.sw i::after{content:"";position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.sw input:checked + i{background:#12805C}
+.sw input:checked + i::after{left:21px}
+.sw input:focus-visible + i{outline:2px solid #030C18;outline-offset:2px}
+.au-list{margin:0;padding-left:18px;font-size:13px;color:rgba(3,12,24,0.7);display:grid;gap:4px}
+.step{border:1px solid rgba(3,12,24,0.10);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.step.off{opacity:.55}
+.step-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.step-top b{font-size:13.5px;color:#030C18}
+.step-wait{display:flex;align-items:center;gap:6px;font-size:13px;color:rgba(3,12,24,0.6);flex-wrap:wrap}
+.step-wait input{width:70px!important;flex:none}
+.step-wait select{width:auto!important;flex:none}
+.au-row select{width:auto!important}
+.step textarea{min-height:76px}
+.au-in, .step input[type=number], .step select, .step textarea, .au-row select, .au-row input{
+  padding:8px 11px;border:1.5px solid rgba(3,12,24,0.12);border-radius:9px;font:inherit;font-size:13.5px;color:#030C18;background:#fafbfc;box-sizing:border-box}
+.step textarea{width:100%;resize:vertical}
+.kind{font-size:11.5px;font-weight:750;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.kind.plain{background:rgba(18,183,106,0.10);color:#0a7a3c}
+.kind.tpl{background:rgba(26,86,219,0.09);color:#1a56db}
+.tpl-st{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px}
+.tpl-st.approved{background:rgba(18,183,106,0.10);color:#0a7a3c}
+.tpl-st.pending{background:rgba(247,144,9,0.12);color:#7a4f00}
+.tpl-st.rejected,.tpl-st.paused{background:rgba(240,68,56,0.08);color:#b42318}
+.tpl-st.none{background:rgba(3,12,24,0.06);color:rgba(3,12,24,0.55)}
+.hint{font-size:12px;color:rgba(3,12,24,0.48);line-height:1.55}
+.fields{display:flex;gap:6px;flex-wrap:wrap}
+.fields button{font:inherit;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:7px;border:1px solid rgba(3,12,24,0.14);background:#fff;cursor:pointer}
+.preview{font-size:12.5px;background:#E3EBF8;border-radius:10px;padding:9px 12px;color:#111E2D;white-space:pre-wrap}
+.au-row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+.au-row > div{display:flex;flex-direction:column;gap:5px}
+.au-row label.l{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:rgba(3,12,24,0.4)}
+.days{display:flex;gap:6px;flex-wrap:wrap}
+.days label{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;padding:6px 10px;border:1.5px solid rgba(3,12,24,0.12);border-radius:8px;cursor:pointer}
+.days input{margin:0;width:auto!important;flex:none}
+.note{font-size:13px;border-radius:10px;padding:11px 14px;line-height:1.55}
+.note.info{background:rgba(26,86,219,0.06);color:#1a3a6e}
+.note.warn{background:rgba(247,144,9,0.09);color:#7a4f00}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.kpi{background:#f6f8fb;border-radius:10px;padding:10px 12px}
+.kpi b{display:block;font-size:22px;font-weight:800;color:#030C18;font-variant-numeric:tabular-nums}
+.kpi span{font-size:12px;color:rgba(3,12,24,0.5)}
+.au-save{display:flex;justify-content:flex-end;gap:10px;position:sticky;bottom:0;padding:12px 0;background:linear-gradient(transparent,#f5f7fb 30%)}
+.au-save button{padding:11px 26px;background:#030C18;color:#fff;border:none;border-radius:10px;font:inherit;font-size:14px;font-weight:800;cursor:pointer}
+@media(max-width:600px){.kpis{grid-template-columns:1fr 1fr}.au-head{flex-direction:column}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:4px">Automation</h1>
+    <p class="muted">All optional. Leave them off and your team does everything by hand.</p>
+  </div>
+</div>
+
+<form method="POST" action="{{ url_for('estate.automation') }}" class="au-wrap" id="auForm">
+
+  <!-- ── Automatic next actions ── -->
+  <div class="au-card {{ '' if st.auto_actions else 'au-off' }}" id="cardActions">
+    <div class="au-head">
+      <div>
+        <div class="au-title">Automatic next actions</div>
+        <div class="au-sub">Every open lead always has one next action. With this on, KeyLand fills it in when something happens, so nobody has to remember.</div>
+      </div>
+      <label class="sw"><input type="checkbox" name="auto_actions" {{ 'checked' if st.auto_actions }} onchange="auToggle(this,'cardActions')"><i></i><span>{{ 'On' if st.auto_actions else 'Off' }}</span></label>
+    </div>
+    <div class="au-body">
+      <ul class="au-list">
+        <li>New lead: reply and find out what they want, within 2 hours</li>
+        <li>AI hands a buyer over: call them, within 1 hour</li>
+        <li>Buyer becomes Ready: call to fix the site inspection or viewing, same day</li>
+        <li>Inspection or viewing booked: confirm it and send directions, the day before</li>
+        <li>Visit date passed: ask for their decision, 2 days after</li>
+        <li>Plot linked to the lead: collect the deposit, within 3 days</li>
+        <li>Deposit paid: allocate the plot and send the allocation letter, within 2 days</li>
+      </ul>
+      <div class="hint">KeyLand never replaces an action a person set. If something new happens, the lead shows a suggestion beside it instead. With this off, agents set every next action themselves.</div>
+    </div>
+  </div>
+
+  <!-- ── Automatic WhatsApp follow-ups ── -->
+  <div class="au-card {{ '' if st.followups_on else 'au-off' }}" id="cardFollow">
+    <div class="au-head">
+      <div>
+        <div class="au-title">Automatic WhatsApp follow-ups</div>
+        <div class="au-sub">When a buyer goes quiet after messaging you, send them a polite follow-up. They stop as soon as the buyer replies, an agent logs contact, the lead is handed to an agent, it's closed, or the buyer replies STOP.</div>
+      </div>
+      <label class="sw"><input type="checkbox" name="followups_on" {{ 'checked' if st.followups_on }} onchange="auToggle(this,'cardFollow')"><i></i><span>{{ 'On' if st.followups_on else 'Off' }}</span></label>
+    </div>
+    <div class="au-body">
+      {% if not wa_connected %}
+      <div class="note warn">Your WhatsApp number isn't connected, so nothing can be sent. <a href="{{ url_for('estate.settings') }}#whatsapp" style="color:inherit;font-weight:750">Connect it in Settings</a>.</div>
+      {% elif not waba_ok %}
+      <div class="note warn">Follow-ups sent more than 24 hours after the buyer's last message need wording approved by Meta, and your WhatsApp connection doesn't include the business account needed to send it. Reconnect WhatsApp in Settings, or keep every wait under 24 hours.</div>
+      {% endif %}
+      <div class="note info"><b>A WhatsApp rule to know.</b> Within 24 hours of the buyer's last message, you can send any wording. After that, WhatsApp only delivers wording Meta has approved first. So a follow-up with a wait of 24 hours or more is sent to Meta when you save with follow-ups on, and goes out only once it's approved (usually minutes, sometimes a day). Meta charges your WhatsApp account for these approved messages; the ones under 24 hours have no template charge.</div>
+
+      {% for i in range(1, max_steps + 1) %}
+      {% set s = steps[i - 1] if steps|length >= i else none %}
+      {% set days_unit = s and s.wait_hours % 24 == 0 %}
+      <div class="step {{ '' if s else 'off' }}" id="step{{ i }}">
+        <div class="step-top">
+          <label class="sw"><input type="checkbox" name="s{{ i }}_on" {{ 'checked' if s }} onchange="stepToggle({{ i }})"><i></i></label>
+          <b>Follow-up {{ i }}</b>
+          <span class="step-wait">
+            <input type="number" name="s{{ i }}_wait" min="1" max="720" value="{{ (s.wait_hours // 24 if days_unit else s.wait_hours) if s else (i * 3) }}" oninput="kind({{ i }})" aria-label="Wait">
+            <select name="s{{ i }}_unit" onchange="kind({{ i }})" aria-label="Unit">
+              <option value="hours" {{ 'selected' if s and not days_unit }}>hours</option>
+              <option value="days" {{ 'selected' if days_unit or not s }}>days</option>
+            </select>
+            after the buyer's last message
+          </span>
+          <span class="kind" id="kind{{ i }}"></span>
+          {% if s and s.needs_template and not s.is_default %}
+            {% if s.tpl_current and s.tpl_status %}<span class="tpl-st {{ s.tpl_status }}">{{ {'approved':'Approved by Meta','pending':'Waiting for Meta','rejected':'Not approved','paused':'Paused by Meta'}.get(s.tpl_status, s.tpl_status) }}</span>
+            {% elif s.tpl_body and s.tpl_status != 'rejected' %}<span class="tpl-st none">Changed: sent to Meta when you save</span>
+            {% else %}<span class="tpl-st none">Not sent to Meta yet</span>{% endif %}
+          {% endif %}
+        </div>
+        {% if s and s.tpl_reason and s.tpl_current %}<div class="note warn" style="padding:8px 12px">{{ s.tpl_reason }}</div>{% endif %}
+        <textarea name="s{{ i }}_body" id="body{{ i }}" maxlength="900" oninput="prev({{ i }})">{{ s.body if s else '' }}</textarea>
+        <div class="fields"><span class="hint">Add:</span>
+          <button type="button" onclick="ins({{ i }},'{name}')">{name}</button>
+          <button type="button" onclick="ins({{ i }},'{interest}')">{interest}</button>
+          <button type="button" onclick="ins({{ i }},'{business}')">{business}</button>
+        </div>
+        <div class="preview" id="prev{{ i }}"></div>
+      </div>
+      {% endfor %}
+      <div class="hint">{name} is the buyer's first name ("there" if we don't know it). {interest} is the estate or property they asked about, or the area. {business} is {{ tenant.business_name }}. Ending the last follow-up with "Reply STOP if you would rather not get these messages" gives buyers a polite way out, so they're less likely to block or report your number. When a buyer replies STOP, they get no more follow-ups or broadcasts, and the AI still answers if they write again.</div>
+
+      <div class="au-row">
+        <div>
+          <label class="l">Sending days</label>
+          <div class="days">{% for d in range(7) %}<label><input type="checkbox" name="send_days" value="{{ d }}" {{ 'checked' if d in st.days }}> {{ day_names[d] }}</label>{% endfor %}</div>
+        </div>
+      </div>
+      <div class="au-row">
+        <div><label class="l" for="stStart">From</label><input type="time" id="stStart" name="start_time" value="{{ st.start_time }}"></div>
+        <div><label class="l" for="stEnd">Until</label><input type="time" id="stEnd" name="end_time" value="{{ st.end_time }}"></div>
+        <div><label class="l" for="stTz">Time zone</label>
+          <select id="stTz" name="tz">{% for v, l in timezones %}<option value="{{ v }}" {{ 'selected' if st.tz == v }}>{{ l }}</option>{% endfor %}</select></div>
+      </div>
+      <div class="hint">A follow-up due outside these hours waits for the next sending time. If waiting would push a follow-up under 24 hours past WhatsApp's 24-hour limit, it's skipped and the next one goes as planned.</div>
+
+      <div>
+        <div class="au-title" style="font-size:13px;margin-bottom:8px">Last 30 days</div>
+        <div class="kpis">
+          <div class="kpi"><b>{{ report.sent or 0 }}</b><span>follow-ups sent</span></div>
+          <div class="kpi"><b>{{ report.replied or 0 }}</b><span>buyers replied</span></div>
+          <div class="kpi"><b>{{ report.booked or 0 }}</b><span>booked a visit</span></div>
+          <div class="kpi"><b>{{ report.optouts or 0 }}</b><span>opted out (STOP)</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ── Alerts to the agent and the managers (Phase 4) ── -->
+  <div class="au-card {{ '' if al.alerts_on else 'au-off' }}" id="cardAlerts">
+    <div class="au-head">
+      <div>
+        <div class="au-title">Alerts to the agent and the managers</div>
+        <div class="au-sub">When a lead is slipping, the agent and the managers (you and every admin) are told at the same moment, by email, WhatsApp and phone notification. With this off, the Needs attention panel still shows everything and nobody is messaged.</div>
+      </div>
+      <label class="sw"><input type="checkbox" name="alerts_on" {{ 'checked' if al.alerts_on }} onchange="auToggle(this,'cardAlerts')"><i></i><span>{{ 'On' if al.alerts_on else 'Off' }}</span></label>
+    </div>
+    <div class="au-body">
+      <ul class="au-list">
+        <li><b>AI hands a buyer over:</b> straight away, then one reminder if nobody has acted after the chat limit below. This replaces the email to your main address.</li>
+        <li><b>Ready buyer not contacted:</b> after the limit below, then one reminder after the same time again.</li>
+        <li>Assigned lead: the agent and the managers. Unassigned: every agent with alerts on, plus the managers.</li>
+        <li>Only real action stops an alert: logging a call or contact, marking the next action done, marking the hand-over handled, or closing the lead. Opening the lead doesn't count.</li>
+        <li>Overdue actions and leads with no next action aren't alerted one by one. They're in the panel and the morning summary.</li>
+      </ul>
+      <div class="au-row">
+        <div><label class="l" for="alReady">Ready buyer not contacted after</label>
+          <span class="step-wait"><input type="number" class="au-in" id="alReady" name="ready_hours" min="1" max="48" value="{{ al.ready_hours }}" style="width:80px"> hours</span></div>
+        <div><label class="l" for="alChat">Chat waiting for a salesperson after</label>
+          <span class="step-wait"><input type="number" class="au-in" id="alChat" name="chat_minutes" min="5" max="240" value="{{ al.chat_minutes }}" style="width:80px"> minutes</span></div>
+      </div>
+      <div class="hint">These limits also decide when a lead appears in Needs attention, whether alerts are on or off.</div>
+
+      <div class="au-row">
+        <div>
+          <label class="l">When alerts go</label>
+          <div class="days">
+            <label><input type="radio" name="alert_when" value="always" {{ 'checked' if al.always }} onchange="alWhen()"> 24/7</label>
+            <label><input type="radio" name="alert_when" value="hours" {{ 'checked' if not al.always }} onchange="alWhen()"> Working hours only</label>
+          </div>
+        </div>
+      </div>
+      <div id="alHours" {{ 'hidden' if al.always }}>
+        <div class="au-row" style="margin-bottom:12px">
+          <div>
+            <label class="l">Working days</label>
+            <div class="days">{% for d in range(7) %}<label><input type="checkbox" name="alert_days" value="{{ d }}" {{ 'checked' if d in al.days }}> {{ day_names[d] }}</label>{% endfor %}</div>
+          </div>
+        </div>
+        <div class="au-row">
+          <div><label class="l" for="alStart">From</label><input type="time" id="alStart" name="alert_start" value="{{ al.start_time }}"></div>
+          <div><label class="l" for="alEnd">Until</label><input type="time" id="alEnd" name="alert_end" value="{{ al.end_time }}"></div>
+        </div>
+        <div class="hint" style="margin-top:8px">An alert due outside working hours goes at the next start time.</div>
+      </div>
+      <div class="au-row">
+        <div><label class="l" for="alTz">Time zone</label>
+          <select id="alTz" name="alert_tz">{% for v, l in timezones %}<option value="{{ v }}" {{ 'selected' if al.tz == v }}>{{ l }}</option>{% endfor %}</select></div>
+      </div>
+
+      <div class="step {{ '' if al.summary_on else 'off' }}" id="alSum">
+        <div class="step-top">
+          <label class="sw"><input type="checkbox" name="summary_on" {{ 'checked' if al.summary_on }} onchange="document.getElementById('alSum').classList.toggle('off', !this.checked)"><i></i></label>
+          <b>Morning summary to the managers</b>
+          <span class="step-wait">by email at <input type="time" name="summary_time" value="{{ al.summary_time }}" aria-label="Summary time" style="width:auto!important"></span>
+        </div>
+        <div class="hint">Leads still waiting, overdue actions by salesperson, leads with no next action, today's site inspections and viewings, and yesterday's alerts with how long each person took to act. It has its own switch, so it can go even with alerts off.</div>
+      </div>
+
+      <div>
+        <div class="au-title" style="font-size:13px;margin-bottom:8px">Who gets alerts</div>
+        <div class="kpis" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr))">
+          {% for p in al_people %}
+          <div class="kpi">
+            <span style="font-weight:750;color:#030C18;font-size:13px">{{ p.name }}</span>
+            <span style="display:block">{{ 'Owner' if p.role == 'owner' else p.role|title }} · {% if not p.alerts_on %}alerts off{% else %}{{ [('email' if p.by_email else ''), ('WhatsApp' if p.by_wa and p.wa_phone else ''), ('phone' if p.by_push and p.devices else '')]|select|join(', ') or 'no channel set' }}{% endif %}</span>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="hint" style="margin-top:8px">Change each person's alerts, WhatsApp number and channels on the <a href="{{ url_for('estate.team') }}#alerts" style="color:inherit;font-weight:750">Team page</a>. Each person turns on phone notifications on their own phone, in <a href="{{ url_for('estate.my_alerts') }}" style="color:inherit;font-weight:750">My alerts</a>.</div>
+      </div>
+      <div class="note info">WhatsApp alerts come from PhiXtra's alert number and start once Meta approves the alert wording. Until then, email and phone notifications still go.</div>
+    </div>
+  </div>
+
+  {% if st.updated_by %}<div class="hint">Last changed by {{ st.updated_by }}, {{ st.updated_at.strftime('%d %b %Y, %H:%M') }}.</div>{% endif %}
+  <div class="au-save"><button type="submit">Save</button></div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var BIZ = {{ (tenant.business_name or 'us')|tojson }};
+function auToggle(cb, id){ document.getElementById(id).classList.toggle('au-off', !cb.checked); cb.parentNode.querySelector('span').textContent = cb.checked ? 'On' : 'Off'; }
+function hours(i){
+  var f = document.getElementById('auForm'), n = parseInt(f['s' + i + '_wait'].value || '0', 10);
+  return f['s' + i + '_unit'].value === 'days' ? n * 24 : n;
+}
+function kind(i){
+  var el = document.getElementById('kind' + i), tpl = hours(i) >= 24;
+  el.className = 'kind ' + (tpl ? 'tpl' : 'plain');
+  el.textContent = tpl ? 'Needs Meta approval' : 'Plain message, no approval needed';
+}
+function prev(i){
+  var t = document.getElementById('body' + i).value;
+  document.getElementById('prev' + i).textContent = t ? t.replace(/\{name\}/g, 'Funke').replace(/\{interest\}/g, 'Emerald Gardens Estate').replace(/\{business\}/g, BIZ) : 'Write the message above.';
+}
+function ins(i, f){
+  var ta = document.getElementById('body' + i), a = ta.selectionStart, b = ta.selectionEnd;
+  ta.value = ta.value.slice(0, a) + f + ta.value.slice(b); ta.focus(); ta.selectionStart = ta.selectionEnd = a + f.length; prev(i);
+}
+function stepToggle(i){
+  var on = document.querySelector('[name=s' + i + '_on]').checked;
+  document.getElementById('step' + i).classList.toggle('off', !on);
+}
+for (var i = 1; i <= {{ max_steps }}; i++) { kind(i); prev(i); }
+function alWhen(){ document.getElementById('alHours').hidden = document.querySelector('[name=alert_when]:checked').value === 'always'; }
+</script>
+{% endblock %}

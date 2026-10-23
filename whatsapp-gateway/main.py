@@ -17,9 +17,9 @@ from wa_daily_report import (
     poll_and_activate_templates,
 )
 from wa_plan_reset import router as plan_reset_router, run_plan_resets
-from pressone_calls import router as pressone_router
 
 from push_notify import router as push_router
+from keyland_alerts_gw import router as keyland_alerts_router
 from staff_alerts import (run_alert_reminders, init_staff_alert_tables,
                           process_web_chat_alerts, email_unseen_web_replies)
 from apscheduler.triggers.interval import IntervalTrigger
@@ -27,11 +27,47 @@ from apscheduler.triggers.interval import IntervalTrigger
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 _scheduler = AsyncIOScheduler()
 
+# Demo bookings (2026-10-22): booked/moved/cancelled, 30-min reminder, "how did it go?",
+# 8am digest and Monday summary — checked every minute (demo_alerts.py)
+from demo_alerts import run_demo_alerts
+_scheduler.add_job(
+    run_demo_alerts,
+    CronTrigger(minute="*", timezone="UTC"),
+    id="demo_alerts",
+    replace_existing=True,
+    misfire_grace_time=120,
+    max_instances=1,
+)
+
+# Follow-up reminders (2026-10-23): 8am on working days, each business's own time
+# zone: salespeople get today's + overdue, owner + line manager get overdue (followup_alerts.py)
+from followup_alerts import run_followup_alerts
+_scheduler.add_job(
+    run_followup_alerts,
+    CronTrigger(minute="*/5", timezone="UTC"),
+    id="followup_alerts",
+    replace_existing=True,
+    misfire_grace_time=240,
+    max_instances=1,
+)
+
 # Staff chat alerts: one reminder 10 min after an unanswered alert — checked every minute
 _scheduler.add_job(
     run_alert_reminders,
     CronTrigger(minute="*", timezone="UTC"),
     id="staff_alert_reminders",
+    replace_existing=True,
+    misfire_grace_time=120,
+    max_instances=1,
+)
+
+# WhatsApp calls (2026-10-20): missed calls past their call-back deadline
+# alert the managers — checked every minute
+from wa_calls import run_call_deadlines
+_scheduler.add_job(
+    run_call_deadlines,
+    CronTrigger(minute="*", timezone="UTC"),
+    id="call_back_deadlines",
     replace_existing=True,
     misfire_grace_time=120,
     max_instances=1,
@@ -127,8 +163,8 @@ app.include_router(meta_router)
 app.include_router(proactive_router)
 app.include_router(daily_report_router)
 app.include_router(plan_reset_router)
-app.include_router(pressone_router)
 app.include_router(push_router)   # phone notifications test (2026-10-11)
+app.include_router(keyland_alerts_router)   # KeyLand staff alerts: WhatsApp + phone notifications (2026-10-22)
 
 
 @app.get("/health")

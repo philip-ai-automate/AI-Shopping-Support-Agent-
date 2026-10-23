@@ -4,6 +4,8 @@
 {% set can_edit = staff_can_open('portal.email_sequence_save') %}
 {% set can_send = staff_can('campaigns_email.sequences_send') %}
 {% set can_delete = staff_can_open('portal.email_sequence_delete') %}
+{#- Follow-up waits count only sending days when the schedule says so (_seq_due_after). -#}
+{% set wait_word = 'sending day' if schedule and schedule.get('on') and schedule.get('follow') and (schedule.get('days') or [])|length < 7 else 'day' %}
 
 {% block head %}
 <style>
@@ -105,6 +107,12 @@
 .step-wait { display:flex; align-items:center; gap:6px; }
 .step-wait input { width:70px; }
 .step-stats { font-size:12px; color:var(--muted); margin-top:9px; }
+.step-view { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:10px; padding-left:102px; }
+.step-view[hidden] { display:none; }
+.step-subj { font-size:12.5px; color:var(--muted); flex:1 1 220px; min-width:0; overflow-wrap:anywhere; }
+.tl-open { all:unset; cursor:pointer; font-weight:700; color:var(--ink); }
+.tl-open span { font-size:12px; font-weight:600; color:#0B1D40; margin-left:6px; text-decoration:underline; }
+.tl-open:hover { color:#0B1D40; } .tl-open:focus-visible { outline:2px solid #0B1D40; outline-offset:2px; border-radius:4px; }
 .step-stats a { color:#0B1D40; font-weight:600; }
 .chips .chip-sep { width:1px; align-self:stretch; background:#e2e8f0; margin:0 4px; }
 .trk { display:flex; flex-direction:column; gap:3px; font-size:12px; }
@@ -136,6 +144,7 @@
 .empty { padding:36px 20px; text-align:center; color:var(--muted); font-size:13px; }
 @media (max-width: 900px) {
   .step-top { grid-template-columns:1fr 1fr; }
+  .step-view { padding-left:0; }
   .step-n { grid-column:1 / -1; padding-bottom:0; }
   .row2 { grid-template-columns:1fr; }
 }
@@ -191,7 +200,7 @@
 {% set steps_ok = steps and (steps|selectattr('template_name')|list|length == steps|length) %}
 {% set sent_total = steps|sum(attribute='stats.sent') %}
 <div class="rdy" role="list" aria-label="Ready to start">
-  <button type="button" class="rdy-i" data-go="emails" role="listitem"><span class="rdy-d {{ 'ok' if steps_ok else 'no' }}">{{ '✓' if steps_ok else '!' }}</span><span><b>Emails</b><small>{% if steps_ok %}{{ steps|length }} email{{ 's' if steps|length != 1 }}{% if steps|length > 1 %}, then {{ steps[1:]|map(attribute='wait_days')|join(', ') }} days apart{% endif %}{% else %}Choose the emails{% endif %}</small></span></button>
+  <button type="button" class="rdy-i" data-go="emails" role="listitem"><span class="rdy-d {{ 'ok' if steps_ok else 'no' }}">{{ '✓' if steps_ok else '!' }}</span><span><b>Emails</b><small>{% if steps_ok %}{{ steps|length }} email{{ 's' if steps|length != 1 }}{% if steps|length > 1 %}, then {{ steps[1:]|map(attribute='wait_days')|join(', ') }} {{ wait_word }}s apart{% endif %}{% else %}Choose the emails{% endif %}</small></span></button>
   <button type="button" class="rdy-i" data-go="settings" role="listitem"><span class="rdy-d {{ 'ok' if sender else 'no' }}">{{ '✓' if sender else '!' }}</span><span><b>Sender</b><small>{% if seq.from_email %}{{ seq.from_name or seq.from_email }} · own address{% elif sender %}Business address{% else %}No sending address{% endif %}</small></span></button>
   <button type="button" class="rdy-i" data-go="settings" role="listitem"><span class="rdy-d {{ 'ok' if schedule.on else 'warn' }}">{{ '✓' if schedule.on else '–' }}</span><span><b>Schedule</b><small>{% if schedule.on %}{{ schedule.start.strftime('%-d %b') if schedule.start else 'Now' }}{% if schedule.end %} – {{ schedule.end.strftime('%-d %b') }}{% endif %} · {{ schedule.days|length }} days a week{% else %}None: sends all at once{% endif %}</small></span></button>
   <button type="button" class="rdy-i" data-go="people" role="listitem"><span class="rdy-d {{ 'ok' if total_people else 'no' }}">{{ '✓' if total_people else '!' }}</span><span><b>People</b><small>{% if total_people %}{{ '{:,}'.format(total_people) }}{% if waiting_first %} · {{ '{:,}'.format(waiting_first) }} waiting for Email 1{% endif %}{% else %}Nobody added yet{% endif %}</small></span></button>
@@ -219,10 +228,10 @@
       {% if can_edit %}<button type="button" class="sq-btn small light" data-go="emails">Change</button>{% endif %}</div>
     <div class="sq-card-b">
       {% for st in steps %}
-        {% if not loop.first %}<div class="tl-wait"><span class="tl-rail"></span><span class="tl-chip">⏱ Wait {{ st.wait_days }} day{{ 's' if st.wait_days != 1 }} · only if they haven't replied</span></div>{% endif %}
+        {% if not loop.first %}<div class="tl-wait"><span class="tl-rail"></span><span class="tl-chip">⏱ Wait {{ st.wait_days }} {{ wait_word }}{{ 's' if st.wait_days != 1 }} · only if they haven't replied</span></div>{% endif %}
         <div class="tl-step"><span class="tl-num">{{ loop.index }}</span>
           <div class="tl-mail">
-            <div class="tl-t"><b>{{ st.template_name or 'No saved email chosen' }}</b><span class="tl-mode {{ 'man' if st.send_mode == 'manual' }}">{{ "I'll send it myself" if st.send_mode == 'manual' else 'Sends automatically' }}</span></div>
+            <div class="tl-t">{% if st.template_id and st.template_name %}<button type="button" class="tl-open" title="Preview this email" onclick="emPreview({{ st.template_id }}, {seq: {{ seq.id }}, back: location.pathname + '#overview'})">{{ st.template_name }} <span>👁 Preview</span></button>{% else %}<b>No saved email chosen</b>{% endif %}<span class="tl-mode {{ 'man' if st.send_mode == 'manual' }}">{{ "I'll send it myself" if st.send_mode == 'manual' else 'Sends automatically' }}</span></div>
             {% if st.template_fields and st.template_fields.subject %}<div class="tl-subj">Subject: {{ st.template_fields.subject|replace("{{", "[")|replace("}}", "]") }}</div>{% endif %}
             <div class="tl-mini"><span>Sent <b>{{ st.stats.sent or 0 }}</b></span><span>Opened <b>{{ st.stats.opened or 0 }}</b></span><span>Clicked <b>{{ st.stats.clicked or 0 }}</b></span><span>Replied <b>{{ st.stats.replied or 0 }}</b></span></div>
           </div></div>
@@ -274,11 +283,11 @@
             <label class="fld">Saved email
               <select name="template_id" required>
                 {% if not st.template_name %}<option value="">— choose a saved email —</option>{% endif %}
-                {% for t in templates %}<option value="{{ t.id }}" {% if t.id == st.template_id %}selected{% endif %}>{{ t.name }}</option>{% endfor %}
+                {% for t in templates %}<option value="{{ t.id }}" data-subject="{{ t.subject or '' }}" data-edit="{{ 1 if t.editable else '' }}" {% if t.id == st.template_id %}selected{% endif %}>{{ t.name }}</option>{% endfor %}
               </select>
             </label>
             <label class="fld"><span class="wait-label">{{ 'Send it' if loop.first else 'Wait' }}</span>
-              <span class="step-wait"><input type="number" name="wait_days" min="0" max="365" value="{{ st.wait_days }}"> <span class="wait-after">{{ 'days after being added' if loop.first else 'days after the email before' }}</span></span>
+              <span class="step-wait"><input type="number" name="wait_days" min="0" max="365" value="{{ st.wait_days }}"> <span class="wait-after">{{ 'days after being added' if loop.first else wait_word ~ 's after the email before' }}</span></span>
             </label>
             <label class="fld">How it's sent
               <select name="send_mode">
@@ -288,6 +297,9 @@
             </label>
             <button type="button" class="step-x" title="Remove this email" onclick="sqRemoveStep(this)">✕</button>
           </div>
+          <div class="step-view"><span class="step-subj"></span>
+            <button type="button" class="sq-btn small light step-pv" onclick="sqPreview(this)">👁 Preview</button>
+            <button type="button" class="sq-btn small light step-ed" onclick="sqEdit(this)">✏️ Edit</button></div>
           {% if st.campaign_id and st.stats.sent %}
           <div class="step-stats">Sent {{ st.stats.sent }} · Opened {{ st.stats.opened }} · Clicked {{ st.stats.clicked }} · Replied {{ st.stats.replied }}
             · <a href="{{ url_for('portal.email_campaign_report', campaign_id=st.campaign_id) }}">See who</a></div>
@@ -308,11 +320,11 @@
           <label class="fld">Saved email
             <select name="template_id" required>
               <option value="">— choose a saved email —</option>
-              {% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+              {% for t in templates %}<option value="{{ t.id }}" data-subject="{{ t.subject or '' }}" data-edit="{{ 1 if t.editable else '' }}">{{ t.name }}</option>{% endfor %}
             </select>
           </label>
           <label class="fld"><span class="wait-label">Wait</span>
-            <span class="step-wait"><input type="number" name="wait_days" min="0" max="365" value="3"> <span class="wait-after">days after the email before</span></span>
+            <span class="step-wait"><input type="number" name="wait_days" min="0" max="365" value="3"> <span class="wait-after">{{ wait_word }}s after the email before</span></span>
           </label>
           <label class="fld">How it's sent
             <select name="send_mode">
@@ -322,13 +334,17 @@
           </label>
           <button type="button" class="step-x" title="Remove this email" onclick="sqRemoveStep(this)">✕</button>
         </div>
+        <div class="step-view"><span class="step-subj"></span>
+            <button type="button" class="sq-btn small light step-pv" onclick="sqPreview(this)">👁 Preview</button>
+            <button type="button" class="sq-btn small light step-ed" onclick="sqEdit(this)">✏️ Edit</button></div>
       </div>
     </template>
     {% else %}
       {% for st in steps %}
       <div class="step">
         <strong>Email {{ loop.index }}</strong> · {{ st.template_name or 'No saved email chosen' }}
-        <span class="muted"> · {{ st.wait_days }} days {{ 'after being added' if loop.first else 'after the email before' }} · {{ "I'll send it myself" if st.send_mode == 'manual' else 'Sent automatically' }}</span>
+        {% if st.template_id and st.template_name %}<button type="button" class="sq-btn small light" style="margin-left:6px" onclick="emPreview({{ st.template_id }}, {seq: {{ seq.id }}, back: location.pathname + '#emails'})">👁 Preview</button>{% endif %}
+        <span class="muted"> · {{ st.wait_days }} {{ 'days after being added' if loop.first else wait_word ~ 's after the email before' }} · {{ "I'll send it myself" if st.send_mode == 'manual' else 'Sent automatically' }}</span>
         {% if st.campaign_id and st.stats.sent %}<div class="step-stats">Sent {{ st.stats.sent }} · Opened {{ st.stats.opened }} · Clicked {{ st.stats.clicked }} · Replied {{ st.stats.replied }}</div>{% endif %}
       </div>
       {% else %}
@@ -593,7 +609,7 @@
             {% endfor %}
           </div></div>
         <label class="sch-check" style="margin-top:12px"><input type="checkbox" name="follow" value="1" id="schFollow" {% if not schedule.on or schedule.follow %}checked{% endif %}>
-          <span><b>Follow-ups keep to these days and hours too</b><small>A follow-up due outside them waits for the next sending time.</small></span></label>
+          <span><b>Follow-ups keep to these days and hours too</b><small>Waits between emails count sending days only, at the same time of day as the email before. Wait 3 days after a Wednesday email (Mon–Thu sending) = the next Tuesday.</small></span></label>
         {% if schedule.per_day and not schedule.end %}<div class="sq-warn" style="margin:12px 0 0">This schedule uses an older setting of {{ schedule.per_day }} new people a day. Pick an end date and save to switch to dates.</div>{% endif %}
         <div class="sch-plan" id="schPlan" aria-live="polite"></div>
         <div class="mcal" id="schCal" aria-label="Sending calendar"></div>
@@ -654,6 +670,7 @@
   <input type="hidden" name="next" value="{{ request.full_path }}#people">
 </form>
 
+{% include "portal/_email_preview_drawer.html" %}
 <script>
 function sqConfirm(el) {
   const btn = el.tagName === 'FORM' ? el.querySelector('[data-confirm]') : el;
@@ -697,16 +714,44 @@ function sqRenumber() {
   document.querySelectorAll('#steps .step').forEach((s, i) => {
     s.querySelector('.n').textContent = i + 1;
     s.querySelector('.wait-label').textContent = i === 0 ? 'Send it' : 'Wait';
-    s.querySelector('.wait-after').textContent = i === 0 ? 'days after being added' : 'days after the email before';
+    s.querySelector('.wait-after').textContent = i === 0 ? 'days after being added' : '{{ wait_word }}s after the email before';
   });
 }
 function sqAddStep() {
   const box = document.getElementById('steps');
   const node = document.getElementById('stepTpl').content.firstElementChild.cloneNode(true);
   if (!box.children.length) node.querySelector('[name=wait_days]').value = 0;
-  box.appendChild(node); sqRenumber();
+  box.appendChild(node); sqRenumber(); sqStepView(node);
 }
-function sqRemoveStep(btn) { btn.closest('.step').remove(); sqRenumber(); }
+function sqRemoveStep(btn) { btn.closest('.step').remove(); sqRenumber(); sqDirty = true; }
+// See / change the saved email chosen on each line.
+let sqDirty = false;
+function sqStepView(step) {
+  const sel = step.querySelector('select[name=template_id]'), o = sel && sel.selectedOptions[0], v = step.querySelector('.step-view');
+  if (!v) return;
+  v.hidden = !(o && o.value);
+  if (v.hidden) return;
+  const subj = (o.dataset.subject || '').replace(/\{\{/g, '[').replace(/\}\}/g, ']');
+  v.querySelector('.step-subj').textContent = subj ? 'Subject: ' + subj : '';
+  v.querySelector('.step-ed').hidden = !o.dataset.edit;
+}
+function sqStepTpl(btn) { return btn.closest('.step').querySelector('select[name=template_id]').value; }
+function sqLeaveOk() { return !sqDirty || confirm('You have changes on this page that are not saved yet. Leave without saving them?'); }
+function sqPreview(btn) {
+  emPreview(sqStepTpl(btn), { seq: {{ seq.id }}, back: location.pathname + '#emails',
+    beforeEdit: e => { if (!sqLeaveOk()) e.preventDefault(); } });
+}
+function sqEdit(btn) {
+  if (!sqLeaveOk()) return;
+  location.href = '/email/saved-emails/' + sqStepTpl(btn) + '/edit?back=' + encodeURIComponent(location.pathname + '#emails');
+}
+(function () {
+  const f = document.getElementById('stepsForm');
+  if (!f) return;
+  f.addEventListener('change', e => { sqDirty = true; const st = e.target.closest('.step'); if (st) sqStepView(st); });
+  f.addEventListener('submit', () => { sqDirty = false; });
+  document.querySelectorAll('#steps .step').forEach(sqStepView);
+})();
 document.querySelectorAll('.add-tab').forEach(t => t.addEventListener('click', () => {
   document.querySelectorAll('.add-tab').forEach(x => x.classList.toggle('on', x === t));
   document.querySelectorAll('.add-pane').forEach(p => p.hidden = p.dataset.pane !== t.dataset.pane);

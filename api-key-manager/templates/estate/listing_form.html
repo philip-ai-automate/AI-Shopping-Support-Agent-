@@ -6,6 +6,7 @@
 <style>
 /* ── Layout ── */
 .lf-wrap{display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start}
+.lf-wrap>*{min-width:0}
 @media(max-width:900px){.lf-wrap{grid-template-columns:1fr}}
 
 .lf-section{
@@ -73,6 +74,28 @@
 
 /* ── Dynamic section toggle ── */
 .prop-panel{display:none}
+/* ── Estate: Property / Estate switch + plot sizes and plans ── */
+.kind-seg{display:inline-flex;background:#eef2f9;border-radius:10px;padding:3px;gap:2px;margin-bottom:18px}
+.kind-seg button{border:0;background:none;font:inherit;font-size:13px;font-weight:650;color:rgba(3,12,24,0.55);padding:7px 16px;border-radius:8px;cursor:pointer}
+.kind-seg button[aria-pressed="true"]{background:#fff;color:#1a56db;box-shadow:0 1px 3px rgba(3,12,24,0.12)}
+.est-section{display:none}
+.est-section.on{display:block}
+.est-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.est-tbl th{text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(3,12,24,0.38);padding:0 6px 6px}
+.est-tbl td{padding:4px 6px;vertical-align:middle}
+.est-tbl .ef-input{padding:8px 10px}
+.est-del{border:0;background:none;color:rgba(3,12,24,0.35);font-size:18px;cursor:pointer;padding:4px 6px;border-radius:6px}
+.est-del:hover{background:rgba(220,38,38,0.08);color:#dc2626}
+.est-add{border:1.5px dashed rgba(26,86,219,0.35);background:rgba(26,86,219,0.03);color:#1a56db;font:inherit;font-size:12.5px;font-weight:650;padding:7px 14px;border-radius:8px;cursor:pointer;margin-top:8px}
+.est-sub{font-size:12.5px;font-weight:700;color:#030C18;margin:6px 0 8px}
+.est-grid-wrap{overflow-x:auto;margin-top:6px;border:1px solid #e2e8f0;border-radius:10px}
+.est-grid{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+.est-grid th,.est-grid td{padding:8px 10px;border-bottom:1px solid #eef2f7;text-align:left;white-space:nowrap}
+.est-grid th{background:#f8fafc;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:rgba(3,12,24,0.45)}
+.est-grid tr:last-child td{border-bottom:0}
+.est-grid td small{display:block;color:rgba(3,12,24,0.45);font-size:11.5px}
+.est-tbl-wrap{overflow-x:auto}
+@media(max-width:640px){.est-tbl{min-width:560px}}
 .prop-panel.active{display:block}
 
 /* ── Image upload ── */
@@ -149,6 +172,7 @@
 {% endblock %}
 
 {% block content %}
+{% macro n(v) %}{% if v is number %}{{ v|int if v == v|int else v }}{% else %}{{ v or '' }}{% endif %}{% endmacro %}
 <div class="page-header">
   <div>
     <h1 class="section-title" style="margin-bottom:4px">
@@ -174,6 +198,11 @@
     <div class="lf-section-title">
       <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       Basics
+    </div>
+
+    <div class="kind-seg" role="group" aria-label="What are you listing?">
+      <button type="button" id="kindProperty" aria-pressed="true" onclick="setKind('property')">Property</button>
+      <button type="button" id="kindEstate" aria-pressed="false" onclick="setKind('estate')">Estate (land with plots)</button>
     </div>
 
     <div class="ef-group">
@@ -294,6 +323,7 @@
                  placeholder="45000000"
                  value="{{ listing.price | int if listing and listing.price else '' }}"/>
         </div>
+        <div class="ef-hint est-only" style="display:none">For an estate this is filled in for you with the cheapest plot price.</div>
       </div>
       <div class="ef-group">
         <label class="ef-label">Price Qualifier</label>
@@ -356,6 +386,53 @@
                value="{{ listing.caution_deposit if listing and listing.caution_deposit else '' }}"/>
       </div>
     </div>
+  </div>
+
+  <!-- ── 3b. Estate plots + payment plans (Estate Land only) ── -->
+  <div class="lf-section est-section" id="estateSection">
+    <div class="lf-section-title">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Plot sizes and payment plans
+    </div>
+
+    <div class="est-sub">Plot sizes</div>
+    <div class="est-tbl-wrap"><table class="est-tbl">
+      <thead><tr><th>Name</th><th>Size (sqm)</th><th>Outright price (₦)</th><th>Plots left</th><th></th></tr></thead>
+      <tbody id="psBody">
+        {% for r in (estate.sizes if estate and estate.sizes else [{}]) %}
+        <tr>
+          <td><input type="hidden" name="ps_id" value="{{ r.id or '' }}"><input class="ef-input" name="ps_label" maxlength="60" placeholder="450 sqm" value="{{ r.label or '' }}" aria-label="Plot size name"></td>
+          <td><input class="ef-input" name="ps_sqm" type="number" min="0" step="any" placeholder="450" value="{{ n(r.size_sqm) }}" aria-label="Size in sqm"></td>
+          <td><input class="ef-input" name="ps_price" type="number" min="0" step="any" placeholder="12000000" value="{{ n(r.price) }}" aria-label="Outright price"></td>
+          <td><input class="ef-input" name="ps_left" type="number" min="0" step="1" placeholder="15" value="{{ n(r.plots_left) }}" aria-label="Plots left"></td>
+          <td><button type="button" class="est-del" onclick="delEstRow(this)" aria-label="Remove this plot size">×</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    <button type="button" class="est-add" onclick="addEstRow('psBody')">+ Add a plot size</button>
+    <div class="ef-hint">Leave "Plots left" empty if you don't want to track it. It goes down by one when a lead is marked Allocated.</div>
+
+    <div class="est-sub" style="margin-top:20px">Payment plans</div>
+    <div class="est-tbl-wrap"><table class="est-tbl">
+      <thead><tr><th>Name</th><th>Deposit %</th><th>Months</th><th>Premium %</th><th></th></tr></thead>
+      <tbody id="ppBody">
+        {% for r in (estate.plans if estate and estate.plans else [{'name':'Outright','deposit_pct':100,'months':0,'premium_pct':0}, {}]) %}
+        <tr>
+          <td><input type="hidden" name="pp_id" value="{{ r.id or '' }}"><input class="ef-input" name="pp_name" maxlength="60" placeholder="12 months" value="{{ r.name or '' }}" aria-label="Plan name"></td>
+          <td><input class="ef-input" name="pp_deposit" type="number" min="0" max="100" step="any" placeholder="30" value="{{ n(r.deposit_pct) }}" aria-label="Deposit percent"></td>
+          <td><input class="ef-input" name="pp_months" type="number" min="0" max="120" step="1" placeholder="12" value="{{ n(r.months) }}" aria-label="Months"></td>
+          <td><input class="ef-input" name="pp_premium" type="number" min="0" max="100" step="any" placeholder="0" value="{{ n(r.premium_pct) }}" aria-label="Instalment premium percent"></td>
+          <td><button type="button" class="est-del" onclick="delEstRow(this)" aria-label="Remove this plan">×</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    <button type="button" class="est-add" onclick="addEstRow('ppBody')">+ Add a plan</button>
+    <div class="ef-hint">Outright = 0 months (100% deposit). Premium is optional: it's added to the outright price for buyers who pay in instalments.</div>
+
+    <div class="est-sub" style="margin-top:20px">What buyers pay</div>
+    <div class="est-grid-wrap"><table class="est-grid" id="estGrid"></table></div>
   </div>
 
   <!-- ── 4. Property Details (dynamic) ── -->
@@ -785,6 +862,93 @@ function onTypeChange(){
     sel.appendChild(o);
   });
 })();
+
+// ── Estate: Property / Estate switch, plot sizes, plans, live amounts ─────────
+var ESTATE_SUB = 'Estate Land';
+function isEstate(){
+  return document.getElementById('propType').value === 'land' && document.getElementById('subType').value === ESTATE_SUB;
+}
+function syncEstate(){
+  var on = isEstate();
+  document.getElementById('estateSection').classList.toggle('on', on);
+  document.getElementById('kindEstate').setAttribute('aria-pressed', on ? 'true' : 'false');
+  document.getElementById('kindProperty').setAttribute('aria-pressed', on ? 'false' : 'true');
+  document.querySelectorAll('.est-only').forEach(function(el){ el.style.display = on ? '' : 'none'; });
+  if(on) renderEstGrid();
+}
+function setKind(kind){
+  var t = document.getElementById('propType'), sub = document.getElementById('subType');
+  if(kind === 'estate'){
+    if(t.value !== 'land'){ t.value = 'land'; onTypeChange(); }
+    sub.value = ESTATE_SUB;
+  } else if(isEstate()){
+    sub.value = '';
+  }
+  syncEstate();
+}
+function addEstRow(bodyId){
+  var body = document.getElementById(bodyId), last = body.rows[body.rows.length - 1];
+  var row = last.cloneNode(true);
+  row.querySelectorAll('input').forEach(function(i){ i.value = ''; });
+  body.appendChild(row);
+  row.querySelector('input:not([type=hidden])').focus();
+  renderEstGrid();
+}
+function delEstRow(btn){
+  var row = btn.closest('tr'), body = row.parentNode;
+  if(body.rows.length > 1) row.remove();
+  else row.querySelectorAll('input').forEach(function(i){ i.value = ''; });
+  renderEstGrid();
+}
+function naira(v){ return '₦' + Math.round(v).toLocaleString('en-NG'); }
+function workOut(price, dep, months, prem){
+  var total = Math.round(price * (1 + (prem || 0) / 100));
+  if(!months) return {total: total, deposit: total, monthly: 0};
+  var deposit = Math.round(total * (dep || 0) / 100);
+  return {total: total, deposit: deposit, monthly: Math.round((total - deposit) / months)};
+}
+function estRows(bodyId, names){
+  return Array.prototype.map.call(document.getElementById(bodyId).rows, function(tr){
+    var o = {};
+    names.forEach(function(n){ o[n] = tr.querySelector('[name=' + n + ']').value.trim(); });
+    return o;
+  });
+}
+function renderEstGrid(){
+  var g = document.getElementById('estGrid');
+  var sizes = estRows('psBody', ['ps_label','ps_sqm','ps_price']).filter(function(r){ return parseFloat(r.ps_price) > 0; });
+  var plans = estRows('ppBody', ['pp_name','pp_deposit','pp_months','pp_premium']).filter(function(r){
+    return r.pp_name || r.pp_deposit || r.pp_months; });
+  g.textContent = '';
+  if(!sizes.length || !plans.length){
+    g.innerHTML = '<tr><td class="ef-hint" style="white-space:normal">Add a plot size with a price and a plan to see what buyers pay.</td></tr>';
+    return;
+  }
+  var head = g.insertRow(), th = document.createElement('th');
+  th.textContent = 'Plan'; head.appendChild(th);
+  sizes.forEach(function(sz){
+    var h = document.createElement('th');
+    h.textContent = sz.ps_label || (sz.ps_sqm ? sz.ps_sqm + ' sqm' : '');
+    head.appendChild(h);
+  });
+  plans.forEach(function(p){
+    var months = parseInt(p.pp_months, 10) || 0, dep = months ? parseFloat(p.pp_deposit) : 100;
+    var tr = g.insertRow(), c = tr.insertCell();
+    c.textContent = p.pp_name || (months ? months + ' months' : 'Outright');
+    sizes.forEach(function(sz){
+      var w = workOut(parseFloat(sz.ps_price), dep, months, parseFloat(p.pp_premium) || 0), td = tr.insertCell();
+      if(!months){ td.textContent = naira(w.total); return; }
+      if(!(dep > 0 && dep < 100)){ td.textContent = 'Deposit must be 1–99%'; return; }
+      td.textContent = naira(w.deposit) + ' then ' + naira(w.monthly) + '/mo';
+      var sm = document.createElement('small'); sm.textContent = 'Total ' + naira(w.total); td.appendChild(sm);
+    });
+  });
+}
+document.getElementById('estateSection').addEventListener('input', renderEstGrid);
+document.getElementById('subType').addEventListener('change', syncEstate);
+document.getElementById('propType').addEventListener('change', syncEstate);
+{% if not listing and estate and (estate.sizes or estate.plans) %}setKind('estate');{% endif %}
+syncEstate();
 
 // ── Amenity chip toggle ───────────────────────────────────────────────────────
 function toggleAmChip(label){

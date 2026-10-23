@@ -1,0 +1,282 @@
+{% extends "portal/base.html" %}
+{% block title %}Call Settings — {{ num.display_phone_number }} — PhiXtra Portal{% endblock %}
+
+{#- Call Settings (2026-10-20, redesigned the same evening): numbers on the
+    left, the chosen number's status header, Meta readiness tiles, then the
+    settings in sections, with a sticky save bar once something changes.
+    Field names match calls_routes.calls_settings. -#}
+{% set calling = info.calling or {} %}
+{% set meta_on = calling.get('status') == 'ENABLED' %}
+{% set blocked = checks|selectattr('1', 'sameas', false)|rejectattr('0', 'equalto', 'out')|list %}
+{% set live = st.incoming_on and meta_on %}
+
+{% block head %}
+<style>
+.cx{--cx-ink:#0F1B2D;--cx-navy:#0B1D40;--cx-muted:#5A6B85;--cx-line:#E4E9F1;--cx-soft:#F6F8FB;
+    --cx-ok:#067647;--cx-okbg:#ECFDF3;--cx-warn:#B54708;--cx-warnbg:#FFFAEB;--cx-bad:#B42318;--cx-badbg:#FEF3F2;
+    display:grid;grid-template-columns:260px minmax(0,1fr);gap:22px;align-items:start;color:var(--cx-ink);padding-bottom:90px}
+.cx *{box-sizing:border-box}
+/* numbers rail */
+.cx-rail{background:#fff;border:1px solid var(--cx-line);border-radius:16px;overflow:hidden;position:sticky;top:16px}
+.cx-rail h3{margin:0;padding:14px 16px 10px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--cx-muted)}
+.cx-num{display:flex;gap:10px;align-items:center;padding:11px 16px;text-decoration:none;color:var(--cx-ink);border-left:3px solid transparent;border-top:1px solid var(--cx-line)}
+.cx-num:hover{background:var(--cx-soft)}
+.cx-num.on{background:#F1F5FC;border-left-color:var(--cx-navy)}
+.cx-num b{display:block;font-size:13.5px;font-variant-numeric:tabular-nums}
+.cx-num small{display:block;font-size:12px;color:var(--cx-muted)}
+.cx-flag{width:30px;height:30px;border-radius:8px;background:var(--cx-soft);display:grid;place-items:center;font-size:15px;flex:none}
+.cx-pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap}
+.cx-pill i{width:7px;height:7px;border-radius:50%;background:currentColor}
+.cx-pill.live{background:var(--cx-okbg);color:var(--cx-ok)}
+.cx-pill.off{background:#F2F4F7;color:#475467}
+.cx-pill.warn{background:var(--cx-warnbg);color:var(--cx-warn)}
+.cx-rail .cx-pill{margin-left:auto}
+/* header */
+.cx-head{background:#fff;border:1px solid var(--cx-line);border-radius:16px;padding:20px 22px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-start}
+.cx-eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--cx-muted);font-weight:700}
+.cx-head h1{margin:2px 0 4px;font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.cx-head p{margin:0;color:var(--cx-muted);font-size:13.5px;max-width:64ch}
+.cx-meta{display:grid;grid-template-columns:auto auto;gap:4px 14px;font-size:12.5px;color:var(--cx-muted);align-self:center}
+.cx-meta b{color:var(--cx-ink);font-weight:600}
+/* readiness tiles */
+.cx-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}
+.cx-tile{background:#fff;border:1px solid var(--cx-line);border-radius:14px;padding:14px 15px;display:flex;flex-direction:column;gap:6px;border-top:3px solid var(--cx-line)}
+.cx-tile.ok{border-top-color:#12B76A}.cx-tile.warn{border-top-color:#F79009}.cx-tile.bad{border-top-color:#F04438}.cx-tile.na{border-top-color:#98A2B3}
+.cx-tile .t{font-size:12px;font-weight:700;color:var(--cx-muted);text-transform:uppercase;letter-spacing:.05em}
+.cx-tile .v{font-size:15px;font-weight:800}
+.cx-tile .d{font-size:12.5px;color:var(--cx-muted);line-height:1.45}
+.cx-alert{border-radius:12px;padding:12px 16px;font-size:13.5px;margin-bottom:16px;display:flex;gap:10px}
+.cx-alert.warn{background:var(--cx-warnbg);color:#93370D;border:1px solid #FEDF89}
+.cx-alert.bad{background:var(--cx-badbg);color:var(--cx-bad);border:1px solid #FECDCA}
+/* sections */
+.cx-sec{background:#fff;border:1px solid var(--cx-line);border-radius:16px;margin-bottom:16px;overflow:hidden}
+.cx-sec-h{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;padding:18px 22px}
+.cx-sec-h h2{margin:0;font-size:16px;font-weight:800}
+.cx-sec-h p{margin:3px 0 0;color:var(--cx-muted);font-size:13px;max-width:62ch}
+.cx-sec-b{padding:0 22px 20px;display:flex;flex-direction:column;gap:14px}
+.cx-sec-b.split{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:22px;align-items:start}
+.cx-sec.off .cx-sec-b{opacity:.5;pointer-events:none}
+.cx-lbl{font-size:12.5px;font-weight:700;color:var(--cx-muted);margin-bottom:6px;display:block}
+.cx-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13.5px}
+.cx-in{padding:8px 10px;border:1.5px solid var(--cx-line);border-radius:9px;font:inherit;font-size:13.5px;background:#fff;color:var(--cx-ink)}
+.cx-in:focus{outline:none;border-color:#9DB8E8;box-shadow:0 0 0 3px #E8EEF8}
+textarea.cx-in{width:100%;min-height:92px;resize:vertical;line-height:1.5}
+.cx-hint{font-size:12px;color:var(--cx-muted)}
+/* switch */
+.cx-sw{position:relative;width:46px;height:26px;flex:none}
+.cx-sw input{opacity:0;width:0;height:0}
+.cx-sw span{position:absolute;inset:0;border-radius:99px;background:#D0D5DD;cursor:pointer;transition:.15s}
+.cx-sw span::after{content:"";position:absolute;width:20px;height:20px;border-radius:50%;background:#fff;top:3px;left:3px;transition:.15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.cx-sw input:checked+span{background:var(--cx-ok)}
+.cx-sw input:checked+span::after{left:23px}
+.cx-sw input:disabled+span{opacity:.4;cursor:not-allowed}
+.cx-sw input:focus-visible+span{outline:2px solid #9DB8E8;outline-offset:2px}
+/* segmented days */
+.cx-days{display:inline-flex;border:1.5px solid var(--cx-line);border-radius:10px;overflow:hidden;flex-wrap:wrap}
+.cx-day input{position:absolute;opacity:0;pointer-events:none}
+.cx-day span{display:block;padding:7px 12px;font-size:13px;font-weight:700;color:var(--cx-muted);cursor:pointer;border-right:1px solid var(--cx-line)}
+.cx-day:last-child span{border-right:0}
+.cx-day input:checked+span{background:var(--cx-navy);color:#fff}
+.cx-day input:focus-visible+span{outline:2px solid #9DB8E8;outline-offset:-2px}
+/* routing diagram */
+.cx-flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;font-weight:600}
+.cx-flow span{background:var(--cx-soft);border:1px solid var(--cx-line);border-radius:8px;padding:6px 10px}
+.cx-flow em{font-style:normal;color:var(--cx-muted)}
+/* WhatsApp preview */
+.cx-phone{background:#ECE5DD;border-radius:16px;padding:14px;border:1px solid var(--cx-line)}
+.cx-phone .who{font-size:11.5px;color:#54656F;font-weight:700;margin-bottom:8px}
+.cx-bub{background:#fff;border-radius:10px 10px 10px 2px;padding:8px 10px;font-size:13px;line-height:1.45;color:#111B21;box-shadow:0 1px .5px rgba(11,20,26,.13);white-space:pre-wrap;word-break:break-word}
+.cx-bub.call{background:#fff;color:#B42318;font-weight:600;margin-bottom:6px;display:inline-block}
+.cx-bub small{display:block;text-align:right;color:#667781;font-size:10.5px;margin-top:3px}
+/* save bar */
+.cx-bar{position:fixed;left:var(--sidebar-w,0px);right:0;bottom:0;z-index:50;background:#fff;border-top:1px solid var(--cx-line);box-shadow:0 -6px 20px rgba(3,12,24,.08);
+  padding:12px max(20px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(20px,env(safe-area-inset-left,0px));
+  display:flex;justify-content:flex-end;align-items:center;gap:12px;transform:translateY(110%);transition:transform .2s}
+.cx-bar.show{transform:none}
+.cx-bar .msg{margin-right:auto;font-size:13px;color:var(--cx-muted)}
+.cx-btn{display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:10px;font:inherit;font-size:14px;font-weight:700;border:1.5px solid var(--cx-line);background:#fff;color:var(--cx-ink);cursor:pointer;text-decoration:none}
+.cx-btn.pri{background:var(--cx-navy);border-color:var(--cx-navy);color:#fff}
+@media (prefers-reduced-motion:reduce){.cx-bar{transition:none}}
+@media (max-width:1100px){.cx-tiles{grid-template-columns:repeat(2,1fr)}.cx-sec-b.split{grid-template-columns:1fr}}
+@media (max-width:860px){.cx{grid-template-columns:1fr}.cx-rail{position:static}}
+@media (max-width:520px){.cx-tiles{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cx">
+  <!-- Numbers -->
+  <nav class="cx-rail" aria-label="WhatsApp numbers">
+    <h3>WhatsApp numbers</h3>
+    {% for n in all_numbers %}
+    {% set _flag = '🇳🇬' if n.display_phone_number.startswith('+234') else ('🇬🇧' if n.display_phone_number.startswith('+44') else '📱') %}
+    <a class="cx-num {{ 'on' if n.phone_number_id == num.phone_number_id }}" href="{{ url_for('calls.calls_settings', pnid=n.phone_number_id) }}" {% if n.phone_number_id == num.phone_number_id %}aria-current="page"{% endif %}>
+      <span class="cx-flag" aria-hidden="true">{{ _flag }}</span>
+      <span style="min-width:0"><b>{{ n.display_phone_number }}</b><small>{{ n.label or n.verified_name or 'WhatsApp number' }}</small></span>
+      {% if n.incoming_on %}<span class="cx-pill live"><i></i>On</span>{% else %}<span class="cx-pill off">Off</span>{% endif %}
+    </a>
+    {% endfor %}
+  </nav>
+
+  <div>
+    <!-- Header -->
+    <div class="cx-head">
+      <div>
+        <div class="cx-eyebrow">Call Settings</div>
+        <h1>{{ num.display_phone_number }}
+          {% if live %}<span class="cx-pill live"><i></i>Taking calls</span>
+          {% elif blocked %}<span class="cx-pill warn"><i></i>Needs attention</span>
+          {% else %}<span class="cx-pill off">Calls off</span>{% endif %}</h1>
+        <p>Customers call this number from their WhatsApp chat with you. It rings in the portal for everyone with the "Answer WhatsApp calls" tick who can see the chat; the first to answer takes it.</p>
+      </div>
+      <div class="cx-meta">
+        <span>Name</span><b>{{ num.verified_name or num.label or '–' }}</b>
+        <span>Calling at Meta</span><b>{{ 'On' if meta_on else ('Off' if calling.get('status') == 'DISABLED' else 'Not set up') }}</b>
+        {% if st.updated_by %}<span>Last saved</span><b>{{ st.updated_at.strftime('%d %b, %H:%M') }} · {{ st.updated_by }}</b>{% endif %}
+      </div>
+    </div>
+
+    <!-- Readiness -->
+    <div class="cx-tiles" role="list" aria-label="Checks for this number">
+      {% for key, ok, good, bad in checks %}
+      {% set cls = 'ok' if ok else ('na' if ok is none else ('bad' if key == 'out' else 'warn')) %}
+      <div class="cx-tile {{ cls }}" role="listitem">
+        <span class="t">{{ {'on_app': 'Connection', 'tier': 'Messaging limit', 'out': 'Calling customers'}[key] }}</span>
+        <span class="v">{% if key == 'on_app' %}{{ 'Fully on PhiXtra' if ok else 'Phone app number' }}{% elif key == 'tier' %}{{ '2,000+ a day' if ok else ('Meta didn\'t say' if ok is none else 'Below 2,000') }}{% else %}{{ 'Allowed' if ok else 'Not allowed here' }}{% endif %}</span>
+        <span class="d">{% if ok %}{{ good }}{% elif ok is none %}Meta tells you when you save if it's a problem.{% else %}{{ bad }}{% endif %}</span>
+      </div>
+      {% endfor %}
+      <div class="cx-tile {{ 'ok' if meta_on else 'na' }}" role="listitem">
+        <span class="t">Meta switch</span>
+        <span class="v">{{ 'On' if meta_on else 'Off' }}</span>
+        <span class="d">{{ 'Meta shows the call button to customers.' if meta_on else 'Turns on when you save with calls switched on.' }}</span>
+      </div>
+    </div>
+
+    {% if st.meta_status and st.meta_status != 'saved' %}<div class="cx-alert bad" role="alert"><b>Meta refused the last change.</b> {{ st.meta_status }}</div>{% endif %}
+    {% if info.settings_error %}<div class="cx-alert warn">Couldn't read this number's settings from Meta: {{ info.settings_error }}</div>{% endif %}
+
+    <form method="POST" id="cxForm">
+      <!-- 1 Incoming -->
+      <section class="cx-sec" aria-labelledby="sIn">
+        <div class="cx-sec-h">
+          <div><h2 id="sIn">Incoming calls</h2><p>Shows the call button in customers' WhatsApp chat with you, and rings the team in the portal.</p></div>
+          <label class="cx-sw"><input type="checkbox" name="incoming_on" value="1" id="cxIn" {% if st.incoming_on %}checked{% endif %} aria-label="Customers can call this number"><span></span></label>
+        </div>
+      </section>
+
+      <!-- 2 Routing -->
+      <section class="cx-sec" data-needs-in aria-labelledby="sRoute">
+        <div class="cx-sec-h">
+          <div><h2 id="sRoute">Who it rings for</h2><p>Everyone with the "Answer WhatsApp calls" tick who can see this chat. Optionally, a lead's own salesperson gets the first chance.</p></div>
+          <label class="cx-sw"><input type="checkbox" name="ring_first" value="1" id="cxRf" {% if st.get('ring_first') is none or st.ring_first %}checked{% endif %} aria-label="Ring the assigned salesperson first"><span></span></label>
+        </div>
+        <div class="cx-sec-b">
+          <div class="cx-row">
+            <label for="cxRfs" class="cx-hint" style="font-weight:700">Ring the assigned salesperson alone for</label>
+            <select class="cx-in" name="ring_first_secs" id="cxRfs">{% for s in (10, 15, 20) %}<option value="{{ s }}" {% if (st.ring_first_secs or 15) == s %}selected{% endif %}>{{ s }} seconds</option>{% endfor %}</select>
+          </div>
+          <div class="cx-flow" id="cxFlow" aria-label="Ringing order"></div>
+        </div>
+      </section>
+
+      <!-- 3 Hours -->
+      <section class="cx-sec" data-needs-in aria-labelledby="sHours">
+        <div class="cx-sec-h">
+          <div><h2 id="sHours">Calling hours</h2><p>Outside these hours the call isn't put through and the customer gets your missed-call message.</p></div>
+          <label class="cx-sw"><input type="checkbox" name="hours_on" value="1" id="cxHours" {% if st.hours_on %}checked{% endif %} aria-label="Use calling hours"><span></span></label>
+        </div>
+        <div class="cx-sec-b" id="cxHoursBody">
+          <div><span class="cx-lbl">Days</span>
+            <div class="cx-days">{% for d, l in days %}<label class="cx-day"><input type="checkbox" name="days" value="{{ d }}" {% if d in hours.days %}checked{% endif %}><span>{{ l }}</span></label>{% endfor %}</div></div>
+          <div class="cx-row">
+            <span><span class="cx-lbl">Opens</span><input class="cx-in" type="time" name="from" value="{{ hours['from'][:2] }}:{{ hours['from'][2:] }}" aria-label="Opens"></span>
+            <span><span class="cx-lbl">Closes</span><input class="cx-in" type="time" name="to" value="{{ '23:59' if hours['to'] == '2400' else hours['to'][:2] ~ ':' ~ hours['to'][2:] }}" aria-label="Closes"></span>
+            <span><span class="cx-lbl">Time zone</span><select class="cx-in" name="tz" aria-label="Time zone">{% for t, l in tz_choices %}<option value="{{ t }}" {% if hours.tz == t %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></span>
+          </div>
+          <div class="cx-hint" id="cxHoursSum"></div>
+        </div>
+      </section>
+
+      <!-- 4 Missed message -->
+      <section class="cx-sec" aria-labelledby="sMiss">
+        <div class="cx-sec-h"><div><h2 id="sMiss">Missed-call message</h2><p>Sent on WhatsApp straight away to anyone whose call wasn't answered, or who called outside your hours.</p></div></div>
+        <div class="cx-sec-b split">
+          <div>
+            <label class="cx-lbl" for="cxMsg">Message</label>
+            <textarea class="cx-in" name="missed_message" id="cxMsg" maxlength="1000">{{ st.missed_message or default_missed }}</textarea>
+            <div class="cx-hint"><span id="cxCount"></span> · Keep it short and say how they'll hear back.</div>
+          </div>
+          <div class="cx-phone" aria-label="Preview">
+            <div class="who">Customer's WhatsApp</div>
+            <div class="cx-bub call">📵 Missed voice call</div>
+            <div class="cx-bub" id="cxPrev"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5 Call-back deadline -->
+      <section class="cx-sec" aria-labelledby="sCb">
+        <div class="cx-sec-h">
+          <div><h2 id="sCb">Call-back deadline</h2><p>A missed call must be called back within this time (counted inside calling hours). If nobody presses "I'll call back" in time, the managers get a phone notification and an email.</p></div>
+          <label class="cx-sw"><input type="checkbox" name="callback_on" value="1" id="cxCb" {% if st.get('callback_on') is none or st.callback_on %}checked{% endif %} aria-label="Use a call-back deadline"><span></span></label>
+        </div>
+        <div class="cx-sec-b" id="cxCbBody">
+          <div class="cx-row">
+            <label for="cxCbm" class="cx-hint" style="font-weight:700">Call back within</label>
+            <select class="cx-in" name="callback_mins" id="cxCbm">{% for m, l in ((15, '15 minutes'), (30, '30 minutes'), (60, '1 hour'), (120, '2 hours')) %}<option value="{{ m }}" {% if (st.callback_mins or 30) == m %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+          </div>
+          <div class="cx-hint">Alerts go to the business owner and anyone whose role has the "Calls report" tick. The Call Log shows a countdown on each missed call, and the Calls report shows how many were called back on time.</div>
+        </div>
+      </section>
+
+      <!-- 6 Outgoing -->
+      <section class="cx-sec {{ 'off' if not out_country }}" aria-labelledby="sOut">
+        <div class="cx-sec-h">
+          <div><h2 id="sOut">Outgoing calls</h2>
+            {% if out_country %}<p>Adds a 📞 Call button to chats for people with the "Call customers on WhatsApp" tick. The customer must first accept WhatsApp's "Can we call you?" request, and Meta charges per minute.</p>
+            {% else %}<p>Not available for this number. Meta doesn't allow calling customers from business numbers in Nigeria (+234), the US and Canada (+1), Egypt (+20) or Vietnam (+84). Customers can still call you.</p>{% endif %}</div>
+          <label class="cx-sw"><input type="checkbox" name="outgoing_on" value="1" {% if st.outgoing_on and out_country %}checked{% endif %} {% if not out_country %}disabled{% endif %} aria-label="Team can call customers"><span></span></label>
+        </div>
+      </section>
+
+      <div class="cx-bar" id="cxBar" role="region" aria-label="Save changes">
+        <span class="msg">You have unsaved changes. Saving also sends the calling settings to Meta.</span>
+        <a class="cx-btn" href="{{ url_for('calls.calls_settings', pnid=num.phone_number_id) }}">Discard</a>
+        <button class="cx-btn pri" type="submit">Save and update Meta</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  var f = document.getElementById('cxForm'), $ = function (id) { return document.getElementById(id) }
+  var start = new FormData(f), DAYS = {1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat',0:'Sun'}
+  function same() { var now = new FormData(f), a = [...start.entries()].join('|'), b = [...now.entries()].join('|'); return a === b }
+  function t12(v) { if (!v) return ''; var p = v.split(':'), h = +p[0]; return (h % 12 || 12) + (p[1] !== '00' ? ':' + p[1] : '') + (h < 12 ? 'am' : 'pm') }
+  function draw() {
+    var on = $('cxIn').checked
+    document.querySelectorAll('[data-needs-in]').forEach(function (s) { s.classList.toggle('off', !on) })
+    var rf = $('cxRf').checked
+    $('cxRfs').disabled = !rf
+    $('cxFlow').innerHTML = rf
+      ? '<span>📞 Customer calls</span><em>→</em><span>Their salesperson · ' + $('cxRfs').value + 's</span><em>→</em><span>Everyone with access</span><em>→</em><span>Missed-call message</span>'
+      : '<span>📞 Customer calls</span><em>→</em><span>Everyone with access</span><em>→</em><span>Missed-call message</span>'
+    $('cxCbBody').style.opacity = $('cxCb').checked ? '' : '.5'; $('cxCbm').disabled = !$('cxCb').checked
+    var h = $('cxHours').checked
+    $('cxHoursBody').style.opacity = h ? '' : '.5'
+    var ds = [...f.querySelectorAll('input[name=days]:checked')].map(function (x) { return DAYS[x.value] })
+    $('cxHoursSum').textContent = h ? ('Calls go through ' + (ds.length ? ds.join(', ') : 'no days') + ', ' + t12(f.from.value) + ' to ' + t12(f.to.value) + '.') : 'Off: calls go through any time.'
+    var m = $('cxMsg').value
+    $('cxPrev').innerHTML = (m.replace(/[&<>]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c] }) || '<i>No message</i>') + '<small>now</small>'
+    $('cxCount').textContent = m.length + ' / 1000'
+    $('cxBar').classList.toggle('show', !same())
+  }
+  f.addEventListener('input', draw); f.addEventListener('change', draw)
+  window.addEventListener('beforeunload', function (e) { if (!same() && !f.dataset.saving) { e.preventDefault(); e.returnValue = '' } })
+  f.addEventListener('submit', function () { f.dataset.saving = '1' })
+  draw()
+})()
+</script>
+{% endblock %}

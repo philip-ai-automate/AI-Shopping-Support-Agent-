@@ -146,12 +146,35 @@ def lead_view(cur, tenant_id: int, lead_id: int) -> dict:
         current = dict(upcoming[0], state="booked")
     elif appts and appts[0]["status"] == "cancelled" and appts[0]["start_at"] > now - timedelta(days=14):
         current = dict(appts[0], state="cancelled")
+    elif appts and appts[0]["status"] in ("done", "no_show") and appts[0]["start_at"] > now - timedelta(days=30):
+        current = dict(appts[0], state="outcome", outcome=_outcome(cur, appts[0]["id"]))
     if current:
         current["when"] = when(current["start_at"], tz)
         current["until"] = when(current["end_at"], tz, with_day=False) if current.get("end_at") else ""
     for ev in events:
         ev["at"] = ev["created_at"].astimezone(tz).strftime("%-d %b, %H:%M")
     return {"current": current, "events": events, "tz": tz}
+
+
+OUTCOME_LABELS = {"interested": "Interested, good fit", "proposal": "Proposal sent", "another": "Needs another meeting",
+                  "not_fit": "Not a fit", "no_show": "Didn't show up", "done": "Done"}
+
+
+def _outcome(cur, appt_id: int) -> dict:
+    c = cur.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        c.execute("SELECT to_regclass('demo_outcomes') IS NOT NULL AS ok")
+        if not c.fetchone()["ok"]:
+            return {}
+        c.execute("SELECT * FROM demo_outcomes WHERE appointment_id=%s", (appt_id,))
+        o = c.fetchone()
+    finally:
+        c.close()
+    if not o:
+        return {}
+    o = dict(o)
+    o["label"] = OUTCOME_LABELS.get(o["outcome"], o["outcome"])
+    return o
 
 
 def report_bookings(cur, tenant_id: int, recipients: list) -> dict:
@@ -177,3 +200,133 @@ def report_bookings(cur, tenant_id: int, recipients: list) -> dict:
         tz = tz or tenant_tz(cur, tenant_id)
         out[r["email"]] = {"when": when(r["start_at"], tz), "lead_id": r["lead_id"], "status": r["status"]}
     return out
+
+
+# ── Demos page + dashboard card (2026-10-22) ───────────────────────────────────
+# Managers (owner, or "See all demos" crm.demos_all) see every demo; everyone
+# else only demos on leads assigned to them (assigned_key).
+
+PERIODS = [("week", "This week"), ("month", "This month"), ("30d", "Last 30 days")]
+_QUALIFIED_ON = ("qualified", "proposal_sent", "negotiating", "won")
+
+
+def _period_range(period: str, tz):
+    now = datetime.now(timezone.utc).astimezone(tz)
+    today = datetime(now.year, now.month, now.day, tzinfo=tz)
+    if period == "month":
+        start = today.replace(day=1)
+    elif period == "30d":
+        start = today - timedelta(days=29)
+    else:
+        start = today - timedelta(days=today.weekday())
+    return start, today + timedelta(days=1)
+
+
+def _rows(cur, sql, params):
+    c = cur.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        c.execute(sql, params)
+        return c.fetchall()
+    finally:
+        c.close()
+
+
+def demos_overview(cur, tenant_id: int, period: str = "week", only_key: str = None) -> dict:
+    """Everything the Demos page shows. only_key = a salesperson's own view."""
+    tz = tenant_tz(cur, tenant_id)
+    start, end = _period_range(period, tz)
+    now = datetime.now(timezone.utc)
+    scope, sp = "", []
+    if only_key:
+        scope, sp = " AND l.assigned_key = %s", [only_key]
+    has_out = bool(_rows(cur, "SELECT to_regclass('demo_outcomes') IS NOT NULL AS ok", [])[0]["ok"])
+    out_join = "LEFT JOIN demo_outcomes o ON o.appointment_id = a.id" if has_out else "LEFT JOIN (SELECT NULL::bigint AS appointment_id, NULL::text AS outcome, NULL::text AS next_step, NULL::date AS next_date) o ON FALSE"
+    base = f"""SELECT a.*, COALESCE(a.booked_at, a.first_seen_at) AS booked_when, l.customer_name AS company,
+                      l.assigned_to, l.assigned_key, l.stage, l.outcome AS lead_outcome, l.is_opportunity,
+                      o.outcome AS demo_outcome, o.next_step, o.next_date
+                 FROM booking_appointments a
+                 JOIN merchant_pipeline_leads l ON l.id = a.lead_id
+                 {out_join}
+                WHERE a.tenant_id = %s{scope}"""
+    in_period = _rows(cur, base + " AND a.start_at >= %s AND a.start_at < %s AND a.status <> 'cancelled' ORDER BY a.start_at DESC",
+                      [tenant_id] + sp + [start, end])
+    booked_n = _rows(cur, f"""SELECT count(*) AS n FROM booking_appointments a JOIN merchant_pipeline_leads l ON l.id=a.lead_id
+                               WHERE a.tenant_id=%s{scope} AND COALESCE(a.booked_at, a.first_seen_at) >= %s
+                                 AND COALESCE(a.booked_at, a.first_seen_at) < %s""", [tenant_id] + sp + [start, end])[0]["n"]
+    upcoming = _rows(cur, base + " AND a.status='booked' AND a.start_at > %s ORDER BY a.start_at LIMIT 30", [tenant_id] + sp + [now])
+    missing = _rows(cur, base + " AND a.status='booked' AND a.start_at <= %s AND a.start_at > %s ORDER BY a.start_at",
+                    [tenant_id] + sp + [now, now - timedelta(days=60)])
+    attended = [a for a in in_period if a["status"] == "done"]
+    no_show = [a for a in in_period if a["status"] == "no_show"]
+    moved_fwd = [a for a in in_period if a["demo_outcome"] in ("interested", "proposal")]
+    held = len(attended) + len(no_show)
+    today0 = datetime.now(timezone.utc).astimezone(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    today = [a for a in upcoming + missing if today0 <= a["start_at"].astimezone(tz) < today0 + timedelta(days=1)]
+    unassigned = [a for a in upcoming + missing if not a["assigned_key"]]
+    no_shows = _rows(cur, base + """ AND a.status='no_show' AND a.start_at > %s
+                       AND NOT EXISTS (SELECT 1 FROM booking_appointments b WHERE b.lead_id=a.lead_id AND b.id<>a.id
+                                       AND b.status IN ('booked','done') AND b.start_at > a.start_at)
+                     ORDER BY a.start_at DESC""", [tenant_id] + sp + [now - timedelta(days=30)])
+    nexts = [a for a in _rows(cur, base + " AND o.next_date IS NOT NULL AND o.next_date <= %s ORDER BY o.next_date",
+                              [tenant_id] + sp + [today0.date()]) if a["next_date"] >= today0.date() - timedelta(days=7)] if has_out else []
+    # By salesperson (demos in the period)
+    by = {}
+    for a in in_period:
+        k = a["assigned_to"] or "Unassigned"
+        d = by.setdefault(k, {"name": k, "booked": 0, "attended": 0, "no_show": 0, "missing": 0, "forward": 0, "won": 0})
+        d["booked"] += 1
+        d["attended"] += a["status"] == "done"
+        d["no_show"] += a["status"] == "no_show"
+        d["missing"] += a["status"] == "booked" and a["start_at"] <= now
+        d["forward"] += (a["stage"] in _QUALIFIED_ON) and a["status"] == "done"
+        d["won"] += a["stage"] == "won" or a["lead_outcome"] == "won"
+    # Where the bookings came from: the last email they got within 30 days before booking
+    sources = {}
+    for a in _rows(cur, base + " AND COALESCE(a.booked_at, a.first_seen_at) >= %s AND COALESCE(a.booked_at, a.first_seen_at) < %s",
+                   [tenant_id] + sp + [start, end]):
+        src = _rows(cur, """SELECT c.name FROM email_campaign_recipients r JOIN email_campaigns c ON c.id = r.campaign_id
+                             WHERE r.tenant_id=%s AND (r.lead_id=%s OR (r.email IS NOT NULL AND lower(r.email)=lower(%s)))
+                               AND r.sent_at IS NOT NULL AND r.sent_at <= %s AND r.sent_at >= %s
+                             ORDER BY r.sent_at DESC LIMIT 1""",
+                    [tenant_id, a["lead_id"], a["email"] or "", a["booked_when"], a["booked_when"] - REPORT_WINDOW])
+        name = src[0]["name"] if src else "Booked without an email from us"
+        sources[name] = sources.get(name, 0) + 1
+    # 12-week trend (Monday weeks, business time)
+    wk0 = today0 - timedelta(days=today0.weekday()) - timedelta(weeks=11)
+    trend_rows = _rows(cur, f"""SELECT a.status, a.start_at, COALESCE(a.booked_at, a.first_seen_at) AS bw
+                                  FROM booking_appointments a JOIN merchant_pipeline_leads l ON l.id=a.lead_id
+                                 WHERE a.tenant_id=%s{scope} AND (a.start_at >= %s OR COALESCE(a.booked_at, a.first_seen_at) >= %s)""",
+                       [tenant_id] + sp + [wk0, wk0])
+    weeks = [{"start": wk0 + timedelta(weeks=i), "booked": 0, "attended": 0} for i in range(12)]
+    for r in trend_rows:
+        for key, dt in (("booked", r["bw"]), ("attended", r["start_at"] if r["status"] == "done" else None)):
+            if dt:
+                i = (dt.astimezone(tz) - wk0).days // 7
+                if 0 <= i < 12:
+                    weeks[i][key] += 1
+    for w in weeks:
+        w["label"] = w["start"].strftime("%-d %b")
+    fmt = lambda a: dict(a, when=when(a["start_at"], tz), day=a["start_at"].astimezone(tz).strftime("%a %-d %b"),
+                         time=a["start_at"].astimezone(tz).strftime("%H:%M"),
+                         outcome_label=OUTCOME_LABELS.get(a.get("demo_outcome") or ("no_show" if a["status"] == "no_show" else ""), ""))
+    return {
+        "period": period, "start": start, "end": end - timedelta(days=1), "tz": tz,
+        "tiles": {"booked": booked_n, "upcoming": len(upcoming), "attended": len(attended), "no_show": len(no_show),
+                  "missing": len(missing), "forward": len(moved_fwd),
+                  "show_rate": round(100 * len(attended) / held) if held else None,
+                  "qualify_rate": round(100 * len(moved_fwd) / len(attended)) if attended else None},
+        "attention": {"today": [fmt(a) for a in today], "unassigned": [fmt(a) for a in unassigned],
+                      "missing": [fmt(a) for a in missing], "no_shows": [fmt(a) for a in no_shows],
+                      "nexts": [fmt(a) for a in nexts]},
+        "by_person": sorted(by.values(), key=lambda d: (-d["booked"], d["name"])),
+        "upcoming": [fmt(a) for a in upcoming], "past": [fmt(a) for a in in_period if a["start_at"] <= now],
+        "sources": sorted(sources.items(), key=lambda x: -x[1]), "weeks": weeks,
+    }
+
+
+def dashboard_card(cur, tenant_id: int, only_key: str = None) -> dict:
+    """Small version for the main dashboard (managers)."""
+    if not _rows(cur, "SELECT EXISTS (SELECT 1 FROM booking_connections WHERE tenant_id=%s) AS ok", [tenant_id])[0]["ok"]:
+        return {}
+    d = demos_overview(cur, tenant_id, "week", only_key)
+    return {"today": d["attention"]["today"], "tiles": d["tiles"], "missing": d["attention"]["missing"]}

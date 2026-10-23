@@ -1,8 +1,8 @@
 {% extends "portal/base.html" %}
-{% block title %}Adding to Leads — PhiXtra Portal{% endblock %}
+{% block title %}Importing to Leads — PhiXtra Portal{% endblock %}
 
 {% block head %}
-{% if j.status == 'running' %}<meta http-equiv="refresh" content="3">{% endif %}
+{% if j.status in ('running', 'stopping') %}<meta http-equiv="refresh" content="4">{% endif %}
 <style>
   .lj-hero h1 { font-size:22px; font-weight:800; letter-spacing:-.4px; margin:0 0 4px; color:var(--ink) }
   .lj-hero p { margin:0 0 16px; font-size:13.5px; color:var(--muted) }
@@ -10,7 +10,12 @@
   .lj-kpi { background:#fff; border:1px solid var(--line); border-radius:14px; padding:14px 16px }
   .lj-kpi b { display:block; font-size:24px; color:var(--ink); font-variant-numeric:tabular-nums }
   .lj-kpi span { color:var(--muted); font-size:12.5px }
-  .lj-bar { height:8px; border-radius:99px; background:#E8EEF8; overflow:hidden; margin-bottom:16px }
+  .lj-prog { background:#fff; border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:16px }
+  .lj-prog-top { display:flex; justify-content:space-between; gap:10px; font-size:14px; margin-bottom:8px }
+  .lj-bar { height:10px; border-radius:99px; background:#E8EEF8; overflow:hidden }
+  .lj-kpi.dark { background:#0B1D40; border-color:#0B1D40 } .lj-kpi.dark b { color:#fff } .lj-kpi.dark span { color:#C9D6EE }
+  .lj-s.merged { background:#EAF0FF; color:#24408F }
+  .lj-stop { color:#8A2B00; border-color:#E8C3B0 }
   .lj-bar i { display:block; height:100%; background:#0B1D40 }
   .lj-wrap { overflow-x:auto; background:#fff; border:1px solid var(--line); border-radius:14px }
   .lj-table { width:100%; border-collapse:collapse; font-size:13px; min-width:760px }
@@ -20,7 +25,7 @@
   .lj-who b { display:block } .lj-who span, .lj-muted { color:var(--muted); font-size:12px }
   .lj-s { display:inline-block; font-size:11.5px; font-weight:700; border-radius:99px; padding:2px 8px; white-space:nowrap }
   .lj-s.added { background:#E8F6EC; color:#15803D }
-  .lj-s.skipped { background:#E8EEF8; color:#0B1D40 }
+  .lj-s.skipped { background:#FFF4E0; color:#7A4B00 }
   .lj-s.none { background:#F1F4F9; color:#5A6B85 }
   .lj-s.failed, .lj-s.stopped { background:#FDECEC; color:#B42318 }
   .lj-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px }
@@ -28,56 +33,75 @@
 {% endblock %}
 
 {% block content %}
+{% set running = j.status in ('running', 'stopping') %}
+{% set imported = counts.added + counts.merged %}
+{% set emails = results|selectattr('email')|list|length %}
+{% set mobiles = results|selectattr('mobile')|list|length %}
 <div class="lj-hero">
-  <h1>{% if j.status == 'running' %}Adding people to your Leads…{% else %}Done: {{ counts.added }} added to your Leads{% endif %}</h1>
+  <h1>{% if running %}Importing {{ "{:,}".format(j.total) }} {{ 'person' if j.total == 1 else 'people' }}{% if j.status == 'stopping' %} (stopping…){% endif %}{% else %}Done: {{ "{:,}".format(imported) }} imported to your Leads{% endif %}</h1>
   <p>Started by {{ j.actor_name }} on {{ j.created_at.strftime('%d %b %Y at %H:%M') }}.
-     {% if req.get_mobile %}Getting email and mobile.{% else %}Getting email only.{% endif %}
+     {% if req.reveal_email is defined and not req.reveal_email and not req.get_mobile %}Revealing nothing: LinkedIn only.
+     {% elif req.get_mobile %}Revealing {{ 'email and ' if req.reveal_email is not defined or req.reveal_email }}mobile.{% else %}Revealing email.{% endif %}
      {% if req.assign_label %}Assigned to {{ req.assign_label }}.{% endif %}
-     {% if j.status == 'running' %} This page updates by itself.{% endif %}</p>
+     {% if req.label %}Label “{{ req.label }}”.{% endif %}
+     {% if running %} This page updates by itself. You can leave it, it carries on.{% endif %}</p>
+  {% if running and req.search_f and not results %}<p style="font-weight:700">Reading the search results page by page, then importing people one by one…</p>{% endif %}
 </div>
 
-{% if j.status == 'running' %}
-<div class="lj-bar" role="progressbar" aria-valuemin="0" aria-valuemax="{{ j.total }}" aria-valuenow="{{ j.done }}"><i style="width:{{ (100 * j.done / (j.total or 1))|round|int }}%"></i></div>
+{% if running %}
+<div class="lj-prog">
+  <div class="lj-prog-top"><b>{{ "{:,}".format(j.done) }} of {{ "{:,}".format(j.total) }} done</b>{% if j.total > j.done %}<span class="lj-muted">about {{ ((j.total - j.done) * 1.2 / 60)|round(0, 'ceil')|int }} min left</span>{% endif %}</div>
+  <div class="lj-bar" role="progressbar" aria-label="Import progress" aria-valuemin="0" aria-valuemax="{{ j.total }}" aria-valuenow="{{ j.done }}"><i style="width:{{ (100 * j.done / (j.total or 1))|round|int }}%"></i></div>
+</div>
 {% endif %}
 
 <div class="lj-kpis">
-  <div class="lj-kpi"><b>{{ counts.added }}</b><span>Added to Leads</span></div>
-  <div class="lj-kpi"><b>{{ counts.skipped }}</b><span>Already in Leads (skipped)</span></div>
-  <div class="lj-kpi"><b>{{ counts.none }}</b><span>Nothing found (not charged)</span></div>
-  <div class="lj-kpi"><b>{{ j.credits }}</b><span>Prospeo credits used</span></div>
+  <div class="lj-kpi"><b>{{ counts.added }}</b><span>New leads</span></div>
+  <div class="lj-kpi"><b>{{ counts.merged }}</b><span>Added to a company already in Leads</span></div>
+  <div class="lj-kpi"><b>{{ counts.skipped }}</b><span>Skipped, already in Leads</span></div>
+  <div class="lj-kpi"><b>{{ emails }}</b><span>Emails found</span></div>
+  {% if req.get_mobile %}<div class="lj-kpi"><b>{{ mobiles }}</b><span>Mobiles found</span></div>{% endif %}
+  <div class="lj-kpi dark"><b>{{ j.credits if not running else '…' }}</b><span>Credits used</span></div>
 </div>
+{% if counts.failed or counts.none %}<p class="lj-muted">{{ counts.failed + counts.none }} could not be imported (see below).</p>{% endif %}
 {% if j.error %}<p class="lj-muted">Stopped early: {{ j.error }}</p>{% endif %}
+
+<div class="lj-actions" style="margin:0 0 16px">
+  {% if imported %}<a class="btn btn-primary" href="{{ url_for('portal.leads_page', lf_job=j.id) }}">Open these people in Leads</a>{% endif %}
+  <a class="btn" href="{{ req.back or url_for('leadfinder.page') }}">Back to the search</a>
+  {% if j.status == 'running' and staff_can_open('leadfinder.stop') %}
+  <form method="POST" action="{{ url_for('leadfinder.stop', job_id=j.id) }}" style="margin:0" onsubmit="return confirm('Stop this import? Everyone imported so far stays in your Leads.')">
+    <button type="submit" class="btn lj-stop">Stop import</button>
+  </form>
+  {% endif %}
+</div>
 
 <div class="lj-wrap">
   <table class="lj-table">
-    <thead><tr><th>Person</th><th>Company</th><th>Email</th><th>Mobile</th><th>Result</th></tr></thead>
+    <thead><tr><th>Person</th><th>Company</th><th>Got</th><th>Result</th></tr></thead>
     <tbody>
-    {% for x in results %}
+    {% for x in results|reverse %}
       <tr>
         <td class="lj-who"><b>{{ x.name }}</b><span>{{ x.title }}</span></td>
         <td>{{ x.company }}</td>
-        <td>{{ x.email or '—' }}</td>
-        <td>{{ x.mobile or '—' }}</td>
+        <td>{% if x.outcome in ('added', 'merged') %}{{ x.got or ('Email' if x.email else 'LinkedIn only') }}
+            {% if x.email %}<div class="lj-muted">{{ x.email }}</div>{% endif %}{% if x.mobile %}<div class="lj-muted">{{ x.mobile }}</div>{% endif %}{% else %}—{% endif %}</td>
         <td>
-          {% if x.outcome == 'added' %}<span class="lj-s added">Added</span>
-          {% elif x.outcome == 'skipped' %}<span class="lj-s skipped">Skipped</span>
-          {% elif x.outcome == 'none' %}<span class="lj-s none">Nothing found</span>
+          {% if x.outcome == 'added' %}<span class="lj-s added">New lead</span>
+          {% elif x.outcome == 'merged' %}<span class="lj-s merged">Added to existing company</span>
+          {% elif x.outcome == 'skipped' %}<span class="lj-s skipped">Skipped, already in Leads</span>
+          {% elif x.outcome == 'none' %}<span class="lj-s none">Not imported</span>
           {% elif x.outcome == 'stopped' %}<span class="lj-s stopped">Stopped</span>
-          {% else %}<span class="lj-s failed">Not added</span>{% endif %}
-          {% if x.why %}<div class="lj-muted">{{ x.why }}</div>{% endif %}
+          {% else %}<span class="lj-s failed">Not imported</span>{% endif %}
+          {% if x.why and x.outcome != 'skipped' %}<div class="lj-muted">{{ x.why }}</div>{% endif %}
           {% if x.lead_id %}<div><a href="{{ url_for('portal.lead_detail', lead_id=x.lead_id) }}">Open lead</a></div>{% endif %}
         </td>
       </tr>
     {% endfor %}
-    {% if j.done < j.total %}
-      <tr><td colspan="5" class="lj-muted">{{ j.total - j.done }} more to go…</td></tr>
+    {% if running and j.done < j.total %}
+      <tr><td colspan="4" class="lj-muted">{{ "{:,}".format(j.total - j.done) }} more to go…</td></tr>
     {% endif %}
     </tbody>
   </table>
-</div>
-
-<div class="lj-actions">
-  <a class="btn btn-primary" href="{{ url_for('portal.leads_page') }}">Go to Leads</a>
-  <a class="btn" href="{{ req.back or url_for('leadfinder.page') }}">Back to the search</a>
 </div>
 {% endblock %}

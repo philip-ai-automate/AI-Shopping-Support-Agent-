@@ -1,0 +1,144 @@
+{% extends "estate/base.html" %}
+{% block title %}Calls — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+.cl-wrap{max-width:900px;display:flex;flex-direction:column;gap:18px}
+.cl-card{background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;box-shadow:0 2px 12px rgba(3,12,24,0.04);overflow:hidden}
+.cl-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:18px 22px;border-bottom:1px solid rgba(3,12,24,0.07);flex-wrap:wrap}
+.cl-title{font-size:15px;font-weight:800;color:#030C18}
+.cl-sub{font-size:13px;color:rgba(3,12,24,0.55);margin-top:3px;line-height:1.55;max-width:62ch}
+.cl-body{padding:18px 22px;display:flex;flex-direction:column;gap:14px}
+.cl-row{display:flex;align-items:center;gap:12px;padding:12px 22px;border-bottom:1px solid rgba(3,12,24,0.05);flex-wrap:wrap}
+.cl-row:last-child{border-bottom:none}
+.cl-ic{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:15px;flex:none;background:#E7F6EE}
+.cl-ic.missed{background:#FEF0EF}
+.cl-main{flex:1;min-width:180px}
+.cl-main a{font-weight:750;color:#030C18;text-decoration:none;font-size:13.5px}
+.cl-main div{font-size:12.5px;color:rgba(3,12,24,0.58);margin-top:2px}
+.cl-when{font-size:12px;color:rgba(3,12,24,0.5);white-space:nowrap}
+.cl-btn{font:inherit;font-size:12px;font-weight:750;padding:6px 12px;border-radius:8px;border:1px solid rgba(3,12,24,0.14);background:#fff;color:#030C18;text-decoration:none;white-space:nowrap}
+.cl-empty{padding:22px;font-size:13px;color:rgba(3,12,24,0.5)}
+.sw{position:relative;display:inline-flex;align-items:center;gap:10px;cursor:pointer;flex-shrink:0;font-size:12.5px;font-weight:750;color:rgba(3,12,24,0.55)}
+.sw input{position:absolute;opacity:0;width:1px;height:1px}
+.sw i{width:42px;height:24px;border-radius:999px;background:rgba(3,12,24,0.18);position:relative;transition:.15s}
+.sw i::after{content:"";position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.sw input:checked + i{background:#12805C}
+.sw input:checked + i::after{left:21px}
+.sw input:focus-visible + i{outline:2px solid #030C18;outline-offset:2px}
+.cl-checks{display:grid;gap:8px}
+.cl-check{display:flex;gap:10px;font-size:13px;line-height:1.5;align-items:flex-start}
+.cl-check b{display:block}
+.cl-check span{color:rgba(3,12,24,0.6)}
+.cl-days{display:flex;gap:6px;flex-wrap:wrap}
+.cl-days label{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;padding:6px 10px;border:1.5px solid rgba(3,12,24,0.12);border-radius:8px;cursor:pointer}
+.cl-days input{margin:0;width:auto!important}
+.cl-f{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+.cl-f > div{display:flex;flex-direction:column;gap:5px}
+.cl-f label.l{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:rgba(3,12,24,0.4)}
+.cl-f input,.cl-f select,.cl-body textarea{padding:8px 11px;border:1.5px solid rgba(3,12,24,0.12);border-radius:9px;font:inherit;font-size:13.5px;background:#fafbfc;box-sizing:border-box}
+.cl-body textarea{width:100%;min-height:70px;resize:vertical}
+.cl-note{font-size:13px;border-radius:10px;padding:11px 14px;line-height:1.55}
+.cl-note.info{background:rgba(26,86,219,0.06);color:#1a3a6e}
+.cl-note.warn{background:rgba(247,144,9,0.09);color:#7a4f00}
+.cl-save{align-self:flex-start;padding:10px 22px;background:#030C18;color:#fff;border:none;border-radius:10px;font:inherit;font-size:14px;font-weight:800;cursor:pointer}
+[hidden]{display:none!important}
+@media(max-width:600px){.cl-head,.cl-body{padding:16px 14px}.cl-row{padding:12px 14px}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:4px">Calls</h1>
+    <p class="muted">Buyers call your WhatsApp number; it rings in KeyLand and you answer here, on a computer or phone.</p>
+  </div>
+</div>
+
+<div class="cl-wrap">
+
+  {% if _re_is_admin %}
+  <form method="POST" class="cl-card" id="settings">
+    <div class="cl-head">
+      <div>
+        <div class="cl-title">WhatsApp calls</div>
+        <div class="cl-sub">With this on, buyers see a call button on your WhatsApp number. A call rings for the lead's agent and the managers at the same time (everyone, if the lead isn't assigned yet), on any open KeyLand page and as a phone notification. The first to answer takes it.</div>
+      </div>
+      <label class="sw"><input type="checkbox" name="incoming_on" {{ 'checked' if st.incoming_on }}><i></i><span>{{ 'On' if st.incoming_on else 'Off' }}</span></label>
+    </div>
+    <div class="cl-body">
+      {% if not wa_connected %}
+      <div class="cl-note warn">Your WhatsApp number isn't connected. <a href="{{ url_for('estate.settings') }}#whatsapp" style="color:inherit;font-weight:750">Connect it in Settings</a> first.</div>
+      {% else %}
+      <div class="cl-checks">
+        <div class="cl-check"><span>{{ '✅' if info.on_app is not sameas true else '⚠️' }}</span><div><b>Fully on KeyLand</b><span>{% if info.on_app %}This number also uses the WhatsApp Business phone app. Meta doesn't allow calls through KeyLand on these numbers.{% else %}Your number isn't also on the WhatsApp Business phone app, as Meta requires.{% endif %}</span></div></div>
+        <div class="cl-check"><span>{{ '✅' if info.tier in tier_ok else ('⚠️' if info.tier else '❔') }}</span><div><b>Meta messaging limit of 2,000 a day or more</b><span>{% if info.tier %}Meta's limit for this number is {{ info.tier|replace('TIER_','') }} a day.{% if info.tier not in tier_ok %} Calling needs 2,000 or more; it goes up as your number sends more messages with good quality.{% endif %}{% else %}Meta didn't say. If it's under 2,000 a day, Meta will refuse to switch calls on.{% endif %}</span></div></div>
+        <div class="cl-check"><span>ℹ️</span><div><b>Buyers call you, not the other way</b><span>Meta doesn't let business numbers in Nigeria start WhatsApp calls. Use the lead's Call button to phone a buyer.</span></div></div>
+      </div>
+      {% if st.meta_status and st.meta_status != 'saved' %}<div class="cl-note warn">Meta refused the last save: {{ st.meta_status }}</div>{% endif %}
+      {% endif %}
+
+      <div class="cl-f">
+        <div>
+          <label class="l">When calls ring</label>
+          <div class="cl-days">
+            <label><input type="radio" name="hours_on" value="always" {{ 'checked' if not st.hours_on }} onchange="clHours()"> Any time</label>
+            <label><input type="radio" name="hours_on" value="hours" {{ 'checked' if st.hours_on }} onchange="clHours()"> Calling hours only</label>
+          </div>
+        </div>
+      </div>
+      <div id="clHours" {{ 'hidden' if not st.hours_on }} style="display:flex;flex-direction:column;gap:12px">
+        <div class="cl-days">{% for d in [1,2,3,4,5,6,0] %}<label><input type="checkbox" name="days" value="{{ d }}" {{ 'checked' if d in st.days }}> {{ day_names[d] }}</label>{% endfor %}</div>
+        <div class="cl-f">
+          <div><label class="l" for="clOpen">From</label><input type="time" id="clOpen" name="open_time" value="{{ st.open_time }}"></div>
+          <div><label class="l" for="clClose">Until</label><input type="time" id="clClose" name="close_time" value="{{ st.close_time }}"></div>
+          <div><label class="l" for="clTz">Time zone</label><select id="clTz" name="tz">{% for v, l in timezones %}<option value="{{ v }}" {{ 'selected' if st.tz == v }}>{{ l }}</option>{% endfor %}</select></div>
+        </div>
+        <div class="cl-sub" style="margin:0">Outside these hours WhatsApp tells the buyer you're closed, and they get the message below.</div>
+      </div>
+      <div>
+        <label class="l" for="clMissed" style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:rgba(3,12,24,0.4)">Message after a missed call</label>
+        <textarea id="clMissed" name="missed_message" maxlength="1000">{{ st.missed_message }}</textarea>
+        <div class="cl-sub" style="margin:4px 0 0">Sent on WhatsApp straight after a call nobody answered. The lead then shows "Missed WhatsApp call" in Needs attention until someone calls back or logs contact.</div>
+      </div>
+      {% if st.updated_by %}<div class="cl-sub" style="margin:0">Last changed by {{ st.updated_by }}, {{ st.updated_at.strftime('%d %b %Y, %H:%M') }}.</div>{% endif %}
+      <button type="submit" class="cl-save">Save and update Meta</button>
+    </div>
+  </form>
+  {% elif not st.incoming_on %}
+  <div class="cl-note info">WhatsApp calls are off for {{ tenant.business_name }}. The owner or an admin can switch them on here.</div>
+  {% endif %}
+
+  <div class="cl-card">
+    <div class="cl-head"><div><div class="cl-title">Recent calls</div><div class="cl-sub">Every call is also on the lead's Interaction Log.</div></div></div>
+    {% for c in calls %}
+    <div class="cl-row">
+      <span class="cl-ic {{ 'missed' if c.status in ('missed','out_of_hours','failed') }}" aria-hidden="true">{{ '📵' if c.status in ('missed','out_of_hours','failed') else '📞' }}</span>
+      <div class="cl-main">
+        {% if c.customer_id %}<a href="{{ url_for('estate.lead_detail', contact_id=c.customer_id) }}">{{ c.customer_name or ('+' ~ c.customer_phone) }}</a>{% else %}<b>{{ c.customer_name or ('+' ~ c.customer_phone) }}</b>{% endif %}
+        <div>
+          {% if c.status == 'completed' %}Answered by {{ c.answered_by_name }}{% if c.duration %} · {{ c.duration // 60 }}:{{ '%02d'|format(c.duration % 60) }}{% endif %}
+          {% elif c.status in ('answered','answering') %}On a call with {{ c.answered_by_name }}
+          {% elif c.status == 'ringing' %}Ringing
+          {% elif c.status == 'out_of_hours' %}Missed: {{ 'calls switched off' if c.missed_reason == 'calls_off' else 'outside calling hours' }}
+          {% elif c.status == 'failed' %}Couldn't connect{% if c.error %}: {{ c.error }}{% endif %}
+          {% else %}Missed{% endif %}
+          {% if c.agent_name %} · {{ c.agent_name }}'s lead{% endif %}
+        </div>
+      </div>
+      <span class="cl-when">{{ c.created_local.strftime('%a %d %b, %H:%M') }}</span>
+      {% if c.status in ('missed','out_of_hours') and c.customer_phone|tel_link %}<a class="cl-btn" href="tel:{{ c.customer_phone|tel_link }}">Call back</a>{% endif %}
+    </div>
+    {% else %}
+    <div class="cl-empty">No calls yet.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function clHours(){ document.getElementById('clHours').hidden = document.querySelector('[name=hours_on]:checked').value !== 'hours'; }
+document.querySelectorAll('.sw input').forEach(function(cb){ cb.addEventListener('change', function(){ cb.parentNode.querySelector('span').textContent = cb.checked ? 'On' : 'Off'; }); });
+</script>
+{% endblock %}

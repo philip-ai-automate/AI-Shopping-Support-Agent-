@@ -1,0 +1,222 @@
+{% extends "portal/base.html" %}
+{% block title %}Follow-ups — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  /* Follow-ups (redesign 2026-10-23): a work list. To do now / Upcoming / No date set / Done,
+     each row with its contact button, Log what happened and Reschedule. */
+  .fq-head { display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; align-items:flex-end; margin-bottom:6px }
+  .fq-title { font-size:22px; font-weight:800; color:var(--ink) }
+  .fq-sub { font-size:13px; color:var(--muted); margin-top:2px }
+  .fq-right { display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap }
+  .fq-who { display:flex; gap:8px; align-items:center }
+  .fq-who label { font-size:12.5px; color:var(--muted); font-weight:600 }
+  .fq-who select { padding:7px 10px; border:1.5px solid var(--line); border-radius:9px; font-size:13px; font-family:inherit; max-width:100%; background:#fff }
+  .fq-ontime { display:grid; gap:5px; min-width:210px; font-size:12.5px; color:var(--muted) }
+  .fq-ontime b { color:var(--ink) }
+  .fq-meter { height:8px; border-radius:99px; background:#E8EEF8; overflow:hidden }
+  .fq-meter i { display:block; height:100%; background:#0B1D40; border-radius:99px }
+  .fq-meter i.low { background:#C2700A }
+  .fq-card { background:#fff; border:1px solid var(--line); border-radius:14px; overflow:hidden; margin-top:14px }
+  .fq-tabs { display:flex; gap:2px; border-bottom:1px solid var(--line); overflow-x:auto; padding:0 12px }
+  .fq-tab { font-size:13.5px; font-weight:700; padding:12px 14px; color:var(--muted); border-bottom:2.5px solid transparent; text-decoration:none;
+            display:inline-flex; gap:7px; align-items:center; white-space:nowrap }
+  .fq-tab.on { color:#0B1D40; border-bottom-color:#0B1D40 }
+  .fq-n { font-variant-numeric:tabular-nums; font-size:12px; border-radius:999px; padding:1px 8px; background:#E8EEF8; color:#0B1D40 }
+  .fq-n.red { background:#FDECEC; color:#B42318 } .fq-n.amber { background:#FFF4E5; color:#92400E }
+  .fq-day { padding:9px 18px; font-size:11.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--muted);
+            background:#F8FAFD; border-bottom:1px solid var(--line) }
+  .fq-day.red { color:#B42318 } .fq-day.amber { color:#92400E }
+  .fq-row { display:grid; grid-template-columns:4px minmax(0,1.4fr) minmax(0,1.5fr) auto; gap:14px; align-items:center;
+            padding:12px 18px 12px 0; border-bottom:1px solid var(--line) }
+  .fq-row:last-child { border-bottom:0 }
+  .fq-sev { align-self:stretch; border-radius:0 3px 3px 0 } .fq-sev.red { background:#B42318 } .fq-sev.amber { background:#F5C98B }
+  .fq-lead a { display:block; font-size:14px; font-weight:700; color:var(--ink); text-decoration:none }
+  .fq-lead a:hover { text-decoration:underline }
+  .fq-lead span { font-size:12.5px; color:var(--muted) }
+  .fq-what { font-size:13.5px; display:grid; gap:4px; min-width:0 }
+  .fq-what .r { display:flex; gap:6px; align-items:center; flex-wrap:wrap }
+  .fq-what small { font-size:12px; color:var(--muted) }
+  .fq-how { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:700; color:#0B1D40; background:#E8EEF8; border-radius:7px; padding:3px 8px }
+  .fq-how svg { width:13px; height:13px }
+  .fq-pill { display:inline-block; font-size:11.5px; font-weight:800; border-radius:999px; padding:2px 9px; background:#E8EEF8; color:#0B1D40; white-space:nowrap }
+  .fq-pill.red { background:#FDECEC; color:#B42318 } .fq-pill.amber { background:#FFF4E5; color:#92400E } .fq-pill.green { background:#E7F6EE; color:#12805C }
+  .fq-act { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end }
+  .fq-btn { font:inherit; font-size:12.5px; font-weight:700; border-radius:8px; padding:7px 11px; cursor:pointer; border:1.5px solid var(--line);
+            background:#fff; color:var(--ink); white-space:nowrap; text-decoration:none; display:inline-flex; align-items:center; gap:5px }
+  .fq-btn svg { width:13px; height:13px }
+  .fq-btn.primary { background:#0B1D40; border-color:#0B1D40; color:#fff }
+  .fq-link { background:none; border:0; padding:4px 2px; font:inherit; font-size:12px; font-weight:700; color:#0B1D40; text-decoration:underline; cursor:pointer; white-space:nowrap }
+  .fq-empty { padding:28px 18px; text-align:center; color:var(--muted); font-size:13.5px }
+  .fq-empty b { display:block; color:var(--ink); font-size:15px; margin-bottom:4px }
+  .fq-more { padding:12px 18px; font-size:12.5px; color:var(--muted); background:#F8FAFD; border-top:1px solid var(--line) }
+  .fq-more a { color:#0B1D40; font-weight:700 }
+  .fq-team { width:100%; border-collapse:collapse; font-size:13.5px; font-variant-numeric:tabular-nums }
+  .fq-team th { text-align:left; font-size:11.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); font-weight:700;
+                padding:10px 14px; border-bottom:1px solid var(--line); white-space:nowrap }
+  .fq-team td { padding:11px 14px; border-bottom:1px solid var(--line); vertical-align:middle }
+  .fq-team tr:last-child td { border-bottom:0 }
+  .fq-team .n { text-align:right }
+  .fq-team a { color:var(--ink); font-weight:700; text-decoration:none } .fq-team a:hover { text-decoration:underline }
+  .fq-bar { display:flex; align-items:center; gap:8px } .fq-bar .fq-meter { width:100px }
+  .fq-note { font-size:12px; color:var(--muted); margin-top:12px }
+  .fq-last { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden } .fq-last b { color:var(--ink); font-weight:700 }
+  @media (max-width:860px) {
+    .fq-row { grid-template-columns:4px minmax(0,1fr); row-gap:8px }
+    .fq-what, .fq-act { grid-column:2 } .fq-act { justify-content:flex-start }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set _can_set = staff_can_open('portal.lead_followup_set') %}
+{% set _show_who = see_all and who != 'me' %}
+{% macro qs(t) %}{{ url_for('portal.follow_ups_page', tab=t, who=who) }}{% endmacro %}
+
+{% macro contact_btn(r, how) -%}
+  {%- if how == 'whatsapp' and r.whatsapp_number and staff_can('inbox.send_new') -%}
+  <button type="button" class="fq-btn" onclick="SendOne.open({leadId: {{ r.lead_id }}})"><svg><use href="#fx-whatsapp"/></svg>WhatsApp</button>
+  {%- elif how == 'email' and r.email -%}
+  <a class="fq-btn" href="mailto:{{ r.email }}"><svg><use href="#fx-email"/></svg>Email</a>
+  {%- elif how == 'linkedin' and li_urls.get(r.lead_id) -%}
+  <a class="fq-btn" href="{{ li_urls.get(r.lead_id) }}" target="_blank" rel="noopener"><svg><use href="#fx-linkedin"/></svg>Open profile</a>
+  {%- elif how in ('call', 'meeting') and (r.phone or r.whatsapp_number) -%}
+  <a class="fq-btn" href="tel:{{ (r.phone or r.whatsapp_number)|replace(' ', '') }}"><svg><use href="#fx-call"/></svg>Call</a>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro row(r, kind) -%}
+  {% set how = r.channel or 'call' %}
+  <div class="fq-row">
+    <span class="fq-sev {{ 'red' if kind == 'overdue' else ('amber' if kind == 'today' else '') }}"></span>
+    <div class="fq-lead"><a href="{{ url_for('portal.lead_detail', lead_id=r.lead_id) }}#followup">{{ r.customer_name }}</a>
+      <span>{{ r.contact_name or '' }}{% if r.contact_name and (r.phone or r.whatsapp_number) %} · {% endif %}{{ (r.phone or r.whatsapp_number)|phone_display if (r.phone or r.whatsapp_number) else '' }}{% if _show_who %} · {{ r.who }}{% endif %}</span></div>
+    <div class="fq-what">
+      <div class="r"><span class="fq-how"><svg><use href="#fx-{{ how }}"/></svg>{{ r.channel_label or 'Call' }}</span>
+        <span class="fq-pill {{ 'red' if kind == 'overdue' else ('amber' if kind == 'today' else '') }}">{{ r.due_date.strftime('%a %-d %b') }}{% if kind == 'overdue' %} · {{ r.when_words|replace(' overdue', ' late') }}{% endif %}</span>
+        {% if r.reschedule_count >= 3 %}<span class="fq-pill amber">Moved {{ r.reschedule_count }} times</span>{% endif %}</div>
+      <span>{{ r.note or ('Follow up after ' ~ r.after_words if r.after_words else 'Follow up') }}</span>
+      {% set ln = last_notes.get(r.lead_id) %}
+      {% if ln %}<small class="fq-last" title="{{ ln.note }}"><b>Last time ({{ ln.kind_label }}, {{ ln.local_at.strftime('%a %-d %b') }}):</b> {{ ln.note }}</small>
+      {% else %}<small>Last contact: {% if r.last_contact %}{{ r.last_contact.astimezone(tz).strftime('%a %-d %b') }}{% else %}none recorded{% endif %}</small>{% endif %}
+    </div>
+    <div class="fq-act">
+      {{ contact_btn(r, how) }}
+      <button type="button" class="fq-btn primary" data-fx-log="{{ {'leadId': r.lead_id, 'name': r.customer_name, 'hasEmail': (r.email and true) or false, 'kind': how}|tojson|forceescape }}">Log/Follow-up</button>
+      {% if _can_set %}<button type="button" class="fq-link" data-fx-resched="{{ {'leadId': r.lead_id, 'name': r.customer_name, 'due': r.due_date.isoformat(), 'channel': r.channel, 'note': r.note, 'moved': r.reschedule_count}|tojson|forceescape }}">Change date</button>{% endif %}
+    </div>
+  </div>
+{%- endmacro %}
+
+<div class="fq-head">
+  <div>
+    <div class="fq-title">{{ 'My follow-ups' if who == 'me' else 'Follow-ups · ' ~ who_name }}</div>
+    <div class="fq-sub">{{ d.today_date.strftime('%A %-d %B') }} · Work down the list: overdue first, then today.</div>
+  </div>
+  <div class="fq-right">
+    {% if me_sum.due_week %}
+    <div class="fq-ontime"><span><b>On time this week: {{ me_sum.pct }}%</b> · {{ me_sum.on_time }} of {{ me_sum.due_week }}</span>
+      <div class="fq-meter"><i class="{{ 'low' if me_sum.pct < 70 }}" style="width:{{ me_sum.pct }}%"></i></div></div>
+    {% endif %}
+    {% if see_all %}
+    <form method="GET" class="fq-who">
+      <input type="hidden" name="tab" value="{{ tab }}">
+      <label for="fqWho">Showing</label>
+      <select id="fqWho" name="who" onchange="this.form.submit()">
+        <option value="me" {{ 'selected' if who == 'me' }}>Just mine</option>
+        <option value="all" {{ 'selected' if who == 'all' }}>Everyone</option>
+        {% for p in people %}<option value="{{ p.key }}" {{ 'selected' if who == p.key }}>{{ p.display }}</option>{% endfor %}
+        <option value="none" {{ 'selected' if who == 'none' }}>Unassigned leads</option>
+      </select>
+      <noscript><button type="submit" class="fq-btn">Show</button></noscript>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if team_rows %}
+<div class="fq-card">
+  <div style="overflow-x:auto">
+    <table class="fq-team">
+      <thead><tr><th>Person</th><th class="n">Overdue</th><th class="n">Due today</th><th class="n">Next 7 days</th><th>On time this week</th><th class="n">Open leads with no date</th></tr></thead>
+      <tbody>
+        {% for t in team_rows %}
+        <tr><td><a href="{{ url_for('portal.follow_ups_page', who=t.key) }}">{{ t.display }}</a></td>
+          <td class="n">{% if t.overdue %}<span class="fq-pill red">{{ '{:,}'.format(t.overdue) }}</span>{% else %}0{% endif %}</td>
+          <td class="n">{{ '{:,}'.format(t.today) }}</td><td class="n">{{ '{:,}'.format(t.week) }}</td>
+          <td>{% if t.pct is not none %}<div class="fq-bar"><div class="fq-meter"><i class="{{ 'low' if t.pct < 70 }}" style="width:{{ t.pct }}%"></i></div>{{ t.pct }}%</div>{% else %}<span style="color:var(--muted)">Nothing due yet</span>{% endif %}</td>
+          <td class="n">{{ '{:,}'.format(t.no_date) }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="fq-card">
+  {% set n_now = d.overdue|length + d.today|length %}
+  <nav class="fq-tabs" aria-label="Follow-up lists">
+    <a class="fq-tab {{ 'on' if tab == 'now' }}" href="{{ qs('now') }}">To do now <span class="fq-n {{ 'red' if d.overdue else ('amber' if d.today else '') }}">{{ '{:,}'.format(n_now) }}</span></a>
+    <a class="fq-tab {{ 'on' if tab == 'upcoming' }}" href="{{ qs('upcoming') }}">Upcoming <span class="fq-n">{{ '{:,}'.format(d.soon|length) }}</span></a>
+    <a class="fq-tab {{ 'on' if tab == 'nodate' }}" href="{{ qs('nodate') }}">No date set <span class="fq-n {{ 'amber' if nodate.count }}">{{ '{:,}'.format(nodate.count) }}</span></a>
+    <a class="fq-tab {{ 'on' if tab == 'done' }}" href="{{ qs('done') }}">Done <span class="fq-n">{{ '{:,}'.format(done|length) }}</span></a>
+  </nav>
+
+  {% if tab == 'now' %}
+    {% if d.overdue %}<div class="fq-day red">Overdue · {{ d.overdue|length }}</div>{% for r in d.overdue %}{{ row(r, 'overdue') }}{% endfor %}{% endif %}
+    {% if d.today %}<div class="fq-day amber">Today · {{ d.today|length }}</div>{% for r in d.today %}{{ row(r, 'today') }}{% endfor %}{% endif %}
+    {% if not n_now %}<div class="fq-empty"><b>Nothing to do right now.</b>Nothing overdue and nothing due today.{% if d.soon %} <a href="{{ qs('upcoming') }}" style="color:#0B1D40;font-weight:700">See what's coming up</a>.{% endif %}</div>{% endif %}
+
+  {% elif tab == 'upcoming' %}
+    {% for day, rows in upcoming %}
+      <div class="fq-day">{{ 'Tomorrow · ' if (day - d.today_date).days == 1 }}{{ day.strftime('%A %-d %B') }} · {{ rows|length }}</div>
+      {% for r in rows %}{{ row(r, 'later') }}{% endfor %}
+    {% else %}
+      <div class="fq-empty"><b>Nothing booked in the next 60 days.</b>Dates are set when you log what happened on a lead.</div>
+    {% endfor %}
+
+  {% elif tab == 'nodate' %}
+    {% for r in nodate.rows %}
+    <div class="fq-row">
+      <span class="fq-sev"></span>
+      <div class="fq-lead"><a href="{{ url_for('portal.lead_detail', lead_id=r.lead_id) }}#followup">{{ r.customer_name }}</a>
+        <span>{{ r.contact_name or '' }}{% if r.contact_name and (r.phone or r.whatsapp_number) %} · {% endif %}{{ (r.phone or r.whatsapp_number)|phone_display if (r.phone or r.whatsapp_number) else '' }}{% if _show_who %} · {{ r.who }}{% endif %}</span></div>
+      <div class="fq-what"><span class="fq-pill amber" style="justify-self:start">No follow-up date</span><small>Nobody will be reminded about this lead.</small></div>
+      <div class="fq-act">
+        {{ contact_btn(r, 'call') }}
+        <button type="button" class="fq-btn primary" data-fx-log="{{ {'leadId': r.lead_id, 'name': r.customer_name, 'hasEmail': (r.email and true) or false}|tojson|forceescape }}">Log/Follow-up</button>
+        {% if _can_set %}<button type="button" class="fq-link" data-fx-resched="{{ {'leadId': r.lead_id, 'name': r.customer_name}|tojson|forceescape }}">Set a date</button>{% endif %}
+      </div>
+    </div>
+    {% else %}
+      <div class="fq-empty"><b>Every open lead has a follow-up date.</b></div>
+    {% endfor %}
+    {% if nodate.count > nodate.rows|length %}
+    <div class="fq-more">Showing the {{ nodate.rows|length }} most recently updated of {{ '{:,}'.format(nodate.count) }}. These are mostly leads nobody has contacted since follow-ups started; logging a contact gives them a date.
+      <a href="{{ url_for('portal.leads_page', followup='none') }}">See them all on Leads ›</a></div>
+    {% endif %}
+
+  {% else %}
+    {% for r in done %}
+    <div class="fq-row">
+      <span class="fq-sev"></span>
+      <div class="fq-lead"><a href="{{ url_for('portal.lead_detail', lead_id=r.lead_id) }}#followups">{{ r.customer_name }}</a>
+        <span>{{ r.contact_name or '' }}{% if _show_who %}{% if r.contact_name %} · {% endif %}{{ r.who }}{% endif %}</span></div>
+      <div class="fq-what">
+        <div class="r">{% if r.on_time %}<span class="fq-pill green">On time</span>{% else %}<span class="fq-pill amber">{{ r.late_days }} day{{ 's' if r.late_days != 1 }} late</span>{% endif %}
+          <span style="font-size:12.5px;color:var(--muted)">Due {{ r.due_date.strftime('%a %-d %b') }}</span></div>
+        <small>{{ r.done_label or 'Done' }} by {{ r.done_by_name or 'the team' }}, {{ r.done_local.strftime('%a %-d %b, %H:%M') }}</small>
+      </div>
+      <div class="fq-act"><a class="fq-btn" href="{{ url_for('portal.lead_detail', lead_id=r.lead_id) }}">Open lead</a></div>
+    </div>
+    {% else %}
+      <div class="fq-empty"><b>Nothing done in the last 7 days yet.</b></div>
+    {% endfor %}
+  {% endif %}
+</div>
+
+<p class="fq-note">At 8am on working days each person gets their list by email, WhatsApp and phone notification (using their alert settings). Follow-ups still not done the next morning also go to the owner and the person's line manager.</p>
+
+{% include "portal/_followup_ui.html" %}
+{% if staff_can('inbox.send_new') %}{% include 'portal/_send_one_wa.html' %}{% endif %}
+{% endblock %}

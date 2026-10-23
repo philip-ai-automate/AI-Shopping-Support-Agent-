@@ -135,7 +135,8 @@
       <li><b>Group by:</b> Day, Week or Month puts the emails under headings by when they were last changed.</li>
       <li>More detail, with pictures: <a href="{{ url_for('portal.tutorials', topic='email') }}#eml-saved">the full Email Campaigns guide</a>.</li>
       <li><b>Preview</b> opens the email on the right, with a real lead's names filled in.</li>
-      <li><b>Use ▾</b> puts it in a campaign or a sequence, edits it, or makes a copy to start a new one.{% if can_share %} Share lets chosen team members use it.{% endif %}</li>
+      <li><b>Edit</b> changes the email. If a sequence uses it, the change reaches everyone who hasn't had it yet.</li>
+      <li><b>Use ▾</b> puts it in a campaign or a sequence, or makes a copy to start a new one.{% if can_share %} Share lets chosen team members use it.{% endif %}</li>
       <li>{% if see_all %}Team members only see the emails they saved and ones you share with them.{% else %}You only see emails you saved and ones your manager shared with you. You can edit and delete only your own.{% endif %}</li>
     </ul>
   </details>
@@ -213,12 +214,12 @@
           </td>
           <td class="se-acts">
             <button type="button" class="se-btn sm" onclick="sePreview({{ e.id }})">Preview</button>
+            {% if e.mine and can_edit %}<a class="se-btn sm se-edit" href="{{ url_for('portal.email_saved_email_edit', template_id=e.id) }}">Edit</a>{% endif %}
             <details class="se-more">
               <summary class="se-btn sm">Use ▾</summary>
               <div class="se-menu" role="menu">
                 {% if can_use %}<a href="{{ url_for('portal.email_campaigns') }}?use_template={{ e.id }}">Use in a campaign</a>{% endif %}
                 {% if seq_on and sequences %}<button type="button" onclick="seOpenSeq({{ e.id }})">Add to a sequence</button>{% endif %}
-                {% if e.mine and can_edit %}<a href="{{ url_for('portal.email_saved_email_edit', template_id=e.id) }}">Edit</a>{% endif %}
                 {% if can_new %}<form method="POST" action="{{ url_for('portal.email_saved_email_copy', template_id=e.id) }}"><button type="submit">Make a copy</button></form>{% endif %}
                 {% if can_share %}<button type="button" onclick="seOpenShare({{ e.id }})">Share…</button>{% endif %}
                 {% if can_delete and e.mine %}<button type="button" class="bad" onclick="seOpenDelete({{ e.id }})">Delete…</button>{% endif %}
@@ -313,10 +314,12 @@
     $('sdName').textContent = r.dataset.name
     $('sdMeta').textContent = 'Saved by ' + r.dataset.who + ' · ' + r.dataset.when + ' · ' + r.dataset.used
     $('sdActs').innerHTML = ''
+    const ed = r.querySelector('.se-edit')
+    if (ed) { const c = ed.cloneNode(true); c.className = 'se-btn sm pri'; c.textContent = '✏️ Edit'; $('sdActs').appendChild(c) }
     r.querySelectorAll('.se-menu > a, .se-menu > button, .se-menu > form').forEach((el, i) => {
       const c = el.cloneNode(true)
       const b = c.tagName === 'FORM' ? c.querySelector('button') : c
-      b.className = 'se-btn sm' + (i === 0 ? ' pri' : '') + (el.classList.contains('bad') ? ' danger' : '')
+      b.className = 'se-btn sm' + (i === 0 && !ed ? ' pri' : '') + (el.classList.contains('bad') ? ' danger' : '')
       $('sdActs').appendChild(c)
     })
     $('sdFrom').textContent = ''; $('sdSubj').textContent = ''; $('sdPre').textContent = ''; $('sdNote').textContent = 'Loading…'; $('sdFrame').srcdoc = ''

@@ -432,6 +432,30 @@ document.getElementById('scqForm').addEventListener('submit', function(e){
   </div>
 </div>
 
+{# Demos (2026-10-22): managers' quick view — today, this week, outcomes missing #}
+{% if dash_demos %}
+{% set dt = dash_demos.tiles %}
+<div class="section-hd"><span class="section-hd-icon">📅</span><span class="section-hd-title">Demos this week</span><span class="section-hd-line"></span><a href="{{ url_for('bookings.demos') }}" class="section-hd-action" style="font-size:12.5px;font-weight:650;color:var(--ink)">Open Demos →</a></div>
+<div class="card" style="margin-bottom:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px">
+  <div style="min-width:0">
+    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Today</div>
+    {% for x in dash_demos.today %}<a href="{{ url_for('portal.lead_detail', lead_id=x.lead_id) }}#demo" style="display:block;font-size:13px;color:var(--ink);padding:3px 0;text-decoration:none"><b>{{ x.time }}</b> · {{ x.customer_name or x.email }} <span class="muted">· {{ x.assigned_to or 'Unassigned' }}</span></a>
+    {% else %}<div class="muted" style="font-size:13px">No demos today.</div>{% endfor %}
+  </div>
+  <div style="display:flex;gap:18px;flex-wrap:wrap;font-variant-numeric:tabular-nums">
+    <div><div style="font-size:24px;font-weight:800">{{ dt.booked }}</div><div class="muted" style="font-size:12px">Booked</div></div>
+    <div><div style="font-size:24px;font-weight:800">{{ dt.attended }}</div><div class="muted" style="font-size:12px">Attended</div></div>
+    <div><div style="font-size:24px;font-weight:800">{{ dt.no_show }}</div><div class="muted" style="font-size:12px">No-show</div></div>
+    <div><div style="font-size:24px;font-weight:800">{{ dt.upcoming }}</div><div class="muted" style="font-size:12px">Upcoming</div></div>
+  </div>
+  <div style="min-width:0">
+    <div style="font-size:12px;font-weight:700;color:{{ '#B42318' if dash_demos.missing else 'var(--muted)' }};text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Outcome missing ({{ dash_demos.missing|length }})</div>
+    {% for x in dash_demos.missing[:4] %}<a href="{{ url_for('portal.lead_detail', lead_id=x.lead_id) }}#demo" style="display:block;font-size:13px;color:var(--ink);padding:3px 0;text-decoration:none">{{ x.customer_name or x.email }} <span class="muted">· {{ x.day }} · {{ x.assigned_to or 'Unassigned' }}</span></a>
+    {% else %}<div class="muted" style="font-size:13px">Every past demo has an outcome.</div>{% endfor %}
+  </div>
+</div>
+{% endif %}
+
 {# ═══════════════════════════════════════════════════════════════
    SALES PIPELINE SNAPSHOT + LEAD SOURCES — Dashboard redesign Phase 2
    (2026-09-10, see project_phixtra_connect_dashboard_redesign memory).

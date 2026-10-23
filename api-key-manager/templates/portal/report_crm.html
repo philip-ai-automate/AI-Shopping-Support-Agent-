@@ -373,11 +373,11 @@
   <div class="sec-head"><span class="secnum">4</span><div><h2 class="h2">Team performance</h2><p class="h2-sub">What each person did in this period and what came of it. Work counts come from what was logged in the portal (recorded since 11 Oct 2026). Open leads and open value are as of today.</p></div></div>
   {% if s.error %}{{ failed() }}{% else %}
   <div class="table-wrap">
-    <table style="min-width:960px">
-      <thead><tr><th>Person</th><th>Open leads</th><th>Became deals</th><th>Steps moved</th><th>Emails</th><th>WhatsApp</th><th>Calls</th><th>Notes</th><th>Won</th><th>Win rate</th><th>Open value</th></tr></thead>
+    <table style="min-width:1140px">
+      <thead><tr><th>Person</th><th>Open leads</th><th>Became deals</th><th>Steps moved</th><th>Emails</th><th>WhatsApp</th><th>Calls</th><th>Notes</th><th>Demos</th><th>Attended</th><th>No-show</th><th>Won</th><th>Win rate</th><th>Open value</th></tr></thead>
       <tbody>
       {% for t in s.rows %}
-        <tr><td style="font-weight:650">{{ t.name }}</td><td>{{ '{:,}'.format(t.leads) }}</td><td>{{ t.deals }}</td><td>{{ t.moves }}</td><td>{{ '{:,}'.format(t.emails) if t.emails is number else t.emails }}</td><td>{{ t.wa }}</td><td>{{ t.calls }}</td><td>{{ t.notes }}</td><td>{{ t.won }}</td><td>{{ t.rate }}</td><td style="font-weight:650">{{ t.value }}</td></tr>
+        <tr><td style="font-weight:650">{{ t.name }}</td><td>{{ '{:,}'.format(t.leads) }}</td><td>{{ t.deals }}</td><td>{{ t.moves }}</td><td>{{ '{:,}'.format(t.emails) if t.emails is number else t.emails }}</td><td>{{ t.wa }}</td><td>{{ t.calls }}</td><td>{{ t.notes }}</td><td>{{ t.demos }}</td><td>{{ t.demos_attended }}</td><td>{{ t.demos_no_show }}</td><td>{{ t.won }}</td><td>{{ t.rate }}</td><td style="font-weight:650">{{ t.value }}</td></tr>
       {% else %}
         <tr><td colspan="11" class="muted-c">No team work recorded in this period.</td></tr>
       {% endfor %}

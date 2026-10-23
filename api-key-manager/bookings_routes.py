@@ -35,6 +35,7 @@ import psycopg2.extras
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
 import bookings_crm
+import lead_followups
 import outlook_mail as M
 from db import get_db_connection
 from feature_access import team_feature
@@ -42,8 +43,10 @@ from portal_routes import (
     _current_actor, _customer_id, _decrypt_key, _email_lead_contacted, _encrypt_key, _get_customer,
     _get_tenant_plan, _inject_granted_features, _link_lead_to_contact, _phone_entry, _plan_grants_feature,
     _require_login, _require_plan_sub_feature, _require_team_permission, _seq_stop_matching,
-    pipeline_record_stage_change,
+    pipeline_record_stage_change, _team_member_has_permission, _lead_mark_not_a_fit, _lead_can_be_not_a_fit,
+    _pipeline_lead_owned_by_tenant, PIPELINE_NOT_A_FIT_REASONS, _require_any_team_permission,
 )
+from merchant_pipeline import STAGE_ORDER
 
 KEY = "crm.bookings_connect"
 CHECK_EVERY = timedelta(minutes=5)
@@ -89,7 +92,7 @@ def page():
     if r:
         return r
     customer = _get_customer(_customer_id())
-    r = _gate(customer)
+    r = _require_plan_sub_feature(customer, KEY, "Microsoft Bookings") or _require_team_permission(KEY)
     if r:
         return r
     tenant_id = int(customer["tenant_id"])
@@ -125,6 +128,40 @@ def page():
     )
 
 
+# ── Demos page (2026-10-22): managers see everyone, salespeople their own ──
+
+def is_demo_manager() -> bool:
+    return not session.get("team_member_id") or _team_member_has_permission("crm.demos_all")
+
+
+@bookings_bp.route("/demos", methods=["GET"])
+@team_feature("crm.demos_view", "crm.demos_all")
+def demos():
+    r = _require_login()
+    if r:
+        return r
+    customer = _get_customer(_customer_id())
+    r = (_require_plan_sub_feature(customer, "crm.demos_view", "Demos")
+         or _require_any_team_permission(["crm.demos_view", "crm.demos_all"]))
+    if r:
+        return r
+    tenant_id = int(customer["tenant_id"])
+    period = request.args.get("period", "week")
+    if period not in dict(bookings_crm.PERIODS):
+        period = "week"
+    manager = is_demo_manager()
+    actor = _current_actor(customer)
+    conn, cur = _db()
+    try:
+        data = bookings_crm.demos_overview(cur, tenant_id, period, None if manager else actor["key"])
+        connected = bool(connection_for(tenant_id))
+    finally:
+        cur.close(); conn.close()
+    top = max([max(w["booked"], w["attended"]) for w in data["weeks"]] + [1])
+    return render_template("portal/demos.html", customer=customer, d=data, periods=bookings_crm.PERIODS,
+                           manager=manager, connected=connected, top=top)
+
+
 @bookings_bp.route("/integrations/microsoft-bookings/connect", methods=["GET"])
 @team_feature(KEY)
 def connect():
@@ -132,7 +169,7 @@ def connect():
     if r:
         return r
     customer = _get_customer(_customer_id())
-    r = _gate(customer)
+    r = _require_plan_sub_feature(customer, KEY, "Microsoft Bookings") or _require_team_permission(KEY)
     if r:
         return r
     if not M.configured() or M.secret_expired():
@@ -151,7 +188,7 @@ def finish_connect():
     if r:
         return r
     customer = _get_customer(_customer_id())
-    r = _gate(customer)
+    r = _require_plan_sub_feature(customer, KEY, "Microsoft Bookings") or _require_team_permission(KEY)
     if r:
         return r
     expected = session.pop("ms_oauth_state", None)
@@ -226,7 +263,7 @@ def choose():
     if r:
         return r
     customer = _get_customer(_customer_id())
-    r = _gate(customer)
+    r = _require_plan_sub_feature(customer, KEY, "Microsoft Bookings") or _require_team_permission(KEY)
     if r:
         return r
     bc = connection_for(int(customer["tenant_id"]))
@@ -254,7 +291,7 @@ def check_now():
     if r:
         return r
     customer = _get_customer(_customer_id())
-    r = _gate(customer)
+    r = _require_plan_sub_feature(customer, KEY, "Microsoft Bookings") or _require_team_permission(KEY)
     if r:
         return r
     bc = connection_for(int(customer["tenant_id"]))
@@ -277,7 +314,7 @@ def disconnect():
     if r:
         return r
     customer = _get_customer(_customer_id())
-    r = _gate(customer)
+    r = _require_plan_sub_feature(customer, KEY, "Microsoft Bookings") or _require_team_permission(KEY)
     if r:
         return r
     conn, cur = _db()
@@ -291,10 +328,22 @@ def disconnect():
     return redirect(url_for("bookings.page"))
 
 
+# "How did it go?" (2026-10-22): each answer moves the lead through the
+# shared pipeline stages — never backwards — and is kept in demo_outcomes.
+OUTCOMES = {
+    "interested": ("Interested, good fit", "qualified"),
+    "proposal":   ("Proposal sent", "proposal_sent"),
+    "another":    ("Needs another meeting", None),
+    "not_fit":    ("Not a fit", "not_a_fit"),
+    "no_show":    ("Didn't show up", None),
+    "done":       ("Done", None),            # the old button, kept for pages already open
+}
+
+
 @bookings_bp.route("/leads/<int:lead_id>/demo/<int:appt_id>/mark", methods=["POST"])
 @team_feature("leads.page")
 def mark(lead_id: int, appt_id: int):
-    """Demo done / They didn't show up, from the bar on the lead page."""
+    """The demo outcome, from the bar on the lead page."""
     r = _require_login()
     if r:
         return r
@@ -303,24 +352,97 @@ def mark(lead_id: int, appt_id: int):
         return r
     customer = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
+    back = url_for("portal.lead_detail", lead_id=lead_id) + "#demo"
     outcome = request.form.get("outcome")
-    if outcome not in ("done", "no_show"):
-        return redirect(url_for("portal.lead_detail", lead_id=lead_id))
+    if outcome not in OUTCOMES:
+        flash("Choose how the demo went.", "warning")
+        return redirect(back)
+    lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
+    if not lead:
+        flash("Lead not found.", "danger")
+        return redirect(url_for("portal.leads_page"))
+    next_step = (request.form.get("next_step") or "").strip()[:300] or None
+    try:
+        next_date = datetime.strptime(request.form.get("next_date") or "", "%Y-%m-%d").date()
+    except ValueError:
+        next_date = None
+    note = (request.form.get("note") or "").strip()[:2000] or None
+    reason = (request.form.get("reason") or "").strip()
+    if reason == "Other" and (request.form.get("reason_other") or "").strip():
+        reason = "Other: " + request.form["reason_other"].strip()[:200]
+    if outcome == "not_fit" and (not reason or (reason not in PIPELINE_NOT_A_FIT_REASONS and not reason.startswith("Other:"))):
+        flash("Choose why they're not a fit.", "danger")
+        return redirect(back)
+    if outcome != "not_fit" and not next_date:
+        flash("Add the date of the next step.", "danger")
+        return redirect(back)
+    if next_date:
+        next_date, why = lead_followups.parse_date(next_date.isoformat(), tenant_id)
+        if why:
+            flash(why.replace("next follow-up", "next step"), "danger")
+            return redirect(back)
+
     actor = _current_actor(customer)
+    can_move = _team_member_has_permission("leads.qualify") or _team_member_has_permission("crm.pipeline_board_edit")
+    label, target = OUTCOMES[outcome]
     conn, cur = _db()
+    stage_to = None
     try:
         cur.execute("""UPDATE booking_appointments SET status=%s, marked_by=%s, updated_at=NOW()
                        WHERE id=%s AND tenant_id=%s AND lead_id=%s AND status='booked' AND start_at <= NOW()
-                       RETURNING id""", (outcome, actor["label"], appt_id, tenant_id, lead_id))
-        if cur.fetchone():
-            _event(cur, tenant_id, appt_id, lead_id, outcome,
-                   "Marked as done." if outcome == "done" else "They didn't show up.", actor["label"])
-            cur.execute("UPDATE merchant_pipeline_leads SET updated_at=NOW() WHERE id=%s", (lead_id,))
+                       RETURNING id""",
+                    ("no_show" if outcome == "no_show" else "done", actor["label"], appt_id, tenant_id, lead_id))
+        if not cur.fetchone():
+            conn.rollback()
+            flash("This demo's outcome is already recorded, or it hasn't started yet.", "warning")
+            return redirect(back)
+        stage_from = lead["stage"]
+        if target in ("qualified", "proposal_sent") and can_move and not lead.get("outcome"):
+            sets = ["is_opportunity=TRUE", "opportunity_at=COALESCE(opportunity_at, NOW())", "updated_at=NOW()"]
+            vals = []
+            if STAGE_ORDER.index(stage_from) < STAGE_ORDER.index(target) if stage_from in STAGE_ORDER else True:
+                stage_to = target
+                sets.append("stage=%s"); vals.append(target)
+                if target == "qualified":
+                    sets += ["qualified_date=COALESCE(qualified_date, CURRENT_DATE)", "qualified_notes=COALESCE(%s, qualified_notes)"]
+                else:
+                    sets += ["proposal_date=COALESCE(proposal_date, CURRENT_DATE)", "proposal_notes=COALESCE(%s, proposal_notes)"]
+                vals.append(next_step or note)
+            cur.execute(f"UPDATE merchant_pipeline_leads SET {', '.join(sets)} WHERE id=%s", vals + [lead_id])
+        cur.execute("""INSERT INTO demo_outcomes (appointment_id, tenant_id, lead_id, outcome, next_step, next_date, note,
+                                                  stage_from, stage_to, marked_by)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (appointment_id) DO UPDATE SET outcome=EXCLUDED.outcome, next_step=EXCLUDED.next_step,
+                         next_date=EXCLUDED.next_date, note=EXCLUDED.note, stage_from=EXCLUDED.stage_from,
+                         stage_to=EXCLUDED.stage_to, marked_by=EXCLUDED.marked_by, created_at=NOW()""",
+                    (appt_id, tenant_id, lead_id, outcome, next_step, next_date, note, stage_from,
+                     stage_to or ("not_a_fit" if outcome == "not_fit" and can_move else None), actor["label"]))
+        detail = f"Outcome: {label}."
+        if next_step or next_date:
+            detail += f" Next: {next_step or 'follow up'}" + (f" on {next_date.strftime('%a %-d %b')}" if next_date else "") + "."
+        if note:
+            detail += f" Note: {note}"
+        _event(cur, tenant_id, appt_id, lead_id, "no_show" if outcome == "no_show" else "done", detail, actor["label"])
+        cur.execute("UPDATE merchant_pipeline_leads SET updated_at=NOW() WHERE id=%s", (lead_id,))
         conn.commit()
     finally:
         cur.close(); conn.close()
-    flash("Demo marked as done." if outcome == "done" else "Recorded: they didn't show up.", "success")
-    return redirect(url_for("portal.lead_detail", lead_id=lead_id) + "#demos")
+
+    moved = ""
+    if stage_to:
+        pipeline_record_stage_change(lead_id, stage_from, stage_to, actor["label"], f"Moved by demo outcome: {label}")
+        moved = f" Moved to {stage_to.replace('_', ' ').title()}."
+    elif outcome == "not_fit" and can_move and _lead_can_be_not_a_fit(lead):
+        _lead_mark_not_a_fit(lead, reason, actor["label"])
+        moved = " Marked Not a Fit."
+    elif target and not can_move:
+        moved = " Your role can't move leads in the pipeline, so ask a manager to move it."
+    if outcome != "not_fit":
+        # The demo was the follow-up; the next step date is the next one (2026-10-23).
+        lead_followups.record_contact(tenant_id, lead_id, "demo_held", actor, due=next_date, source="demo",
+                                      note=next_step)
+    flash(f"Demo outcome saved: {label}.{moved}", "success")
+    return redirect(back)
 
 
 # ── checking a Bookings page ───────────────────────────────────────────────

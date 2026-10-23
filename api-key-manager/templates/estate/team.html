@@ -348,6 +348,47 @@
 </div>
 {% endif %}
 
+<!-- ── Alerts per person (Phase 4) ── -->
+<style>
+.al-card{background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;box-shadow:0 2px 12px rgba(3,12,24,0.04);margin-top:22px;overflow:hidden}
+.al-head{padding:18px 22px;border-bottom:1px solid rgba(3,12,24,0.07)}
+.al-head b{font-size:15px;font-weight:800;color:#030C18}
+.al-head p{font-size:13px;color:rgba(3,12,24,0.5);margin:4px 0 0;line-height:1.55;max-width:70ch}
+.al-row{display:grid;grid-template-columns:minmax(150px,1.1fr) auto minmax(190px,1fr) auto auto;gap:14px;align-items:center;padding:13px 22px;border-bottom:1px solid rgba(3,12,24,0.05)}
+.al-row:last-child{border-bottom:none}
+.al-who b{display:block;font-size:13.5px;color:#030C18}
+.al-who span{font-size:12px;color:rgba(3,12,24,0.5)}
+.al-on{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:rgba(3,12,24,0.6);cursor:pointer;white-space:nowrap}
+.al-row input[type=checkbox]{width:auto!important;margin:0}
+.al-row input[type=text]{width:100%;padding:8px 11px;border:1.5px solid rgba(3,12,24,0.12);border-radius:9px;font:inherit;font-size:13px;background:#fafbfc;box-sizing:border-box}
+.al-ch{display:flex;gap:10px;flex-wrap:wrap;font-size:12.5px;color:rgba(3,12,24,0.7)}
+.al-ch label{display:inline-flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap}
+.al-ch small{color:rgba(3,12,24,0.45)}
+.al-save{padding:8px 16px;background:#030C18;color:#fff;border:none;border-radius:9px;font:inherit;font-size:12.5px;font-weight:750;cursor:pointer}
+@media(max-width:860px){.al-row{grid-template-columns:1fr auto;padding:13px 14px}.al-row .al-wa,.al-row .al-ch{grid-column:1 / -1}.al-head{padding:16px 14px}}
+</style>
+<div class="al-card" id="alerts">
+  <div class="al-head">
+    <b>Alerts</b>
+    <p>Who is alerted when a lead slips, and how. Managers (the owner and every admin) are alerted at the same moment as the agent. The agency switch is in <a href="{{ url_for('estate.automation') }}" style="color:inherit;font-weight:750">Automation</a>{% if not al_on %}, and it's off right now, so nobody is messaged yet{% endif %}. Phone notifications are turned on by each person on their own phone, in My alerts.</p>
+  </div>
+  {% for p in al_people %}
+  <form method="POST" action="{{ url_for('estate.team') }}#alerts" class="al-row">
+    <input type="hidden" name="section" value="alerts_person">
+    <input type="hidden" name="person_id" value="{{ p.staff_id }}">
+    <div class="al-who"><b>{{ p.name }}</b><span>{{ 'Owner' if p.role == 'owner' else p.role|title }} · {{ p.email }}</span></div>
+    <label class="al-on"><input type="checkbox" name="alerts_on" {{ 'checked' if p.alerts_on }}> Alerts on</label>
+    <div class="al-wa"><input type="text" name="wa_phone" value="{{ p.wa_phone or '' }}" placeholder="WhatsApp number, e.g. +234 803 123 4567" aria-label="{{ p.name }} WhatsApp number" inputmode="tel"></div>
+    <div class="al-ch">
+      <label><input type="checkbox" name="by_email" {{ 'checked' if p.by_email }}> Email</label>
+      <label><input type="checkbox" name="by_wa" {{ 'checked' if p.by_wa }}> WhatsApp</label>
+      <label><input type="checkbox" name="by_push" {{ 'checked' if p.by_push }}> Phone <small>({{ p.devices }} device{{ 's' if p.devices != 1 }})</small></label>
+    </div>
+    <button class="al-save" type="submit">Save</button>
+  </form>
+  {% endfor %}
+</div>
+
 <!-- ── Add Member Modal ── -->
 <div class="modal-backdrop" id="addModal" onclick="if(event.target===this)closeAdd()">
   <div class="modal-box">

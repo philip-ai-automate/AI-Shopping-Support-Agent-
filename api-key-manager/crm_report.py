@@ -47,6 +47,7 @@ ACTION_LABELS = {
     "not_a_fit": "Not a Fit", "reopened": "Reopened", "stage_moved": "Stage moved",
     "chat_claimed": "Chat taken", "reply_logged": "Reply logged", "contact_created": "Contact added",
     "contact_edited": "Contact edited", "company_created": "Company added", "leads_assigned": "Assigned",
+    "linkedin": "LinkedIn step",
 }
 CHANNEL_LABELS = {"email": "Email", "phone_call": "Phone call", "whatsapp": "WhatsApp"}
 CAMPAIGN_STATUS_LABELS = {
@@ -744,19 +745,32 @@ def sec_team(cur, ctx, opts):
           AND actor_key NOT LIKE 'system%%'
         GROUP BY actor_key""", (list(MOVE_ACTIONS), list(MESSAGE_ACTIONS), t, tz, a, b))
     by_act = {r["k"]: r for r in cur.fetchall()}
+    # Demos (2026-10-22): Microsoft Bookings demos held in this period, by the lead's salesperson
+    by_demo = {}
+    cur.execute("SELECT to_regclass('booking_appointments') IS NOT NULL AS ok")
+    if cur.fetchone()["ok"]:
+        cur.execute("""
+            SELECT COALESCE(l.assigned_key, '') AS k, COUNT(*) AS demos,
+                   COUNT(*) FILTER (WHERE a.status = 'done') AS attended,
+                   COUNT(*) FILTER (WHERE a.status = 'no_show') AS no_show
+            FROM booking_appointments a JOIN merchant_pipeline_leads l ON l.id = a.lead_id
+            WHERE a.tenant_id = %s AND a.status <> 'cancelled'
+              AND (a.start_at AT TIME ZONE %s)::date BETWEEN %s AND %s
+            GROUP BY 1""", (t, tz, a, b))
+        by_demo = {r["k"]: r for r in cur.fetchall()}
 
     scope = ctx.get("team_scope")
     asg = set(opts.get("asg") or [])
     keys = [p["key"] for p in ctx["people"]]
-    keys += [k for k in list(by_lead) + list(by_act) if k and k not in keys]
+    keys += [k for k in list(by_lead) + list(by_act) + list(by_demo) if k and k not in keys]
     rows = []
     for k in keys + [""]:
         if scope is not None and k not in scope:
             continue
         if asg and (k or "__none__") not in asg:
             continue
-        L, A = by_lead.get(k) or {}, by_act.get(k) or {}
-        if not L and not A and (k == "" or k not in ctx["active_keys"]):
+        L, A, D = by_lead.get(k) or {}, by_act.get(k) or {}, by_demo.get(k) or {}
+        if not L and not A and not D and (k == "" or k not in ctx["active_keys"]):
             continue
         won, lost = int(L.get("won") or 0), int(L.get("lost") or 0)
         no_act = k == ""
@@ -768,6 +782,8 @@ def sec_team(cur, ctx, opts):
             "wa": "—" if no_act else int(A.get("msgs") or 0),
             "calls": "—" if no_act else int(A.get("calls") or 0),
             "notes": "—" if no_act else int(A.get("notes") or 0),
+            "demos": int(D.get("demos") or 0), "demos_attended": int(D.get("attended") or 0),
+            "demos_no_show": int(D.get("no_show") or 0),
             "won": won, "rate": f"{round(won / (won + lost) * 100)}%" if (won + lost) else "—",
             "value": ctx["money_total"](L.get("open_v") or 0),
         })
@@ -931,8 +947,9 @@ def section_tables(sections: dict, stage_note: str = "") -> list:
     s = sections.get("team")
     if s and not s.get("error"):
         out.append(("Team performance", ["Person", "Open leads", "Became deals", "Steps moved", "Emails", "WhatsApp",
-                                         "Calls", "Notes", "Won", "Win rate", "Open value"],
+                                         "Calls", "Notes", "Demos", "Attended", "No-show", "Won", "Win rate", "Open value"],
                     [[x["name"], x["leads"], x["deals"], x["moves"], x["emails"], x["wa"], x["calls"], x["notes"],
+                      x.get("demos", 0), x.get("demos_attended", 0), x.get("demos_no_show", 0),
                       x["won"], x["rate"], x["value"]] for x in s["rows"]]))
     s = sections.get("sources")
     if s and not s.get("error"):

@@ -564,6 +564,29 @@ async def receive_webhook(
         await handle_messenger_webhook(payload, body, x_hub_signature_256 or "")
         return {"status": "ok"}
 
+    # WhatsApp calls (2026-10-20): call events, call statuses and replies to
+    # "Can we call you?" — see wa_calls.py. Handled before message statuses
+    # because outgoing-call statuses use the same "statuses" list.
+    from wa_calls import is_call_payload, first_phone_number_id, handle_call_webhook
+    if is_call_payload(payload):
+        _cpnid = first_phone_number_id(payload)
+        # KeyLand (home.phixtra.com) numbers have their own calls (keyland_calls.py)
+        from estate_webhook import get_estate_tenant_by_phone_number_id as _kl_tenant, _verify_estate_signature as _kl_sig
+        _kl = _kl_tenant(_cpnid) if _cpnid else None
+        if _kl:
+            if not _kl_sig(body, x_hub_signature_256 or "", _kl.get("wa_app_secret") or ""):
+                print("⚠️ [META] HMAC mismatch on KeyLand call webhook — ignoring")
+                return {"status": "ok"}
+            from keyland_calls import handle as _kl_calls
+            await _kl_calls(payload, _kl)
+            return {"status": "ok", "reason": "keyland_call"}
+        _ctenant = get_tenant_by_phone_number_id(_cpnid) if _cpnid else None
+        if not _verify_signature(body, x_hub_signature_256 or "", (_ctenant or {}).get("app_secret") or ""):
+            print("⚠️ [META] HMAC mismatch on call webhook — ignoring")
+            return {"status": "ok"}
+        await handle_call_webhook(payload)
+        return {"status": "ok", "reason": "call"}
+
     # Delivery-status callbacks (sent/delivered/read/failed) are a distinct
     # payload shape from inbound messages — handle and return early so they
     # never fall through to message-handling logic below.

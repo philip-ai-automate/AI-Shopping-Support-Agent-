@@ -134,7 +134,7 @@ def build_email(tenant_id, viewer, first_name, now):
     t = d["totals"]
     people = d["people"]
     day_words = f"{now:%a %-d %b}"
-    subject = (f"Your team today: {t['leads_worked']:,} lead{'s' if t['leads_worked'] != 1 else ''} worked, "
+    subject = (f"Your team today: {t['contacted']:,} business{'es' if t['contacted'] != 1 else ''} contacted personally, "
                f"{t['opps']} new opportunit{'ies' if t['opps'] != 1 else 'y'} · {day_words}")
     team_words = "your team" if viewer["is_team"] else "the team"
     n = len(people)
@@ -147,14 +147,36 @@ def build_email(tenant_id, viewer, first_name, now):
             f"<td style='padding:9px 10px;border-top:1px solid #e5e7eb'><b>{_esc(p['name'])}</b>"
             f"<div style='font-size:12px;color:#6b7280'>{when}</div></td>"
             + "".join(f"<td style='padding:9px 10px;border-top:1px solid #e5e7eb;text-align:right'>{v}</td>"
-                      for v in (f"{p['leads_worked']:,}", p["calls"], p["replies"], p["opps"], _naira(p["won_value"])))
+                      for v in (f"<b>{p['contacted']:,}</b>", p["calls"], p["messages"], p["replies"], p["opps"], _naira(p["won_value"])))
             + "</tr>")
     th = "".join(f"<th style='padding:8px 10px;text-align:{a};font-size:11px;color:#6b7280;text-transform:uppercase;"
                  f"letter-spacing:.04em;background:#f6f7f9'>{h}</th>"
-                 for h, a in (("Person", "left"), ("Leads worked", "right"), ("Calls", "right"),
-                              ("Replies", "right"), ("New opps", "right"), ("Won", "right")))
+                 for h, a in (("Person", "left"), ("Contacted personally", "right"), ("Calls", "right"),
+                              ("Messages", "right"), ("Replies", "right"), ("New opps", "right"), ("Won", "right")))
     table = (f"<table cellpadding='0' cellspacing='0' style='width:100%;border:1px solid #e5e7eb;border-radius:10px;"
              f"border-collapse:separate;font-size:14px;margin:6px 0 18px'><tr>{th}</tr>{''.join(rows)}</table>")
+
+    # Who they contacted today, by name (the daily record)
+    record = T.contacted_list(tenant_id, {p["key"] for p in people}, now.date(), now.date())
+    by_person = {g["actor_key"]: g for g in record}
+    rec_html = []
+    for p in people:
+        g = by_person.get(p["key"])
+        if not g:
+            rec_html.append(f"<p style='margin:0 0 10px;font-size:13.5px'><b>{_esc(p['name'])}</b>: "
+                            "<span style='color:#b42318'>no business contacted personally today</span>"
+                            + (f" <span style='color:#6b7280'>({p['marked_only']:,} marked Contacted without a call or message)</span>"
+                               if p.get("marked_only") else "") + "</p>")
+            continue
+        items = "".join(
+            f"<li style='margin:2px 0'>{it['first']:%H:%M} · <b>{_esc(it['business'])}</b>"
+            f" <span style='color:#6b7280'>· {_esc(' · '.join(it['what']))[:160]}</span></li>" for it in g["items"][:25])
+        more = f"<li style='color:#6b7280'>and {g['count'] - 25} more</li>" if g["count"] > 25 else ""
+        rec_html.append(f"<p style='margin:0 0 4px;font-size:13.5px'><b>{_esc(p['name'])}</b>: {g['count']} "
+                        f"business{'es' if g['count'] != 1 else ''}</p><ul style='margin:0 0 12px;padding-left:18px;font-size:13px'>{items}{more}</ul>")
+    record_html = ("<p style='font-weight:700;margin:4px 0 8px'>Businesses contacted personally today</p>" + "".join(rec_html)
+                   + (f"<p style='font-size:12px;color:#6b7280;margin:0 0 16px'>Not counted: {t['auto_emails']:,} emails sent automatically "
+                      "by sequences.</p>" if t.get("auto_emails") else ""))
 
     attn = email_attention(d, now)
     if attn:
@@ -187,10 +209,10 @@ def build_email(tenant_id, viewer, first_name, now):
             finally:
                 conn.close()
             keys = {p["key"] for p in people}
-            lw = sum(int(tot.get(k, {}).get("leads_worked") or 0) for k in keys)
+            lw = sum(int(tot.get(k, {}).get("contacted") or 0) for k in keys)
             lo = sum(int(tot.get(k, {}).get("opps") or 0) for k in keys)
             lv = sum(float(tot.get(k, {}).get("won_value") or 0) for k in keys)
-            monday = (f"<p style='margin:0 0 12px'><b>Last week ({ls:%-d} – {le:%-d %b}):</b> {lw:,} leads worked, "
+            monday = (f"<p style='margin:0 0 12px'><b>Last week ({ls:%-d} – {le:%-d %b}):</b> {lw:,} businesses contacted personally, "
                       f"{lo} new opportunit{'ies' if lo != 1 else 'y'}, {_naira(lv)} won.</p>")
 
     why = ("You get this because " + (", ".join(p["name"].split()[0] for p in people[:-1]) + " and " if n > 1 else "")
@@ -203,6 +225,7 @@ def build_email(tenant_id, viewer, first_name, now):
 <div style="padding:22px 24px;font-size:14px;line-height:1.55">
 <p style="margin:0 0 12px">Hi {_esc(first_name)}, here is how {team_words} did today.</p>
 {table}
+{record_html}
 {attn_html}
 <p style="margin:14px 0 12px">{month_line}</p>
 {monday}
@@ -212,7 +235,7 @@ Sent Monday to Friday at 6:00 pm {T.tz_label(now.tzinfo)} time. {why} Calls coun
 The account owner can switch this email off on the Team performance page.</div>
 </div></div></div>"""
     text = (f"Sales team daily summary, {now:%A %-d %B %Y}\n\n"
-            + "\n".join(f"{p['name']}: {p['leads_worked']} leads worked, {p['calls']} calls, {p['replies']} replies, "
+            + "\n".join(f"{p['name']}: {p['contacted']} businesses contacted personally, {p['calls']} calls, {p['replies']} replies, "
                         f"{p['opps']} new opps, {_naira(p['won_value'])} won" for p in people)
             + f"\n\nOpen Team performance: {PORTAL}/team-performance\n")
     return subject, body, text

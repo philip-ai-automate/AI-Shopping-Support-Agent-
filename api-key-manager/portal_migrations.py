@@ -2905,56 +2905,107 @@ def ensure_portal_tables():
             """)
 
         # ══════════════════════════════════════════════════════════════════
-        # PressOne integration (2026-09-12) — CRM angle only, bring-your-own-
-        # account: a business that already has a PressOne (Nigerian business
-        # phone system) account links it here so their calls show up on the
-        # matching Contact's timeline. PhiXtra never resells PressOne
-        # numbers or bills for them. See project_phixtra_pressone_integration
-        # memory for the full design and the confirmed real webhook payload
-        # samples this schema is built from.
+        # WhatsApp calls (2026-10-20) — replaced PressOne, which no business
+        # had connected (its two empty tables are dropped here). Customers
+        # call the business's WhatsApp number; it rings for every team
+        # member allowed to answer, first to answer takes it. Calls arrive
+        # on the gateway (wa_calls.py); answering happens in the browser
+        # (static/portal/wa-calls.js) through calls_routes.py.
         # ══════════════════════════════════════════════════════════════════
-        if not _table_exists(cur, "pressone_accounts"):
+        for _t in ("pressone_calls", "pressone_accounts"):
+            if _table_exists(cur, _t):
+                cur.execute("SET LOCAL lock_timeout = '3s'")
+                cur.execute(f"DROP TABLE {_t}")
+        if not _table_exists(cur, "wa_calls"):
             cur.execute("""
-                CREATE TABLE pressone_accounts (
-                    id                       SERIAL PRIMARY KEY,
-                    tenant_id                INTEGER NOT NULL UNIQUE REFERENCES tenants(id) ON DELETE CASCADE,
-                    account_id               TEXT NOT NULL UNIQUE,
-                    api_key                  TEXT NOT NULL,
-                    webhook_id               TEXT,
-                    webhook_secret           TEXT,
-                    active                   BOOLEAN NOT NULL DEFAULT TRUE,
-                    auto_reply_missed_calls  BOOLEAN NOT NULL DEFAULT TRUE,
-                    connected_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                )
-            """)
-        # Added after the table already existed on this server (2026-09-12,
-        # missed-call auto-reply follow-up) — the column above only helps a
-        # brand-new install; this covers the live one.
-        if not _column_exists(cur, "pressone_accounts", "auto_reply_missed_calls"):
-            cur.execute("ALTER TABLE pressone_accounts ADD COLUMN auto_reply_missed_calls BOOLEAN NOT NULL DEFAULT TRUE")
-        if not _table_exists(cur, "pressone_calls"):
-            cur.execute("""
-                CREATE TABLE pressone_calls (
-                    id               SERIAL PRIMARY KEY,
-                    tenant_id        INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-                    contact_id       INTEGER REFERENCES wa_contacts(id) ON DELETE SET NULL,
-                    call_id          TEXT NOT NULL UNIQUE,
-                    call_session_id  TEXT,
-                    event            TEXT NOT NULL,
-                    direction        TEXT,
-                    caller_number    TEXT,
-                    callee_number    TEXT,
-                    status           TEXT,
-                    duration_seconds INTEGER NOT NULL DEFAULT 0,
-                    end_reason       TEXT,
-                    recording_url    TEXT,
-                    raw_payload      JSONB,
-                    started_at       TIMESTAMPTZ,
+                CREATE TABLE wa_calls (
+                    id               BIGSERIAL PRIMARY KEY,
+                    tenant_id        INTEGER NOT NULL,
+                    phone_number_id  TEXT NOT NULL,
+                    wa_call_id       TEXT UNIQUE,
+                    direction        VARCHAR(10) NOT NULL DEFAULT 'in',   -- in / out
+                    customer_phone   TEXT NOT NULL,
+                    customer_name    TEXT,
+                    lead_id          BIGINT,
+                    contact_id       BIGINT,
+                    ring_first_key   VARCHAR(160),
+                    status           VARCHAR(20) NOT NULL DEFAULT 'ringing',
+                    -- ringing / answering / answered / completed / missed /
+                    -- out_of_hours / rejected / failed / calling (outgoing)
+                    missed_reason    VARCHAR(30),   -- no_answer / out_of_hours / nobody_online / declined
+                    offer_sdp        TEXT,
+                    answer_sdp       TEXT,
+                    answered_by_key  VARCHAR(160),
+                    answered_by_name VARCHAR(160),
+                    started_by_key   VARCHAR(160),
+                    started_by_name  VARCHAR(160),
+                    callback_by_key  VARCHAR(160),
+                    callback_by_name VARCHAR(160),
+                    callback_at      TIMESTAMPTZ,
+                    auto_reply       VARCHAR(20),   -- sent / failed
+                    error            TEXT,
+                    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    answered_at      TIMESTAMPTZ,
                     ended_at         TIMESTAMPTZ,
-                    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                )
-            """)
-            cur.execute("CREATE INDEX idx_pressone_calls_contact ON pressone_calls(tenant_id, contact_id, started_at)")
+                    duration         INTEGER
+                )""")
+            cur.execute("CREATE INDEX wa_calls_tenant_idx ON wa_calls (tenant_id, created_at DESC)")
+            cur.execute("CREATE INDEX wa_calls_live_idx ON wa_calls (status) WHERE status IN ('ringing','answering','answered','calling')")
+            cur.execute("CREATE INDEX wa_calls_phone_idx ON wa_calls (tenant_id, customer_phone)")
+        if not _table_exists(cur, "wa_call_settings"):
+            cur.execute("""
+                CREATE TABLE wa_call_settings (
+                    phone_number_id  TEXT PRIMARY KEY,
+                    tenant_id        INTEGER NOT NULL,
+                    incoming_on      BOOLEAN NOT NULL DEFAULT FALSE,
+                    outgoing_on      BOOLEAN NOT NULL DEFAULT FALSE,
+                    ring_first       BOOLEAN NOT NULL DEFAULT TRUE,
+                    ring_first_secs  INTEGER NOT NULL DEFAULT 15,
+                    hours_on         BOOLEAN NOT NULL DEFAULT FALSE,
+                    hours            JSONB,         -- {"days":[1..5],"from":"0900","to":"1700","tz":"Africa/Lagos"}
+                    missed_message   TEXT,
+                    meta_status      TEXT,          -- last result from Meta when saving
+                    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_by       VARCHAR(160)
+                )""")
+        if not _table_exists(cur, "wa_call_permissions"):
+            cur.execute("""
+                CREATE TABLE wa_call_permissions (
+                    phone_number_id  TEXT NOT NULL,
+                    customer_phone   TEXT NOT NULL,
+                    tenant_id        INTEGER NOT NULL,
+                    status           VARCHAR(20) NOT NULL,   -- requested / accepted / rejected
+                    permanent        BOOLEAN NOT NULL DEFAULT FALSE,
+                    expires_at       TIMESTAMPTZ,
+                    requested_by     VARCHAR(160),
+                    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    PRIMARY KEY (phone_number_id, customer_phone)
+                )""")
+        # Call-back deadline (2026-10-20): a missed call must be called back
+        # within N minutes of calling time, or the managers are alerted.
+        for _t, _c, _ddl in (("wa_call_settings", "callback_on", "BOOLEAN NOT NULL DEFAULT TRUE"),
+                             ("wa_call_settings", "callback_mins", "INTEGER NOT NULL DEFAULT 30"),
+                             ("wa_calls", "callback_due_at", "TIMESTAMPTZ"),
+                             ("wa_calls", "overdue_alerted_at", "TIMESTAMPTZ")):
+            if not _column_exists(cur, _t, _c):
+                cur.execute("SET LOCAL lock_timeout = '3s'")
+                cur.execute(f"ALTER TABLE {_t} ADD COLUMN {_c} {_ddl}")
+        if not _table_exists(cur, "call_presence"):
+            # Who has the portal open (heartbeat from wa-calls.js), so a missed
+            # call can say "nobody had the portal open".
+            cur.execute("""
+                CREATE TABLE call_presence (
+                    tenant_id  INTEGER NOT NULL,
+                    actor_key  VARCHAR(160) NOT NULL,
+                    last_seen  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    PRIMARY KEY (tenant_id, actor_key)
+                )""")
+        # Answering calls is like replying to chats: roles that may reply in
+        # the Inbox start with "Answer WhatsApp calls" ticked (once).
+        cur.execute("SELECT 1 FROM feature_catalog_seen WHERE feature_key='calls.answer'")
+        if not cur.fetchone():
+            cur.execute("""UPDATE tenant_roles SET permissions = permissions || '{"calls.answer": true}'::jsonb
+                           WHERE (permissions->>'inbox.reply')::boolean IS TRUE""")
 
         # ══════════════════════════════════════════════════════════════════
         # Dual Agent Plan pricing (2026-09-18) — see project_dual_agent_pricing
@@ -4552,6 +4603,39 @@ def ensure_portal_tables():
         for (pid,) in cur.fetchall():
             cur.execute(_GRANT_ONCE_SQL, (pid, "crm.bookings_connect"))
         cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('crm.bookings_connect') ON CONFLICT DO NOTHING")
+
+        # ── Demo alerts + outcomes + Demos page (2026-10-22) ─────────────────
+        # demo_alert_log: every alert sent once (gateway demo_alerts.py).
+        # demo_outcomes: "How did it go?" on the lead page, with the next step.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS demo_alert_log (
+                id         BIGSERIAL PRIMARY KEY,
+                tenant_id  INTEGER      NOT NULL,
+                kind       VARCHAR(20)  NOT NULL,
+                ref        VARCHAR(80)  NOT NULL,
+                created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                UNIQUE (kind, ref)
+            )""")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS demo_outcomes (
+                appointment_id BIGINT       PRIMARY KEY,
+                tenant_id      INTEGER      NOT NULL,
+                lead_id        BIGINT,
+                outcome        VARCHAR(20)  NOT NULL,
+                next_step      VARCHAR(300),
+                next_date      DATE,
+                note           TEXT,
+                stage_from     VARCHAR(30),
+                stage_to       VARCHAR(30),
+                marked_by      VARCHAR(160),
+                created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS demo_outcomes_tenant_idx ON demo_outcomes (tenant_id, next_date)")
+        cur.execute("SELECT id FROM plans WHERE COALESCE(feat_email_campaigns, FALSE)")
+        for (pid,) in cur.fetchall():
+            for k in ("crm.demos_view", "crm.demos_all"):
+                cur.execute(_GRANT_ONCE_SQL, (pid, k))
+        cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('crm.demos_view'), ('crm.demos_all') ON CONFLICT DO NOTHING")
 
         # ── Selling currency (2026-10-11) ────────────────────────────────────
         # The currency a business's customers see (AI, WhatsApp, website chat)

@@ -1,5 +1,5 @@
 {% extends "estate/base.html" %}
-{% block title %}Leads & Inbox — PhiXtra Real Estate{% endblock %}
+{% block title %}Inbox — PhiXtra Real Estate{% endblock %}
 
 {% block head %}
 {% if embedded_enabled and not wa_connected %}
@@ -243,7 +243,7 @@
 
 <div class="page-header">
   <div>
-    <h1 class="section-title" style="margin-bottom:4px">Leads &amp; Inbox</h1>
+    <h1 class="section-title" style="margin-bottom:4px">Inbox</h1>
     <p class="muted">
       {% if wa_connected %}
         {{ buyers | length }} buyer{{ 's' if buyers | length != 1 }}
@@ -357,16 +357,16 @@
 <!-- Filter tabs -->
 <div class="filter-tabs">
   <a href="{{ url_for('estate.inbox', filter='all') }}"
-     class="ftab {% if filter_type == 'all' %}active{% endif %}">All Buyers</a>
+     class="ftab {% if filter_type == 'all' %}active{% endif %}">All chats</a>
   {% if my_staff_id %}
   <a href="{{ url_for('estate.inbox', filter='mine') }}"
-     class="ftab {% if filter_type == 'mine' %}active{% endif %}">My Leads</a>
+     class="ftab {% if filter_type == 'mine' %}active{% endif %}">Mine</a>
   {% endif %}
   <a href="{{ url_for('estate.inbox', filter='unassigned') }}"
      class="ftab {% if filter_type == 'unassigned' %}active{% endif %}">Unassigned</a>
   <a href="{{ url_for('estate.inbox', filter='pending') }}"
      class="ftab {% if filter_type == 'pending' %}active{% endif %}">
-    Needs Agent
+    Waiting for an agent
     {% if _re_inbox_count and _re_inbox_count > 0 %}
     <span class="ftab-badge">{{ _re_inbox_count if _re_inbox_count < 100 else '99+' }}</span>
     {% endif %}

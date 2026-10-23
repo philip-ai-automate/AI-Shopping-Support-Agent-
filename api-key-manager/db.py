@@ -21,7 +21,11 @@ def _label_actor_options():
             dept = session.get("team_member_dept_id")
             return opts + (f" -c phixtra.actor_dept={int(dept)}" if dept else "")
         cid = session.get("impersonate_customer_id") or session.get("customer_id")
-        return f"-c phixtra.actor_key=owner:{int(cid)}" if cid else None
+        if not cid:
+            return None
+        # A PhiXtra admin viewing the account: never recorded as the owner's own work
+        imp = " -c phixtra.impersonating=1" if session.get("impersonate_customer_id") else ""
+        return f"-c phixtra.actor_key=owner:{int(cid)}{imp}"
     except Exception:
         return None
 

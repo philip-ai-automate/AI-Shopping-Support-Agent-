@@ -97,9 +97,23 @@ def estate_ask_llm(
             "json_schema": _HANDOFF_RESPONSE_SCHEMA,
         }
 
-    response = _get_client().chat.completions.create(**create_kwargs)
+    # Light thinking: the reply allowance includes the model's thinking, and a
+    # long land prompt could use all of it and come back blank (22 Oct).
+    create_kwargs["reasoning_effort"] = os.getenv("ESTATE_REASONING_EFFORT", "low")
+    try:
+        response = _get_client().chat.completions.create(**create_kwargs)
+    except Exception as e:
+        if "reasoning_effort" not in str(e):
+            raise
+        create_kwargs.pop("reasoning_effort", None)          # model without thinking settings
+        response = _get_client().chat.completions.create(**create_kwargs)
 
     raw_content = response.choices[0].message.content or ""
+    if not raw_content.strip():
+        print("⚠️ estate_ask_llm: blank reply, retrying once with more room")
+        create_kwargs["max_completion_tokens"] = max(max_out * 2, 1500)
+        response = _get_client().chat.completions.create(**create_kwargs)
+        raw_content = response.choices[0].message.content or ""
     needs_handoff = None
     if structured_handoff:
         try:

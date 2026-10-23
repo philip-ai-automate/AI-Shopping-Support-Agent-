@@ -102,16 +102,28 @@ def build_buyer_summary(tenant_id: int, customer_id: int) -> str:
         except Exception:
             return str(v)
 
-    return "\n".join([
+    land_lines = _land_lines(tenant_id, customer_id)
+    return "\n".join(l for l in [
         f"Buyer: {c.get('name') or 'Unknown'} ({c.get('phone_number', '')})",
         f"Budget: {_price(c.get('budget_min'))} – {_price(c.get('budget_max'))}",
         f"Area: {c.get('preferred_area') or '?'}",
         f"Looking for: {(c.get('property_type_pref') or '?').replace('_', ' ').title()} — {c.get('transaction_pref') or '?'}",
-        f"Bedrooms: {c.get('bedrooms_pref') or '?'}",
+        None if land_lines else f"Bedrooms: {c.get('bedrooms_pref') or '?'}",
         f"Payment: {c.get('payment_method') or '?'}",
         f"Urgency: {c.get('urgency') or '?'}",
         f"Lead status: {c.get('lead_status') or 'new'}",
-    ])
+    ] + land_lines if l)
+
+
+def _land_lines(tenant_id: int, customer_id: int) -> list:
+    """Land details and readiness for the hand-over summary (land buyers only)."""
+    try:
+        from . import land as LAND
+        land = LAND.get_land(tenant_id, customer_id)
+        return LAND.summary_lines(land, LAND.load_estates(tenant_id) if land.get("estate_listing_id") else None)
+    except Exception as e:
+        print(f"⚠️ [ESTATE HANDOFF] land lines error: {e}")
+        return []
 
 
 # ── DB log ────────────────────────────────────────────────────────────────────
@@ -266,6 +278,41 @@ def _send_alert_email(
         print(f"⚠️ [ESTATE HANDOFF] Email send failed: {e}")
 
 
+# ── KeyLand alerts (Phase 4, 2026-10-22) ───────────────────────────────────────
+
+_PORTAL_DIR = "/root/phixtra-app/api-key-manager"
+
+
+def _alerts_on(tenant_id: int) -> bool:
+    conn = get_db_connection()
+    if not conn:
+        return False
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT to_regclass('re_alert_settings') IS NOT NULL")
+        if not cur.fetchone()[0]:
+            return False
+        cur.execute("SELECT alerts_on FROM re_alert_settings WHERE tenant_id=%s", (tenant_id,))
+        row = cur.fetchone()
+        return bool(row and row[0])
+    except Exception as e:
+        print(f"⚠️ [ESTATE HANDOFF] alerts check: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def _start_alerts(tenant_id: int):
+    """Run the portal's alert job for this agency now, in the background."""
+    import subprocess
+    try:
+        subprocess.Popen([f"{_PORTAL_DIR}/venv/bin/python3", "estate_alerts_job.py", "--tenant", str(int(tenant_id))],
+                         cwd=_PORTAL_DIR, stdout=open("/var/log/estate_alerts_job.log", "a"),
+                         stderr=subprocess.STDOUT, start_new_session=True)
+    except Exception as e:
+        print(f"⚠️ [ESTATE HANDOFF] could not start alerts: {e}")
+
+
 # ── Main public function ──────────────────────────────────────────────────────
 
 def detect_and_process_handoff(
@@ -301,6 +348,12 @@ def detect_and_process_handoff(
         buyer_summary=buyer_summary,
         visitor_message=user_message,
     )
+
+    # Agencies with KeyLand alerts on: the agent and managers are alerted by
+    # name, straight away (replaces the email to the main address).
+    if _alerts_on(tenant_id):
+        _start_alerts(tenant_id)
+        return answer, True
 
     to_email = _get_tenant_email(tenant_id)
     if to_email:

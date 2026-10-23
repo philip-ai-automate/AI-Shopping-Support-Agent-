@@ -6,7 +6,7 @@ All DB operations use re_* tables. Session keys: re_logged_in, re_tenant_id.
 import hashlib
 import os, shutil, secrets, string, json as _json, base64, uuid, time
 import urllib.request
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 
 import bcrypt
 import psycopg2
@@ -18,6 +18,12 @@ from flask import (Blueprint, render_template, request, redirect,
 
 from db import get_db_connection
 from portal_utils import hash_password, verify_password, make_token, send_email
+import estate_plans as EP
+import estate_actions as EA
+import estate_alerts as AL
+import estate_voice as EV
+import estate_calls as KC
+import estate_brief as EB
 
 estate_bp = Blueprint("estate", __name__, template_folder="templates")
 
@@ -648,19 +654,35 @@ def dashboard():
         """, (tenant_id,))
         stats["recent_listings"] = cur.fetchall()
 
-        # Overdue follow-ups
-        cur.execute("""
-            SELECT c.id, c.name, c.phone_number, c.follow_up_at, c.pipeline_stage,
-                   s.first_name || ' ' || s.last_name AS agent_name
-            FROM re_customers c
-            LEFT JOIN re_staff s ON s.id = c.assigned_to
-            WHERE c.tenant_id=%s
-              AND c.follow_up_at < NOW()
-              AND c.pipeline_stage NOT IN ('allocated','lost')
-            ORDER BY c.follow_up_at ASC
-            LIMIT 8
-        """, (tenant_id,))
-        stats["overdue_followups"] = cur.fetchall()
+        # My next actions: overdue and due today, for the person logged in
+        EA.ensure_tables()
+        my_id = _re_staff_id()
+        mine_sql = "(a.owner_id = %s)" if not _re_is_admin() else "(a.owner_id IS NULL OR a.owner_id = %s)"
+        cur.execute(f"""
+            SELECT c.id, c.name, c.phone_number, a.title, a.due_at, a.due_at < NOW() AS overdue,
+                   TRIM(COALESCE(s.first_name,'') || ' ' || COALESCE(s.last_name,'')) AS agent_name
+            FROM re_next_actions a
+            JOIN re_customers c ON c.id = a.contact_id AND c.tenant_id = a.tenant_id
+            LEFT JOIN re_staff s ON s.id = a.owner_id
+            WHERE a.tenant_id=%s AND a.status='open' AND {mine_sql}
+              AND a.due_at < date_trunc('day', NOW()) + INTERVAL '1 day'
+            ORDER BY a.due_at ASC
+            LIMIT 10
+        """, (tenant_id, my_id or -1))
+        tz = EA.local_tz(tenant_id)
+        stats["my_actions"] = [dict(r, due_local=r["due_at"].astimezone(tz)) for r in cur.fetchall()]
+        stats["team_overdue"] = 0
+        if _re_is_admin():
+            cur.execute("""SELECT COUNT(*) AS n FROM re_next_actions WHERE tenant_id=%s AND status='open' AND due_at < NOW()""",
+                        (tenant_id,))
+            stats["team_overdue"] = cur.fetchone()["n"]
+        cur.execute(f"""SELECT COUNT(*) AS n FROM re_customers c WHERE c.tenant_id=%s AND {EA.OPEN_STAGES_SQL}
+                        AND NOT EXISTS (SELECT 1 FROM re_next_actions a WHERE a.contact_id=c.id AND a.status='open')""",
+                    (tenant_id,))
+        stats["no_action"] = cur.fetchone()["n"]
+        cur.execute("SELECT id, first_name, last_name FROM re_staff WHERE tenant_id=%s AND is_active=TRUE ORDER BY first_name",
+                    (tenant_id,))
+        stats["att_staff"] = cur.fetchall()
 
         # Pipeline stage counts
         cur.execute("""
@@ -686,7 +708,11 @@ def dashboard():
         delta = tenant["trial_ends_at"] - date.today()
         trial_days_left = max(0, delta.days)
 
+    att_agent = request.args.get("att_agent", "") if _re_is_admin() else ""
+    att = AL.attention(tenant_id, _re_staff_id(), _re_is_admin(), att_agent)
     return render_template("estate/dashboard.html",
+                           att=att, att_agent=att_agent, att_staff=stats.get("att_staff", []), att_limit=8,
+                           att_reasons=AL.REASONS, readiness_names=dict(EP.READINESS),
                            tenant=tenant, stats=stats,
                            quota_pct=quota_pct, used=used, msg_limit=msg_limit,
                            trial_days_left=trial_days_left,
@@ -779,8 +805,10 @@ def listing_view(listing_id):
     legal_fee   = round(float(price) * float(listing.get("legal_fee_pct") or 0) / 100, 2)
     total_cost  = float(price) + agency_fee + legal_fee
 
+    estate = EP.load(tenant_id, [listing_id])[listing_id] if EP.is_estate(listing) else None
     return render_template("estate/listing_view.html",
                            tenant=tenant, listing=listing,
+                           estate=estate, estate_grid=EP.price_grid(estate) if estate else [],
                            agent=agent,
                            agency_fee=agency_fee,
                            legal_fee=legal_fee,
@@ -820,9 +848,10 @@ def listing_new():
         error = new_id  # it's an error string
 
     staff_list = _get_staff_list(tenant_id)
+    estate = EP.rows_from_form(request.form) if request.method == "POST" else {"sizes": [], "plans": []}
     return render_template("estate/listing_form.html",
                            tenant=tenant, listing=None, error=error, mode="new",
-                           staff_list=staff_list)
+                           staff_list=staff_list, estate=estate)
 
 
 @estate_bp.route("/estate/listings/<int:listing_id>/edit", methods=["GET", "POST"])
@@ -856,9 +885,11 @@ def listing_edit(listing_id):
             return redirect(url_for("estate.listings"))
 
     staff_list = _get_staff_list(tenant_id)
+    estate = (EP.rows_from_form(request.form) if request.method == "POST"
+              else EP.load(tenant_id, [listing_id])[listing_id])
     return render_template("estate/listing_form.html",
                            tenant=tenant, listing=listing, error=error, mode="edit",
-                           staff_list=staff_list)
+                           staff_list=staff_list, estate=estate)
 
 
 @estate_bp.route("/estate/listings/<int:listing_id>/delete", methods=["POST"])
@@ -1076,6 +1107,19 @@ def _save_listing(tenant_id: int, listing_id):
     if not title:
         return "Property title is required."
 
+    # Estates (Land › Estate Land): plot sizes + payment plans
+    is_estate = property_type == "land" and sub_type == EP.ESTATE_SUB_TYPE
+    est_sizes, est_plans = [], []
+    if is_estate:
+        est_sizes, est_plans, est_err = EP.parse_form(request.form)
+        if est_err:
+            return est_err
+        if not est_sizes:
+            return "Add at least one plot size with its price."
+        if not est_plans:
+            return "Add at least one payment plan (Outright counts)."
+        price = min(x["price"] for x in est_sizes)   # listing price = cheapest plot
+
     conn = get_db_connection()
     if not conn:
         return "Database unavailable."
@@ -1119,6 +1163,8 @@ def _save_listing(tenant_id: int, listing_id):
                 assigned_to, internal_notes, available_from
             ))
             new_id = cur.fetchone()[0]
+            if is_estate:
+                EP.save(cur, tenant_id, new_id, est_sizes, est_plans)
             conn.commit(); cur.close(); conn.close()
             _trigger_rag_index(tenant_id, new_id)
             return new_id
@@ -1154,6 +1200,8 @@ def _save_listing(tenant_id: int, listing_id):
                 assigned_to, internal_notes, available_from,
                 listing_id, tenant_id
             ))
+            if is_estate:
+                EP.save(cur, tenant_id, listing_id, est_sizes, est_plans)
             conn.commit(); cur.close(); conn.close()
             _trigger_rag_index(tenant_id, listing_id)
             return None
@@ -1457,7 +1505,28 @@ def inbox_detail(customer_id):
         WHERE tenant_id=%s AND customer_id=%s
         ORDER BY created_at ASC
     """, (tenant_id, customer_id))
-    messages = cur.fetchall()
+    messages = [dict(m) for m in cur.fetchall()]
+
+    # Voice notes: link each "🎤 Voice note" message to its recording so staff can play it
+    cur.execute("SELECT to_regclass('re_voice_notes') IS NOT NULL AS ok")
+    if cur.fetchone()["ok"]:
+        cur.execute("""SELECT id, created_at, seconds, transcript FROM re_voice_notes
+                       WHERE tenant_id=%s AND right(regexp_replace(customer_phone, '\\D', '', 'g'), 10) = %s
+                         AND file_path IS NOT NULL ORDER BY created_at""",
+                    (tenant_id, "".join(ch for ch in (buyer["phone_number"] or "") if ch.isdigit())[-10:]))
+        notes = [dict(v) for v in cur.fetchall()]
+        for m in messages:
+            if m["role"] == "user" and (m["content"] or "").startswith("🎤 Voice note"):
+                body = m["content"][len("🎤 Voice note"):].lstrip(": ").strip()
+                m["voice_text"] = body
+                free = [v for v in notes if not v.get("used") and abs((v["created_at"] - m["created_at"]).total_seconds()) < 600]
+                same = [v for v in free if v["transcript"] and v["transcript"].strip() == body]
+                before = [v for v in free if v["created_at"] <= m["created_at"]]
+                pick = (same or before or free)
+                if pick:
+                    v = min(pick, key=lambda v: abs((v["created_at"] - m["created_at"]).total_seconds()))
+                    v["used"] = True
+                    m["voice_id"], m["voice_secs"] = v["id"], v["seconds"]
 
     cur.execute("""
         SELECT hr.*, pl.title AS listing_title
@@ -1481,6 +1550,24 @@ def inbox_detail(customer_id):
                            messages=messages, handoffs=handoffs,
                            staff_list=staff_list,
                            my_staff_id=_re_staff_id())
+
+
+@estate_bp.route("/estate/voice/<int:note_id>")
+def voice_note_audio(note_id):
+    """Play a buyer's WhatsApp voice note (only for the agency it belongs to)."""
+    from flask import send_file, abort
+    redir = _require_re_login()
+    if redir: return redir
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT file_path FROM re_voice_notes WHERE id=%s AND tenant_id=%s", (note_id, _re_tenant_id()))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    base = os.path.realpath(os.getenv("KEYLAND_VOICE_DIR", "/root/phixtra-app/data/keyland_voice"))
+    path = os.path.realpath(row[0]) if row and row[0] else ""
+    if not path.startswith(base + os.sep) or not os.path.isfile(path):
+        abort(404)
+    return send_file(path, mimetype="audio/ogg", conditional=True)
 
 
 @estate_bp.route("/estate/inbox/<int:customer_id>/resolve", methods=["POST"])
@@ -1527,6 +1614,9 @@ def inbox_assign(customer_id):
             "UPDATE re_customers SET assigned_to=%s, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
             (assigned_to, customer_id, tenant_id)
         )
+        EA.ensure_tables()
+        cur.execute("UPDATE re_next_actions SET owner_id=%s WHERE tenant_id=%s AND contact_id=%s AND status='open'",
+                    (assigned_to, tenant_id, customer_id))
         conn.commit(); cur.close(); conn.close()
     flash("Lead assigned." if assigned_to else "Lead unassigned.", "success")
     return redirect(url_for("estate.inbox_detail", customer_id=customer_id))
@@ -1882,7 +1972,8 @@ def reports():
         cur.execute(f"SELECT COUNT(*) AS n FROM re_handoff_requests WHERE tenant_id=%s AND created_at >= {since_sql}", (tenant_id,))
         data["period_handoffs"] = int((cur.fetchone() or {}).get("n", 0) or 0)
 
-        cur.execute(f"SELECT COUNT(*) AS n FROM re_follow_up_queue WHERE tenant_id=%s AND status='sent' AND send_at >= {since_sql}", (tenant_id,))
+        EA.ensure_tables()
+        cur.execute(f"SELECT COUNT(*) AS n FROM re_followup_log WHERE tenant_id=%s AND status='sent' AND created_at >= {since_sql}", (tenant_id,))
         data["period_followups"] = int((cur.fetchone() or {}).get("n", 0) or 0)
 
         cur.execute(f"SELECT COUNT(*) AS n FROM re_listing_broadcasts WHERE tenant_id=%s AND created_at >= {since_sql}", (tenant_id,))
@@ -2670,6 +2761,17 @@ def team():
                         conn.rollback()
                         flash("That email is already in use.", "danger")
 
+            elif section == "alerts_person":
+                pid = request.form.get("person_id", "")
+                valid = pid == "0"
+                if pid.isdigit() and pid != "0":
+                    cur.execute("SELECT 1 FROM re_staff WHERE id=%s AND tenant_id=%s", (int(pid), tenant_id))
+                    valid = bool(cur.fetchone())
+                if valid:
+                    prob = AL.save_person(tenant_id, int(pid), request.form)
+                    flash(prob or "Alert settings saved.", "warning" if prob else "success")
+                return redirect(url_for("estate.team") + "#alerts")
+
             elif section == "staff_toggle":
                 staff_id  = request.form.get("staff_id", "")
                 is_active = request.form.get("is_active") == "1"
@@ -2706,7 +2808,8 @@ def team():
 
     return render_template("estate/team.html",
                            tenant=tenant,
-                           staff_list=staff_list)
+                           staff_list=staff_list,
+                           al_people=AL.people(tenant_id), al_on=AL.settings(tenant_id)["alerts_on"])
 
 
 # ── Billing Plans ──────────────────────────────────────────────────────────────
@@ -3502,6 +3605,268 @@ PIPELINE_STAGES = [
 _STAGE_SLUGS = [s[0] for s in PIPELINE_STAGES]
 
 
+# ── Leads list ─────────────────────────────────────────────────────────────────
+# Every buyer in one working list (all plans). Inbox stays for the chats;
+# each row opens the lead page. Same visibility as the Inbox: everyone sees
+# all leads, with "My leads" / "Unassigned" quick views.
+
+_LEADS_VIEWS = [
+    ("all",        "All leads"),
+    ("attention",  "Needs attention"),
+    ("mine",       "My leads"),
+    ("unassigned", "Unassigned"),
+    ("new",        "New today"),
+    ("waiting",    "Waiting for an agent"),
+    ("due",        "Due today"),
+    ("overdue",    "Overdue"),
+    ("noaction",   "No next action"),
+    ("qualified",  "Qualified"),
+    ("ready",      "Ready buyers"),
+]
+_LEADS_SOURCES = [("whatsapp", "WhatsApp"), ("manual", "Added by hand"), ("csv", "CSV upload")]
+_LEADS_PAGE_SIZE = 50
+
+
+@estate_bp.route("/estate/leads")
+def leads():
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id   = _re_tenant_id()
+    tenant      = _get_tenant(tenant_id)
+    my_staff_id = _re_staff_id()
+    view   = request.args.get("view", "all")
+    if view not in dict(_LEADS_VIEWS): view = "all"
+    stage  = request.args.get("stage", "")
+    agent  = request.args.get("agent", "")
+    source = request.args.get("source", "")
+    ready  = request.args.get("ready", "")
+    kind   = request.args.get("kind", "")
+    q      = request.args.get("q", "").strip()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+
+    leads_rows, staff_list, counts, total = [], [], {}, 0
+    att_by_id = {}
+    EA.ensure_tables()
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, first_name, last_name FROM re_staff WHERE tenant_id=%s AND is_active=TRUE ORDER BY first_name",
+                    (tenant_id,))
+        staff_list = cur.fetchall()
+
+        waiting_sql = "EXISTS (SELECT 1 FROM re_handoff_requests h WHERE h.customer_id=c.id AND h.status='pending')"
+        att = AL.attention(tenant_id, my_staff_id, _re_is_admin())
+        att_by_id = {r["id"]: r for r in att["rows"]}
+        view_sql = {
+            "attention":  ("c.id = ANY(%s)", [list(att["ids"])]),
+            "mine":       ("c.assigned_to = %s", [my_staff_id]),
+            "unassigned": ("c.assigned_to IS NULL", []),
+            "new":        ("c.created_at >= date_trunc('day', NOW())", []),
+            "waiting":    (waiting_sql, []),
+            "due":        ("c.follow_up_at IS NOT NULL AND c.follow_up_at::date = CURRENT_DATE", []),
+            "overdue":    ("c.follow_up_at IS NOT NULL AND c.follow_up_at < NOW() "
+                           "AND COALESCE(c.pipeline_stage,'new') NOT IN ('allocated','lost')", []),
+            "noaction":   ("COALESCE(c.pipeline_stage,'new') NOT IN ('allocated','lost') AND NOT EXISTS "
+                           "(SELECT 1 FROM re_next_actions na2 WHERE na2.contact_id=c.id AND na2.status='open')", []),
+            "qualified":  ("(c.pipeline_stage='qualified' OR c.lead_status='qualified')", []),
+            "ready":      ("bl.readiness = 'ready' AND COALESCE(c.pipeline_stage,'new') NOT IN ('allocated','lost')", []),
+        }
+        land_join = "LEFT JOIN re_buyer_land bl ON bl.customer_id = c.id AND bl.tenant_id = c.tenant_id"
+        # Counts on the quick views (ignoring the other filters)
+        for key, (cond, p) in view_sql.items():
+            if key == "mine" and not my_staff_id:
+                counts[key] = 0; continue
+            cur.execute(f"SELECT COUNT(*) AS n FROM re_customers c {land_join} WHERE c.tenant_id=%s AND {cond}", [tenant_id] + p)
+            counts[key] = cur.fetchone()["n"]
+        cur.execute("SELECT COUNT(*) AS n FROM re_customers WHERE tenant_id=%s", (tenant_id,))
+        counts["all"] = cur.fetchone()["n"]
+
+        where, params = ["c.tenant_id=%s"], [tenant_id]
+        if view in view_sql and not (view == "mine" and not my_staff_id):
+            cond, p = view_sql[view]
+            where.append(cond); params += p
+        elif view == "mine":
+            where.append("FALSE")
+        if stage in _STAGE_SLUGS:
+            where.append("COALESCE(c.pipeline_stage,'new') = %s"); params.append(stage)
+        if agent == "none":
+            where.append("c.assigned_to IS NULL")
+        elif agent.isdigit():
+            where.append("c.assigned_to = %s"); params.append(int(agent))
+        if source in dict(_LEADS_SOURCES):
+            where.append("c.source = %s"); params.append(source)
+        if ready in dict(EP.READINESS):
+            where.append("bl.readiness = %s"); params.append(ready)
+        if kind == "land":
+            where.append("(bl.buyer_kind = 'land' OR l.property_type = 'land')")
+        elif kind == "property":
+            where.append("NOT (COALESCE(bl.buyer_kind,'') = 'land' OR COALESCE(l.property_type,'') = 'land')")
+        if q:
+            where.append("(c.name ILIKE %s OR c.phone_number ILIKE %s OR c.preferred_area ILIKE %s OR c.email ILIKE %s)")
+            params += [f"%{q}%"] * 4
+        wsql = " AND ".join(where)
+        cur.execute(f"""SELECT COUNT(*) AS n FROM re_customers c {land_join}
+                        LEFT JOIN re_property_listings l ON l.id = c.linked_listing_id WHERE {wsql}""", params)
+        total = cur.fetchone()["n"]
+        pages = max(1, (total + _LEADS_PAGE_SIZE - 1) // _LEADS_PAGE_SIZE)
+        page = min(page, pages)
+        cur.execute(f"""
+            SELECT c.id, c.name, c.phone_number, c.email, c.preferred_area, c.budget_min, c.budget_max,
+                   c.property_type_pref, c.transaction_pref, c.bedrooms_pref, c.payment_method, c.urgency,
+                   COALESCE(c.pipeline_stage,'new') AS stage, c.lead_status, c.source,
+                   c.follow_up_at, c.last_seen_at, c.created_at, c.assigned_to, c.plot_number,
+                   s.first_name AS agent_first, s.last_name AS agent_last,
+                   l.title AS listing_title,
+                   bl.readiness, bl.plot_size_sqm, bl.pay_mode, bl.start_amount, el.title AS estate_title,
+                   (bl.buyer_kind = 'land' OR l.property_type = 'land') AS is_land,
+                   {waiting_sql} AS waiting,
+                   na.title AS action_title, na.due_at AS action_due
+            FROM re_customers c
+            LEFT JOIN re_staff s ON s.id = c.assigned_to
+            LEFT JOIN re_property_listings l ON l.id = c.linked_listing_id
+            LEFT JOIN re_next_actions na ON na.contact_id = c.id AND na.status = 'open'
+            {land_join}
+            LEFT JOIN re_property_listings el ON el.id = bl.estate_listing_id
+            WHERE {wsql}
+            ORDER BY {waiting_sql} DESC, c.last_seen_at DESC NULLS LAST, c.id DESC
+            LIMIT %s OFFSET %s""", params + [_LEADS_PAGE_SIZE, (page - 1) * _LEADS_PAGE_SIZE])
+        leads_rows = cur.fetchall()
+        cur.close(); conn.close()
+    else:
+        pages = 1
+    tz = EA.local_tz(tenant_id)
+    now_l = datetime.now(tz)
+    for r in leads_rows:
+        if r.get("action_due"):
+            r["action_due"] = r["action_due"].astimezone(tz)
+        a = att_by_id.get(r["id"])
+        r["attention"] = a["text"] if a else None
+        r["attention_reason"] = a["reason"] if a else None
+    if view == "attention":
+        leads_rows.sort(key=lambda r: (AL.REASON_ORDER.get(r["attention_reason"] or "noaction", 9),
+                                       (att_by_id.get(r["id"]) or {}).get("since") or datetime.max.replace(tzinfo=tz)))
+
+    return render_template("estate/leads.html", tenant=tenant, leads=leads_rows, staff_list=staff_list,
+                           views=_LEADS_VIEWS, view=view, counts=counts, stage=stage, agent=agent,
+                           source=source, q=q, sources=_LEADS_SOURCES, stages=PIPELINE_STAGES,
+                           ready=ready, kind=kind, readiness_choices=EP.READINESS,
+                           stage_map={s[0]: (s[1], s[2]) for s in PIPELINE_STAGES},
+                           total=total, page=page, pages=pages, page_size=_LEADS_PAGE_SIZE,
+                           my_staff_id=my_staff_id, now=now_l, now_aware=now_l)
+
+
+@estate_bp.route("/estate/leads/bulk", methods=["POST"])
+def leads_bulk():
+    """Assign or move the stage of the ticked leads."""
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    ids = [int(i) for i in request.form.getlist("lead_id") if i.isdigit()]
+    action = request.form.get("action", "")
+    back = request.form.get("back", "")
+    back = back if back.startswith("/estate/leads") and "//" not in back else url_for("estate.leads")
+    if not ids:
+        flash("Tick at least one lead first.", "warning")
+        return redirect(back)
+    conn = get_db_connection()
+    if not conn:
+        flash("Database unavailable.", "danger")
+        return redirect(back)
+    cur = conn.cursor()
+    if action == "assign":
+        val = request.form.get("assigned_to", "")
+        staff_id = None
+        if val.isdigit():
+            cur.execute("SELECT id FROM re_staff WHERE id=%s AND tenant_id=%s AND is_active=TRUE", (int(val), tenant_id))
+            row = cur.fetchone()
+            if not row:
+                cur.close(); conn.close()
+                flash("That team member wasn't found.", "danger")
+                return redirect(back)
+            staff_id = row[0]
+        cur.execute("UPDATE re_customers SET assigned_to=%s, updated_at=NOW() WHERE tenant_id=%s AND id = ANY(%s)",
+                    (staff_id, tenant_id, ids))
+        n_assigned = cur.rowcount
+        EA.ensure_tables()
+        cur.execute("UPDATE re_next_actions SET owner_id=%s WHERE tenant_id=%s AND contact_id = ANY(%s) AND status='open'",
+                    (staff_id, tenant_id, ids))
+        msg = f"{n_assigned} lead{'s' if n_assigned != 1 else ''} {'assigned' if staff_id else 'unassigned'}."
+    elif action == "stage":
+        st = request.form.get("stage", "")
+        if st not in _STAGE_SLUGS:
+            cur.close(); conn.close()
+            flash("Choose a stage.", "warning")
+            return redirect(back)
+        cur.execute("UPDATE re_customers SET pipeline_stage=%s, updated_at=NOW()"
+                    + (", allocated_at=COALESCE(allocated_at, NOW())" if st == "allocated" else "")
+                    + " WHERE tenant_id=%s AND id = ANY(%s)", (st, tenant_id, ids))
+        n_moved = cur.rowcount
+        EP.stage_changed(cur, tenant_id, ids, st)
+        EA.stage_changed(cur, tenant_id, ids, st)
+        msg = f"{n_moved} lead{'s' if n_moved != 1 else ''} moved to {dict((s[0], s[1]) for s in PIPELINE_STAGES)[st]}."
+    else:
+        cur.close(); conn.close()
+        flash("Choose what to do with the ticked leads.", "warning")
+        return redirect(back)
+    conn.commit(); cur.close(); conn.close()
+    flash(msg, "success")
+    return redirect(back)
+
+
+@estate_bp.route("/estate/leads/add", methods=["POST"])
+def leads_add():
+    """Add a lead by hand (walk-in, phone call, referral). An existing
+    number opens that lead instead of overwriting it."""
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    from portal_routes import _phone_entry
+    phone, perr = _phone_entry(request.form.get("phone", "").strip().replace(" ", "").replace("-", ""),
+                               request.form.get("phone_country"))
+    if perr or not phone:
+        flash(f"Lead not added. {perr or 'Phone number is required.'}", "danger")
+        return redirect(url_for("estate.leads"))
+    name    = request.form.get("name", "").strip() or None
+    email   = request.form.get("email", "").strip() or None
+    area    = request.form.get("area", "").strip() or None
+    notes   = request.form.get("notes", "").strip() or None
+    budget  = request.form.get("budget", "").replace(",", "").strip()
+    ptype   = request.form.get("property_type_pref", "").strip() or None
+    assign  = request.form.get("assigned_to", "")
+    staff_id = int(assign) if assign.isdigit() else None
+    conn = get_db_connection()
+    if not conn:
+        flash("Database unavailable.", "danger")
+        return redirect(url_for("estate.leads"))
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM re_customers WHERE tenant_id=%s AND phone_number=%s", (tenant_id, phone))
+    row = cur.fetchone()
+    if row:
+        cur.close(); conn.close()
+        flash("This number is already a lead, so it has been opened.", "info")
+        return redirect(url_for("estate.lead_detail", contact_id=row[0]))
+    if staff_id:
+        cur.execute("SELECT 1 FROM re_staff WHERE id=%s AND tenant_id=%s", (staff_id, tenant_id))
+        if not cur.fetchone():
+            staff_id = None
+    cur.execute("""
+        INSERT INTO re_customers (tenant_id, phone_number, name, email, preferred_area, budget_max,
+                                  property_type_pref, notes, source, lead_status, pipeline_stage,
+                                  assigned_to, last_seen_at)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'manual','new','new',%s,NOW()) RETURNING id""",
+        (tenant_id, phone, name, email, area, float(budget) if budget.replace(".", "", 1).isdigit() else None,
+         ptype if ptype in ("land", "residential", "commercial", "mixed_use", "industrial") else None,
+         notes, staff_id))
+    new_id = cur.fetchone()[0]
+    conn.commit(); cur.close(); conn.close()
+    EA.sync(tenant_id, new_id)
+    flash("Lead added.", "success")
+    return redirect(url_for("estate.lead_detail", contact_id=new_id))
+
+
 @estate_bp.route("/estate/leads/<int:contact_id>")
 def lead_detail(contact_id):
     redir = _require_re_login()
@@ -3553,10 +3918,12 @@ def lead_detail(contact_id):
     cur.execute("SELECT business_name FROM re_tenants WHERE id = %s", (tenant_id,))
     tenant_row = cur.fetchone()
 
-    # Interactions for this contact
+    # Interactions for this contact (with the agent's voice note, if it came from one)
+    EV.ensure_tables()
     cur.execute("""
         SELECT i.*,
-               TRIM(COALESCE(s.first_name,'') || ' ' || COALESCE(s.last_name,'')) AS staff_name
+               TRIM(COALESCE(s.first_name,'') || ' ' || COALESCE(s.last_name,'')) AS staff_name,
+               (SELECT v.id FROM re_agent_voice_notes v WHERE v.interaction_id = i.id LIMIT 1) AS voice_id
         FROM re_interactions i
         LEFT JOIN re_staff s ON s.id = i.logged_by
         WHERE i.contact_id = %s AND i.tenant_id = %s
@@ -3576,12 +3943,16 @@ def lead_detail(contact_id):
         linked_listing = cur.fetchone()
 
     cur.execute("""
-        SELECT id, title, location, price, status, property_type
+        SELECT id, title, location, price, status, property_type, sub_type
         FROM re_property_listings
         WHERE tenant_id=%s AND status NOT IN ('sold','let')
         ORDER BY title
     """, (tenant_id,))
     listings = cur.fetchall()
+    estates = EP.load(tenant_id, [l["id"] for l in listings if EP.is_estate(l)])
+    estate_alloc = EP.allocation(tenant_id, contact_id) if contact.get("linked_listing_id") else None
+    land = EP.land_details(tenant_id, contact_id)
+    is_land = land.get("buyer_kind") == "land" or bool(linked_listing and linked_listing.get("property_type") == "land")
 
     # Phase 5: payment milestones
     cur.execute("""
@@ -3622,7 +3993,43 @@ def lead_detail(contact_id):
 
     today = datetime.now().date()
 
+    # Phase 3: next action, follow-up status, opt-out
+    next_action = EA.current(tenant_id, contact_id)
+    is_open = (contact.get("pipeline_stage") or "new") not in ("allocated", "lost")
+    tz = EA.local_tz(tenant_id)
+    now_local = datetime.now(tz)
+    due_presets = [
+        ("In 1 hour", (now_local + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M")),
+        ("Today 5 pm", now_local.replace(hour=17, minute=0).strftime("%Y-%m-%dT%H:%M")),
+        ("Tomorrow 10 am", (now_local + timedelta(days=1)).replace(hour=10, minute=0).strftime("%Y-%m-%dT%H:%M")),
+        ("In 3 days", (now_local + timedelta(days=3)).replace(hour=10, minute=0).strftime("%Y-%m-%dT%H:%M")),
+        ("Next week", (now_local + timedelta(days=7)).replace(hour=10, minute=0).strftime("%Y-%m-%dT%H:%M")),
+    ]
+    if now_local.hour >= 17:
+        due_presets.pop(1)
+    action_view = None
+    if next_action:
+        due_l = next_action["due_at"].astimezone(tz)
+        action_view = dict(next_action, due_local=due_l, overdue=next_action["due_at"] < datetime.now(tz),
+                           due_input=due_l.strftime("%Y-%m-%dT%H:%M"))
+    sug = EA.suggestion(tenant_id, contact_id, next_action) if is_open else None
+    if sug:
+        sug = dict(sug, due_local=sug["due"].astimezone(tz))
+    last_contact = None
+    if interactions:
+        last_contact = interactions[0]["logged_at"]
+    cuts = [x for x in (last_contact, contact.get("last_seen_at") if contact.get("source") == "whatsapp" else None) if x]
+    last_contact = max(cuts) if cuts else None
+
     return render_template("estate/lead_detail.html",
+                           next_action=action_view, action_suggestion=sug, is_open=is_open,
+                           brief=EB.saved(tenant_id, contact_id), brief_tz=EA.local_tz(tenant_id),
+                           action_history=EA.history(tenant_id, contact_id),
+                           followup_line=EA.lead_status(tenant_id, dict(contact)) if is_open else "",
+                           opted_out=EA.opted_out(tenant_id, contact.get("phone_number")),
+                           can_act=_can_act(contact), due_presets=due_presets,
+                           default_due=next(v for k, v in due_presets if k.startswith("Tomorrow")), last_contact=last_contact, local_now=now_local,
+                           auto_on=EA.settings(tenant_id)["auto_actions"],
                            tenant=tenant, contact=contact,
                            contact_segments=contact_segments,
                            staff_list=staff_list,
@@ -3633,6 +4040,9 @@ def lead_detail(contact_id):
                            now_iso=now_iso,
                            linked_listing=linked_listing,
                            listings=listings,
+                           estates=estates, estate_alloc=estate_alloc,
+                           land=land, is_land=is_land, readiness_choices=EP.READINESS,
+                           land_purposes=EP.LAND_PURPOSES, land_timeframes=EP.LAND_TIMEFRAMES,
                            milestones=milestones,
                            milestone_totals=milestone_totals,
                            today=today)
@@ -3695,6 +4105,8 @@ def pipeline():
 
     contacts_by_stage = {s[0]: [] for s in PIPELINE_STAGES}
     stage_stats       = {s[0]: {"count": 0, "total_budget": 0} for s in PIPELINE_STAGES}
+    att_by_id = {}
+    EA.ensure_tables()
 
     conn = get_db_connection()
     if conn:
@@ -3705,13 +4117,23 @@ def pipeline():
                    c.pipeline_stage, c.follow_up_at, c.lost_reason,
                    c.budget_min, c.budget_max, c.preferred_area,
                    c.property_type_pref, c.urgency, c.created_at,
-                   TRIM(COALESCE(s.first_name,'') || ' ' || COALESCE(s.last_name,'')) AS agent_name
+                   TRIM(COALESCE(s.first_name,'') || ' ' || COALESCE(s.last_name,'')) AS agent_name,
+                   bl.readiness, (bl.buyer_kind = 'land' OR lp.property_type = 'land') AS is_land,
+                   na.title AS action_title
             FROM re_customers c
             LEFT JOIN re_staff s ON s.id = c.assigned_to
+            LEFT JOIN re_next_actions na ON na.contact_id = c.id AND na.status = 'open'
+            LEFT JOIN re_buyer_land bl ON bl.customer_id = c.id AND bl.tenant_id = c.tenant_id
+            LEFT JOIN re_property_listings lp ON lp.id = c.linked_listing_id AND lp.tenant_id = c.tenant_id
             WHERE c.tenant_id = %s
             ORDER BY c.updated_at DESC
         """, (tenant_id,))
         contacts = cur.fetchall()
+        att = AL.attention(tenant_id, _re_staff_id(), _re_is_admin())
+        att_by_id = {r["id"]: r for r in att["rows"]}
+        only_attention = request.args.get("attention") == "1"
+        if only_attention:
+            contacts = [c for c in contacts if c["id"] in att_by_id]
 
         cur.execute("""
             SELECT m.contact_id, sg.id AS seg_id, sg.name AS seg_name, sg.color
@@ -3728,6 +4150,8 @@ def pipeline():
         for row in contacts:
             c = dict(row)
             c["segments"] = seg_map.get(c["id"], [])
+            a = att_by_id.get(c["id"])
+            c["attention"] = a["text"] if a and a["reason"] != "noaction" else None
             fup = c.get("follow_up_at")
             c["overdue"] = bool(fup and fup < datetime.now(tz=fup.tzinfo))
             stage = c.get("pipeline_stage") or "new"
@@ -3743,11 +4167,29 @@ def pipeline():
                 "total_budget": sum(budgets),
             }
 
+    # The inspection column's name follows what the agency sells
+    viewing_label = "Viewing Scheduled"
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor()
+        cur.execute("""SELECT COUNT(*) FILTER (WHERE property_type='land'), COUNT(*) FILTER (WHERE COALESCE(property_type,'')<>'land')
+                       FROM re_property_listings WHERE tenant_id=%s""", (tenant_id,))
+        n_land, n_other = cur.fetchone()
+        cur.close(); conn.close()
+        if n_land and not n_other:
+            viewing_label = "Site Inspection Scheduled"
+        elif n_land:
+            viewing_label = "Site Inspection / Viewing"
+    stages = [(sl, viewing_label if sl == "viewing" else lb, co) for sl, lb, co in PIPELINE_STAGES]
+
     return render_template("estate/pipeline.html",
                            tenant=tenant,
-                           pipeline_stages=PIPELINE_STAGES,
+                           pipeline_stages=stages,
                            contacts_by_stage=contacts_by_stage,
-                           stage_stats=stage_stats)
+                           stage_stats=stage_stats,
+                           readiness_names=dict(EP.READINESS),
+                           only_attention=request.args.get("attention") == "1",
+                           attention_count=len(att_by_id))
 
 
 @estate_bp.route("/estate/leads/<int:contact_id>/stage", methods=["POST"])
@@ -3783,7 +4225,11 @@ def lead_stage(contact_id):
                 UPDATE re_customers SET pipeline_stage=%s, updated_at=NOW()
                 WHERE id=%s AND tenant_id=%s
             """, (stage, contact_id, tenant_id))
+        if cur.rowcount:
+            EP.stage_changed(cur, tenant_id, [contact_id], stage)
+            EA.stage_changed(cur, tenant_id, [contact_id], stage)
         conn.commit(); cur.close(); conn.close()
+        EA.sync(tenant_id, contact_id)
 
     if is_ajax:
         return jsonify({"ok": True, "stage": stage})
@@ -3797,25 +4243,233 @@ def lead_assign(contact_id):
     tenant_id = _re_tenant_id()
 
     staff_id     = request.form.get("assigned_to", "").strip() or None
-    follow_up_at = request.form.get("follow_up_at", "").strip() or None
 
     conn = get_db_connection()
     if conn:
         cur = conn.cursor()
+        if staff_id:
+            cur.execute("SELECT id FROM re_staff WHERE id=%s AND tenant_id=%s", (int(staff_id), tenant_id))
+            if not cur.fetchone():
+                staff_id = None
         cur.execute("""
             UPDATE re_customers SET
               assigned_to  = %s,
-              follow_up_at = %s,
               updated_at   = NOW()
             WHERE id = %s AND tenant_id = %s
-        """, (
-            int(staff_id) if staff_id else None,
-            follow_up_at if follow_up_at else None,
-            contact_id, tenant_id
-        ))
+        """, (int(staff_id) if staff_id else None, contact_id, tenant_id))
+        # The open action follows the lead to its new agent
+        EA.ensure_tables()
+        cur.execute("UPDATE re_next_actions SET owner_id=%s WHERE tenant_id=%s AND contact_id=%s AND status='open'",
+                    (int(staff_id) if staff_id else None, tenant_id, contact_id))
         conn.commit(); cur.close(); conn.close()
         flash("Lead updated.", "success")
+    nxt = request.form.get("next", "")
+    if nxt.startswith("/estate/") and not nxt.startswith("//"):
+        return redirect(nxt)
     return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+
+
+# ── Next action (Phase 3) ─────────────────────────────────────────────────────
+
+def _who_name(tenant_id) -> str:
+    tenant = _get_tenant(tenant_id) or {}
+    return (session.get("re_staff_name") or " ".join(x for x in (tenant.get("first_name"), tenant.get("last_name")) if x)
+            or "the owner")
+
+
+def _can_act(contact) -> bool:
+    """Owners and admins act on every lead; an agent on the leads assigned to them."""
+    if _re_is_admin():
+        return True
+    sid = _re_staff_id()
+    return bool(sid and contact and contact.get("assigned_to") == sid)
+
+
+def _action_lead(tenant_id, contact_id):
+    conn = get_db_connection()
+    if not conn:
+        return None
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT id, name, phone_number, assigned_to, pipeline_stage FROM re_customers WHERE id=%s AND tenant_id=%s",
+                (contact_id, tenant_id))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    return row
+
+
+def _due_from_form(tenant_id, raw):
+    """'2026-10-24T10:00' typed in the agency's time zone → aware datetime."""
+    try:
+        naive = datetime.strptime((raw or "").strip()[:16], "%Y-%m-%dT%H:%M")
+    except ValueError:
+        return None
+    return naive.replace(tzinfo=EA.local_tz(tenant_id))
+
+
+def _owner_from_form(cur, tenant_id, raw, fallback):
+    if raw == "owner":
+        return None
+    if raw and raw.isdigit():
+        cur.execute("SELECT id FROM re_staff WHERE id=%s AND tenant_id=%s AND is_active=TRUE", (int(raw), tenant_id))
+        r = cur.fetchone()
+        return r[0] if r else fallback
+    return fallback
+
+
+@estate_bp.route("/estate/leads/<int:contact_id>/action", methods=["POST"])
+def lead_action_set(contact_id):
+    """Set or change the next action by hand."""
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    back = url_for("estate.lead_detail", contact_id=contact_id) + "#next"
+    lead = _action_lead(tenant_id, contact_id)
+    if not lead:
+        flash("Lead not found.", "danger")
+        return redirect(url_for("estate.leads"))
+    if not _can_act(lead):
+        flash("Only the lead's agent, an admin or the owner can change its next action.", "warning")
+        return redirect(back)
+    if (lead.get("pipeline_stage") or "new") in ("allocated", "lost"):
+        flash("This lead is closed, so it has no next action. Reopen it first.", "warning")
+        return redirect(back)
+    title = request.form.get("title", "").strip()
+    due = _due_from_form(tenant_id, request.form.get("due_at"))
+    if not title or not due:
+        flash("Write the next action and choose when it's due.", "warning")
+        return redirect(back)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    owner = _owner_from_form(cur, tenant_id, request.form.get("owner_id", ""), lead.get("assigned_to"))
+    EA.set_action(cur, tenant_id, contact_id, title, due, owner, "person", _who_name(tenant_id))
+    conn.commit(); cur.close(); conn.close()
+    flash("Next action saved.", "success")
+    return redirect(back)
+
+
+@estate_bp.route("/estate/leads/<int:contact_id>/action/done", methods=["POST"])
+def lead_action_done(contact_id):
+    """Mark done: one line on what happened, then the next action or close the lead."""
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    back = url_for("estate.lead_detail", contact_id=contact_id) + "#next"
+    lead = _action_lead(tenant_id, contact_id)
+    if not lead:
+        flash("Lead not found.", "danger")
+        return redirect(url_for("estate.leads"))
+    if not _can_act(lead):
+        flash("Only the lead's agent, an admin or the owner can mark its action done.", "warning")
+        return redirect(back)
+    outcome = request.form.get("outcome", "").strip()
+    then = request.form.get("then", "next")
+    itype = request.form.get("type", "note")
+    if itype not in _INTERACTION_TYPES:
+        itype = "note"
+    if not outcome:
+        flash("Say in one line what happened.", "warning")
+        return redirect(back)
+    who = _who_name(tenant_id)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    if then in ("allocated", "lost"):
+        EA.mark_done(cur, tenant_id, contact_id, outcome, who, _re_staff_id(), itype)
+        if then == "allocated":
+            cur.execute("UPDATE re_customers SET pipeline_stage='allocated', allocated_at=NOW(), updated_at=NOW() WHERE id=%s AND tenant_id=%s",
+                        (contact_id, tenant_id))
+        else:
+            cur.execute("UPDATE re_customers SET pipeline_stage='lost', lost_reason=%s, updated_at=NOW() WHERE id=%s AND tenant_id=%s",
+                        (request.form.get("lost_reason", "").strip() or None, contact_id, tenant_id))
+        EP.stage_changed(cur, tenant_id, [contact_id], then)
+        EA.stage_changed(cur, tenant_id, [contact_id], then)
+        msg = "Done. The lead is now " + ("Allocated." if then == "allocated" else "Lost / archived.")
+    else:
+        title = request.form.get("next_title", "").strip()
+        due = _due_from_form(tenant_id, request.form.get("next_due"))
+        if not title or not due:
+            cur.close(); conn.close()
+            flash("Every open lead needs a next action. Write it and choose when it's due, or close the lead.", "warning")
+            return redirect(back)
+        EA.mark_done(cur, tenant_id, contact_id, outcome, who, _re_staff_id(), itype)
+        owner = _owner_from_form(cur, tenant_id, request.form.get("next_owner", ""), lead.get("assigned_to"))
+        EA.set_action(cur, tenant_id, contact_id, title, due, owner, "person", who, replaced_status="done")
+        msg = "Done, and the next action is set."
+    conn.commit(); cur.close(); conn.close()
+    flash(msg, "success")
+    return redirect(back)
+
+
+@estate_bp.route("/estate/leads/<int:contact_id>/action/suggested", methods=["POST"])
+def lead_action_suggested(contact_id):
+    """Swap a person's action for the newer system suggestion."""
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    back = url_for("estate.lead_detail", contact_id=contact_id) + "#next"
+    lead = _action_lead(tenant_id, contact_id)
+    if not lead or not _can_act(lead):
+        flash("You can't change this lead's next action.", "warning")
+        return redirect(back)
+    sug = EA.suggestion(tenant_id, contact_id, EA.current(tenant_id, contact_id))
+    if sug:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        EA.set_action(cur, tenant_id, contact_id, sug["title"], sug["due"], lead.get("assigned_to"), "system",
+                      "KeyLand", sug["key"])
+        conn.commit(); cur.close(); conn.close()
+        flash("Next action updated.", "success")
+    return redirect(back)
+
+
+@estate_bp.route("/estate/leads/<int:contact_id>/optout", methods=["POST"])
+def lead_optout(contact_id):
+    """Staff can mark a buyer as not wanting messages, or undo it if the buyer asks."""
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    lead = _action_lead(tenant_id, contact_id)
+    if not lead or not _can_act(lead):
+        flash("You can't change this lead.", "warning")
+        return redirect(url_for("estate.leads"))
+    on = request.form.get("on") == "1"
+    EA.set_optout(tenant_id, lead["phone_number"], on, "staff")
+    flash("Opted out: no follow-ups or broadcasts will go to this buyer." if on
+          else "Opt-out removed. Follow-ups and broadcasts can reach this buyer again.", "success")
+    return redirect(url_for("estate.lead_detail", contact_id=contact_id) + "#next")
+
+
+@estate_bp.route("/estate/automation", methods=["GET", "POST"])
+def automation():
+    redir = _require_admin()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    tenant = _get_tenant(tenant_id)
+    if request.method == "POST":
+        errors, to_submit = EA.save(tenant_id, request.form, _who_name(tenant_id))
+        errors += AL.save(tenant_id, request.form, _who_name(tenant_id))
+        if errors:
+            for e in errors:
+                flash(e, "danger")
+            return redirect(url_for("estate.automation"))
+        problems = []
+        for st in to_submit:
+            p = EA.submit_template(tenant, st)
+            if p:
+                problems.append(p)
+        EA.sync(tenant_id)
+        flash("Automation saved." + (f" {len(to_submit) - len(problems)} follow-up wording sent to Meta for approval."
+                                     if len(to_submit) > len(problems) else ""), "success")
+        for p in problems:
+            flash(p, "warning")
+        return redirect(url_for("estate.automation"))
+    if tenant.get("wa_access_token"):
+        EA.refresh_templates(tenant)
+    return render_template("estate/automation.html", tenant=tenant, st=EA.settings(tenant_id),
+                           steps=EA.steps(tenant_id), report=EA.report(tenant_id), day_names=EA.DAY_NAMES,
+                           timezones=EA.TIMEZONES, max_steps=EA.MAX_STEPS,
+                           al=AL.settings(tenant_id), al_people=AL.people(tenant_id),
+                           wa_connected=bool(tenant.get("wa_phone_number_id") and tenant.get("wa_access_token")),
+                           waba_ok=bool(tenant.get("wa_waba_id")))
 
 
 # ── Interaction Log ───────────────────────────────────────────────────────────────
@@ -3904,6 +4558,50 @@ def delete_interaction(contact_id, interaction_id):
 
 # ── Phase 4: Plot Linking ─────────────────────────────────────────────────────────
 
+@estate_bp.route("/estate/leads/<int:contact_id>/land", methods=["POST"])
+def lead_land(contact_id):
+    """Staff correct what the AI learned, or set readiness by hand."""
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM re_customers WHERE id=%s AND tenant_id=%s", (contact_id, tenant_id))
+        found = cur.fetchone()
+        cur.close(); conn.close()
+        if not found:
+            flash("Lead not found.", "danger")
+            return redirect(url_for("estate.leads"))
+    tenant = _get_tenant(tenant_id) or {}
+    who = (session.get("re_staff_name") or " ".join(x for x in (tenant.get("first_name"), tenant.get("last_name")) if x)
+           or "the owner")
+    choice = EP.save_land_staff(tenant_id, contact_id, request.form, who)
+    if choice not in dict(EP.READINESS):
+        EP.refresh_readiness(_AI_BACKEND_URL, tenant_id, contact_id)
+    EA.sync(tenant_id, contact_id)
+    flash("Buyer details saved.", "success")
+    return redirect(url_for("estate.lead_detail", contact_id=contact_id) + "#land")
+
+
+@estate_bp.app_template_filter("tel_link")
+def _tel_link(phone) -> str:
+    """Number for a Call button. Saved numbers are digits with the country code
+    and no "+" (2348031234567), which many phones dial wrongly, so add the "+".
+    A local number typed with a leading 0 is left as it is. '' = not a phone number."""
+    raw = str(phone or "").strip()
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if len(digits) < 7 or len(digits) > 15 or any(ch.isalpha() for ch in raw):
+        return ""
+    return digits if digits.startswith("0") else "+" + digits
+
+
+@estate_bp.app_template_filter("stage_word")
+def _stage_word(label, slug, is_land=False):
+    """Land leads: 'Site Inspection Scheduled' instead of 'Viewing Scheduled'."""
+    return "Site Inspection Scheduled" if slug == "viewing" and is_land else label
+
+
 @estate_bp.route("/estate/leads/<int:contact_id>/plot", methods=["POST"])
 def lead_plot(contact_id):
     redir = _require_re_login()
@@ -3936,8 +4634,30 @@ def lead_plot(contact_id):
             UPDATE re_customers SET linked_listing_id=%s, plot_number=%s, updated_at=NOW()
             WHERE id=%s AND tenant_id=%s
         """, (int(listing_id), plot_num, contact_id, tenant_id))
+        # Estate: plot size + payment plan → saved amounts and payment milestones
+        size_id, plan_id = _int(request.form.get("plot_size_id", "")), _int(request.form.get("plan_id", ""))
+        made = 0
+        if size_id or plan_id:
+            if not (size_id and plan_id):
+                conn.rollback(); cur.close(); cur2.close(); conn.close()
+                flash("Choose both a plot size and a payment plan.", "danger")
+                return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+            try:
+                start = datetime.strptime(request.form.get("start_date", ""), "%Y-%m-%d").date()
+            except ValueError:
+                start = date.today()
+            made, err = EP.allocate(cur2, tenant_id, contact_id, int(listing_id), size_id, plan_id, start,
+                                    staff_id=session.get("re_staff_id"),
+                                    make_milestones=request.form.get("make_milestones") == "1")
+            if err:
+                conn.rollback(); cur.close(); cur2.close(); conn.close()
+                flash(err, "danger")
+                return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+        else:
+            EP.unlink(cur2, tenant_id, contact_id)
         conn.commit(); cur.close(); cur2.close(); conn.close()
-        flash("Property linked successfully.", "success")
+        flash("Property linked." + (f" {made} payment milestone{'s' if made != 1 else ''} added." if made else ""), "success")
+    EA.sync(tenant_id, contact_id)
     return redirect(url_for("estate.lead_detail", contact_id=contact_id))
 
 
@@ -3954,6 +4674,8 @@ def lead_plot_unlink(contact_id):
             UPDATE re_customers SET linked_listing_id=NULL, plot_number=NULL, updated_at=NOW()
             WHERE id=%s AND tenant_id=%s
         """, (contact_id, tenant_id))
+        if cur.rowcount:
+            EP.unlink(cur, tenant_id, contact_id)
         conn.commit(); cur.close(); conn.close()
         flash("Property unlinked.", "success")
     return redirect(url_for("estate.lead_detail", contact_id=contact_id))
@@ -4048,6 +4770,7 @@ def milestone_pay(contact_id, milestone_id):
         """, (paid_amount, paid_date, notes, milestone_id, contact_id, tenant_id))
         conn.commit(); cur.close(); conn.close()
         flash("Milestone marked as paid.", "success")
+    EA.sync(tenant_id, contact_id)
     return redirect(url_for("estate.lead_detail", contact_id=contact_id))
 
 
@@ -4419,7 +5142,12 @@ def broadcast():
                 return redirect(url_for("estate.broadcast"))
 
             import time as _time
+            stopped = EA.optout_phones(tenant_id)
+            n_stopped = 0
             for r in recipients:
+                if EA._key(r["phone_number"]) in stopped:
+                    n_stopped += 1   # replied STOP: never broadcast to them
+                    continue
                 msg = _resolve_message(message_body, dict(r))
                 ok  = _send_wa_message(phone_number_id, access_token, r["phone_number"], msg)
                 if ok: sent += 1
@@ -4433,7 +5161,9 @@ def broadcast():
             """, (sent, failed, camp_id))
             conn2.commit(); cur2.close(); conn2.close()
 
-            flash(f"Broadcast sent — {sent} delivered, {failed} failed.", "success" if not failed else "warning")
+            flash(f"Broadcast sent — {sent} delivered, {failed} failed."
+                  + (f" {n_stopped} skipped because they replied STOP." if n_stopped else ""),
+                  "success" if not failed else "warning")
             return redirect(url_for("estate.broadcast"))
 
     return render_template("estate/broadcast.html",
@@ -4885,6 +5615,689 @@ def sandbox_book_slot():
 
 
 # ── Email helpers ──────────────────────────────────────────────────────────────
+
+# ── Agent's voice note on a lead (2026-10-22) ─────────────────────────────────
+
+_LAND_FORM_KEYS = ("buyer_kind", "estate_listing_id", "plot_size_sqm", "start_amount", "total_budget",
+                   "pay_mode", "monthly_amount", "timeframe", "purpose")
+
+
+@estate_bp.route("/estate/leads/<int:contact_id>/voice-note", methods=["POST"])
+def lead_voice_note(contact_id):
+    """Recording in → the AI's proposal out (JSON). Nothing on the lead changes yet."""
+    if not _re_logged_in() or not _re_tenant_id():
+        return jsonify({"ok": False, "error": "Please log in again."}), 401
+    tenant_id = _re_tenant_id()
+    lead = _action_lead(tenant_id, contact_id)
+    if not lead or not _can_act(lead):
+        return jsonify({"ok": False, "error": "You can only add voice notes to your own leads."}), 403
+    f = request.files.get("audio")
+    note_id, secs, problem = EV.save_recording(tenant_id, contact_id, _re_staff_id(), f.read() if f else b"")
+    if problem:
+        return jsonify({"ok": False, "error": problem})
+    text = EV.transcribe(tenant_id, note_id)
+    if not text:
+        return jsonify({"ok": False, "error": "KeyLand couldn't hear that clearly. Please record it again, close to the phone."})
+    tz = EA.local_tz(tenant_id)
+    now_local = datetime.now(tz).strftime("%A %d %B %Y, %H:%M") + f" ({tz.key})"
+    res = EV.read(tenant_id, contact_id, text, now_local)
+    if not res.get("ok"):
+        return jsonify({"ok": False, "note_id": note_id, "transcript": text,
+                        "error": "KeyLand heard you but couldn't read it into the lead. You can still save it as a note."})
+    return jsonify({"ok": True, "note_id": note_id, "seconds": secs, "transcript": text,
+                    "proposal": res.get("proposal") or {}, "readiness": res.get("readiness"),
+                    "readiness_reason": res.get("readiness_reason")})
+
+
+@estate_bp.route("/estate/leads/<int:contact_id>/voice-note/<int:note_id>/save", methods=["POST"])
+def lead_voice_note_save(contact_id, note_id):
+    """Save what the agent confirmed from their voice note."""
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    lead = _action_lead(tenant_id, contact_id)
+    n = EV.note(tenant_id, note_id)
+    if not lead or not _can_act(lead) or not n or n["contact_id"] != contact_id or n["interaction_id"]:
+        flash("That voice note can't be saved here.", "danger")
+        return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+    form = request.form
+    who = _who_name(tenant_id)
+    staff_id = _re_staff_id()
+    is_open = (lead.get("pipeline_stage") or "new") not in ("allocated", "lost")
+    summary = (form.get("summary") or "").strip()[:600] or "Voice note"
+    itype = form.get("type") if form.get("type") in _INTERACTION_TYPES else "note"
+    next_title = (form.get("next_title") or "").strip()[:200]
+    due = _due_from_form(tenant_id, form.get("next_due"))
+    if is_open and (not next_title or not due):
+        flash("Add the next action and its date, then save.", "warning")
+        return redirect(url_for("estate.lead_detail", contact_id=contact_id) + f"?voice={note_id}#next")
+
+    # Buyer details: keep what's already known, take what the agent confirmed
+    readiness = form.get("readiness") if form.get("readiness") in dict(EP.READINESS) else "keep"
+    current = EP.land_details(tenant_id, contact_id)
+    merged, given = {}, False
+    for k in _LAND_FORM_KEYS:
+        v = (form.get(k) or "").strip()
+        if v:
+            given = True
+        merged[k] = v or (str(current.get(k)) if current.get(k) not in (None, "") else "")
+    if given or readiness != "keep" or current.get("buyer_kind"):
+        merged["readiness"] = readiness
+        EP.save_land_staff(tenant_id, contact_id, merged, f"{who} (voice note)")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        if form.get("wants_inspection") or form.get("asks_how_to_pay"):
+            cur.execute("""UPDATE re_buyer_land SET wants_inspection = wants_inspection OR %s,
+                           asks_how_to_pay = asks_how_to_pay OR %s WHERE customer_id=%s AND tenant_id=%s""",
+                        (bool(form.get("wants_inspection")), bool(form.get("asks_how_to_pay")), contact_id, tenant_id))
+        area = (form.get("area") or "").strip()[:150]
+        budget = EV.num(form.get("budget_max"))
+        if area or budget:
+            cur.execute("""UPDATE re_customers SET preferred_area = COALESCE(%s, preferred_area),
+                           budget_max = COALESCE(%s, budget_max), updated_at = NOW() WHERE id=%s AND tenant_id=%s""",
+                        (area or None, budget, contact_id, tenant_id))
+        heard = f'\n🎤 "{(n["transcript"] or "").strip()}"' if n["transcript"] else ""
+        if EA.current(tenant_id, contact_id):
+            EA.mark_done(cur, tenant_id, contact_id, summary, who, staff_id, itype)
+            cur.execute("SELECT id FROM re_interactions WHERE tenant_id=%s AND contact_id=%s ORDER BY id DESC LIMIT 1",
+                        (tenant_id, contact_id))
+            ix = cur.fetchone()[0]
+            cur.execute("UPDATE re_interactions SET summary = summary || %s WHERE id=%s", (heard, ix))
+        else:
+            cur.execute("""INSERT INTO re_interactions (tenant_id, contact_id, type, summary, logged_by)
+                           VALUES (%s,%s,%s,%s,%s) RETURNING id""", (tenant_id, contact_id, itype, summary + heard, staff_id))
+            ix = cur.fetchone()[0]
+        cur.execute("UPDATE re_agent_voice_notes SET interaction_id=%s WHERE id=%s", (ix, note_id))
+        if is_open and next_title and due:
+            EA.set_action(cur, tenant_id, contact_id, next_title, due, lead.get("assigned_to") or staff_id, "person", who)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"⚠️ [KL AGENT VOICE] save lead={contact_id}: {e}")
+        flash("Something went wrong saving the voice note. Nothing was changed.", "danger")
+        return redirect(url_for("estate.lead_detail", contact_id=contact_id))
+    finally:
+        cur.close(); conn.close()
+    EA.sync(tenant_id, contact_id)
+    flash("Voice note saved to the lead.", "success")
+    return redirect(url_for("estate.lead_detail", contact_id=contact_id) + "#next")
+
+
+@estate_bp.route("/estate/agent-voice/<int:note_id>")
+def agent_voice_audio(note_id):
+    from flask import send_file, abort
+    redir = _require_re_login()
+    if redir: return redir
+    n = EV.note(_re_tenant_id(), note_id)
+    base = os.path.realpath(EV.VOICE_DIR)
+    path = os.path.realpath(n["file_path"]) if n else ""
+    if not path.startswith(base + os.sep) or not os.path.isfile(path):
+        abort(404)
+    return send_file(path, mimetype="audio/mpeg", conditional=True)
+
+
+# ── AI brief before a call (2026-10-22, see estate_brief.py) ─────────────────
+
+@estate_bp.route("/estate/leads/<int:contact_id>/brief", methods=["POST"])
+def lead_brief(contact_id):
+    """Make (or remake) the AI brief for this lead. Returns the brief as HTML for the lead page."""
+    if not _re_logged_in() or not _re_tenant_id():
+        return jsonify({"ok": False, "error": "Please log in again."}), 401
+    tenant_id = _re_tenant_id()
+    if not _action_lead(tenant_id, contact_id):
+        return jsonify({"ok": False, "error": "Lead not found."}), 404
+    row = EB.make(tenant_id, contact_id, EA.local_tz(tenant_id).key, _who_name(tenant_id))
+    if not row:
+        return jsonify({"ok": False, "error": "The AI couldn't write the brief just now. Please try again."})
+    tz = EA.local_tz(tenant_id)
+    return jsonify({"ok": True, "html": render_template("estate/_brief.html", brief=row, tz=tz)})
+
+
+# ── WhatsApp calls (2026-10-22, see estate_calls.py) ──────────────────────────
+
+def _call_me():
+    """(tenant_id, my id: staff id or 0 for the owner, my name)."""
+    tid = _re_tenant_id()
+    return tid, (_re_staff_id() or 0), _who_name(tid)
+
+
+def _call_mine(row, me_id) -> bool:
+    """Managers answer any call; an agent answers their own leads' and unassigned ones."""
+    return _re_is_admin() or not row.get("assigned_to") or row.get("assigned_to") == me_id
+
+
+@estate_bp.route("/estate/keyland-calls.js")
+def keyland_calls_js():
+    from flask import send_from_directory
+    resp = send_from_directory(os.path.join(_STATIC_ESTATE, "estate"), "keyland-calls.js", mimetype="application/javascript")
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@estate_bp.route("/estate/calls/live")
+def estate_calls_live():
+    """What keyland-calls.js shows: calls ringing for me, my own call, calls someone else just took."""
+    if not _re_logged_in() or not _re_tenant_id():
+        return jsonify({"error": "login"}), 401
+    tid, me, _ = _call_me()
+    if not KC.settings(tid)["incoming_on"]:
+        return jsonify({"enabled": False})
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(f"""SELECT c.*, bl.readiness FROM re_calls c
+                    LEFT JOIN re_buyer_land bl ON bl.customer_id = c.customer_id AND bl.tenant_id = c.tenant_id
+                    WHERE c.tenant_id=%s AND (
+                         (c.status IN ('ringing','answering') AND c.created_at > NOW() - interval '{KC.RING_SECONDS} seconds')
+                      OR (c.status IN ('answering','answered') AND c.answered_by=%s)
+                      OR (c.status IN ('answered','completed','missed') AND c.created_at > NOW() - interval '2 minutes'))
+                    ORDER BY c.created_at DESC LIMIT 20""", (tid, me))
+    rows = cur.fetchall()
+    cur.close(); conn.close()
+    ringing, taken, mine = [], [], None
+    for r in rows:
+        if r["answered_by"] == me and r["status"] in ("answering", "answered"):
+            mine = KC.card(r)
+            continue
+        if not _call_mine(r, me):
+            continue
+        (ringing if r["status"] == "ringing" else taken).append(KC.card(r))
+    return jsonify({"enabled": True, "ringing": ringing, "mine": mine, "taken": taken})
+
+
+@estate_bp.route("/estate/calls/<int:call_id>/claim", methods=["POST"])
+def estate_calls_claim(call_id):
+    """First to press Answer gets the call (one UPDATE, so two people never both take it)."""
+    if not _re_logged_in() or not _re_tenant_id():
+        return jsonify({"error": "Please log in again."}), 401
+    tid, me, name = _call_me()
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("SELECT assigned_to FROM re_calls WHERE id=%s AND tenant_id=%s", (call_id, tid))
+        row = cur.fetchone()
+        if not row or not _call_mine(row, me):
+            return jsonify({"error": "Call not found."}), 404
+        cur.execute("""UPDATE re_calls SET status='answering', answered_by=%s, answered_by_name=%s
+                       WHERE id=%s AND tenant_id=%s AND status='ringing' RETURNING offer_sdp""", (me, name, call_id, tid))
+        got = cur.fetchone()
+        conn.commit()
+        if not got:
+            cur.execute("SELECT answered_by_name FROM re_calls WHERE id=%s", (call_id,))
+            who = (cur.fetchone() or {}).get("answered_by_name")
+            return jsonify({"error": f"Answered by {who}." if who else "This call has ended."}), 409
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "offer": got["offer_sdp"]})
+
+
+@estate_bp.route("/estate/calls/<int:call_id>/accept", methods=["POST"])
+def estate_calls_accept(call_id):
+    """The browser's answer → Meta pre_accept, then accept."""
+    if not _re_logged_in() or not _re_tenant_id():
+        return jsonify({"error": "Please log in again."}), 401
+    tid, me, _ = _call_me()
+    sdp = (request.get_json(silent=True) or {}).get("sdp") or ""
+    tenant = _get_tenant(tid) or {}
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("SELECT * FROM re_calls WHERE id=%s AND tenant_id=%s AND answered_by=%s AND status='answering'", (call_id, tid, me))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"error": "This call has ended."}), 409
+        body = {"messaging_product": "whatsapp", "call_id": row["wa_call_id"], "session": {"sdp_type": "answer", "sdp": sdp}}
+        ok, data = KC.graph(row["phone_number_id"], tenant.get("wa_access_token") or "", dict(body, action="pre_accept"))
+        if ok:
+            ok, data = KC.graph(row["phone_number_id"], tenant.get("wa_access_token") or "", dict(body, action="accept"))
+        if ok:
+            cur.execute("UPDATE re_calls SET status='answered', answered_at=NOW(), answer_sdp=%s WHERE id=%s", (sdp, call_id))
+        else:
+            cur.execute("UPDATE re_calls SET status='failed', error=%s, ended_at=NOW() WHERE id=%s", (KC.meta_error(data), call_id))
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    if not ok:
+        return jsonify({"error": "Meta didn't connect the call: " + KC.meta_error(data)}), 502
+    return jsonify({"ok": True})
+
+
+@estate_bp.route("/estate/calls/<int:call_id>/release", methods=["POST"])
+def estate_calls_release(call_id):
+    """Couldn't answer after all (microphone blocked): ring the others again."""
+    if not _re_logged_in() or not _re_tenant_id():
+        return jsonify({"error": "Please log in again."}), 401
+    tid, me, _ = _call_me()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""UPDATE re_calls SET status='ringing', answered_by=NULL, answered_by_name=NULL
+                   WHERE id=%s AND tenant_id=%s AND answered_by=%s AND status='answering'""", (call_id, tid, me))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({"ok": True})
+
+
+@estate_bp.route("/estate/calls/<int:call_id>/end", methods=["POST"])
+def estate_calls_end(call_id):
+    """Hang up. Meta's 'terminate' then fills in the real length and logs it on the lead."""
+    if not _re_logged_in() or not _re_tenant_id():
+        return jsonify({"error": "Please log in again."}), 401
+    tid, me, _ = _call_me()
+    tenant = _get_tenant(tid) or {}
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("SELECT * FROM re_calls WHERE id=%s AND tenant_id=%s AND answered_by=%s", (call_id, tid, me))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"error": "Call not found."}), 404
+        if row["wa_call_id"]:
+            KC.graph(row["phone_number_id"], tenant.get("wa_access_token") or "",
+                     {"messaging_product": "whatsapp", "call_id": row["wa_call_id"], "action": "terminate"})
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True})
+
+
+@estate_bp.route("/estate/calls", methods=["GET", "POST"])
+def estate_calls_page():
+    redir = _require_re_login()
+    if redir: return redir
+    tid, me, name = _call_me()
+    tenant = _get_tenant(tid) or {}
+    pnid, token = tenant.get("wa_phone_number_id"), tenant.get("wa_access_token")
+    if request.method == "POST":
+        if not _re_is_admin():
+            flash("Only the owner or an admin can change call settings.", "danger")
+            return redirect(url_for("estate.estate_calls_page"))
+        f = request.form
+        days = sorted({int(d) for d in f.getlist("days") if d.isdigit() and 0 <= int(d) <= 6})
+        st = {"incoming_on": f.get("incoming_on") == "on", "hours_on": f.get("hours_on") == "hours",
+              "days": days or [1, 2, 3, 4, 5, 6], "open_time": (f.get("open_time") or "08:00")[:5],
+              "close_time": (f.get("close_time") or "18:00")[:5], "tz": f.get("tz") or "Africa/Lagos",
+              "missed_message": (f.get("missed_message") or "").strip()[:1000] or KC.DEFAULT_MISSED}
+        if st["tz"] not in dict(EA.TIMEZONES):
+            st["tz"] = "Africa/Lagos"
+        if st["hours_on"] and st["open_time"] >= st["close_time"]:
+            flash("Calling hours must end after they start.", "warning")
+            return redirect(url_for("estate.estate_calls_page"))
+        if not pnid or not token:
+            flash("Connect your WhatsApp number in Settings first.", "warning")
+            return redirect(url_for("estate.estate_calls_page"))
+        ok, data = KC.graph(pnid, token, KC.meta_calling_body(st), path="settings")
+        meta_status = "saved" if ok else KC.meta_error(data)
+        if not ok:
+            st["incoming_on"] = False
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""INSERT INTO re_call_settings (tenant_id, incoming_on, hours_on, days, open_time, close_time, tz,
+                                                     missed_message, meta_status, updated_by, updated_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                       ON CONFLICT (tenant_id) DO UPDATE SET incoming_on=EXCLUDED.incoming_on, hours_on=EXCLUDED.hours_on,
+                         days=EXCLUDED.days, open_time=EXCLUDED.open_time, close_time=EXCLUDED.close_time, tz=EXCLUDED.tz,
+                         missed_message=EXCLUDED.missed_message, meta_status=EXCLUDED.meta_status,
+                         updated_by=EXCLUDED.updated_by, updated_at=NOW()""",
+                    (tid, st["incoming_on"], st["hours_on"], ",".join(map(str, st["days"])), st["open_time"],
+                     st["close_time"], st["tz"], st["missed_message"], meta_status, name))
+        conn.commit(); cur.close(); conn.close()
+        if ok:
+            flash("Call settings saved, and Meta has them." + (" Buyers now see a call button on your WhatsApp number."
+                                                                  if st["incoming_on"] else ""), "success")
+        else:
+            flash("Saved, but Meta refused the calling settings: " + meta_status + " Calls stay off until this is fixed.", "warning")
+        return redirect(url_for("estate.estate_calls_page"))
+    st = KC.settings(tid)
+    info = KC.number_info(pnid, token) if (_re_is_admin() and pnid and token) else {}
+    tz = EA.local_tz(tid)
+    calls = [dict(r, created_local=r["created_at"].astimezone(tz)) for r in KC.recent(tid, me, _re_is_admin())]
+    return render_template("estate/calls.html", tenant=tenant, st=st, info=info, calls=calls, day_names=KC.DAY_NAMES,
+                           timezones=EA.TIMEZONES, wa_connected=bool(pnid and token), tier_ok=KC.TIER_OK)
+
+
+# ── Phase 4: phone notifications, My alerts, Estates report ───────────────────
+
+_STATIC_ESTATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+
+
+@estate_bp.route("/estate/sw.js")
+def estate_service_worker():
+    """KeyLand's own service worker (phone notifications only), scoped to /estate/."""
+    from flask import send_from_directory
+    resp = send_from_directory(os.path.join(_STATIC_ESTATE, "estate"), "sw.js", mimetype="application/javascript")
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@estate_bp.route("/estate/manifest.json")
+def estate_manifest():
+    from flask import send_from_directory
+    return send_from_directory(os.path.join(_STATIC_ESTATE, "estate"), "manifest.json",
+                               mimetype="application/manifest+json")
+
+
+@estate_bp.route("/estate/app-icon-<int:size>.png")
+def estate_app_icon(size):
+    from flask import send_from_directory, abort
+    if size not in (192, 512):
+        abort(404)
+    return send_from_directory(os.path.join(_STATIC_ESTATE, "portal"), f"pwa-icon-{size}.png", mimetype="image/png")
+
+
+def _my_alert_id() -> int:
+    """0 = the agency owner, otherwise the team member's id."""
+    return _re_staff_id() or 0
+
+
+def _device_label(ua: str) -> str:
+    ua = ua or ""
+    if "iPhone" in ua: return "iPhone"
+    if "iPad" in ua: return "iPad"
+    if "Android" in ua: return "Android phone"
+    browser = ("Edge" if "Edg/" in ua else "Chrome" if "Chrome/" in ua else
+               "Firefox" if "Firefox/" in ua else "Safari" if "Safari/" in ua else "Browser")
+    system = ("Windows" if "Windows" in ua else "Mac" if "Mac OS X" in ua else
+              "Linux" if "Linux" in ua else "computer")
+    return f"{browser} on {system}"
+
+
+_PUSH_HOSTS = ("fcm.googleapis.com", "push.apple.com", "push.services.mozilla.com",
+               "notify.windows.com", "updates.push.services.mozilla.com")
+
+
+def _push_endpoint_ok(endpoint: str) -> bool:
+    from urllib.parse import urlparse
+    try:
+        u = urlparse(endpoint or "")
+    except Exception:
+        return False
+    host = (u.hostname or "").lower()
+    return (u.scheme == "https" and len(endpoint) < 1000
+            and any(host == h or host.endswith("." + h) for h in _PUSH_HOSTS))
+
+
+@estate_bp.route("/estate/my-alerts", methods=["GET", "POST"])
+def my_alerts():
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    tenant = _get_tenant(tenant_id)
+    me = _my_alert_id()
+    if request.method == "POST":
+        # Managers set their own; agents' settings are set by a manager on the Team page
+        if _re_is_admin():
+            prob = AL.save_person(tenant_id, me, request.form)
+            flash(prob or "Your alert settings are saved.", "warning" if prob else "success")
+        return redirect(url_for("estate.my_alerts"))
+    conn = AL._db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""SELECT id, device_label, endpoint, created_at FROM re_push_devices
+                   WHERE tenant_id=%s AND staff_id=%s ORDER BY created_at""", (tenant_id, me))
+    devices = cur.fetchall()
+    cur.execute("""SELECT a.reason, a.first_at, a.reminder_at, a.stopped_at, a.stop_note, a.recipients, a.contact_id,
+                          c.name, c.phone_number
+                   FROM re_alerts a JOIN re_customers c ON c.id = a.contact_id
+                   WHERE a.tenant_id=%s AND (a.recipients @> %s::jsonb OR a.reminder_recipients @> %s::jsonb)
+                   ORDER BY a.first_at DESC LIMIT 10""",
+                (tenant_id, _json.dumps([{"staff_id": me}]), _json.dumps([{"staff_id": me}])))
+    recent = cur.fetchall()
+    cur.close(); conn.close()
+    tz = EA.local_tz(tenant_id)
+    return render_template("estate/my_alerts.html", tenant=tenant, p=AL.person(tenant_id, me), al=AL.settings(tenant_id),
+                           devices=devices, recent=recent, tz=tz, can_edit=_re_is_admin(),
+                           vapid_key=os.getenv("VAPID_PUBLIC_KEY", ""))
+
+
+@estate_bp.route("/estate/push/devices", methods=["POST"])
+def estate_push_add():
+    if not _re_logged_in() or not _re_tenant_id():
+        return jsonify({"ok": False, "error": "Please log in again."}), 401
+    data = request.get_json(silent=True) or {}
+    sub = data.get("subscription") or {}
+    endpoint = (sub.get("endpoint") or "").strip()
+    keys = sub.get("keys") or {}
+    p256dh, auth = (keys.get("p256dh") or "").strip(), (keys.get("auth") or "").strip()
+    if not _push_endpoint_ok(endpoint) or not p256dh or not auth or len(p256dh) > 200 or len(auth) > 100:
+        return jsonify({"ok": False, "error": "This browser gave us a device address we can't use."}), 400
+    conn = AL._db()
+    cur = conn.cursor()
+    # Same browser, different login: the device moves to whoever turned it on
+    cur.execute("""INSERT INTO re_push_devices (tenant_id, staff_id, endpoint, p256dh, auth, device_label)
+                   VALUES (%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (endpoint) DO UPDATE SET tenant_id=EXCLUDED.tenant_id, staff_id=EXCLUDED.staff_id,
+                     p256dh=EXCLUDED.p256dh, auth=EXCLUDED.auth, device_label=EXCLUDED.device_label,
+                     fail_count=0, last_error=NULL, created_at=NOW()""",
+                (_re_tenant_id(), _my_alert_id(), endpoint, p256dh, auth,
+                 _device_label(request.headers.get("User-Agent", ""))))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({"ok": True})
+
+
+@estate_bp.route("/estate/push/devices/remove", methods=["POST"])
+def estate_push_remove():
+    if not _re_logged_in() or not _re_tenant_id():
+        return jsonify({"ok": False}), 401
+    data = request.get_json(silent=True) or {}
+    endpoint = (data.get("endpoint") or "").strip()
+    dev_id = request.form.get("device_id") or data.get("device_id")
+    conn = AL._db()
+    cur = conn.cursor()
+    if endpoint:
+        cur.execute("DELETE FROM re_push_devices WHERE endpoint=%s AND tenant_id=%s AND staff_id=%s",
+                    (endpoint, _re_tenant_id(), _my_alert_id()))
+    elif dev_id and str(dev_id).isdigit():
+        cur.execute("DELETE FROM re_push_devices WHERE id=%s AND tenant_id=%s AND staff_id=%s",
+                    (int(dev_id), _re_tenant_id(), _my_alert_id()))
+    removed = cur.rowcount
+    conn.commit(); cur.close(); conn.close()
+    if request.is_json:
+        return jsonify({"ok": True, "removed": removed})
+    flash("Device removed. It won't get phone notifications any more." if removed else "That device was already removed.",
+          "success" if removed else "info")
+    return redirect(url_for("estate.my_alerts"))
+
+
+@estate_bp.route("/estate/push/test", methods=["POST"])
+def estate_push_test():
+    if not _re_logged_in() or not _re_tenant_id():
+        return jsonify({"ok": False, "error": "Please log in again."}), 401
+    endpoint = ((request.get_json(silent=True) or {}).get("endpoint") or "").strip() or None
+    res = AL._gateway("/internal/keyland/push", {"tenant_id": _re_tenant_id(), "staff_ids": [_my_alert_id()],
+                                                 "title": "KeyLand test notification",
+                                                 "body": "Phone notifications are working on this device.",
+                                                 "url": AL.PORTAL + "/estate/my-alerts", "tag": "keyland-test",
+                                                 "endpoint": endpoint})
+    sent = int(res.get("sent") or 0)
+    return jsonify({"ok": sent > 0, "sent": sent})
+
+
+# ── Estates report ────────────────────────────────────────────────────────────
+
+_EST_PERIODS = [("7d", "This week", 7), ("30d", "This month", 30), ("90d", "Last 90 days", 90)]
+_EST_METRICS = {"enquiries": "Enquiries", "ready": "Ready", "considering": "Considering", "early": "Early",
+                "booked": "Inspections booked", "attended": "Inspections attended", "allocated": "Plots allocated",
+                "deposits": "Deposits collected"}
+
+
+def _est_scope():
+    """Agents see their own figures; owners and admins see everyone's."""
+    return ("", []) if _re_is_admin() else (" AND c.assigned_to = %s", [_re_staff_id() or -1])
+
+
+def _estate_leads_sql(metric: str) -> str:
+    """Lead ids behind one figure for one estate (params: tenant, estate, since, then scope)."""
+    interest = "(bl.estate_listing_id = %(e)s OR c.linked_listing_id = %(e)s)"
+    base = """SELECT DISTINCT c.id FROM re_customers c
+              LEFT JOIN re_buyer_land bl ON bl.customer_id = c.id AND bl.tenant_id = c.tenant_id"""
+    if metric in ("enquiries", "ready", "considering", "early"):
+        extra = "" if metric == "enquiries" else f" AND bl.readiness = '{metric}'"
+        return f"{base} WHERE c.tenant_id = %(t)s AND {interest} AND c.created_at >= %(since)s{extra}"
+    if metric == "booked":
+        return f"""{base} JOIN re_inspection_bookings b ON b.customer_id = c.id AND b.listing_id = %(e)s
+                   WHERE c.tenant_id = %(t)s AND b.created_at >= %(since)s AND b.status <> 'cancelled'"""
+    if metric == "attended":
+        return f"""{base} JOIN re_inspection_bookings b ON b.customer_id = c.id AND b.listing_id = %(e)s
+                   JOIN re_inspection_slots sl ON sl.id = b.slot_id
+                   WHERE c.tenant_id = %(t)s AND b.status = 'completed' AND sl.slot_datetime >= %(since)s"""
+    if metric == "allocated":
+        return f"""{base} JOIN re_estate_allocations a ON a.contact_id = c.id AND a.listing_id = %(e)s
+                   WHERE c.tenant_id = %(t)s AND a.created_at >= %(since)s"""
+    if metric == "deposits":
+        return f"""{base} JOIN re_estate_allocations a ON a.contact_id = c.id AND a.listing_id = %(e)s
+                   JOIN LATERAL (SELECT paid, paid_date FROM re_payment_milestones m WHERE m.contact_id = c.id
+                                 AND m.tenant_id = c.tenant_id ORDER BY position, due_date LIMIT 1) d ON TRUE
+                   WHERE c.tenant_id = %(t)s AND d.paid AND d.paid_date >= %(since)s::date"""
+    raise ValueError(metric)
+
+
+def _estates_data(tenant_id: int, days: int) -> dict:
+    since = datetime.now(EA.local_tz(tenant_id)) - timedelta(days=days)
+    scope_sql, scope_p = _est_scope()
+    scope_named = scope_sql.replace("%s", "%(me)s")
+    p = {"t": tenant_id, "since": since, "me": scope_p[0] if scope_p else None}
+    conn = AL._db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""SELECT id, title FROM re_property_listings WHERE tenant_id=%s AND property_type='land'
+                   AND (sub_type = %s OR EXISTS (SELECT 1 FROM re_estate_plot_sizes z WHERE z.listing_id = re_property_listings.id))
+                   ORDER BY title""", (tenant_id, EP.ESTATE_SUB_TYPE))
+    estates = [dict(r) for r in cur.fetchall()]
+    for e in estates:
+        p["e"] = e["id"]
+        for m in _EST_METRICS:
+            cur.execute(f"SELECT COUNT(*) AS n FROM ({_estate_leads_sql(m)}{scope_named}) x", p)
+            e[m] = cur.fetchone()["n"]
+        cur.execute(f"""SELECT COALESCE(SUM(COALESCE(d.paid_amount, d.amount)), 0) AS s
+                        FROM re_customers c JOIN re_estate_allocations a ON a.contact_id = c.id AND a.listing_id = %(e)s
+                        JOIN LATERAL (SELECT paid, paid_date, paid_amount, amount FROM re_payment_milestones m
+                                      WHERE m.contact_id = c.id AND m.tenant_id = c.tenant_id ORDER BY position, due_date LIMIT 1) d ON TRUE
+                        WHERE c.tenant_id = %(t)s AND d.paid AND d.paid_date >= %(since)s::date{scope_named}""", p)
+        e["deposit_total"] = float(cur.fetchone()["s"] or 0)
+        cur.execute(f"""SELECT AVG(f.at - c.created_at) AS avg FROM re_customers c
+                        LEFT JOIN re_buyer_land bl ON bl.customer_id = c.id AND bl.tenant_id = c.tenant_id
+                        JOIN LATERAL (SELECT MIN(at) AS at FROM (
+                              SELECT logged_at AS at FROM re_interactions i WHERE i.contact_id = c.id AND i.logged_at > c.created_at
+                                AND i.summary NOT LIKE '{AL.SYSTEM_NOTE}' AND i.summary NOT LIKE '{AL.MISSED_CALL}'
+                              UNION ALL SELECT done_at FROM re_next_actions na WHERE na.contact_id = c.id AND na.status='done'
+                                AND na.done_at > c.created_at) y) f ON f.at IS NOT NULL
+                        WHERE c.tenant_id = %(t)s AND (bl.estate_listing_id = %(e)s OR c.linked_listing_id = %(e)s)
+                          AND c.created_at >= %(since)s{scope_named}""", p)
+        avg = cur.fetchone()["avg"]
+        e["first_reply"] = AL.wait_text(avg) if avg else None
+        cur.execute("SELECT label, size_sqm, plots_left FROM re_estate_plot_sizes WHERE listing_id=%s ORDER BY position, id",
+                    (e["id"],))
+        e["sizes"] = cur.fetchall()
+
+    people_rows = []
+    if _re_is_admin():
+        cur.execute("""SELECT id, TRIM(first_name || ' ' || COALESCE(last_name,'')) AS name FROM re_staff
+                       WHERE tenant_id=%s AND is_active ORDER BY first_name""", (tenant_id,))
+        who = [dict(r) for r in cur.fetchall()] + [{"id": None, "name": "Unassigned"}]
+    else:
+        cur.execute("SELECT id, TRIM(first_name || ' ' || COALESCE(last_name,'')) AS name FROM re_staff WHERE id=%s",
+                    (_re_staff_id() or -1,))
+        who = [dict(r) for r in cur.fetchall()]
+    for w in who:
+        q = {"t": tenant_id, "since": since, "a": w["id"], "now": datetime.now(timezone.utc)}
+        is_a = "c.assigned_to = %(a)s" if w["id"] else "c.assigned_to IS NULL"
+        cur.execute(f"""SELECT
+              (SELECT COUNT(*) FROM re_customers c WHERE c.tenant_id=%(t)s AND {is_a} AND c.created_at >= %(since)s) AS leads,
+              (SELECT COUNT(*) FROM re_customers c JOIN re_buyer_land bl ON bl.customer_id=c.id AND bl.tenant_id=c.tenant_id
+                 WHERE c.tenant_id=%(t)s AND {is_a} AND bl.readiness='ready' AND {EA.OPEN_STAGES_SQL}) AS ready,
+              (SELECT COUNT(*) FROM re_inspection_bookings b JOIN re_customers c ON c.id=b.customer_id
+                 WHERE b.tenant_id=%(t)s AND {is_a} AND b.created_at >= %(since)s AND b.status <> 'cancelled') AS inspections,
+              (SELECT COUNT(*) FROM re_estate_allocations a JOIN re_customers c ON c.id=a.contact_id
+                 WHERE a.tenant_id=%(t)s AND {is_a} AND a.created_at >= %(since)s) AS allocations,
+              (SELECT COUNT(*) FROM re_next_actions na JOIN re_customers c ON c.id=na.contact_id
+                 WHERE na.tenant_id=%(t)s AND {is_a} AND na.status='open' AND na.due_at < %(now)s) AS overdue,
+              (SELECT AVG(al.stopped_at - al.first_at) FROM re_alerts al
+                 WHERE al.tenant_id=%(t)s AND al.agent_id IS NOT DISTINCT FROM %(a)s AND al.first_at >= %(since)s
+                   AND al.stopped_at IS NOT NULL) AS act_avg,
+              (SELECT COUNT(*) FROM re_alerts al WHERE al.tenant_id=%(t)s AND al.agent_id IS NOT DISTINCT FROM %(a)s
+                 AND al.first_at >= %(since)s) AS alerts""", q)
+        r = dict(cur.fetchone())
+        r["name"], r["id"] = w["name"], w["id"]
+        r["act"] = AL.wait_text(r["act_avg"]) if r["act_avg"] else None
+        if w["id"] or any(r[k] for k in ("leads", "inspections", "allocations", "overdue", "alerts")):
+            people_rows.append(r)
+    cur.close(); conn.close()
+    return {"estates": estates, "people": people_rows, "since": since}
+
+
+def _est_period():
+    p = request.args.get("period", "30d")
+    return next((x for x in _EST_PERIODS if x[0] == p), _EST_PERIODS[1])
+
+
+@estate_bp.route("/estate/reports/estates")
+def reports_estates():
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    tenant = _get_tenant(tenant_id)
+    period = _est_period()
+    return render_template("estate/reports_estates.html", tenant=tenant, d=_estates_data(tenant_id, period[2]),
+                           period=period, periods=_EST_PERIODS, metrics=_EST_METRICS)
+
+
+@estate_bp.route("/estate/reports/estates.csv")
+def reports_estates_csv():
+    import csv, io
+    from flask import Response
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    period = _est_period()
+    d = _estates_data(tenant_id, period[2])
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow([f"Estates report, {period[1]}"])
+    w.writerow(["Estate", "Enquiries", "Ready", "Considering", "Early", "Inspections booked", "Inspections attended",
+                "Plots allocated", "Deposits collected (number)", "Deposits collected (NGN)", "First reply by a person"])
+    for e in d["estates"]:
+        w.writerow([e["title"], e["enquiries"], e["ready"], e["considering"], e["early"], e["booked"], e["attended"],
+                    e["allocated"], e["deposits"], f"{e['deposit_total']:.0f}", e["first_reply"] or ""])
+    w.writerow([])
+    w.writerow(["Salesperson", "Leads", "Ready buyers", "Inspections", "Allocations", "Overdue actions", "Alerts",
+                "Average time to act on an alert"])
+    for r in d["people"]:
+        w.writerow([r["name"], r["leads"], r["ready"], r["inspections"], r["allocations"], r["overdue"], r["alerts"], r["act"] or ""])
+    return Response(buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment;filename=keyland_estates_{period[0]}.csv"})
+
+
+@estate_bp.route("/estate/reports/estates/leads")
+def reports_estates_leads():
+    """The leads behind one figure, so every number can be checked."""
+    redir = _require_re_login()
+    if redir: return redir
+    tenant_id = _re_tenant_id()
+    tenant = _get_tenant(tenant_id)
+    metric = request.args.get("metric", "")
+    estate_id = request.args.get("estate", "")
+    if metric not in _EST_METRICS or not estate_id.isdigit():
+        return redirect(url_for("estate.reports_estates"))
+    period = _est_period()
+    since = datetime.now(EA.local_tz(tenant_id)) - timedelta(days=period[2])
+    scope_sql, scope_p = _est_scope()
+    conn = AL._db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT id, title FROM re_property_listings WHERE id=%s AND tenant_id=%s", (int(estate_id), tenant_id))
+    estate = cur.fetchone()
+    rows = []
+    if estate:
+        p = {"t": tenant_id, "e": estate["id"], "since": since, "me": scope_p[0] if scope_p else None}
+        cur.execute(f"""SELECT c.id, c.name, c.phone_number, c.created_at, COALESCE(c.pipeline_stage,'new') AS stage,
+                               bl.readiness, TRIM(COALESCE(s.first_name,'') || ' ' || COALESCE(s.last_name,'')) AS agent
+                        FROM re_customers c
+                        LEFT JOIN re_buyer_land bl ON bl.customer_id = c.id AND bl.tenant_id = c.tenant_id
+                        LEFT JOIN re_staff s ON s.id = c.assigned_to
+                        WHERE c.id IN ({_estate_leads_sql(metric)}{scope_sql.replace('%s', '%(me)s')})
+                        ORDER BY c.created_at DESC""", p)
+        rows = cur.fetchall()
+    cur.close(); conn.close()
+    return render_template("estate/reports_estates_leads.html", tenant=tenant, rows=rows, estate=estate,
+                           metric=metric, metric_label=_EST_METRICS[metric], period=period,
+                           stage_map={s[0]: s[1] for s in PIPELINE_STAGES}, readiness_names=dict(EP.READINESS))
+
 
 def _send_verify_email(to_email: str, first_name: str, business_name: str, verify_url: str):
     subject  = f"Welcome to PhiXtra, {first_name} — please verify your email"

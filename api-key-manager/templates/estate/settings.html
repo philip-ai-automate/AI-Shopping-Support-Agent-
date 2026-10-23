@@ -3,6 +3,7 @@
 {% block title %}Settings — PhiXtra Real Estate{% endblock %}
 
 {% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 {% if embedded_enabled and not wa_connected %}
 <script>
   window.fbAsyncInit = function() {
@@ -161,6 +162,18 @@
   display:inline-block;margin-right:6px
 }
 
+.wa-qr-row{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:12px;
+  padding:16px 18px;background:#f8fafc;border:1px solid rgba(3,12,24,0.08);border-radius:11px}
+.wa-qr-row[hidden]{display:none}
+.wa-qr-box{background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:10px;padding:8px;flex-shrink:0}
+.wa-qr-box canvas,.wa-qr-box img{display:block}
+.wa-qr-info{flex:1;min-width:200px;display:grid;gap:8px}
+.wa-qr-link{font:12.5px ui-monospace,Menlo,Consolas,monospace;color:#030C18;background:#fff;border:1px solid rgba(3,12,24,0.10);
+  border-radius:7px;padding:6px 9px;overflow-wrap:anywhere}
+.wa-qr-acts{display:flex;gap:8px;flex-wrap:wrap}
+.wa-qr-btn{padding:8px 14px;border-radius:8px;font-size:12.5px;font-weight:700;font-family:inherit;line-height:1.3;cursor:pointer;text-decoration:none;
+  border:1.5px solid rgba(3,12,24,0.15);background:#fff;color:#030C18;display:inline-flex;align-items:center;gap:6px}
+.wa-qr-btn.pri{background:#030C18;border-color:#030C18;color:#fff}
 .wa-disconnect-row{
   display:flex;align-items:center;justify-content:space-between;
   padding:14px 18px;background:#f8fafc;
@@ -327,6 +340,28 @@
         <span>Connect number</span>
       </div>
     </a>
+    {% endif %}
+    {% if _re_is_admin %}
+    <a class="st-nav-item" href="{{ url_for('estate.automation') }}">
+      <div class="sni-icon blue">
+        <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      </div>
+      <div class="sni-text">
+        <strong>Automation</strong>
+        <span>Next actions, follow-ups</span>
+      </div>
+    </a>
+    {% endif %}
+    <a class="st-nav-item" href="#qr" onclick="snClick(event,this,'qr')">
+      <div class="sni-icon green">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>
+      </div>
+      <div class="sni-text">
+        <strong>QR Code</strong>
+        <span>WhatsApp QR for buyers</span>
+      </div>
+    </a>
+    {% if _re_is_admin %}
     <a class="st-nav-item danger-item" href="#danger" onclick="snClick(event,this,'danger')">
       <div class="sni-icon red">
         <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -508,7 +543,7 @@
           <div>
             <div style="font-size:13.5px;font-weight:650;color:#030C18;margin-bottom:2px">Switch or disconnect number</div>
             <div style="font-size:12.5px;color:rgba(3,12,24,0.42)">
-              Buyer messages appear in your <a href="{{ url_for('estate.inbox') }}" style="color:#030C18;font-weight:700;text-decoration:none">Leads &amp; Inbox</a>
+              Buyer messages appear in your <a href="{{ url_for('estate.inbox') }}" style="color:#030C18;font-weight:700;text-decoration:none">Inbox</a>
             </div>
           </div>
           <form method="POST" action="{{ url_for('estate.settings') }}">
@@ -520,6 +555,7 @@
             </button>
           </form>
         </div>
+
 
         {% else %}
 
@@ -712,6 +748,61 @@
       </div>
     </div>
 
+    {% endif %}
+    <!-- ── WhatsApp QR code (everyone; full designer at /estate/qr-code) ── -->
+    <div class="sc" id="qr">
+      <div class="sc-head">
+        <div class="sc-icon green">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>
+        </div>
+        <div>
+          <div class="sc-head-title">WhatsApp QR Code</div>
+          <div class="sc-head-sub">Buyers scan it and WhatsApp opens a chat with you, message ready to send</div>
+        </div>
+      </div>
+      <div class="sc-body">
+        {% set _qr_phone = (tenant.wa_display_phone or '')|replace(' ', '')|replace('+', '')|replace('-', '') %}
+        {% if wa_connected and _qr_phone %}
+        <div class="wa-qr-row" style="margin-top:0">
+          <div class="wa-qr-box"><div id="waQrMini"></div></div>
+          <div class="wa-qr-info">
+            <div style="font-size:12.5px;color:rgba(3,12,24,0.55)">Use it on signboards, flyers, your office, inspection days and social media.</div>
+            <div class="wa-qr-link" id="waQrLink"></div>
+            <div class="wa-qr-acts">
+              <a class="wa-qr-btn pri" href="{{ url_for('estate.qr_code') }}">Design, download or print the card →</a>
+              <button type="button" class="wa-qr-btn" id="waQrCopy">Copy link</button>
+            </div>
+          </div>
+        </div>
+        <script>
+        (function () {
+          var phone = {{ (tenant.wa_display_phone or '')|tojson }}.replace(/\D/g, '');
+          var url = 'https://wa.me/' + phone + '?text=' + encodeURIComponent("Hello, I'm interested in a property");
+          document.getElementById('waQrLink').textContent = url;
+          if (window.QRCode) new QRCode(document.getElementById('waQrMini'), { text: url, width: 96, height: 96, colorDark: '#030C18', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.H });
+          var b = document.getElementById('waQrCopy');
+          b.onclick = function () {
+            var done = function () { b.textContent = 'Copied!'; setTimeout(function () { b.textContent = 'Copy link'; }, 1800); };
+            if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, function () {});
+          };
+        })();
+        </script>
+        {% else %}
+        <div class="wa-qr-row" style="margin-top:0">
+          <div class="wa-qr-info">
+            <div style="font-size:13.5px;font-weight:650;color:#030C18">Your QR code appears here once WhatsApp is connected</div>
+            <div style="font-size:12.5px;color:rgba(3,12,24,0.55)">
+              {% if _re_is_admin %}
+                {% if wa_connected %}We couldn't read your WhatsApp number. Disconnect and connect it again under <a href="#whatsapp" onclick="snClick(event,document.querySelector('.st-nav-item[href=\'#whatsapp\']'),'whatsapp')" style="font-weight:700;color:#030C18">WhatsApp</a> to refresh it.
+                {% else %}Connect your WhatsApp Business number under <a href="#whatsapp" onclick="snClick(event,document.querySelector('.st-nav-item[href=\'#whatsapp\']'),'whatsapp')" style="font-weight:700;color:#030C18">WhatsApp</a>, then your QR code is ready to print and share.{% endif %}
+              {% else %}Ask your agency admin to connect the WhatsApp Business number in Settings.{% endif %}
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% if _re_is_admin %}
     <!-- ── Danger Zone ── -->
     <div class="sc" id="danger" style="border-color:rgba(240,68,56,0.20)">
       <div class="sc-head" style="background:rgba(240,68,56,0.025)">
@@ -793,6 +884,12 @@ function snClick(e, el, id) {
   var t = document.getElementById(id);
   if (t) t.scrollIntoView({ behavior:'smooth', block:'start' });
 }
+
+/* Opened with #qr, #whatsapp etc: go straight to that section */
+(function () {
+  var id = location.hash.replace('#', ''), nav = id && document.querySelector('.st-nav-item[href="#' + id + '"]');
+  if (nav && document.getElementById(id)) setTimeout(function () { snClick({ preventDefault: function () {} }, nav, id); }, 50);
+})();
 
 /* Avatar live preview */
 function updateAvatar() {

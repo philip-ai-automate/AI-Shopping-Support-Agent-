@@ -1,0 +1,117 @@
+{% extends "portal/base.html" %}
+{% block title %}Call Log — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+.cl-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+.cl-head h1{font-size:22px;font-weight:800;margin:0;color:var(--ink)}
+.cl-head p{margin:4px 0 0;color:var(--muted);font-size:13.5px;max-width:70ch}
+.cl-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.cl-kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 16px}
+.cl-kpi .k{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.cl-kpi .v{font-size:24px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.cl-kpi .v.bad{color:#B42318}
+.cl-card{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.cl-chips{display:flex;gap:6px;flex-wrap:wrap;padding:14px 16px;border-bottom:1px solid var(--line)}
+.cl-chip{padding:6px 13px;border-radius:20px;font-size:12.5px;font-weight:600;border:1.5px solid #e2e8f0;background:#fff;color:#475569;text-decoration:none}
+.cl-chip.on{border-color:#0B1D40;background:#0B1D40;color:#fff}
+.cl-tw{overflow-x:auto}
+.cl-tbl{width:100%;border-collapse:collapse;min-width:760px}
+.cl-tbl th{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding:10px 14px;text-align:left;background:#f8fafc}
+.cl-tbl td{padding:11px 14px;font-size:13px;border-top:1px solid #eef2f6;vertical-align:top}
+.cl-tbl .m{font-size:12px;color:var(--muted)}
+.cl-pill{font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:99px;white-space:nowrap;display:inline-block}
+.cl-pill.in{background:#ECFDF3;color:#067647}.cl-pill.miss{background:#FEF3F2;color:#B42318}
+.cl-pill.out{background:#EFF8FF;color:#175CD3}.cl-pill.cb{background:#FFFAEB;color:#B54708}.cl-pill.off{background:#f1f5f9;color:#475569}
+.cl-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;font-size:12.5px;font-weight:700;border:1.5px solid #cbd5e1;background:#fff;color:#0B1D40;text-decoration:none;cursor:pointer;white-space:nowrap}
+.cl-btn.pri{background:#0B1D40;border-color:#0B1D40;color:#fff}
+.cl-warn{background:#FFFAEB;border:1px solid #FEDF89;color:#93370D;border-radius:12px;padding:12px 16px;font-size:13px;margin-bottom:16px}
+.cl-due{display:inline-block;margin-top:4px;font-size:11.5px;font-weight:700;color:#B54708;background:#FFFAEB;border-radius:6px;padding:2px 7px}
+.cl-due.late{color:#B42318;background:#FEF3F2}
+.cl-empty{padding:34px 20px;text-align:center;color:var(--muted);font-size:13px}
+.cl-pager{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px}
+@media(max-width:800px){.cl-kpis{grid-template-columns:1fr 1fr}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cl-head">
+  <div>
+    <h1>📞 Call Log</h1>
+    <p>Every WhatsApp call: answered, missed and made. A missed call waits under <b>Missed</b> until someone presses <b>I'll call back</b>.</p>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a class="cl-btn" href="{{ url_for('portal.tutorials', topic='calls') }}">How calls work</a>
+    {% if staff_can_open('calls.calls_report') %}<a class="cl-btn" href="{{ url_for('calls.calls_report') }}">Calls report</a>{% endif %}
+  </div>
+</div>
+
+{% if not any_on %}
+<div class="cl-warn">Calls aren't switched on for any of your WhatsApp numbers yet, so customers can't call you.
+  {% if can_settings and numbers %}Open <a href="{{ url_for('calls.calls_settings_index') }}">Calls › Call Settings</a> to switch them on.{% else %}Ask the owner or IT to switch them on.{% endif %}</div>
+{% endif %}
+
+<div class="cl-kpis">
+  <div class="cl-kpi"><div class="k">Calls today</div><div class="v">{{ k.today or 0 }}</div></div>
+  <div class="cl-kpi"><div class="k">Answered today</div><div class="v">{{ k.answered or 0 }}</div></div>
+  <div class="cl-kpi"><div class="k">Need a call-back</div><div class="v {{ 'bad' if k.need_cb }}">{{ k.need_cb or 0 }}</div>{% if k.overdue %}<div style="font-size:12px;font-weight:700;color:#B42318">{{ k.overdue }} overdue</div>{% endif %}</div>
+  <div class="cl-kpi"><div class="k">Avg. talk time</div><div class="v">{% if k.avg_talk %}{{ (k.avg_talk|int) // 60 }}:{{ '%02d' % ((k.avg_talk|int) % 60) }}{% else %}–{% endif %}</div></div>
+</div>
+
+<div class="cl-card">
+  <div class="cl-chips">
+    <a class="cl-chip {{ 'on' if show == 'all' }}" href="?show=all">All</a>
+    <a class="cl-chip {{ 'on' if show == 'missed' }}" href="?show=missed">Missed · needs a call-back {{ k.need_cb or 0 }}</a>
+    <a class="cl-chip {{ 'on' if show == 'answered' }}" href="?show=answered">Answered</a>
+    <a class="cl-chip {{ 'on' if show == 'outgoing' }}" href="?show=outgoing">Outgoing</a>
+    <a class="cl-chip {{ 'on' if show == 'mine' }}" href="?show=mine">Mine</a>
+  </div>
+  {% if rows %}
+  <div class="cl-tw"><table class="cl-tbl">
+    <thead><tr><th>Caller</th><th>Call</th><th>When</th><th>Length</th><th>Handled by</th><th></th></tr></thead>
+    <tbody>
+    {% for c in rows %}
+      {% set missed = c.status in ('missed', 'out_of_hours') and c.direction == 'in' %}
+      <tr>
+        <td>{% if c.lead_id %}<a href="{{ url_for('portal.lead_detail', lead_id=c.lead_id) }}" style="font-weight:700;color:var(--ink);text-decoration:none">{{ c.customer_name or ('+' ~ c.customer_phone) }}</a>{% else %}<b>{{ c.customer_name or ('+' ~ c.customer_phone) }}</b>{% endif %}
+          <div class="m">+{{ c.customer_phone }}{% if numbers|length > 1 %} · to {{ c.display_phone_number }}{% endif %}</div></td>
+        <td>
+          {% if missed and c.callback_by_name %}<span class="cl-pill cb">Call back</span>
+          {% elif missed %}<span class="cl-pill miss">{{ 'Calls off' if c.missed_reason == 'calls_off' else ('Outside hours' if c.status == 'out_of_hours' else 'Missed') }}</span>
+          {% elif c.direction == 'out' %}<span class="cl-pill out">Outgoing{% if c.status in ('missed', 'rejected') %} · not answered{% endif %}</span>
+          {% elif c.status in ('answered', 'completed', 'answering') %}<span class="cl-pill in">Answered</span>
+          {% else %}<span class="cl-pill off">{{ c.status|capitalize }}</span>{% endif %}
+          {% if missed and not c.callback_by_name and c.due_mins is not none %}
+            {% if c.due_mins < 0 %}<div class="cl-due late">⏰ Overdue by {{ (-c.due_mins)|int // 60 ~ 'h ' if -c.due_mins >= 60 }}{{ (-c.due_mins) % 60 }} min</div>
+            {% else %}<div class="cl-due">⏱ Call back within {{ c.due_mins // 60 ~ 'h ' if c.due_mins >= 60 }}{{ c.due_mins % 60 }} min</div>{% endif %}
+          {% endif %}
+          {% if missed %}<div class="m">{% if c.missed_reason == 'nobody_online' %}Nobody had the portal open{% elif c.missed_reason == 'out_of_hours' %}Outside calling hours{% elif c.missed_reason == 'calls_off' %}Calls switched off for this number{% else %}Rang, nobody answered{% endif %}{% if c.auto_reply == 'sent' %} · message sent{% elif c.auto_reply == 'failed' %} · message not sent{% endif %}</div>{% endif %}
+          {% if c.status == 'failed' and c.error %}<div class="m">{{ c.error }}</div>{% endif %}
+        </td>
+        <td style="white-space:nowrap">{{ c.created_at.strftime('%d %b, %H:%M') }}</td>
+        <td class="m" style="font-variant-numeric:tabular-nums">{% if c.duration %}{{ c.duration // 60 }}:{{ '%02d' % (c.duration % 60) }}{% else %}–{% endif %}</td>
+        <td>{% if c.callback_by_name %}{{ c.callback_by_name }} is calling back{% else %}{{ c.answered_by_name or c.started_by_name or '–' }}{% endif %}</td>
+        <td style="text-align:right;white-space:nowrap">
+          {% if missed and not c.callback_by_name %}
+          <form method="POST" action="{{ url_for('calls.calls_callback', call_id=c.id) }}" style="display:inline"><button class="cl-btn pri" type="submit">I'll call back</button></form>
+          {% endif %}
+          {% if not c.lead_id and staff_can('leads.create') %}
+          <form method="POST" action="{{ url_for('calls.calls_add_lead', call_id=c.id) }}" style="display:inline"><button class="cl-btn" type="submit" title="They aren't in your Leads yet">＋ Add as lead</button></form>
+          {% endif %}
+          <a class="cl-btn" href="{{ url_for('portal.my_inbox') }}?phone={{ c.customer_phone }}">Open chat</a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% if page > 1 or has_more %}
+  <div class="cl-pager">
+    {% if page > 1 %}<a class="cl-btn" href="?show={{ show }}&page={{ page - 1 }}">← Newer</a>{% endif %}
+    {% if has_more %}<a class="cl-btn" href="?show={{ show }}&page={{ page + 1 }}">Older →</a>{% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="cl-empty">{% if show == 'all' %}No calls yet. When customers call your WhatsApp number, they'll show here.{% else %}Nothing here.{% endif %}</div>
+  {% endif %}
+</div>
+{% endblock %}

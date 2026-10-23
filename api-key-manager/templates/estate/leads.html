@@ -1,0 +1,256 @@
+{% extends "estate/base.html" %}
+{% from "portal/_phone_box.html" import phone_box with context %}
+{% block title %}Leads — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+/* Leads: one working list of every buyer. Quick views → filters → table. */
+.ld-views{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:14px;scrollbar-width:none}
+.ld-views::-webkit-scrollbar{display:none}
+.ld-view{display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:999px;border:1px solid rgba(3,12,24,0.12);
+  background:#fff;color:rgba(3,12,24,0.70);font-size:13px;font-weight:650;white-space:nowrap;text-decoration:none}
+.ld-view:hover{border-color:rgba(3,12,24,0.25);color:#030C18;text-decoration:none}
+.ld-view.on{background:#030C18;border-color:#030C18;color:#fff}
+.ld-view .n{font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:999px;background:rgba(3,12,24,0.07);color:rgba(3,12,24,0.65)}
+.ld-view.on .n{background:rgba(255,255,255,0.22);color:#fff}
+.ld-view.alert:not(.on) .n{background:#F04438;color:#fff}
+.ld-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.ld-filters input[type=search],.ld-filters select{font:inherit;font-size:13.5px;padding:8px 11px;border:1px solid rgba(3,12,24,0.14);
+  border-radius:9px;background:#fff;color:#030C18}
+.ld-filters input[type=search]{flex:1 1 220px;min-width:0;width:auto}
+.ld-filters select{width:auto;flex:0 0 auto;max-width:100%}
+.ld-clear{font-size:13px;font-weight:650;color:rgba(3,12,24,0.55)}
+.ld-card{background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:14px;overflow:hidden}
+.ld-bulk{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;background:#f2f5fa;border-bottom:1px solid rgba(3,12,24,0.08);font-size:13px}
+.ld-bulk[hidden]{display:none}
+.ld-bulk select{font:inherit;font-size:13px;padding:6px 9px;border:1px solid rgba(3,12,24,0.14);border-radius:8px;background:#fff}
+.ld-tbl-wrap{overflow-x:auto}
+table.ld-tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.ld-tbl th{text-align:left;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(3,12,24,0.45);
+  padding:10px 12px;border-bottom:1px solid rgba(3,12,24,0.08);white-space:nowrap;background:#fafbfd}
+.ld-tbl td{padding:11px 12px;border-bottom:1px solid rgba(3,12,24,0.06);vertical-align:top}
+.ld-tbl tr:last-child td{border-bottom:0}
+.ld-tbl tbody tr:hover{background:#fafbfd}
+.ld-name{font-weight:700;color:#030C18;text-decoration:none}
+.ld-name:hover{text-decoration:underline}
+.ld-sub{font-size:12px;color:rgba(3,12,24,0.50);margin-top:2px}
+.ld-want{max-width:260px}
+.ld-stage{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;white-space:nowrap}
+.ld-stage i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.ld-flag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;margin-top:4px}
+.ld-flag.wait{background:#FEF0EE;color:#B42318}
+.ld-flag.att{background:#FFF6E6;color:#8A4B00;white-space:normal}
+.ld-flag.att.ready,.ld-flag.att.chat,.ld-flag.att.call{background:#FEF0EE;color:#B42318}
+.ld-rd{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;margin:4px 4px 0 0}
+.ld-rd.ready{background:#E7F6EE;color:#12805C}
+.ld-rd.considering{background:#FEF3E2;color:#A15C00}
+.ld-rd.early{background:#E8EEF8;color:#5A6B85}
+.ld-due{font-size:12.5px;white-space:nowrap}
+.ld-act{font-size:12.5px;color:#030C18;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ld-due.late{color:#B42318;font-weight:700}
+.ld-due.today{color:#A15C00;font-weight:700}
+.ld-muted{color:rgba(3,12,24,0.40)}
+.ld-empty{padding:48px 20px;text-align:center;color:rgba(3,12,24,0.55)}
+.ld-empty b{display:block;color:#030C18;font-size:15px;margin-bottom:4px}
+.ld-pages{display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap;padding:12px 14px;border-top:1px solid rgba(3,12,24,0.08);font-size:13px}
+.ld-dlg{border:1px solid rgba(3,12,24,0.12);border-radius:16px;padding:0;width:min(520px,94vw)}
+.ld-dlg::backdrop{background:rgba(3,12,24,0.35)}
+.ld-dlg form{display:grid;gap:12px;padding:20px}
+.ld-dlg h3{margin:0;font-size:17px;font-weight:800;color:#030C18}
+.ld-dlg label{display:grid;gap:5px;font-size:12px;font-weight:700;color:rgba(3,12,24,0.60)}
+.ld-dlg input,.ld-dlg select,.ld-dlg textarea{font:inherit;font-size:14px;padding:9px 11px;border:1px solid rgba(3,12,24,0.14);border-radius:9px;background:#fff;color:#030C18;font-weight:400}
+.ld-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ld-dlg-acts{display:flex;gap:8px;justify-content:flex-end}
+@media(max-width:640px){.ld-grid2{grid-template-columns:1fr}.ld-hide-sm{display:none}}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set qs = {'stage': stage, 'agent': agent, 'source': source, 'q': q, 'ready': ready, 'kind': kind} %}
+<div class="page-header">
+  <div>
+    <h1 class="section-title" style="margin-bottom:4px">Leads</h1>
+    <p class="muted">Every buyer and enquiry, with who's handling them and what's due. Click a name to open the lead.</p>
+  </div>
+  <button type="button" class="btn btn-primary" onclick="document.getElementById('addLead').showModal()">+ Add lead</button>
+</div>
+
+<nav class="ld-views" aria-label="Quick views">
+  {% for key, label in views %}
+  <a class="ld-view {{ 'on' if view == key }} {{ 'alert' if key in ('attention','waiting','overdue','noaction') and counts.get(key) }}"
+     href="{{ url_for('estate.leads', view=key, **qs) }}">{{ label }} <span class="n">{{ counts.get(key, 0) }}</span></a>
+  {% endfor %}
+</nav>
+
+<form class="ld-filters" method="GET" action="{{ url_for('estate.leads') }}">
+  <input type="hidden" name="view" value="{{ view }}">
+  <input type="search" name="q" id="ldQ" value="{{ q }}" placeholder="Search name, phone, area or email" aria-label="Search leads">
+  <select name="stage" id="ldStage" aria-label="Stage" onchange="this.form.submit()">
+    <option value="">Any stage</option>
+    {% for slug, label, _c in stages %}<option value="{{ slug }}" {{ 'selected' if stage == slug }}>{{ label }}</option>{% endfor %}
+  </select>
+  <select name="agent" id="ldAgent" aria-label="Assigned to" onchange="this.form.submit()">
+    <option value="">Anyone</option>
+    <option value="none" {{ 'selected' if agent == 'none' }}>Unassigned</option>
+    {% for s in staff_list %}<option value="{{ s.id }}" {{ 'selected' if agent == s.id|string }}>{{ s.first_name }} {{ s.last_name or '' }}</option>{% endfor %}
+  </select>
+  <select name="source" id="ldSource" aria-label="Came from" onchange="this.form.submit()">
+    <option value="">Any source</option>
+    {% for v, l in sources %}<option value="{{ v }}" {{ 'selected' if source == v }}>{{ l }}</option>{% endfor %}
+  </select>
+  <select name="ready" id="ldReady" aria-label="Readiness" onchange="this.form.submit()">
+    <option value="">Any readiness</option>
+    {% for v, l in readiness_choices %}<option value="{{ v }}" {{ 'selected' if ready == v }}>{{ l }}</option>{% endfor %}
+  </select>
+  <select name="kind" id="ldKind" aria-label="Buyer type" onchange="this.form.submit()">
+    <option value="">Land and property</option>
+    <option value="land" {{ 'selected' if kind == 'land' }}>Land buyers</option>
+    <option value="property" {{ 'selected' if kind == 'property' }}>Property buyers</option>
+  </select>
+  {% if q or stage or agent or source or ready or kind %}<a class="ld-clear" href="{{ url_for('estate.leads', view=view) }}">Clear filters</a>{% endif %}
+</form>
+
+<div class="ld-card">
+  <form method="POST" action="{{ url_for('estate.leads_bulk') }}" id="ldBulkForm">
+    <input type="hidden" name="back" value="{{ request.full_path }}">
+    <div class="ld-bulk" id="ldBulk" hidden>
+      <b id="ldTicked">0 ticked</b>
+      <select name="assigned_to" id="ldBulkAgent" aria-label="Assign to">
+        <option value="">Unassigned</option>
+        {% for s in staff_list %}<option value="{{ s.id }}">{{ s.first_name }} {{ s.last_name or '' }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn" name="action" value="assign">Assign</button>
+      <span class="ld-muted">or</span>
+      <select name="stage" id="ldBulkStage" aria-label="Move to stage">
+        {% for slug, label, _c in stages %}<option value="{{ slug }}">{{ label }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn" name="action" value="stage">Move</button>
+    </div>
+    {% if leads %}
+    <div class="ld-tbl-wrap">
+      <table class="ld-tbl">
+        <thead><tr>
+          <th style="width:30px"><input type="checkbox" id="ldAll" aria-label="Tick all on this page"></th>
+          <th>Lead</th><th>Looking for</th><th>Stage</th><th>Assigned to</th><th>Next action</th><th class="ld-hide-sm">Last contact</th><th class="ld-hide-sm">Came from</th>
+        </tr></thead>
+        <tbody>
+        {% for l in leads %}
+          {% set st = stage_map.get(l.stage, ('New', '#6b7280')) %}
+          <tr>
+            <td><input type="checkbox" class="ldTick" name="lead_id" value="{{ l.id }}" aria-label="Tick {{ l.name or l.phone_number }}"></td>
+            <td>
+              <a class="ld-name" href="{{ url_for('estate.lead_detail', contact_id=l.id) }}">{{ l.name or l.phone_number }}</a>
+              <div class="ld-sub">{{ l.phone_number if l.name else (l.email or '') }}</div>
+              {% if l.readiness %}<span class="ld-rd {{ l.readiness }}">{{ dict(readiness_choices).get(l.readiness) }}</span>{% endif %}
+              {% if l.attention and l.attention_reason != 'noaction' %}<span class="ld-flag att {{ l.attention_reason }}">{{ l.attention }}</span>
+              {% elif l.waiting %}<span class="ld-flag wait">Waiting for an agent</span>{% endif %}
+            </td>
+            <td class="ld-want">
+              {% if l.is_land %}
+              {% set bits = ['Land'] %}
+              {% if l.plot_size_sqm %}{% set _ = bits.append('%g'|format(l.plot_size_sqm|float) ~ ' sqm') %}{% endif %}
+              {% if l.pay_mode %}{% set _ = bits.append('· ' ~ ('outright' if l.pay_mode == 'outright' else 'instalment')) %}{% endif %}
+              {% if l.preferred_area %}{% set _ = bits.append('in ' ~ l.preferred_area) %}{% endif %}
+              {{ bits|join(' ') }}
+              {% if l.start_amount %}<div class="ld-sub">Starts with ₦{{ '{:,.0f}'.format(l.start_amount) }}</div>
+              {% elif l.budget_max %}<div class="ld-sub">Budget up to ₦{{ '{:,.0f}'.format(l.budget_max) }}</div>{% endif %}
+              {% if l.estate_title or l.listing_title %}<div class="ld-sub">Interested in: {{ l.listing_title or l.estate_title }}{% if l.plot_number %} · {{ l.plot_number }}{% endif %}</div>{% endif %}
+              {% else %}
+              {% set bits = [] %}
+              {% if l.property_type_pref %}{% set _ = bits.append(l.property_type_pref|replace('_',' ')|capitalize) %}{% endif %}
+              {% if l.bedrooms_pref %}{% set _ = bits.append(l.bedrooms_pref|string ~ ' bed') %}{% endif %}
+              {% if l.transaction_pref %}{% set _ = bits.append({'sale':'to buy','rent':'to rent','lease':'to lease','shortlet':'shortlet'}.get(l.transaction_pref, l.transaction_pref)) %}{% endif %}
+              {% if l.preferred_area %}{% set _ = bits.append('in ' ~ l.preferred_area) %}{% endif %}
+              {{ bits|join(' ') if bits else '' }}{% if not bits %}<span class="ld-muted">Not known yet</span>{% endif %}
+              {% if l.budget_max %}<div class="ld-sub">Budget up to ₦{{ '{:,.0f}'.format(l.budget_max) }}{% if l.payment_method %} · {{ l.payment_method|replace('_',' ') }}{% endif %}</div>{% endif %}
+              {% if l.listing_title %}<div class="ld-sub">Interested in: {{ l.listing_title }}{% if l.plot_number %} · {{ l.plot_number }}{% endif %}</div>{% endif %}
+              {% endif %}
+            </td>
+            <td><span class="ld-stage" style="color:{{ st[1] }}"><i style="background:{{ st[1] }}"></i>{{ st[0]|stage_word(l.stage, l.is_land) }}</span></td>
+            <td>{% if l.agent_first %}{{ l.agent_first }} {{ l.agent_last or '' }}{% else %}<span class="ld-muted">Unassigned</span>{% endif %}</td>
+            <td>
+              {% set open_lead = l.stage not in ('allocated','lost') %}
+              {% if l.action_due %}
+                {% set d = l.action_due.date() %}
+                {% set late = open_lead and l.action_due < now_aware %}
+                <div class="ld-act" title="{{ l.action_title }}">{{ l.action_title|truncate(48, true, '…') }}</div>
+                <span class="ld-due {{ 'late' if late else ('today' if d == now.date() else '') }}">
+                  {{ 'Today ' ~ l.action_due.strftime('%H:%M') if d == now.date() else l.action_due.strftime('%a %d %b') }}{% if late %} · overdue{% endif %}</span>
+              {% elif open_lead %}<span class="ld-due late">None set</span>
+              {% else %}<span class="ld-muted">Closed</span>{% endif %}
+            </td>
+            <td class="ld-hide-sm ld-due">{{ l.last_seen_at.strftime('%d %b, %H:%M') if l.last_seen_at else '' }}</td>
+            <td class="ld-hide-sm">{{ dict(sources).get(l.source, (l.source or '')|capitalize) }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="ld-pages">
+      <span class="ld-muted">Showing {{ (page - 1) * page_size + 1 }}–{{ (page - 1) * page_size + leads|length }} of {{ total }}</span>
+      <span style="display:flex;gap:8px">
+        {% if page > 1 %}<a class="btn" href="{{ url_for('estate.leads', view=view, page=page - 1, **qs) }}">← Previous</a>{% endif %}
+        {% if page < pages %}<a class="btn" href="{{ url_for('estate.leads', view=view, page=page + 1, **qs) }}">Next →</a>{% endif %}
+      </span>
+    </div>
+    {% else %}
+    <div class="ld-empty">
+      {% if counts.get('all') %}<b>No leads match</b>Try another quick view or clear the filters.
+      {% else %}<b>No leads yet</b>Buyers who message your WhatsApp appear here automatically. You can also press <b style="display:inline">+ Add lead</b> for walk-ins and phone calls.{% endif %}
+    </div>
+    {% endif %}
+  </form>
+</div>
+
+<dialog class="ld-dlg" id="addLead" aria-label="Add a lead">
+  <form method="POST" action="{{ url_for('estate.leads_add') }}">
+    <h3>Add a lead</h3>
+    <p class="muted" style="margin:0;font-size:13px">For walk-ins, phone calls and referrals. Buyers who message on WhatsApp are added automatically.</p>
+    <div class="ld-grid2">
+      <label>Full name<input type="text" name="name" id="alName" placeholder="Chidi Okeke"></label>
+      <label>Phone number *{{ phone_box('phone', cls='', required=True) }}</label>
+    </div>
+    <div class="ld-grid2">
+      <label>Looking for
+        <select name="property_type_pref" id="alType">
+          <option value="">Not sure yet</option>
+          <option value="land">Land</option><option value="residential">Residential</option><option value="commercial">Commercial</option>
+          <option value="mixed_use">Mixed Use</option><option value="industrial">Industrial</option>
+        </select></label>
+      <label>Area<input type="text" name="area" id="alArea" placeholder="Lekki Phase 1"></label>
+    </div>
+    <div class="ld-grid2">
+      <label>Budget (₦)<input type="text" inputmode="numeric" name="budget" id="alBudget" placeholder="50,000,000"></label>
+      <label>Assign to
+        <select name="assigned_to" id="alAgent">
+          <option value="">Unassigned</option>
+          {% for s in staff_list %}<option value="{{ s.id }}" {{ 'selected' if s.id == my_staff_id }}>{{ s.first_name }} {{ s.last_name or '' }}</option>{% endfor %}
+        </select></label>
+    </div>
+    <label>Email<input type="email" name="email" id="alEmail" placeholder="chidi@email.com"></label>
+    <label>Notes<textarea name="notes" id="alNotes" rows="2" placeholder="e.g. Walked into the office, wants to inspect on Saturday"></textarea></label>
+    <div class="ld-dlg-acts">
+      <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary">Add lead</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var ticks = document.querySelectorAll('.ldTick'), all = document.getElementById('ldAll'), bar = document.getElementById('ldBulk');
+  function sync() {
+    var n = document.querySelectorAll('.ldTick:checked').length;
+    bar.hidden = !n;
+    document.getElementById('ldTicked').textContent = n + ' ticked';
+  }
+  ticks.forEach(function (t) { t.addEventListener('change', sync); });
+  if (all) all.addEventListener('change', function () { ticks.forEach(function (t) { t.checked = all.checked; }); sync(); });
+  var q = document.getElementById('ldQ'), timer = null;
+  if (q) q.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(function () { q.form.submit(); }, 700); });
+  if (q && q.value) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+})();
+</script>
+{% endblock %}

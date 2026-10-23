@@ -48,7 +48,7 @@
       <div class="kpi-value">{{ bookings | length }}</div>
     </div>
     <div class="card kpi-card">
-      <div class="kpi-label">Completed</div>
+      <div class="kpi-label">Attended</div>
       <div class="kpi-value">{{ bookings | selectattr('status','eq','completed') | list | length }}</div>
     </div>
   </div>
@@ -180,7 +180,7 @@
             </td>
             <td>
               <span class="status-{{ b.status }}">
-                {{ b.status.replace('_',' ').title() }}
+                {{ {'completed':'Attended','no_show':'No-show'}.get(b.status, b.status.replace('_',' ').title()) }}
               </span>
             </td>
             <td class="muted">{{ b.created_at.strftime('%d %b') }}</td>
@@ -191,7 +191,7 @@
                 <select name="status" style="padding:5px 8px;font-size:12px;width:auto;border-radius:8px">
                   {% for st in ['confirmed','completed','cancelled','no_show'] %}
                   <option value="{{ st }}" {% if b.status==st %}selected{% endif %}>
-                    {{ st.replace('_',' ').title() }}
+                    {{ {'completed':'Attended','no_show':'No-show'}.get(st, st.replace('_',' ').title()) }}
                   </option>
                   {% endfor %}
                 </select>

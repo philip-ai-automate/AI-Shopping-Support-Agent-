@@ -89,7 +89,8 @@
       <button type="submit" class="btn btn-primary">✓ Mark Handled</button>
     </form>
     {% endif %}
-    <a href="{{ url_for('estate.inbox') }}" class="btn">← Back</a>
+    <a href="{{ url_for('estate.lead_detail', contact_id=buyer.id) }}" class="btn">Open lead</a>
+    <a href="{{ url_for('estate.inbox') }}" class="btn">← Inbox</a>
   </div>
 </div>
 
@@ -110,7 +111,14 @@
                       {% else %}
                       background:var(--ink);color:#fff;border-bottom-right-radius:4px
                       {% endif %}">
+            {% if msg.voice_text is defined %}
+            <div style="font-size:11px;font-weight:700;opacity:.75;margin-bottom:4px">🎤 Voice note{% if msg.voice_secs %} · {{ msg.voice_secs // 60 }}:{{ '%02d'|format(msg.voice_secs % 60) }}{% endif %}</div>
+            {% if msg.voice_id %}<audio controls preload="none" src="{{ url_for('estate.voice_note_audio', note_id=msg.voice_id) }}" style="width:100%;max-width:260px;height:36px;margin-bottom:6px"></audio>{% endif %}
+            {% if msg.voice_text and not msg.voice_text.startswith('(') %}<div style="font-style:italic">“{{ msg.voice_text }}”</div><div style="font-size:10px;opacity:.6;margin-top:3px">Written out automatically. Play it if something looks wrong.</div>
+            {% else %}<div style="font-style:italic;opacity:.8">Couldn't be written out. Play it to hear the buyer.</div>{% endif %}
+            {% else %}
             {{ msg.content }}
+            {% endif %}
             <div style="font-size:10px;margin-top:4px;
                         {% if msg.role == 'assistant' %}color:var(--muted){% else %}color:rgba(255,255,255,0.55){% endif %}">
               {{ msg.created_at.strftime('%d %b %H:%M') if msg.created_at else '' }}

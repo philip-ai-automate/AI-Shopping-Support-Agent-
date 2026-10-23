@@ -57,7 +57,7 @@ PLAN_LOCK_CODE_PATHS = [
 
 # Blueprints whose routes must all carry a label. Admin, school, estate and
 # ambassador have their own separate login systems — not team roles.
-CHECKED_BLUEPRINTS = ("portal", "facebook", "pressone", "buffer", "social", "upload", "socialcal", "mailbox", "accounts", "leadfinder")
+CHECKED_BLUEPRINTS = ("portal", "facebook", "calls", "buffer", "social", "upload", "socialcal", "mailbox", "accounts", "leadfinder", "bookings")
 
 _PERMISSION_CHECK_RE = re.compile(
     r"_require_team_permission\(|_team_member_has_permission\(|_require_any_team_permission\("

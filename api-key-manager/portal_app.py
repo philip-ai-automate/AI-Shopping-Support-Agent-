@@ -22,7 +22,7 @@ def create_app():
     from portal_routes import portal_bp
     from portal_admin_routes import portal_admin_bp
     from portal_facebook_routes import facebook_bp
-    from pressone_routes import pressone_bp
+    from calls_routes import calls_bp
     from buffer_routes import buffer_bp
     from ai_design_routes import social_bp, ai_admin_bp
     from upload_design_routes import upload_bp
@@ -41,7 +41,7 @@ def create_app():
     flask_app.register_blueprint(portal_bp)
     flask_app.register_blueprint(portal_admin_bp, url_prefix="/admin")
     flask_app.register_blueprint(facebook_bp)
-    flask_app.register_blueprint(pressone_bp)
+    flask_app.register_blueprint(calls_bp)
     flask_app.register_blueprint(buffer_bp)
     flask_app.register_blueprint(social_bp)
     flask_app.register_blueprint(ai_admin_bp)

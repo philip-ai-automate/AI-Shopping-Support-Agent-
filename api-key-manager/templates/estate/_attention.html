@@ -1,0 +1,94 @@
+{# Needs attention panel (Phase 4, 2026-10-22). Needs: att (estate_alerts.attention),
+   att_agent, att_staff (for the agent filter + Reassign), _re_is_admin. #}
+<style>
+.at-box{background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;box-shadow:0 2px 12px rgba(3,12,24,0.05);margin-bottom:20px;overflow:hidden}
+.at-tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;padding:16px 18px 6px}
+.at-tile{display:block;text-decoration:none;border-radius:12px;padding:11px 13px;background:#F6F8FB;color:#030C18;border:1.5px solid transparent}
+.at-tile:hover{border-color:rgba(3,12,24,0.14)}
+.at-tile b{display:block;font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+.at-tile span{font-size:12px;color:rgba(3,12,24,0.55);font-weight:600}
+.at-tile.hot{background:#FEF0EF}.at-tile.hot b{color:#B42318}
+.at-tile.warm{background:#FFF6E6}.at-tile.warm b{color:#A15C00}
+.at-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 18px;border-top:1px solid rgba(3,12,24,0.06)}
+.at-title{font-size:15px;font-weight:800;color:#030C18}
+.at-filter{display:flex;gap:6px;flex-wrap:wrap}
+.at-filter a{font-size:12px;font-weight:700;padding:5px 11px;border-radius:999px;text-decoration:none;color:rgba(3,12,24,0.6);border:1px solid rgba(3,12,24,0.12)}
+.at-filter a.on{background:#030C18;color:#fff;border-color:#030C18}
+.at-row{display:flex;align-items:center;gap:12px;padding:11px 18px;border-top:1px solid rgba(3,12,24,0.05)}
+.at-dot{width:9px;height:9px;border-radius:50%;flex:none;background:#98A2B3}
+.at-dot.ready,.at-dot.chat,.at-dot.call{background:#F04438}.at-dot.visit,.at-dot.overdue{background:#F79009}
+.at-main{flex:1;min-width:0}
+.at-name{font-size:13.5px;font-weight:750;color:#030C18;text-decoration:none}
+.at-rd{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;margin-left:4px;vertical-align:1px}
+.at-rd.ready{background:#E7F6EE;color:#12805C}.at-rd.considering{background:#FEF3E2;color:#A15C00}.at-rd.early{background:#E8EEF8;color:#5A6B85}
+.at-why{font-size:12.5px;color:rgba(3,12,24,0.62);margin-top:2px;overflow-wrap:anywhere}
+.at-why b{color:#030C18;font-weight:700}
+.at-owner{font-size:12px;color:rgba(3,12,24,0.5);white-space:nowrap}
+.at-btn{font:inherit;font-size:12px;font-weight:750;padding:6px 12px;border-radius:8px;border:1px solid rgba(3,12,24,0.14);background:#fff;color:#030C18;text-decoration:none;white-space:nowrap;cursor:pointer}
+.at-btn.dark{background:#030C18;color:#fff;border-color:#030C18}
+.at-re{display:flex;gap:6px;align-items:center}
+.at-re select{font:inherit;font-size:12px;padding:5px 6px;border-radius:8px;border:1px solid rgba(3,12,24,0.14);max-width:130px}
+.at-empty{padding:18px;font-size:13px;color:rgba(3,12,24,0.5);border-top:1px solid rgba(3,12,24,0.05)}
+.at-more{display:block;padding:11px 18px;font-size:12.5px;font-weight:750;color:#1a56db;text-decoration:none;border-top:1px solid rgba(3,12,24,0.05)}
+@media(max-width:900px){.at-tiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:600px){
+  .at-tiles{grid-template-columns:1fr 1fr;padding:12px 12px 4px}
+  .at-row{flex-wrap:wrap;padding:11px 12px}
+  .at-main{flex-basis:calc(100% - 24px)}
+  .at-owner{margin-left:21px}
+  .at-head{padding:12px}
+}
+</style>
+<div class="at-box" id="attention">
+  <div class="at-tiles">
+    {% for key, label in att_reasons %}
+    {% set n = att.counts[key] %}
+    <a class="at-tile {{ ('hot' if key in ('ready','chat','call') else 'warm') if n else '' }}"
+       href="{{ url_for('estate.leads', view='attention') }}"><b>{{ n }}</b><span>{{ label }}</span></a>
+    {% endfor %}
+  </div>
+  <div class="at-head">
+    <span class="at-title">Needs attention{% if att.rows %} · {{ att.rows|length }}{% endif %}</span>
+    {% if _re_is_admin and att_staff %}
+    <div class="at-filter">
+      <a href="{{ url_for(request.endpoint) }}#attention" class="{{ 'on' if not att_agent }}">Everyone</a>
+      {% for s in att_staff %}<a href="{{ url_for(request.endpoint, att_agent=s.id) }}#attention" class="{{ 'on' if att_agent == s.id|string }}">{{ s.first_name }}</a>{% endfor %}
+      <a href="{{ url_for(request.endpoint, att_agent='none') }}#attention" class="{{ 'on' if att_agent == 'none' }}">Unassigned</a>
+    </div>
+    {% endif %}
+  </div>
+  {% for r in att.rows[:att_limit] %}
+  <div class="at-row">
+    <span class="at-dot {{ r.reason }}" aria-hidden="true"></span>
+    <div class="at-main">
+      <a class="at-name" href="{{ url_for('estate.lead_detail', contact_id=r.id) }}">{{ r.name or r.phone_number }}</a>
+      {% if r.readiness %}<span class="at-rd {{ r.readiness }}">{{ readiness_names.get(r.readiness) }}</span>{% endif %}
+      <div class="at-why"><b>{{ r.text }}</b>{% if r.interest %} · {{ r.interest }}{% endif %}{% if r.also %} · also: {{ r.also|join(', ') }}{% endif %}</div>
+    </div>
+    <span class="at-owner">{{ r.agent_name or 'Unassigned' }}</span>
+    {% if _re_is_admin and att_staff and r.reason == 'ready' %}
+    <form method="POST" action="{{ url_for('estate.lead_assign', contact_id=r.id) }}" class="at-re">
+      <input type="hidden" name="next" value="{{ request.full_path }}">
+      <select name="assigned_to" aria-label="Reassign {{ r.name or 'lead' }}">
+        <option value="">Unassigned</option>
+        {% for s in att_staff %}<option value="{{ s.id }}" {{ 'selected' if s.id == r.assigned_to }}>{{ s.first_name }}</option>{% endfor %}
+      </select>
+      <button class="at-btn" type="submit">Reassign</button>
+    </form>
+    {% elif r.reason == 'call' and r.phone_number|tel_link %}
+    <a class="at-btn dark" href="tel:{{ r.phone_number|tel_link }}">Call back</a>
+    {% elif r.reason == 'chat' %}
+    <a class="at-btn dark" href="{{ url_for('estate.inbox_detail', customer_id=r.id) }}">Open chat</a>
+    {% elif r.reason == 'noaction' %}
+    <a class="at-btn" href="{{ url_for('estate.lead_detail', contact_id=r.id) }}#next">Set action</a>
+    {% else %}
+    <a class="at-btn" href="{{ url_for('estate.lead_detail', contact_id=r.id) }}">Open</a>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="at-empty">Nothing is slipping right now.</div>
+  {% endfor %}
+  {% if att.rows|length > att_limit %}
+  <a class="at-more" href="{{ url_for('estate.leads', view='attention') }}">See all {{ att.rows|length }} in Leads →</a>
+  {% endif %}
+</div>

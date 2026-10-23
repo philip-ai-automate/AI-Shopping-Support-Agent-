@@ -74,7 +74,7 @@
 {% set w, h, pad = 120, 30, 3 %}
 {% set mx = [vals|select('number')|max if vals|select('number')|list else 0, 5]|max %}
 {% set step = (w - pad * 2) / (vals|length - 1) %}
-<svg width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}" role="img" aria-label="Leads worked per working day, last 7 working days" style="display:block">
+<svg width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}" role="img" aria-label="Businesses contacted personally per working day, last 7 working days" style="display:block">
   <line x1="{{ pad }}" x2="{{ w - pad }}" y1="{{ h - pad }}" y2="{{ h - pad }}" stroke="rgba(3,12,24,.12)"/>
   {% set pts = [] %}
   {% for v in vals %}{% if v is not none %}{% set _ = pts.append(((pad + loop.index0 * step)|round(1), (h - pad - v / mx * (h - pad * 2))|round(1))) %}{% endif %}{% endfor %}
@@ -110,17 +110,23 @@
   <div class="tp-tile"><div class="l">{{ 'Logged in today' if d.period_key == 'today' else 'People who logged in' }}</div>
     <div class="v">{{ t.present }}<small> of {{ t.people }}</small></div>
     <div class="d tp-flat">{{ t.people }} {{ 'person' if t.people == 1 else 'people' }} on this page</div></div>
-  <div class="tp-tile"><div class="l">Leads worked</div><div class="v">{{ '{:,}'.format(t.leads_worked) }}</div>{{ delta(t.leads_worked, t.prev_leads_worked) }}</div>
+  <div class="tp-tile"><div class="l">Businesses contacted personally</div><div class="v">{{ '{:,}'.format(t.contacted) }}</div>{{ delta(t.contacted, t.prev_contacted) }}</div>
   <div class="tp-tile"><div class="l">Calls logged</div><div class="v">{{ '{:,}'.format(t.calls) }}</div>{{ delta(t.calls, t.prev_calls) }}</div>
   <div class="tp-tile"><div class="l">New opportunities</div><div class="v">{{ '{:,}'.format(t.opps) }}</div>{{ delta(t.opps, t.prev_opps) }}</div>
   <div class="tp-tile"><div class="l">Won</div><div class="v">{{ (t.won_value)|money_total }}</div>{{ delta(t.won_value, t.prev_won_value) }}</div>
 </div>
 
+<div class="tp-note" style="background:#F1FAF5;border-color:#A6E3C4;color:#0B3D24">
+  <b>Contacted personally</b> counts businesses the person called, messaged on WhatsApp, Messenger or web chat, sent a LinkedIn request or message, or answered a reply themselves.
+  Emails sent automatically by sequences{% if t.auto_emails %} ({{ '{:,}'.format(t.auto_emails) }} in this period){% endif %} are shown apart and are not counted as their work or their time online.
+  <a href="{{ url_for('portal.team_performance_contacted', period=d.period_key) }}" style="font-weight:800;color:inherit">See the daily record of every business contacted ›</a>
+</div>
 <div class="tp-attn">
   <div class="tp-attn-h">Needs your attention</div>
   {% for sev, text, target, act in d.attention %}
   <div class="tp-attn-row"><span class="tp-sev {{ sev }}"></span><span>{{ text|safe }}</span>
     {% if target.startswith('lead:') %}<a class="act" href="{{ url_for('portal.lead_detail', lead_id=target[5:]|int) }}">{{ act }} ›</a>
+    {% elif target.startswith('followups:') %}<a class="act" href="{{ url_for('portal.follow_ups_page', who=target[10:]) }}">{{ act }} ›</a>
     {% elif target.startswith('leads:') %}<a class="act" href="{{ url_for('portal.leads_page', assigned=target[6:]) }}">{{ act }} ›</a>
     {% elif act == 'See target' %}<a class="act" href="#targets">{{ act }} ›</a>
     {% else %}<a class="act" href="{{ url_for('portal.team_performance_person', actor_key=target, day=d.end.isoformat()) }}">{{ act }} ›</a>{% endif %}
@@ -135,13 +141,15 @@
   <table class="tp-tbl">
     <thead>
       <tr><th></th><th></th>
-        <th class="grp sepL" colspan="5">Activity (what they did)</th>
+        <th class="grp sepL" colspan="6">Activity (what they did themselves)</th>
+        <th class="grp sepL" colspan="3">Follow-ups due in this period</th>
         <th class="grp sepL" colspan="3">Results (what came out of it)</th>
         <th class="grp sepL" colspan="2">Month so far</th></tr>
       <tr>
         <th>Team member</th><th>Status</th>
-        <th class="num sepL">Leads worked</th><th class="num">Calls</th><th class="num">Messages sent</th>
-        <th class="num">Emails sent</th><th class="num">Replies got</th>
+        <th class="num sepL">Contacted personally</th><th class="num">Calls</th><th class="num">Messages sent</th>
+        <th class="num">LinkedIn</th><th class="num">Replies got</th><th class="num">Sequence emails<span class="tp-s" style="text-transform:none;letter-spacing:0;font-weight:600">automatic</span></th>
+        <th class="num sepL">Due</th><th class="num">Done on time</th><th class="num">Missed</th>
         <th class="num sepL">New opps</th><th class="num">Proposals</th><th class="num">Won</th>
         <th class="sepL">Opportunities vs target</th><th>Last 7 working days</th>
       </tr>
@@ -153,11 +161,18 @@
           <span class="tp-av">{{ p.initials }}</span>
           <span><span class="n">{{ p.name }}</span><span class="r">{{ p.role }}{% if p.manager %} · reports to {{ p.manager }}{% endif %}</span></span></a></td>
         <td><span class="tp-pill {{ p.status[1] }}">{{ p.status[0] }}</span><span class="tp-s">{{ p.status[2] }}</span></td>
-        <td class="num sepL"><b>{{ '{:,}'.format(p.leads_worked) }}</b><span class="tp-s">of {{ '{:,}'.format(p.assigned) }} assigned</span></td>
+        <td class="num sepL"><a href="{{ url_for('portal.team_performance_contacted', period=d.period_key, person=p.key) }}" style="color:var(--ink)"><b>{{ '{:,}'.format(p.contacted) }}</b></a>
+          <span class="tp-s">{{ '{:,}'.format(p.assigned) }} assigned · {{ '{:,}'.format(p.leads_worked) }} touched</span>
+          {% if p.marked_only %}<span class="tp-s" style="color:#93540a">{{ '{:,}'.format(p.marked_only) }} marked Contacted, no call or message</span>{% endif %}</td>
         <td class="num">{{ p.calls }}{% if p.calls %}<span class="tp-s">{{ p.calls_answered }} answered</span>{% endif %}</td>
         <td class="num">{{ p.messages }}</td>
-        <td class="num">{{ p.emails }}</td>
+        <td class="num">{{ p.linkedin }}</td>
         <td class="num">{{ p.replies }}</td>
+        <td class="num" style="color:var(--muted)">{{ '{:,}'.format(p.auto_emails) }}</td>
+        <td class="num sepL">{{ p.fu_due }}{% if p.fu_late %}<span class="tp-s">{{ p.fu_late }} done late</span>{% endif %}</td>
+        <td class="num">{{ p.fu_on_time }}{% if p.fu_due %}<span class="tp-s">{{ (100 * p.fu_on_time / p.fu_due)|round|int }}%</span>{% endif %}</td>
+        <td class="num">{% if p.fu_missed %}<a href="{{ url_for('portal.follow_ups_page', who=p.key) }}" style="color:#B42318;font-weight:800">{{ p.fu_missed }}</a>{% else %}0{% endif %}
+          {% if p.fu_overdue_now %}<span class="tp-s" style="color:#B42318">{{ p.fu_overdue_now }} overdue now</span>{% endif %}</td>
         <td class="num sepL"><b>{{ p.opps }}</b></td>
         <td class="num">{{ p.proposals }}</td>
         <td class="num"><b>{{ (p.won_value)|money_total }}</b>{% if p.won_count %}<span class="tp-s">{{ p.won_count }} deal{{ 's' if p.won_count != 1 }}</span>{% endif %}</td>
@@ -171,14 +186,14 @@
           <b>{{ p.month_opps }}</b> <span class="tp-s">{% if p.can_set_target %}<a href="#targets">Set a target</a>{% else %}No target set{% endif %}</span>
           {% endif %}
         </td>
-        <td>{{ spark(p.spark) }}<span class="tp-s">leads worked per day</span></td>
+        <td>{{ spark(p.spark) }}<span class="tp-s">contacted personally per day</span></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 <p class="tp-legend">Click a name to see that person's full day. The thin black mark on a target bar shows where they should be by today ({{ d.pace_pct }}% of this month's working days).
-  <b>Leads worked</b> = different leads they called, messaged, emailed, added a note to or moved that day. <b>Messages sent</b> = WhatsApp, Messenger and web chat replies. AI replies don't count.</p>
+  <b>Contacted personally</b> = different businesses they called (any outcome), messaged, sent a LinkedIn request or message, or answered a reply. <b>Touched</b> = any lead they called, messaged, edited, added a note to or moved, including bulk moves. <b>Messages sent</b> = WhatsApp, Messenger and web chat replies; AI replies don't count. <b>Follow-ups</b>: every open lead has a next follow-up date, chosen when the person calls, messages or logs a LinkedIn step (or set 3 working days ahead when they reply from the Inbox). <b>Due</b> = follow-up dates in this period, <b>Done on time</b> = they contacted the lead on or before the date, <b>Missed</b> = the date has passed and nobody has contacted the lead yet. Follow-ups started on 23 October 2026. <b>Sequence emails</b> go out automatically from sequences they set up and aren't counted as their work. Calls from their own phone count once logged with <b>Log a call</b> on the lead.</p>
 {% else %}
 <div class="tp-tbl-wrap"><div class="tp-empty">Nobody to show yet. People appear here once they have leads assigned or do sales work in the portal.{% if viewer.is_team %} You see the people who report to you.{% endif %}</div></div>
 {% endif %}

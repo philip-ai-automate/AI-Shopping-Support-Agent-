@@ -260,6 +260,31 @@
          padding-top:6px;border-top:1px solid rgba(3,12,24,0.05)}
 
 /* ── Phase 4: Plot Allocation ── */
+/* ── What the AI learned (land buyers) ── */
+.lb-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.lb-rd{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:750;padding:3px 11px;border-radius:999px}
+.lb-rd.ready{background:#E7F6EE;color:#12805C}
+.lb-rd.considering{background:#FEF3E2;color:#A15C00}
+.lb-rd.early{background:#E8EEF8;color:#5A6B85}
+.lb-why{font-size:13px;color:rgba(3,12,24,0.62);margin:8px 0 12px}
+.lb-why small{color:rgba(3,12,24,0.4)}
+.lb-chips{display:flex;flex-wrap:wrap;gap:6px}
+.lb-chip{font-size:12.5px;font-weight:600;background:#eef2f9;color:#0B1D40;padding:4px 10px;border-radius:999px}
+.lb-edit{margin-top:14px;border-top:1px solid rgba(3,12,24,0.07);padding-top:12px}
+.lb-edit summary{cursor:pointer;font-size:12.5px;font-weight:700;color:#1a56db}
+.lb-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 12px;margin-top:12px}
+@media(max-width:700px){.lb-form{grid-template-columns:minmax(0,1fr)}}
+.lb-log{margin-top:12px;font-size:12px;color:rgba(3,12,24,0.5);display:grid;gap:3px}
+.pa-est{margin-top:12px;border:1px solid rgba(26,86,219,0.18);background:rgba(26,86,219,0.04);border-radius:10px;padding:12px 14px;font-size:13px}
+.pa-est-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:3px 0}
+.pa-est-row span{color:rgba(3,12,24,0.5);flex:1;min-width:0}
+.pa-est-row b{font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.pa-est-box{display:none;border:1px solid rgba(26,86,219,0.18);background:rgba(26,86,219,0.03);border-radius:10px;padding:14px 14px 2px;margin-bottom:16px}
+.pa-est-box.on{display:block}
+.pa-est-sum{font-size:12.5px;color:#0a7a3c;font-weight:650;margin:-6px 0 14px}
+.pa-est-chk{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:rgba(3,12,24,0.7);margin-bottom:14px}
+.pa-est-chk input{width:16px!important;height:16px;flex:none;margin:2px 0 0;accent-color:#1a56db}
+.pa-est-chk span{flex:1;min-width:0;text-transform:none;letter-spacing:0;font-weight:500}
 .pa-linked{
   padding:16px;background:rgba(10,122,60,0.05);border:1.5px solid rgba(10,122,60,0.20);
   border-radius:12px;margin-bottom:16px
@@ -306,6 +331,41 @@
 .modal-close:hover{background:rgba(3,12,24,0.12)}
 .modal-body{padding:22px 24px;display:flex;flex-direction:column;gap:14px}
 .modal-footer{padding:16px 24px;border-top:1px solid rgba(3,12,24,0.07);display:flex;gap:10px;justify-content:flex-end}
+
+/* ── Buyer card (Phase 3) ── */
+.bc{flex-direction:column;align-items:stretch;gap:16px}
+.bc-top{display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap}
+.bc-agent{background:rgba(3,12,24,0.05);color:rgba(3,12,24,0.65);border:1px solid rgba(3,12,24,0.08)}
+.bc-opt{background:rgba(240,68,56,0.08);color:#b42318;border:1px solid rgba(240,68,56,0.22)}
+.bc-facts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.bc-fact{background:#f6f8fb;border-radius:10px;padding:9px 12px;min-width:0}
+.bc-fact span{display:block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:rgba(3,12,24,0.38)}
+.bc-fact b{display:block;font-size:13.5px;color:#030C18;overflow-wrap:anywhere;margin-top:2px}
+.bc-next{border:1.5px solid #030C18;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.bc-next.late{border-color:#dc2626;background:rgba(240,68,56,0.03)}
+.bc-next.none{border-style:dashed;border-color:#dc2626}
+.bc-next-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.bc-lbl{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:rgba(3,12,24,0.45)}
+.bc-auto{font-style:normal;text-transform:none;letter-spacing:0;font-weight:650;color:#1a56db;margin-left:6px}
+.bc-due{font-size:12px;font-weight:750;background:rgba(3,12,24,0.06);color:#030C18;border-radius:8px;padding:3px 10px}
+.bc-due.late{background:rgba(240,68,56,0.10);color:#dc2626}
+.bc-next-title{font-size:15px;font-weight:750;color:#030C18;line-height:1.4}
+.bc-next-title.muted-t{font-size:13.5px;font-weight:600;color:rgba(3,12,24,0.5)}
+.bc-next-btns{display:flex;gap:8px;flex-wrap:wrap}
+.bc-sug{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:rgba(26,86,219,0.06);border-radius:9px;padding:8px 12px;font-size:12.5px;color:#1a3a6e}
+.bc-note{font-size:12px;color:rgba(3,12,24,0.45)}
+.bc-status{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:rgba(3,12,24,0.5);align-items:center}
+.bc-status>span+span::before{content:"·";margin-right:16px;color:rgba(3,12,24,0.25)}
+.bc-opt-form{margin-left:auto}
+.bc-link{background:none;border:0;padding:0;font:inherit;font-size:12px;color:rgba(3,12,24,0.45);text-decoration:underline;cursor:pointer}
+#doneModal [hidden]{display:none!important}
+.due-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.due-chips button{font:inherit;font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;border:1px solid rgba(3,12,24,0.14);background:#fff;cursor:pointer;color:#030C18}
+.due-chips button:hover{border-color:#030C18}
+.then-seg{display:flex;flex-wrap:wrap;gap:6px}
+.then-seg label{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;padding:6px 11px;border:1.5px solid rgba(3,12,24,0.12);border-radius:8px;cursor:pointer;text-transform:none;letter-spacing:0;color:#030C18}
+.then-seg input{width:auto;margin:0}
+@media(max-width:560px){.bc-facts{grid-template-columns:1fr 1fr}.bc-opt-form{margin-left:0}}
 </style>
 {% endblock %}
 
@@ -318,47 +378,135 @@
 {% set cur_stage_idx = stage_slugs.index(contact.pipeline_stage) if contact.pipeline_stage in stage_slugs else 0 %}
 {% set now_ts = namespace(val=none) %}
 
-<a href="{{ url_for('estate.contacts') }}" class="ld-back">
+<a href="{{ url_for('estate.leads') }}" class="ld-back">
   <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-  Back to Contacts
+  Back to Leads
 </a>
 
-<!-- ── Contact Hero ── -->
-<div class="ld-hero">
-  <div class="ld-av" style="background:{{ av_col }}">
-    {{ (contact.name or contact.phone_number or '?')[0] | upper }}
-  </div>
-  <div class="ld-hero-info">
-    <div class="ld-name">{{ contact.name or 'Unknown Contact' }}</div>
-    <div class="ld-phone">{{ contact.phone_number }}</div>
-    {% if contact.email %}<div style="font-size:12px;color:rgba(3,12,24,0.40);margin-top:2px">{{ contact.email }}</div>{% endif %}
-    <div class="ld-pills" style="margin-top:10px">
+<!-- ── Buyer card ── -->
+{% set alloc = estate_alloc or {} %}
+<div class="ld-hero bc">
+  <div class="bc-top">
+    <div class="ld-av" style="background:{{ av_col }}">
+      {{ (contact.name or contact.phone_number or '?')[0] | upper }}
+    </div>
+    <div class="ld-hero-info">
+      <div class="ld-name">{{ contact.name or 'Unknown Contact' }}</div>
+      <div class="ld-phone">{{ contact.phone_number }}</div>
+      {% if contact.email %}<div style="font-size:12px;color:rgba(3,12,24,0.40);margin-top:2px">{{ contact.email }}</div>{% endif %}
+      <div class="ld-pills" style="margin-top:10px">
+        {% if land.readiness %}<span class="lb-rd {{ land.readiness }}">● {{ dict(readiness_choices).get(land.readiness) }}</span>{% endif %}
+        {% if contact.source == 'whatsapp' %}
+        <span class="src-badge src-wa">💬 WhatsApp</span>
+        {% elif contact.source == 'csv' %}
+        <span class="src-badge src-csv">📄 CSV</span>
+        {% else %}
+        <span class="src-badge src-manual">✏️ Manual</span>
+        {% endif %}
+        <span class="src-badge bc-agent">👤 {{ contact.agent_name or 'Unassigned' }}</span>
+        {% if opted_out %}<span class="src-badge bc-opt" title="Replied STOP or marked by staff">🚫 Opted out</span>{% endif %}
+        {% for seg in contact_segments %}
+        <span class="seg-pill" style="background:{{ seg.color }}1a;color:{{ seg.color }};border-color:{{ seg.color }}33">
+          <span style="width:6px;height:6px;border-radius:50%;background:{{ seg.color }};display:inline-block"></span>
+          {{ seg.name }}
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="ld-hero-actions">
       {% if contact.source == 'whatsapp' %}
-      <span class="src-badge src-wa">💬 WhatsApp</span>
-      {% elif contact.source == 'csv' %}
-      <span class="src-badge src-csv">📄 CSV</span>
-      {% else %}
-      <span class="src-badge src-manual">✏️ Manual</span>
+      <a href="{{ url_for('estate.inbox_detail', customer_id=contact.id) }}" class="ld-action-btn ld-btn-wa">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        WhatsApp Chat
+      </a>
       {% endif %}
-      {% for seg in contact_segments %}
-      <span class="seg-pill" style="background:{{ seg.color }}1a;color:{{ seg.color }};border-color:{{ seg.color }}33">
-        <span style="width:6px;height:6px;border-radius:50%;background:{{ seg.color }};display:inline-block"></span>
-        {{ seg.name }}
-      </span>
-      {% endfor %}
+      {% if contact.phone_number|tel_link %}
+      <a href="tel:{{ contact.phone_number|tel_link }}" class="ld-action-btn ld-btn-outline">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.4 2 2 0 0 1 3.6 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.83a16 16 0 0 0 6 6l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        Call
+      </a>
+      {% endif %}
     </div>
   </div>
-  <div class="ld-hero-actions">
-    {% if contact.source == 'whatsapp' %}
-    <a href="{{ url_for('estate.inbox_detail', customer_id=contact.id) }}" class="ld-action-btn ld-btn-wa">
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-      WhatsApp Chat
-    </a>
+
+  {# What they want: land buyers and property buyers see different facts #}
+  {% set facts = [] %}
+  {% if is_land %}
+    {% if land.estate_title or (linked_listing and linked_listing.title) %}{% set _ = facts.append(('Estate', land.estate_title or linked_listing.title)) %}{% endif %}
+    {% if alloc.size_label %}{% set _ = facts.append(('Plot', alloc.size_label)) %}{% elif land.plot_size_sqm %}{% set _ = facts.append(('Plot', ('%g'|format(land.plot_size_sqm|float)) ~ ' sqm')) %}{% endif %}
+    {% if alloc.plan_name %}{% set _ = facts.append(('Plan', alloc.plan_name)) %}{% elif land.pay_mode %}{% set _ = facts.append(('Plan', land.pay_mode|capitalize)) %}{% endif %}
+    {% if land.start_amount %}{% set _ = facts.append(('Starts with', '₦' ~ '{:,.0f}'.format(land.start_amount))) %}{% elif land.total_budget %}{% set _ = facts.append(('Budget', '₦' ~ '{:,.0f}'.format(land.total_budget))) %}{% endif %}
+    {% if land.timeframe %}{% set _ = facts.append(('When', dict(land_timeframes).get(land.timeframe, land.timeframe))) %}{% endif %}
+    {% if land.purpose %}{% set _ = facts.append(('Purpose', dict(land_purposes).get(land.purpose, land.purpose))) %}{% endif %}
+  {% else %}
+    {% if contact.property_type_pref %}{% set _ = facts.append(('Looking for', contact.property_type_pref|replace('_',' ')|capitalize)) %}{% endif %}
+    {% if contact.transaction_pref %}{% set _ = facts.append(('To', {'sale':'Buy','rent':'Rent','lease':'Lease','shortlet':'Shortlet'}.get(contact.transaction_pref, contact.transaction_pref|capitalize))) %}{% endif %}
+    {% if contact.bedrooms_pref %}{% set _ = facts.append(('Bedrooms', contact.bedrooms_pref)) %}{% endif %}
+    {% if contact.preferred_area %}{% set _ = facts.append(('Area', contact.preferred_area)) %}{% endif %}
+    {% if contact.budget_max %}{% set _ = facts.append(('Rent up to' if contact.transaction_pref in ('rent','lease','shortlet') else 'Budget up to', '₦' ~ '{:,.0f}'.format(contact.budget_max))) %}{% endif %}
+    {% if linked_listing %}{% set _ = facts.append(('Property', linked_listing.title)) %}{% endif %}
+  {% endif %}
+  {% if facts %}
+  <div class="bc-facts">
+    {% for k, v in facts %}<div class="bc-fact"><span>{{ k }}</span><b>{{ v }}</b></div>{% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="br-card" id="brief">
+    <div class="br-top">
+      <span class="br-title">🧠 AI brief before you call</span>
+      <button type="button" class="vn-btn br-btn" id="brBtn" onclick="brMake()">{{ 'Refresh brief' if brief else 'Brief me' }}</button>
+    </div>
+    <div id="brBody">{% if brief %}{% with tz=brief_tz %}{% include 'estate/_brief.html' %}{% endwith %}{% else %}<div class="br-meta">What the buyer wants, what they can afford, what worries them, and what to say. Written by the AI from everything on this lead, in a few seconds.</div>{% endif %}</div>
+  </div>
+
+  {% if can_act %}
+  <div class="vn-bar">
+    <button type="button" class="vn-btn" onclick="vnOpen()"><span aria-hidden="true">🎤</span> Record a voice note</button>
+    <span class="vn-hint">Say what happened with this buyer. KeyLand fills in the lead for you to check.</span>
+  </div>
+  {% endif %}
+
+  <div class="bc-next {{ 'late' if next_action and next_action.overdue }} {{ 'none' if is_open and not next_action }}" id="next">
+    {% if not is_open %}
+      <div class="bc-next-row"><span class="bc-lbl">Next action</span></div>
+      <div class="bc-next-title muted-t">None needed: this lead is {{ 'Allocated' if contact.pipeline_stage == 'allocated' else 'Lost / archived' }}.</div>
+    {% elif next_action %}
+      <div class="bc-next-row">
+        <span class="bc-lbl">Next action{% if next_action.set_by == 'system' %} <i class="bc-auto">set by KeyLand</i>{% endif %}</span>
+        <span class="bc-due {{ 'late' if next_action.overdue }}">{{ 'Overdue · ' if next_action.overdue }}Due {{ next_action.due_local.strftime('%a %d %b, %H:%M') }} · {{ next_action.owner_name or 'Owner / admin' }}</span>
+      </div>
+      <div class="bc-next-title">{{ next_action.title }}</div>
+      {% if can_act %}
+      <div class="bc-next-btns">
+        <button type="button" class="ld-action-btn ld-btn-dark" onclick="openModal('doneModal')">✓ Mark done</button>
+        <button type="button" class="ld-action-btn ld-btn-outline" onclick="openModal('changeModal')">Change</button>
+      </div>
+      {% endif %}
+    {% else %}
+      <div class="bc-next-row"><span class="bc-lbl">Next action</span><span class="bc-due late">Missing</span></div>
+      <div class="bc-next-title muted-t">Every open lead needs one next step with a date.</div>
+      {% if can_act %}<div class="bc-next-btns"><button type="button" class="ld-action-btn ld-btn-dark" onclick="openModal('changeModal')">+ Set next action</button></div>{% endif %}
     {% endif %}
-    <a href="tel:{{ contact.phone_number }}" class="ld-action-btn ld-btn-outline">
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.4 2 2 0 0 1 3.6 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.83a16 16 0 0 0 6 6l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-      Call
-    </a>
+    {% if action_suggestion and can_act %}
+    <form method="POST" action="{{ url_for('estate.lead_action_suggested', contact_id=contact.id) }}" class="bc-sug">
+      <span>Suggested: <b>{{ action_suggestion.title }}</b>, due {{ action_suggestion.due_local.strftime('%a %d %b, %H:%M') }}</span>
+      <button type="submit" class="ld-action-btn ld-btn-outline" style="font-size:12px;padding:5px 11px">Use this</button>
+    </form>
+    {% endif %}
+    {% if not can_act and is_open %}<div class="bc-note">Only {{ contact.agent_name or 'an admin or the owner' }}{{ ', an admin or the owner' if contact.agent_name }} can change this.</div>{% endif %}
+  </div>
+
+  <div class="bc-status">
+    <span>{{ (pipeline_stages | selectattr(0,'eq',contact.pipeline_stage) | map(attribute=1) | first | default('New'))|stage_word(contact.pipeline_stage, is_land) }}</span>
+    <span>Last contact {{ last_contact.strftime('%d %b, %H:%M') if last_contact else 'none yet' }}</span>
+    {% if followup_line %}<span>{{ followup_line }}</span>{% endif %}
+    {% if can_act %}
+    <form method="POST" action="{{ url_for('estate.lead_optout', contact_id=contact.id) }}" class="bc-opt-form">
+      <input type="hidden" name="on" value="{{ '0' if opted_out else '1' }}">
+      <button type="submit" class="bc-link">{{ 'Remove opt-out' if opted_out else 'Mark as opted out' }}</button>
+    </form>
+    {% endif %}
   </div>
 </div>
 
@@ -385,7 +533,7 @@
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>
             {% endif %}
           </div>
-          <span class="stage-name">{{ label }}</span>
+          <span class="stage-name">{{ label|stage_word(slug, is_land) }}</span>
         </button>
       </form>
     </div>
@@ -410,6 +558,74 @@
       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       Mark as Lost / Archive
     </button>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── What the AI learned (land buyers) ── -->
+{% set lv = land or {} %}
+<div class="ld-card" id="land" style="margin-bottom:18px">
+  <div class="ld-card-head">
+    <div class="lb-head">
+      <div class="ld-card-title"><span class="ic">🌍</span> {{ 'Land buyer' if is_land else 'Buying land?' }}</div>
+      {% if lv.readiness %}<span class="lb-rd {{ lv.readiness }}">● {{ dict(readiness_choices).get(lv.readiness) }}</span>{% endif %}
+    </div>
+  </div>
+  <div class="ld-card-body">
+    {% if lv.readiness %}
+    <div class="lb-why">{{ lv.readiness_reason or '' }}
+      <small>· {{ 'set by staff' if lv.readiness_by == 'staff' else 'worked out from the chat' }}{% if lv.readiness_at %}, {{ lv.readiness_at.strftime('%d %b %H:%M') }}{% endif %}</small></div>
+    {% endif %}
+    {% set chips = [] %}
+    {% if lv.estate_title %}{% set _ = chips.append('Estate: ' ~ lv.estate_title) %}{% endif %}
+    {% if lv.plot_size_sqm %}{% set _ = chips.append('Plot: ' ~ ('%g'|format(lv.plot_size_sqm|float)) ~ ' sqm') %}{% endif %}
+    {% if lv.pay_mode %}{% set _ = chips.append('Pays: ' ~ lv.pay_mode) %}{% endif %}
+    {% if lv.start_amount %}{% set _ = chips.append('Starts with: ₦' ~ '{:,.0f}'.format(lv.start_amount)) %}{% endif %}
+    {% if lv.total_budget %}{% set _ = chips.append('Total budget: ₦' ~ '{:,.0f}'.format(lv.total_budget)) %}{% endif %}
+    {% if lv.monthly_amount %}{% set _ = chips.append('Monthly: ₦' ~ '{:,.0f}'.format(lv.monthly_amount)) %}{% endif %}
+    {% if lv.purpose %}{% set _ = chips.append('Purpose: ' ~ dict(land_purposes).get(lv.purpose, lv.purpose)) %}{% endif %}
+    {% if lv.timeframe %}{% set _ = chips.append('When: ' ~ dict(land_timeframes).get(lv.timeframe, lv.timeframe)) %}{% endif %}
+    {% if lv.wants_inspection %}{% set _ = chips.append('Asked for a site inspection') %}{% endif %}
+    {% if lv.asks_how_to_pay %}{% set _ = chips.append('Asked how to pay') %}{% endif %}
+    {% if chips %}<div class="lb-chips">{% for c in chips %}<span class="lb-chip">{{ c }}</span>{% endfor %}</div>
+    {% elif is_land %}<div class="lb-why">The AI hasn't learned any land details yet.</div>
+    {% else %}<div class="lb-why">The AI fills this in when a buyer asks about land or plots. You can also add the details yourself.</div>{% endif %}
+
+    <details class="lb-edit">
+      <summary>{{ 'Edit details or readiness' if is_land else 'Add land details' }}</summary>
+      <form method="POST" action="{{ url_for('estate.lead_land', contact_id=contact.id) }}">
+        <div class="lb-form">
+          <div class="fg"><label for="lbKind">Buyer type</label>
+            <select name="buyer_kind" id="lbKind"><option value="land" {{ 'selected' if lv.buyer_kind == 'land' or not lv.buyer_kind }}>Land buyer</option><option value="property" {{ 'selected' if lv.buyer_kind == 'property' }}>Property buyer</option></select></div>
+          <div class="fg"><label for="lbEstate">Estate</label>
+            <select name="estate_listing_id" id="lbEstate"><option value="">—</option>
+              {% for lst in listings if lst.id in estates %}<option value="{{ lst.id }}" {{ 'selected' if lv.estate_listing_id == lst.id }}>{{ lst.title }}</option>{% endfor %}
+              {% if lv.estate_listing_id and lv.estate_listing_id not in estates %}<option value="{{ lv.estate_listing_id }}" selected>{{ lv.estate_title or 'Current estate' }}</option>{% endif %}
+            </select></div>
+          <div class="fg"><label for="lbSqm">Plot size (sqm)</label><input type="number" min="0" step="any" name="plot_size_sqm" id="lbSqm" value="{{ '%g'|format(lv.plot_size_sqm|float) if lv.plot_size_sqm else '' }}"></div>
+          <div class="fg"><label for="lbPay">Pays</label>
+            <select name="pay_mode" id="lbPay"><option value="">—</option><option value="outright" {{ 'selected' if lv.pay_mode == 'outright' }}>Outright</option><option value="instalment" {{ 'selected' if lv.pay_mode == 'instalment' }}>Instalment</option></select></div>
+          <div class="fg"><label for="lbStart">Starts with (₦)</label><input type="number" min="0" step="any" name="start_amount" id="lbStart" value="{{ lv.start_amount|int if lv.start_amount else '' }}"></div>
+          <div class="fg"><label for="lbTotal">Total budget (₦)</label><input type="number" min="0" step="any" name="total_budget" id="lbTotal" value="{{ lv.total_budget|int if lv.total_budget else '' }}"></div>
+          <div class="fg"><label for="lbMonthly">Monthly (₦)</label><input type="number" min="0" step="any" name="monthly_amount" id="lbMonthly" value="{{ lv.monthly_amount|int if lv.monthly_amount else '' }}"></div>
+          <div class="fg"><label for="lbPurpose">Purpose</label>
+            <select name="purpose" id="lbPurpose"><option value="">—</option>{% for v, l in land_purposes %}<option value="{{ v }}" {{ 'selected' if lv.purpose == v }}>{{ l }}</option>{% endfor %}</select></div>
+          <div class="fg"><label for="lbWhen">When</label>
+            <select name="timeframe" id="lbWhen"><option value="">—</option>{% for v, l in land_timeframes %}<option value="{{ v }}" {{ 'selected' if lv.timeframe == v }}>{{ l }}</option>{% endfor %}</select></div>
+          <div class="fg"><label for="lbReady">Readiness</label>
+            <select name="readiness" id="lbReady">
+              <option value="keep">Keep as it is</option>
+              <option value="auto">Let the AI decide</option>
+              {% for v, l in readiness_choices %}<option value="{{ v }}">Set to {{ l }}</option>{% endfor %}
+            </select></div>
+        </div>
+        <button type="submit" class="save-btn" style="max-width:220px">Save buyer details</button>
+        <div class="ef-hint" style="font-size:11.5px;color:rgba(3,12,24,0.4);margin-top:8px">A readiness you set stays unless the AI sees the buyer become more ready. It never lowers it.</div>
+      </form>
+    </details>
+
+    {% if lv.log %}
+    <div class="lb-log">{% for g in lv.log %}<span>{{ g.created_at.strftime('%d %b %H:%M') }} · {{ dict(readiness_choices).get(g.readiness, g.readiness) }} · {{ 'AI' if g.set_by == 'ai' else g.set_by }}{% if g.reason %} — {{ g.reason }}{% endif %}</span>{% endfor %}</div>
     {% endif %}
   </div>
 </div>
@@ -511,7 +727,7 @@
     <!-- Assign + Follow-up -->
     <div class="ld-card" style="margin-bottom:18px">
       <div class="ld-card-head">
-        <div class="ld-card-title"><span class="ic">👤</span> Assignment &amp; Follow-up</div>
+        <div class="ld-card-title"><span class="ic">👤</span> Assignment</div>
       </div>
       <div class="ld-card-body">
         <form method="POST" action="{{ url_for('estate.lead_assign', contact_id=contact.id) }}">
@@ -527,26 +743,7 @@
             </select>
           </div>
 
-          <div class="fg">
-            <label>Next Follow-up Date</label>
-            {% if contact.follow_up_at %}
-              {% if follow_up_overdue %}
-              <div class="followup-status followup-overdue">
-                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                Overdue — was {{ contact.follow_up_at.strftime('%d %b %Y') }}
-              </div>
-              {% else %}
-              <div class="followup-status followup-set">
-                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                Set for {{ contact.follow_up_at.strftime('%d %b %Y') }}
-              </div>
-              {% endif %}
-            {% else %}
-            <div class="followup-status followup-none">No follow-up date set</div>
-            {% endif %}
-            <input type="date" name="follow_up_at"
-                   value="{{ contact.follow_up_at.strftime('%Y-%m-%d') if contact.follow_up_at else '' }}"/>
-          </div>
+          <div style="font-size:12px;color:rgba(3,12,24,0.45);margin:-6px 0 12px">The next action moves to the new agent too.</div>
 
           <button type="submit" class="save-btn">Save Assignment</button>
         </form>
@@ -563,7 +760,7 @@
           <div class="info-row">
             <span class="info-key">Stage</span>
             <span class="info-val" style="color:{{ pipeline_stages | selectattr(0,'eq',contact.pipeline_stage) | map(attribute=2) | first | default('#6b7280') }}; font-weight:750">
-              {{ pipeline_stages | selectattr(0,'eq',contact.pipeline_stage) | map(attribute=1) | first | default('New') }}
+              {{ (pipeline_stages | selectattr(0,'eq',contact.pipeline_stage) | map(attribute=1) | first | default('New'))|stage_word(contact.pipeline_stage, is_land) }}
             </span>
           </div>
           <div class="info-row">
@@ -594,15 +791,6 @@
       </div>
     </div>
 
-      <!-- Phase 4+ placeholder -->
-      <div style="background:rgba(26,86,219,0.05);border:1px solid rgba(26,86,219,0.15);
-                  border-radius:12px;padding:12px 14px;margin-top:16px;
-                  font-size:12px;color:#1a3a6e;line-height:1.65">
-        <strong style="display:block;margin-bottom:3px">Coming in Phase 4+:</strong>
-        🏘️ Link to Property / Plot Number<br>
-        💰 Payment Milestones in ₦<br>
-        📄 Documents + WhatsApp Delivery
-      </div>
 
   </div>
 </div>
@@ -651,7 +839,8 @@
             </form>
             {% endif %}
           </div>
-          <div class="il-summary">{{ ix.summary }}</div>
+          <div class="il-summary" style="white-space:pre-line">{{ ix.summary }}</div>
+          {% if ix.voice_id %}<audio controls preload="none" src="{{ url_for('estate.agent_voice_audio', note_id=ix.voice_id) }}" style="width:100%;max-width:280px;height:34px;margin-top:6px"></audio>{% endif %}
           {% if ix.staff_name %}
           <div class="il-by">by {{ ix.staff_name }}</div>
           {% endif %}
@@ -710,6 +899,18 @@
         🔖 Plot / Unit: <strong>{{ contact.plot_number }}</strong>
       </div>
       {% endif %}
+      {% if estate_alloc %}
+      <div class="pa-est">
+        <div class="pa-est-row"><span>Plot size</span><b>{{ estate_alloc.size_label }}</b></div>
+        <div class="pa-est-row"><span>Payment plan</span><b>{{ estate_alloc.plan_name }}</b></div>
+        {% if estate_alloc.months %}
+        <div class="pa-est-row"><span>Deposit ({{ '%g'|format(estate_alloc.deposit_pct|float) }}%)</span><b>₦{{ '{:,.0f}'.format(estate_alloc.deposit) }}</b></div>
+        <div class="pa-est-row"><span>Then {{ estate_alloc.months }} monthly payments of</span><b>₦{{ '{:,.0f}'.format(estate_alloc.monthly) }}</b></div>
+        {% endif %}
+        <div class="pa-est-row"><span>Total{% if estate_alloc.premium_pct and estate_alloc.months %} (incl. {{ '%g'|format(estate_alloc.premium_pct|float) }}% premium){% endif %}</span><b>₦{{ '{:,.0f}'.format(estate_alloc.total) }}</b></div>
+        {% if estate_alloc.start_date %}<div class="pa-est-row"><span>First payment</span><b>{{ estate_alloc.start_date.strftime('%d %b %Y') }}</b></div>{% endif %}
+      </div>
+      {% endif %}
     </div>
 
     {% if contact.pipeline_stage == 'allocated' %}
@@ -728,10 +929,10 @@
     <form method="POST" action="{{ url_for('estate.lead_plot', contact_id=contact.id) }}">
       <div class="fg">
         <label>Select Property <span style="color:#dc2626">*</span></label>
-        <select name="listing_id" required>
+        <select name="listing_id" id="paListing" required onchange="window.paSync && paSync()">
           <option value="">— Choose a listing —</option>
           {% for lst in listings %}
-          <option value="{{ lst.id }}">
+          <option value="{{ lst.id }}"{% if lst.id in estates %} data-estate="1"{% endif %}>
             {{ lst.title }} — {{ lst.location }}
             {% if lst.price %}(₦{{ '{:,.0f}'.format(lst.price) }}){% endif %}
             [{{ lst.status | replace('_',' ') | title }}]
@@ -739,6 +940,25 @@
           {% endfor %}
         </select>
       </div>
+      {% if estates %}
+      <div class="pa-est-box" id="paEstBox">
+        <div class="fg">
+          <label for="paSize">Plot size <span style="color:#dc2626">*</span></label>
+          <select name="plot_size_id" id="paSize" onchange="paCalc()"></select>
+        </div>
+        <div class="fg">
+          <label for="paPlan">Payment plan <span style="color:#dc2626">*</span></label>
+          <select name="plan_id" id="paPlan" onchange="paCalc()"></select>
+        </div>
+        <div class="pa-est-sum" id="paSum"></div>
+        <div class="fg">
+          <label for="paStart">First payment date</label>
+          <input type="date" name="start_date" id="paStart" value=""/>
+        </div>
+        <label class="pa-est-chk"><input type="checkbox" name="make_milestones" value="1" checked>
+          <span>Add the deposit and every monthly payment to Payment Milestones{% if milestones %} (this lead already has {{ milestones|length }}; the new ones are added after them){% endif %}</span></label>
+      </div>
+      {% endif %}
       <div class="fg" style="margin-bottom:18px">
         <label>Plot / Unit Number <span style="color:rgba(3,12,24,0.35);font-style:italic;text-transform:none;font-weight:500">(optional)</span></label>
         <input type="text" name="plot_number" maxlength="50"
@@ -989,6 +1209,106 @@
   </div>
 </div>
 
+<!-- ── Next action: Mark done ── -->
+{% macro owner_select(name, sel) %}
+<select name="{{ name }}">
+  <option value="">{{ contact.agent_name ~ ' (assigned agent)' if contact.agent_name else 'Owner / admin (unassigned)' }}</option>
+  {% for st in staff_list %}{% if st.id != contact.assigned_to %}<option value="{{ st.id }}" {{ 'selected' if sel == st.id }}>{{ st.full_name }}</option>{% endif %}{% endfor %}
+  {% if contact.assigned_to %}<option value="owner">Owner / admin</option>{% endif %}
+</select>
+{% endmacro %}
+{% macro due_input(name, val, id) %}
+<input type="datetime-local" name="{{ name }}" id="{{ id }}" value="{{ val }}" required/>
+<div class="due-chips">{% for lbl, v in due_presets %}<button type="button" onclick="document.getElementById('{{ id }}').value='{{ v }}'">{{ lbl }}</button>{% endfor %}</div>
+{% endmacro %}
+{% if can_act and is_open %}
+<div class="modal-bg" id="doneModal">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-head">
+      <span class="modal-title">✓ Mark done</span>
+      <button class="modal-close" onclick="closeModal('doneModal')">×</button>
+    </div>
+    <form method="POST" action="{{ url_for('estate.lead_action_done', contact_id=contact.id) }}">
+      <div class="modal-body">
+        {% if next_action %}<div style="font-size:13px;color:rgba(3,12,24,0.55)">{{ next_action.title }}</div>{% endif %}
+        <div class="fg2">
+          <div class="fg">
+            <label>What happened <span style="color:#dc2626">*</span></label>
+            <input type="text" name="outcome" maxlength="300" required placeholder="e.g. Called, she will inspect on Saturday"/>
+          </div>
+          <div class="fg">
+            <label>How</label>
+            <select name="type">
+              <option value="call">📞 Call</option><option value="whatsapp">💬 WhatsApp</option>
+              <option value="visit">🏠 Site visit</option><option value="meeting">🤝 Meeting</option>
+              <option value="email">📧 Email</option><option value="note">📝 Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="fg">
+          <label>Then</label>
+          <div class="then-seg">
+            <label><input type="radio" name="then" value="next" checked onchange="doneThen()"> Set the next action</label>
+            <label><input type="radio" name="then" value="allocated" onchange="doneThen()"> Close as Allocated</label>
+            <label><input type="radio" name="then" value="lost" onchange="doneThen()"> Close as Lost</label>
+          </div>
+        </div>
+        <div id="doneNext">
+          <div class="fg">
+            <label>Next action <span style="color:#dc2626">*</span></label>
+            <input type="text" name="next_title" id="doneTitle" maxlength="200" value="{{ action_suggestion.title if action_suggestion else '' }}"
+                   placeholder="e.g. Send the estate map and confirm Saturday's inspection"/>
+          </div>
+          <div class="fg2">
+            <div class="fg"><label>Due</label>{{ due_input('next_due', action_suggestion.due_local.strftime('%Y-%m-%dT%H:%M') if action_suggestion else default_due, 'doneDue') }}</div>
+            <div class="fg"><label>Who</label>{{ owner_select('next_owner', none) }}</div>
+          </div>
+        </div>
+        <div class="fg" id="doneLost" hidden>
+          <label>Reason (optional)</label>
+          <select name="lost_reason">
+            <option value="">— Select reason —</option>
+            <option>Budget too low</option><option>No suitable property</option><option>Went with competitor</option>
+            <option>No longer interested</option><option>Unreachable / No response</option><option>Bought elsewhere</option><option>Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="ld-action-btn ld-btn-outline" onclick="closeModal('doneModal')">Cancel</button>
+        <button type="submit" class="save-btn" style="width:auto;padding:9px 22px;margin-top:0">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-bg" id="changeModal">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-head">
+      <span class="modal-title">{{ 'Change next action' if next_action else 'Set next action' }}</span>
+      <button class="modal-close" onclick="closeModal('changeModal')">×</button>
+    </div>
+    <form method="POST" action="{{ url_for('estate.lead_action_set', contact_id=contact.id) }}">
+      <div class="modal-body">
+        <div class="fg">
+          <label>Next action <span style="color:#dc2626">*</span></label>
+          <input type="text" name="title" maxlength="200" required value="{{ next_action.title if next_action else (action_suggestion.title if action_suggestion else '') }}"
+                 placeholder="e.g. Call to fix the site inspection"/>
+        </div>
+        <div class="fg2">
+          <div class="fg"><label>Due</label>{{ due_input('due_at', next_action.due_input if next_action else default_due, 'chgDue') }}</div>
+          <div class="fg"><label>Who</label>{{ owner_select('owner_id', next_action.owner_id if next_action else none) }}</div>
+        </div>
+        {% if auto_on %}<div style="font-size:12px;color:rgba(3,12,24,0.45)">KeyLand won't replace an action you set. If something new happens, it shows a suggestion beside it.</div>{% endif %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="ld-action-btn ld-btn-outline" onclick="closeModal('changeModal')">Cancel</button>
+        <button type="submit" class="save-btn" style="width:auto;padding:9px 22px;margin-top:0">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 <!-- ── Lost Modal ── -->
 <div class="modal-bg" id="lostModal">
   <div class="modal-box">
@@ -1029,6 +1349,231 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- ── Agent voice note (2026-10-22) ── -->
+<style>
+.br-card{border:1.5px solid #D6E4FF;background:#F7FAFF;border-radius:14px;padding:14px 16px;margin:0 0 12px}
+.br-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.br-title{font-size:14px;font-weight:800;color:#030C18}
+.br-btn{background:#1a56db}
+.br-meta{font-size:12px;color:rgba(3,12,24,0.55);margin-top:8px;line-height:1.5}
+.br-old{color:#A15C00}
+.br-head{font-size:14px;font-weight:700;color:#030C18;margin:10px 0 4px;line-height:1.5}
+.br-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-top:8px}
+.br-sec h4,.br-say h4{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:rgba(3,12,24,0.45);margin:0 0 4px}
+.br-sec ul{margin:0;padding-left:18px;font-size:13px;line-height:1.5;color:#111E2D}
+.br-sec p,.br-say p{margin:0;font-size:13px;line-height:1.55;color:#111E2D}
+.br-sec i{color:rgba(3,12,24,0.6)}
+.br-say{background:#fff;border-radius:10px;padding:10px 12px;margin-top:10px;border:1px solid #E1E9F8}
+.br-warn ul{color:#7a4f00}
+@media(max-width:640px){.br-grid{grid-template-columns:1fr}}
+.vn-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px}
+.vn-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;border:none;background:#12805C;color:#fff;font:inherit;font-size:13.5px;font-weight:800;cursor:pointer}
+.vn-hint{font-size:12.5px;color:rgba(3,12,24,0.55)}
+.vn-rec{display:flex;flex-direction:column;align-items:center;gap:12px;padding:10px 0}
+.vn-mic{width:84px;height:84px;border-radius:50%;border:none;background:#12805C;color:#fff;font-size:34px;cursor:pointer;box-shadow:0 6px 18px rgba(18,128,92,.35)}
+.vn-mic.on{background:#B42318;animation:vnPulse 1.2s infinite}
+@keyframes vnPulse{0%{box-shadow:0 0 0 0 rgba(180,35,24,.45)}70%{box-shadow:0 0 0 16px rgba(180,35,24,0)}100%{box-shadow:0 0 0 0 rgba(180,35,24,0)}}
+.vn-time{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
+.vn-say{font-size:12.5px;color:rgba(3,12,24,0.6);text-align:center;max-width:40ch;line-height:1.5}
+.vn-heard{background:#F6F8FB;border-radius:10px;padding:10px 12px;font-size:13px;font-style:italic;line-height:1.5}
+.vn-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.vn-grid .fg label,.vn-one label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:rgba(3,12,24,0.45)}
+#voiceModal [hidden]{display:none!important}
+.vn-new{border-color:#12805C!important;box-shadow:0 0 0 2px rgba(18,128,92,.25)!important;background:#F1FAF5!important}
+.vn-more{background:none;border:none;padding:0;font:inherit;font-size:12.5px;font-weight:750;color:#1a56db;cursor:pointer;text-align:left}
+.vn-err{background:#FEF0EF;color:#B42318;border-radius:10px;padding:10px 12px;font-size:13px}
+.vn-note{font-size:12px;color:rgba(3,12,24,0.5);line-height:1.5}
+@media(max-width:560px){.vn-grid{grid-template-columns:1fr}}
+</style>
+<div class="modal-bg" id="voiceModal">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-head">
+      <span class="modal-title">🎤 Voice note</span>
+      <button class="modal-close" type="button" onclick="vnClose()">×</button>
+    </div>
+    <div class="modal-body" id="vnStep1">
+      <div class="vn-rec">
+        <button type="button" class="vn-mic" id="vnMic" onclick="vnToggle()" aria-label="Start recording">🎤</button>
+        <div class="vn-time" id="vnTime">0:00</div>
+        <div class="vn-say" id="vnSay">Tap to start. Say what happened, what the buyer wants, how they'll pay, and what's next. For example: "Called Chidi. He wants 450 sqm in Emerald Gardens, can pay 3 million now, rest over 12 months, inspection on Saturday."</div>
+      </div>
+      <div class="vn-err" id="vnErr" hidden></div>
+    </div>
+    <form method="POST" id="vnForm" hidden>
+      <div class="modal-body">
+        <div><div class="vn-note" style="margin-bottom:4px">KeyLand heard:</div><div class="vn-heard" id="vnHeard"></div></div>
+        <div class="vn-note">Check what KeyLand understood and change anything that's wrong. Green boxes come from your note. Nothing on the lead changes until you save.</div>
+        <div class="vn-one fg"><label for="vnSummary">For the interaction log</label><textarea name="summary" id="vnSummary" rows="2" maxlength="600"></textarea></div>
+        <div class="vn-grid">
+          <div class="fg"><label for="vnType">How you were in touch</label>
+            <select name="type" id="vnType"><option value="call">📞 Call</option><option value="visit">🏠 Site visit</option><option value="meeting">🤝 Meeting</option><option value="whatsapp">💬 WhatsApp</option><option value="note">📝 Other</option></select></div>
+          <div class="fg"><label for="vnKind">Buyer type</label>
+            <select name="buyer_kind" id="vnKind"><option value="">—</option><option value="land">Land buyer</option><option value="property">Property buyer</option></select></div>
+          <div class="fg"><label for="vnEstate">Estate</label>
+            <select name="estate_listing_id" id="vnEstate"><option value="">—</option>{% for lst in listings if lst.id in estates %}<option value="{{ lst.id }}">{{ lst.title }}</option>{% endfor %}</select></div>
+          <div class="fg"><label for="vnSqm">Plot size (sqm)</label><input type="number" min="0" step="any" name="plot_size_sqm" id="vnSqm"></div>
+          <div class="fg"><label for="vnStart">Can pay now (₦)</label><input type="number" min="0" step="any" name="start_amount" id="vnStart"></div>
+          <div class="fg"><label for="vnPay">Pays</label>
+            <select name="pay_mode" id="vnPay"><option value="">—</option><option value="outright">Outright</option><option value="instalment">Instalment</option></select></div>
+          <div class="fg"><label for="vnMonthly">Monthly (₦)</label><input type="number" min="0" step="any" name="monthly_amount" id="vnMonthly"></div>
+          <div class="fg"><label for="vnTotal">Total budget (₦)</label><input type="number" min="0" step="any" name="total_budget" id="vnTotal"></div>
+          <div class="fg"><label for="vnWhen">When</label>
+            <select name="timeframe" id="vnWhen"><option value="">—</option>{% for v, l in land_timeframes %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+          <div class="fg"><label for="vnPurpose">Purpose</label>
+            <select name="purpose" id="vnPurpose"><option value="">—</option>{% for v, l in land_purposes %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+          <div class="fg"><label for="vnArea">Area</label><input type="text" name="area" id="vnArea" maxlength="150"></div>
+          <div class="fg"><label for="vnBudget">House budget up to (₦)</label><input type="number" min="0" step="any" name="budget_max" id="vnBudget"></div>
+        </div>
+        <button type="button" class="vn-more" id="vnMore" onclick="vnShowAll()">+ Add or change other details</button>
+        <div class="fg vn-one"><label for="vnReady">Readiness</label>
+          <select name="readiness" id="vnReady"><option value="keep">Keep as it is</option>{% for v, l in readiness_choices %}<option value="{{ v }}">Set to {{ l }}</option>{% endfor %}</select>
+          <div class="vn-note" id="vnReadyWhy"></div></div>
+        <input type="hidden" name="wants_inspection" id="vnInsp"><input type="hidden" name="asks_how_to_pay" id="vnHow">
+        {% if is_open %}
+        <div class="vn-grid">
+          <div class="fg"><label for="vnNext">Next action</label><input type="text" name="next_title" id="vnNext" maxlength="200" required></div>
+          <div class="fg"><label for="vnDue">Due</label><input type="datetime-local" name="next_due" id="vnDue" required></div>
+        </div>
+        {% if next_action %}<div class="vn-note">Saving marks "{{ next_action.title }}" done, with the line above as what happened.</div>{% endif %}
+        {% endif %}
+      </div>
+      <div class="modal-foot" style="display:flex;justify-content:flex-end;gap:10px;padding:14px 20px">
+        <button type="button" class="ld-action-btn ld-btn-outline" onclick="vnClose()">Cancel</button>
+        <button type="submit" class="ld-action-btn ld-btn-dark">Save to the lead</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+function brMake(){
+  var b = document.getElementById('brBtn'), body = document.getElementById('brBody');
+  b.disabled = true; b.textContent = 'Reading the lead…';
+  fetch({{ url_for('estate.lead_brief', contact_id=contact.id)|tojson }}, {method: 'POST', credentials: 'same-origin'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      b.disabled = false; b.textContent = 'Refresh brief';
+      if (d.ok) { body.innerHTML = d.html; }
+      else { body.insertAdjacentHTML('afterbegin', '<div class="vn-err" style="margin-top:8px"></div>'); body.firstChild.textContent = d.error || 'Something went wrong.'; }
+    }).catch(function(){ b.disabled = false; b.textContent = 'Brief me'; });
+}
+if (/[?&]brief=1/.test(location.search)) {
+  var _bb = document.getElementById('brBtn');
+  {% if not brief or not brief.fresh %}if (_bb) setTimeout(brMake, 200);{% endif %}
+  setTimeout(function(){ var c = document.getElementById('brief'); if (c) c.scrollIntoView({block: 'start'}); }, 100);
+}
+</script>
+<script>
+(function(){
+  var URL_REC = {{ url_for('estate.lead_voice_note', contact_id=contact.id)|tojson }};
+  var SAVE_BASE = {{ url_for('estate.lead_voice_note_save', contact_id=contact.id, note_id=0)|tojson }};
+  var rec = null, chunks = [], started = 0, timer = null, stream = null;
+  var $ = function(id){ return document.getElementById(id); };
+  function err(t){ var e = $('vnErr'); e.textContent = t; e.hidden = !t; }
+  function reset(){
+    $('vnStep1').hidden = false; $('vnForm').hidden = true; err('');
+    $('vnMic').classList.remove('on'); $('vnMic').disabled = false; $('vnMic').textContent = '🎤';
+    $('vnTime').textContent = '0:00';
+  }
+  window.vnOpen = function(){ reset(); openModal('voiceModal'); };
+  window.vnShowAll = function(){ document.querySelectorAll('#vnForm .vn-grid .fg').forEach(function(fg){ fg.hidden = false; }); $('vnMore').hidden = true; };
+  window.vnClose = function(){ stop(true); closeModal('voiceModal'); };
+  function tick(){
+    var s = Math.floor((Date.now() - started) / 1000);
+    $('vnTime').textContent = Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2);
+    if (s >= 300) stop(false);
+  }
+  function stop(cancel){
+    clearInterval(timer);
+    if (rec && rec.state !== 'inactive') { rec.cancelled = cancel; rec.stop(); }
+    if (stream) { stream.getTracks().forEach(function(t){ t.stop(); }); stream = null; }
+  }
+  window.vnToggle = function(){
+    if (rec && rec.state === 'recording') { stop(false); return; }
+    if (!navigator.mediaDevices || !window.MediaRecorder) { err('This browser can\'t record. Use Chrome, or Safari on iPhone.'); return; }
+    err('');
+    navigator.mediaDevices.getUserMedia({audio: true}).then(function(s){
+      stream = s; chunks = [];
+      rec = new MediaRecorder(s);
+      rec.ondataavailable = function(e){ if (e.data && e.data.size) chunks.push(e.data); };
+      rec.onstop = function(){ if (!rec.cancelled) send(new Blob(chunks, {type: rec.mimeType || 'audio/webm'})); };
+      rec.start(); started = Date.now(); timer = setInterval(tick, 250);
+      $('vnMic').classList.add('on'); $('vnMic').textContent = '■'; $('vnSay').textContent = 'Recording… tap again when you\'ve finished (5 minutes at most).';
+    }).catch(function(){ err('KeyLand needs your permission to use the microphone. Allow it in the browser, then try again.'); });
+  };
+  function send(blob){
+    $('vnMic').classList.remove('on'); $('vnMic').disabled = true; $('vnMic').textContent = '…';
+    $('vnSay').textContent = 'Listening to your note and filling in the lead. This takes a few seconds…';
+    var fd = new FormData(); fd.append('audio', blob, 'note');
+    fetch(URL_REC, {method: 'POST', body: fd, credentials: 'same-origin'}).then(function(r){ return r.json(); })
+      .then(show).catch(function(){ err('Couldn\'t send the recording. Check your connection and try again.'); reset(); });
+  }
+  function put(id, v){
+    var el = $(id); if (v === undefined || v === null || v === '') return;
+    el.value = (typeof v === 'number' && el.type === 'number') ? Math.round(v) : v; el.classList.add('vn-new');
+  }
+  function show(res){
+    if (!res.ok && !res.note_id) { reset(); err(res.error || 'Something went wrong. Please try again.'); $('vnSay').textContent = 'Tap to record again.'; return; }
+    var p = res.proposal || {};
+    $('vnForm').action = SAVE_BASE.replace(/\/0\/save$/, '/' + res.note_id + '/save');
+    document.querySelectorAll('#vnForm .vn-new').forEach(function(el){ el.classList.remove('vn-new'); });
+    $('vnHeard').textContent = '"' + (res.transcript || '') + '"';
+    $('vnSummary').value = p.summary || res.transcript || '';
+    put('vnType', p.interaction_type); put('vnKind', p.buyer_kind); put('vnEstate', p.estate_listing_id);
+    put('vnSqm', p.plot_size_sqm); put('vnStart', p.start_amount); put('vnPay', p.pay_mode); put('vnMonthly', p.monthly_amount);
+    put('vnTotal', p.total_budget); put('vnWhen', p.timeframe); put('vnPurpose', p.purpose); put('vnArea', p.area); put('vnBudget', p.budget_max);
+    $('vnInsp').value = p.wants_inspection ? '1' : ''; $('vnHow').value = p.asks_how_to_pay ? '1' : '';
+    if (res.readiness) { put('vnReady', res.readiness); $('vnReadyWhy').textContent = 'KeyLand suggests this because: ' + (res.readiness_reason || ''); }
+    else { $('vnReadyWhy').textContent = ''; }
+    if ($('vnNext') && p.next_action) { put('vnNext', p.next_action.title); put('vnDue', (p.next_action.due || '').slice(0, 16)); }
+    // Only what the note gave is shown; the rest is one tap away
+    var shown = 0;
+    document.querySelectorAll('#vnForm .vn-grid .fg').forEach(function(fg){
+      var el = fg.querySelector('input,select'), keep = el && (el.classList.contains('vn-new') || el.id === 'vnType' || el.id === 'vnNext' || el.id === 'vnDue');
+      fg.hidden = !keep; if (keep) shown++;
+    });
+    $('vnMore').hidden = false;
+    $('vnStep1').hidden = true; $('vnForm').hidden = false;
+    if (!res.ok) { var h = $('vnHeard'); h.insertAdjacentHTML('afterend', '<div class="vn-err" style="margin-top:8px"></div>'); h.nextSibling.textContent = res.error; }
+  }
+})();
+</script>
+
+{% if estates %}
+<script>
+var PA_ESTATES = {{ estates|tojson }};
+function paNaira(v){ return '₦' + Math.round(v).toLocaleString('en-NG'); }
+function paSync(){
+  var sel = document.getElementById('paListing'), box = document.getElementById('paEstBox');
+  var est = PA_ESTATES[sel.value], size = document.getElementById('paSize'), plan = document.getElementById('paPlan');
+  box.classList.toggle('on', !!est);
+  size.required = plan.required = !!est;
+  size.textContent = ''; plan.textContent = '';
+  if(!est) { size.disabled = plan.disabled = true; return; }
+  size.disabled = plan.disabled = false;
+  est.sizes.forEach(function(z){
+    var o = new Option(z.label + ' · ' + paNaira(z.price) + (z.plots_left === 0 ? ' · sold out' : (z.plots_left != null ? ' · ' + z.plots_left + ' left' : '')), z.id);
+    o.disabled = z.plots_left === 0; size.add(o);
+  });
+  est.plans.forEach(function(p){ plan.add(new Option(p.name, p.id)); });
+  var free = Array.prototype.find.call(size.options, function(o){ return !o.disabled; });
+  if(free) free.selected = true;
+  if(!document.getElementById('paStart').value) document.getElementById('paStart').value = new Date().toISOString().slice(0, 10);
+  paCalc();
+}
+function paCalc(){
+  var est = PA_ESTATES[document.getElementById('paListing').value], out = document.getElementById('paSum');
+  if(!est) return;
+  var z = est.sizes.find(function(x){ return String(x.id) === document.getElementById('paSize').value; });
+  var p = est.plans.find(function(x){ return String(x.id) === document.getElementById('paPlan').value; });
+  if(!z || !p){ out.textContent = ''; return; }
+  var total = Math.round(z.price * (1 + p.premium_pct / 100));
+  if(!p.months){ out.textContent = 'Pays ' + paNaira(total) + ' outright.'; return; }
+  var dep = Math.round(total * p.deposit_pct / 100), mo = Math.round((total - dep) / p.months);
+  out.textContent = 'Deposit ' + paNaira(dep) + ', then ' + p.months + ' × ' + paNaira(mo) + ' a month. Total ' + paNaira(total) + '.';
+}
+paSync();
+</script>
+{% endif %}
 <script>
 function openModal(id){ document.getElementById(id).style.display='flex'; }
 function closeModal(id){ document.getElementById(id).style.display='none'; }
@@ -1038,6 +1583,7 @@ document.addEventListener('keydown', function(e){
     closeModal('logModal');
     closeModal('milestoneModal');
     closeModal('payModal');
+    if (document.getElementById('doneModal')) { closeModal('doneModal'); closeModal('changeModal'); }
   }
 });
 
@@ -1057,6 +1603,16 @@ function toggleDirection(){
     row.style.display = showFor.indexOf(t.value) > -1 ? '' : 'none';
   }
 }
+function doneThen(){
+  var v = document.querySelector('#doneModal input[name=then]:checked').value;
+  document.getElementById('doneNext').hidden = v !== 'next';
+  document.getElementById('doneLost').hidden = v !== 'lost';
+  document.getElementById('doneTitle').required = v === 'next';
+  document.getElementById('doneDue').required = v === 'next';
+}
+if (document.getElementById('doneModal')) doneThen();
+/* Open "Mark done" straight from a link (#done) */
+if (location.hash === '#done' && document.getElementById('doneModal')) openModal('doneModal');
 /* initialise on load */
 document.addEventListener('DOMContentLoaded', toggleDirection);
 </script>

@@ -1,0 +1,174 @@
+{% extends "portal/base.html" %}
+{% block title %}Demos — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  /* Demos (2026-10-22): tiles → needs attention → by salesperson → lists → sources → trend */
+  .dm-periods { display:flex; gap:6px; flex-wrap:wrap }
+  .dm-periods a { font-size:13px; font-weight:700; padding:7px 13px; border-radius:9px; border:1.5px solid var(--line); color:var(--ink); text-decoration:none }
+  .dm-periods a.on { background:#0B1D40; border-color:#0B1D40; color:#fff }
+  .dm-tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:12px; margin-bottom:12px }
+  .dm-tile { border:1px solid var(--line); border-radius:12px; padding:12px 14px; background:#fff; min-width:0 }
+  .dm-tile b { display:block; font-size:26px; font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums }
+  .dm-tile span { font-size:12.5px; color:var(--muted) }
+  .dm-tile.alert { border-color:#F3C2C2; background:#FFF6F6 }
+  .dm-tile.alert b { color:#B42318 }
+  .dm-rates { font-size:13.5px; color:var(--ink); margin:0 0 20px; display:flex; gap:18px; flex-wrap:wrap }
+  .dm-rates b { font-variant-numeric:tabular-nums }
+  .dm-h { font-size:15px; font-weight:800; color:var(--ink); margin:0 0 10px }
+  .dm-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px }
+  .dm-box { border:1px solid var(--line); border-radius:12px; padding:12px 14px; background:#fff; min-width:0 }
+  .dm-box h4 { margin:0 0 8px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted) }
+  .dm-box.red { border-color:#F3C2C2 }
+  .dm-box.red h4 { color:#B42318 }
+  .dm-item { display:block; padding:7px 0; border-top:1px solid var(--line); font-size:13px; color:var(--ink); text-decoration:none }
+  .dm-item:first-of-type { border-top:0 }
+  .dm-item:hover b { text-decoration:underline }
+  .dm-item small { display:block; color:var(--muted); font-size:12px }
+  .dm-empty { font-size:12.5px; color:var(--muted) }
+  .dm-wrap { overflow-x:auto }
+  .dm-table { width:100%; border-collapse:collapse; font-size:13px; font-variant-numeric:tabular-nums }
+  .dm-table th { text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); font-weight:700; padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap }
+  .dm-table td { padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:middle }
+  .dm-table tr:last-child td { border-bottom:0 }
+  .dm-table a { color:var(--ink); font-weight:700 }
+  .dm-pill { display:inline-block; font-size:11.5px; font-weight:700; border-radius:999px; padding:2px 9px; background:#E8EEF8; color:#0B1D40; white-space:nowrap }
+  .dm-pill.red { background:#FDECEC; color:#B42318 }
+  .dm-pill.green { background:#E7F6EE; color:#12805C }
+  .dm-trend { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:6px; align-items:end; height:150px; padding-top:8px }
+  .dm-wk { display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end; min-width:0 }
+  .dm-bars { display:flex; gap:2px; align-items:flex-end; height:110px; width:100% ; justify-content:center }
+  .dm-bar { width:40%; border-radius:3px 3px 0 0; background:#0B1D40; min-height:2px }
+  .dm-bar.att { background:#9DB8E8 }
+  .dm-wk span { font-size:10.5px; color:var(--muted); white-space:nowrap }
+  .dm-key { display:flex; gap:14px; font-size:12px; color:var(--muted); margin-top:8px }
+  .dm-key i { display:inline-block; width:10px; height:10px; border-radius:2px; background:#0B1D40; margin-right:5px; vertical-align:-1px }
+  .dm-key i.att { background:#9DB8E8 }
+  .dm-sec { margin-bottom:22px }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="wizard-header">
+  <div>
+    <div class="wizard-title">Demos</div>
+    <div class="wizard-sub">{{ 'Every demo booked on your Bookings page, and what happened.' if manager else 'Your demos and what happened.' }}
+      {{ d.start.strftime('%-d %b') }} – {{ d.end.strftime('%-d %b %Y') }}.</div>
+  </div>
+  <nav class="dm-periods" aria-label="Period">
+    {% for v, l in periods %}<a href="{{ url_for('bookings.demos', period=v) }}" class="{{ 'on' if d.period == v }}">{{ l }}</a>{% endfor %}
+  </nav>
+</div>
+
+{% if not connected %}
+<div class="card" style="margin-bottom:16px;font-size:13.5px">Microsoft Bookings isn't connected yet, so no demos come in.
+  {% if staff_can_open('bookings.page') %}<a href="{{ url_for('bookings.page') }}">Connect Bookings</a>.{% endif %}</div>
+{% endif %}
+
+{% set t = d.tiles %}
+<div class="dm-tiles">
+  <div class="dm-tile"><b>{{ t.booked }}</b><span>Booked</span></div>
+  <div class="dm-tile"><b>{{ t.upcoming }}</b><span>Upcoming</span></div>
+  <div class="dm-tile"><b>{{ t.attended }}</b><span>Attended</span></div>
+  <div class="dm-tile"><b>{{ t.no_show }}</b><span>No-show</span></div>
+  <div class="dm-tile {{ 'alert' if t.missing }}"><b>{{ t.missing }}</b><span>Outcome missing</span></div>
+  <div class="dm-tile"><b>{{ t.forward }}</b><span>Moved to Qualified or Proposal Sent</span></div>
+</div>
+<div class="dm-rates">
+  <span>Show-up rate: <b>{{ (t.show_rate ~ '%') if t.show_rate is not none else '–' }}</b></span>
+  <span>Demo to Qualified: <b>{{ (t.qualify_rate ~ '%') if t.qualify_rate is not none else '–' }}</b></span>
+</div>
+
+{% set a = d.attention %}
+<div class="dm-sec">
+  <div class="dm-h">Needs attention</div>
+  <div class="dm-grid">
+    <div class="dm-box"><h4>Today's demos</h4>
+      {% for x in a.today %}<a class="dm-item" href="{{ url_for('portal.lead_detail', lead_id=x.lead_id) }}#demo"><b>{{ x.time }} · {{ x.customer_name or x.email }}</b><small>{{ x.company }} · {{ x.assigned_to or 'Unassigned' }}</small></a>
+      {% else %}<div class="dm-empty">No demos today.</div>{% endfor %}</div>
+    <div class="dm-box {{ 'red' if a.missing }}"><h4>Outcome missing</h4>
+      {% for x in a.missing %}<a class="dm-item" href="{{ url_for('portal.lead_detail', lead_id=x.lead_id) }}#demo"><b>{{ x.customer_name or x.email }}</b><small>Demo {{ x.when }} · {{ x.assigned_to or 'Unassigned' }}</small></a>
+      {% else %}<div class="dm-empty">Every past demo has an outcome.</div>{% endfor %}</div>
+    {% if manager %}
+    <div class="dm-box {{ 'red' if a.unassigned }}"><h4>Unassigned bookings</h4>
+      {% for x in a.unassigned %}<a class="dm-item" href="{{ url_for('portal.lead_detail', lead_id=x.lead_id) }}"><b>{{ x.customer_name or x.email }}</b><small>Demo {{ x.when }} · assign a salesperson</small></a>
+      {% else %}<div class="dm-empty">Every booking has a salesperson.</div>{% endfor %}</div>
+    {% endif %}
+    <div class="dm-box"><h4>No-shows to rebook</h4>
+      {% for x in a.no_shows %}<a class="dm-item" href="{{ url_for('portal.lead_detail', lead_id=x.lead_id) }}"><b>{{ x.customer_name or x.email }}</b><small>Missed {{ x.when }} · {{ x.assigned_to or 'Unassigned' }}</small></a>
+      {% else %}<div class="dm-empty">No no-shows waiting to be rebooked.</div>{% endfor %}</div>
+    <div class="dm-box"><h4>Next steps due</h4>
+      {% for x in a.nexts %}<a class="dm-item" href="{{ url_for('portal.lead_detail', lead_id=x.lead_id) }}"><b>{{ x.company or x.customer_name }}</b><small>{{ x.next_step or 'Follow up' }} · {{ x.next_date.strftime('%a %-d %b') }} · {{ x.assigned_to or 'Unassigned' }}</small></a>
+      {% else %}<div class="dm-empty">Nothing due.</div>{% endfor %}</div>
+  </div>
+</div>
+
+{% if manager %}
+<div class="dm-sec card">
+  <div class="dm-h">By salesperson</div>
+  {% if d.by_person %}
+  <div class="dm-wrap"><table class="dm-table">
+    <thead><tr><th>Salesperson</th><th>Demos</th><th>Attended</th><th>No-show</th><th>Outcome missing</th><th>Qualified or further</th><th>Won</th></tr></thead>
+    <tbody>{% for p in d.by_person %}
+      <tr><td>{{ p.name }}</td><td>{{ p.booked }}</td><td>{{ p.attended }}</td><td>{{ p.no_show }}</td>
+        <td>{% if p.missing %}<span class="dm-pill red">{{ p.missing }}</span>{% else %}0{% endif %}</td><td>{{ p.forward }}</td><td>{{ p.won }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="dm-empty">No demos in this period.</div>{% endif %}
+</div>
+{% endif %}
+
+<div class="dm-sec card">
+  <div class="dm-h">Upcoming demos</div>
+  {% if d.upcoming %}
+  <div class="dm-wrap"><table class="dm-table">
+    <thead><tr><th>When</th><th>Who</th><th>Company</th><th>Salesperson</th><th></th></tr></thead>
+    <tbody>{% for x in d.upcoming %}
+      <tr><td>{{ x.when }}</td><td><a href="{{ url_for('portal.lead_detail', lead_id=x.lead_id) }}">{{ x.customer_name or x.email }}</a></td>
+        <td>{{ x.company }}</td><td>{{ x.assigned_to or '' }}{% if not x.assigned_to %}<span class="dm-pill red">Unassigned</span>{% endif %}</td>
+        <td>{% if x.join_url %}<a href="{{ x.join_url }}" target="_blank" rel="noopener">Join link</a>{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="dm-empty">No demos booked ahead.</div>{% endif %}
+</div>
+
+<div class="dm-sec card">
+  <div class="dm-h">Past demos in this period</div>
+  {% if d.past %}
+  <div class="dm-wrap"><table class="dm-table">
+    <thead><tr><th>When</th><th>Who</th><th>Company</th><th>Salesperson</th><th>Outcome</th><th>Stage now</th></tr></thead>
+    <tbody>{% for x in d.past %}
+      <tr><td>{{ x.when }}</td><td><a href="{{ url_for('portal.lead_detail', lead_id=x.lead_id) }}#demo">{{ x.customer_name or x.email }}</a></td>
+        <td>{{ x.company }}</td><td>{{ x.assigned_to or 'Unassigned' }}</td>
+        <td>{% if x.status == 'booked' %}<span class="dm-pill red">Outcome missing</span>
+            {% elif x.status == 'no_show' %}<span class="dm-pill red">Didn't show up</span>
+            {% elif x.demo_outcome in ('interested','proposal') %}<span class="dm-pill green">{{ x.outcome_label }}</span>
+            {% else %}<span class="dm-pill">{{ x.outcome_label or 'Done' }}</span>{% endif %}</td>
+        <td>{{ 'Not a Fit' if x.lead_outcome == 'not_a_fit' else (x.stage or '')|replace('_',' ')|title }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="dm-empty">No demos have taken place in this period yet.</div>{% endif %}
+</div>
+
+<div class="dm-grid dm-sec">
+  <div class="card" style="margin:0">
+    <div class="dm-h">Where bookings came from</div>
+    {% if d.sources %}
+    <table class="dm-table"><tbody>{% for name, n in d.sources %}<tr><td>{{ name }}</td><td style="text-align:right">{{ n }}</td></tr>{% endfor %}</tbody></table>
+    <div class="dm-empty" style="margin-top:8px">The last email we sent them in the 30 days before they booked.</div>
+    {% else %}<div class="dm-empty">No bookings in this period.</div>{% endif %}
+  </div>
+  <div class="card" style="margin:0">
+    <div class="dm-h">Last 12 weeks</div>
+    <div class="dm-trend" role="img" aria-label="Demos booked and attended per week for the last 12 weeks">
+      {% for w in d.weeks %}
+      <div class="dm-wk" title="Week of {{ w.label }}: {{ w.booked }} booked, {{ w.attended }} attended">
+        <div class="dm-bars"><div class="dm-bar" style="height:{{ (100 * w.booked / top)|round }}%"></div><div class="dm-bar att" style="height:{{ (100 * w.attended / top)|round }}%"></div></div>
+        <span>{{ w.label if loop.index0 % 2 == 0 else '' }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="dm-key"><span><i></i>Booked</span><span><i class="att"></i>Attended</span></div>
+  </div>
+</div>
+{% endblock %}

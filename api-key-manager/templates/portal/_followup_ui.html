@@ -1,0 +1,389 @@
+{# Follow-ups redesign (2026-10-23): the boxes shared by the lead page and the
+   Follow-ups page. FU.openLog({...}) = "Log what happened" (what you did →
+   how it went → next follow-up, or close as Not a Fit); FU.openResched({...})
+   = month calendar with each day's follow-ups as dots. Needs `fu_ui` from
+   _fu_ui_context(). #}
+<style>
+  .fx-back { position:fixed; inset:0; background:rgba(3,12,24,.5); z-index:2000; display:flex; align-items:flex-start;
+             justify-content:center; padding:4vh 16px; overflow-y:auto }
+  .fx-back[hidden] { display:none !important }
+  .fx-box { background:#fff; border-radius:16px; width:100%; max-width:640px; box-shadow:0 20px 60px rgba(3,12,24,.28); color:#111E2D; font-size:13.5px }
+  .fx-box.wide { max-width:780px }
+  .fx-head { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:16px 22px; border-bottom:1px solid #E3E8F1 }
+  .fx-head h3 { margin:0; font-size:16px; font-weight:800; color:#0B1D40 }
+  .fx-head small { display:block; font-size:12.5px; color:#5A6B85; font-weight:600; margin-top:2px }
+  .fx-x { background:none; border:0; font-size:24px; line-height:1; cursor:pointer; color:#5A6B85; padding:4px }
+  .fx-step { display:grid; grid-template-columns:30px minmax(0,1fr); gap:12px; padding:16px 22px; border-bottom:1px solid #E3E8F1 }
+  .fx-step[hidden] { display:none }
+  .fx-n { width:28px; height:28px; border-radius:50%; background:#E8EEF8; color:#0B1D40; font-weight:800; display:grid; place-items:center; font-size:13px }
+  .fx-body { display:grid; gap:10px; min-width:0 }
+  .fx-body h4 { margin:2px 0 0; font-size:14.5px; font-weight:800; color:#111E2D }
+  .fx-body h4 span { font-size:12px; font-weight:600; color:#5A6B85 }
+  .fx-body h4 label { font:inherit; color:inherit; margin:0; display:inline }
+  .fx-body h4 .fx-req { font-size:inherit; font-weight:800; color:#B42318 }
+  .fx-seg { display:flex; gap:6px; flex-wrap:wrap }
+  .fx-seg button { font:inherit; font-size:13px; font-weight:700; border:1.5px solid #E3E8F1; background:#fff; color:#111E2D;
+                   border-radius:10px; padding:9px 13px; cursor:pointer; display:inline-flex; gap:7px; align-items:center }
+  .fx-seg button[aria-pressed="true"] { border-color:#0B1D40; background:#E8EEF8; color:#0B1D40 }
+  .fx-seg svg, .fx-chip svg { width:15px; height:15px; flex:none }
+  .fx-chips { display:flex; gap:6px; flex-wrap:wrap }
+  .fx-chip { font:inherit; font-size:13px; font-weight:600; border:1.5px solid #E3E8F1; background:#fff; color:#111E2D;
+             border-radius:999px; padding:6px 12px; cursor:pointer; display:inline-flex; align-items:center; gap:6px }
+  .fx-chip[aria-pressed="true"] { background:#0B1D40; border-color:#0B1D40; color:#fff }
+  .fx-chip.red[aria-pressed="true"] { background:#B42318; border-color:#B42318 }
+  .fx-seg button:focus-visible, .fx-chip:focus-visible, .fx-day:focus-visible, .fx-btn:focus-visible { outline:2px solid #9DB8E8; outline-offset:2px }
+  .fx-row { display:grid; grid-template-columns:110px minmax(0,1fr); gap:10px }
+  .fx-row.one { grid-template-columns:minmax(0,1fr) }
+  .fx-field { display:grid; gap:5px; min-width:0 }
+  .fx-field label, .fx-lbl { font-size:12px; font-weight:700; color:#5A6B85 }
+  .fx-in { font:inherit; font-size:13.5px; border:1.5px solid #E3E8F1; border-radius:9px; padding:8px 11px; background:#fff; color:#111E2D; width:100%; box-sizing:border-box }
+  .fx-in:focus { outline:none; border-color:#9DB8E8 }
+  .fx-ta { resize:vertical; min-height:92px; line-height:1.5 }
+  .fx-req { color:#B42318 }
+  .fx-row { align-items:start }
+  .fx-datebtn { font:inherit; display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; box-sizing:border-box;
+                border:1.5px solid #0B1D40; border-radius:9px; padding:8px 11px; font-size:13.5px; font-weight:800; color:#0B1D40; background:#fff; cursor:pointer; text-align:left }
+  .fx-datebtn.empty { border-style:dashed; border-color:#9DB8E8; color:#5A6B85; font-weight:600 }
+  .fx-datebtn svg { width:16px; height:16px; flex:none }
+  .fx-next { display:grid; grid-template-columns:minmax(0,220px) minmax(0,1fr); gap:14px; align-items:start }
+  .fx-busy { font-size:12px; color:#5A6B85 }
+  .fx-close { border:1.5px solid #F3C2C2; background:#FDECEC; border-radius:10px; padding:12px 14px; display:grid; gap:8px }
+  .fx-close b { color:#B42318 }
+  .fx-foot { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 22px; background:#F8FAFD;
+             border-top:1px solid #E3E8F1; border-radius:0 0 16px 16px }
+  .fx-hint { font-size:12.5px; color:#5A6B85; flex:1; min-width:200px }
+  .fx-hint.err { color:#B42318; font-weight:700 }
+  .fx-btn { font:inherit; font-size:13.5px; font-weight:800; border-radius:9px; padding:10px 16px; cursor:pointer; border:1.5px solid #E3E8F1;
+            background:#fff; color:#111E2D; white-space:nowrap }
+  .fx-btn.primary { background:#0B1D40; border-color:#0B1D40; color:#fff }
+  .fx-btn.danger { background:#B42318; border-color:#B42318; color:#fff }
+  .fx-btn:disabled { opacity:.55; cursor:default }
+  /* calendar */
+  .fx-cal { border:1px solid #E3E8F1; border-radius:12px; padding:10px; background:#fff }
+  .fx-cal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px }
+  .fx-cal-head b { font-size:14px; color:#0B1D40 }
+  .fx-cal-nav { display:flex; gap:4px }
+  .fx-cal-nav button { font:inherit; border:1px solid #E3E8F1; background:#fff; color:#111E2D; border-radius:7px; width:30px; height:28px; cursor:pointer; font-size:15px }
+  .fx-cal-nav button:disabled { opacity:.35; cursor:default }
+  .fx-grid { display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:2px; text-align:center }
+  .fx-dow { font-size:11px; font-weight:700; color:#5A6B85; padding:3px 0 }
+  .fx-day { font:inherit; font-size:13px; font-variant-numeric:tabular-nums; border:0; background:none; color:#111E2D; border-radius:8px; height:38px;
+            cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:0 }
+  .fx-day:hover:not(:disabled) { background:#E8EEF8 }
+  .fx-day:disabled { color:#CBD3E1; cursor:default }
+  .fx-day.we { color:#8794AA }
+  .fx-day.today { box-shadow:inset 0 0 0 1.5px #9DB8E8; font-weight:800 }
+  .fx-day.sel { background:#0B1D40; color:#fff; font-weight:800 }
+  .fx-dots { display:flex; gap:2px; height:4px }
+  .fx-dots i { width:4px; height:4px; border-radius:50%; background:#9DB8E8 }
+  .fx-day.sel .fx-dots i { background:#fff }
+  .fx-quick { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px }
+  .fx-picked { background:#F8FAFD; border:1px solid #E3E8F1; border-radius:10px; padding:10px 12px; font-size:13.5px }
+  .fx-picked b { color:#0B1D40 }
+  .fx-res { display:grid; grid-template-columns:minmax(0,320px) minmax(0,1fr); gap:22px; padding:18px 22px; align-items:start }
+  @media (max-width:680px) {
+    .fx-next, .fx-res { grid-template-columns:minmax(0,1fr) }
+    .fx-row { grid-template-columns:minmax(0,1fr) }
+    .fx-step { padding:14px 16px; grid-template-columns:minmax(0,1fr) } .fx-n { display:none }
+    .fx-back { padding:0 } .fx-box { border-radius:0; min-height:100% }
+  }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="fx-call" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></symbol>
+  <symbol id="fx-whatsapp" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.5A8.4 8.4 0 1 1 21 11.5z"/></symbol>
+  <symbol id="fx-email" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 6l-10 7L2 6"/></symbol>
+  <symbol id="fx-linkedin" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4v-7a6 6 0 0 1 6-6zM2 9h4v12H2zM4 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></symbol>
+  <symbol id="fx-meeting" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></symbol>
+  <symbol id="fx-cal" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 5h18v16H3zM16 3v4M8 3v4M3 10h18"/></symbol>
+</svg>
+
+{# ── Log what happened ── #}
+<div class="fx-back" id="fxLog" hidden role="dialog" aria-modal="true" aria-labelledby="fxLogTitle">
+  <form class="fx-box" method="POST" id="fxLogForm" novalidate>
+    <input type="hidden" name="kind" id="fxKind">
+    <input type="hidden" name="result" id="fxResult">
+    <input type="hidden" name="next_followup" id="fxLogDate">
+    <input type="hidden" name="next_channel" id="fxLogChannel" value="">
+    <input type="hidden" name="back" class="fxBack">
+    <div class="fx-head"><div><h3 id="fxLogTitle">Log/Follow-up</h3><small id="fxLogName"></small></div>
+      <button type="button" class="fx-x" data-fx-close aria-label="Close">×</button></div>
+
+    <div class="fx-step"><span class="fx-n">1</span><div class="fx-body"><h4>What did you do?</h4>
+      <div class="fx-seg" id="fxKinds">
+        <button type="button" data-k="call" aria-pressed="false"><svg><use href="#fx-call"/></svg>Called</button>
+        <button type="button" data-k="whatsapp" aria-pressed="false"><svg><use href="#fx-whatsapp"/></svg>WhatsApp</button>
+        <button type="button" data-k="email" aria-pressed="false"><svg><use href="#fx-email"/></svg>Email</button>
+        <button type="button" data-k="linkedin" aria-pressed="false"><svg><use href="#fx-linkedin"/></svg>LinkedIn</button>
+        <button type="button" data-k="meeting" aria-pressed="false"><svg><use href="#fx-meeting"/></svg>Meeting</button>
+      </div></div></div>
+
+    <div class="fx-step" id="fxStep2" hidden><span class="fx-n">2</span><div class="fx-body"><h4><label for="fxResults">How did it go? <span class="fx-req">*</span></label></h4>
+      <select class="fx-in" id="fxResults" style="max-width:380px"></select>
+      <div class="fx-row" id="fxNoteRow">
+        <div class="fx-field" id="fxMinWrap"><label for="fxMinutes">Minutes</label><input class="fx-in" id="fxMinutes" name="minutes" type="number" min="0" max="600" inputmode="numeric" placeholder="e.g. 5"></div>
+        <div class="fx-field"><label for="fxNote">What was said <span class="fx-req">*</span></label><textarea class="fx-in fx-ta" id="fxNote" name="note" maxlength="2000" rows="4" required placeholder="e.g. Spoke to Gabriel. Interested, wants pricing for 20 staff seats before Tuesday. Decision is with their director."></textarea>
+          <span class="fx-busy">Write enough that a colleague could carry on from here.</span></div>
+      </div></div></div>
+
+    <div class="fx-step" id="fxStep3" hidden><span class="fx-n">3</span><div class="fx-body">
+      <h4>Next follow-up <span>· required</span></h4>
+      <div class="fx-next">
+        <div>
+          <span class="fx-lbl" style="display:block;margin-bottom:5px">Date <span class="fx-req">*</span></span>
+          <div class="fx-cal" id="fxLogCal"></div>
+          <div class="fx-quick" data-fx-quick="fxLogCal"></div>
+        </div>
+        <div style="display:grid;gap:12px">
+          <div class="fx-picked" id="fxLogPicked">Pick a day on the calendar.</div>
+          <div class="fx-field"><span class="fx-lbl">How will you follow up? <span class="fx-req">*</span></span><div class="fx-chips" data-fx-channels="fxLogChannel"></div></div>
+          <div class="fx-field"><label for="fxNextNote">What to do <span class="fx-req">*</span></label><input class="fx-in" id="fxNextNote" name="next_note" maxlength="300" required placeholder="e.g. Send pricing, then call to confirm"></div>
+        </div>
+      </div></div></div>
+
+    <div class="fx-step" id="fxStepClose" hidden><span class="fx-n">3</span><div class="fx-body"><h4>Close the lead</h4>
+      <div class="fx-close"><span>This business doesn't need us. It will be marked <b>Not a Fit</b>, so no follow-up date is needed and nobody calls them again.</span>
+        <div class="fx-field"><label for="fxNaf">Reason</label><select class="fx-in" id="fxNaf" name="naf_reason" style="max-width:380px"></select></div></div></div></div>
+
+    <div class="fx-foot"><span class="fx-hint" id="fxLogHint">Choose what you did.</span>
+      <div style="display:flex;gap:8px"><button type="button" class="fx-btn" data-fx-close>Cancel</button>
+        <button type="submit" class="fx-btn primary" id="fxLogSave">Save</button></div></div>
+  </form>
+</div>
+
+{# ── Reschedule / set a date ── #}
+<div class="fx-back" id="fxRes" hidden role="dialog" aria-modal="true" aria-labelledby="fxResTitle">
+  <form class="fx-box wide" method="POST" id="fxResForm" novalidate>
+    <input type="hidden" name="next_followup" id="fxResDate">
+    <input type="hidden" name="channel" id="fxResChannel" value="">
+    <input type="hidden" name="back" class="fxBack">
+    <div class="fx-head"><div><h3 id="fxResTitle">Reschedule follow-up</h3><small id="fxResName"></small></div>
+      <button type="button" class="fx-x" data-fx-close aria-label="Close">×</button></div>
+    <div class="fx-res">
+      <div><span class="fx-lbl" style="display:block;margin-bottom:5px">Date <span class="fx-req">*</span></span><div class="fx-cal" id="fxResCal"></div><div class="fx-quick" data-fx-quick="fxResCal"></div>
+        <p class="fx-busy" style="margin:8px 0 0">Dots show follow-ups already booked that day, one each.</p></div>
+      <div style="display:grid;gap:14px">
+        <div class="fx-picked" id="fxResPicked">Pick a day on the calendar.</div>
+        <div class="fx-field"><span class="fx-lbl">How will you follow up? <span class="fx-req">*</span></span><div class="fx-chips" data-fx-channels="fxResChannel"></div></div>
+        <div class="fx-field"><label for="fxResNote">What to do <span class="fx-req">*</span></label><input class="fx-in" id="fxResNote" name="note" maxlength="300" placeholder="e.g. Call back after their board meeting"></div>
+        <div class="fx-field" id="fxResWhyWrap"><label for="fxResWhy">Why it's moving <span class="fx-req">*</span></label><input class="fx-in" id="fxResWhy" name="why" maxlength="300" placeholder="e.g. They asked us to call next week"></div>
+      </div>
+    </div>
+    <div class="fx-foot"><span class="fx-hint" id="fxResHint"></span>
+      <div style="display:flex;gap:8px"><button type="button" class="fx-btn" data-fx-close>Cancel</button>
+        <button type="submit" class="fx-btn primary" id="fxResSave">Save date</button></div></div>
+  </form>
+</div>
+
+<script>
+var FU = (function () {
+  var CFG = {{ fu_ui|tojson }};
+  var M = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  var DN = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  var TODAY = iso2d(CFG.today), MAX = iso2d(CFG.max);
+  function $(id) { return document.getElementById(id); }
+  function iso2d(s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function d2iso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function words(d) { return DN[d.getDay()] + ' ' + d.getDate() + ' ' + M[d.getMonth()]; }
+  function esc(s) { var e = document.createElement('span'); e.textContent = s == null ? '' : s; return e.innerHTML; }
+  function plusWorking(n) { var d = new Date(TODAY); while (n > 0) { d.setDate(d.getDate() + 1); if (d.getDay() % 6) n--; } return d; }
+  function nextMonday() { var d = new Date(TODAY); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); return d; }
+
+  /* A month calendar: days before today and after 12 months can't be picked. */
+  function Calendar(box, onPick) {
+    var self = { sel: null, load: {}, view: new Date(TODAY.getFullYear(), TODAY.getMonth(), 1) };
+    function render() {
+      var h = '<div class="fx-cal-head"><b>' + M[self.view.getMonth()] + ' ' + self.view.getFullYear() + '</b><div class="fx-cal-nav">'
+            + '<button type="button" data-nav="-1" aria-label="Previous month"' + (self.view <= new Date(TODAY.getFullYear(), TODAY.getMonth(), 1) ? ' disabled' : '') + '>‹</button>'
+            + '<button type="button" data-nav="1" aria-label="Next month">›</button></div></div><div class="fx-grid">';
+      ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(function (x) { h += '<div class="fx-dow">' + x + '</div>'; });
+      var first = (self.view.getDay() + 6) % 7, n = new Date(self.view.getFullYear(), self.view.getMonth() + 1, 0).getDate();
+      for (var i = 0; i < first; i++) h += '<div></div>';
+      for (var dd = 1; dd <= n; dd++) {
+        var d = new Date(self.view.getFullYear(), self.view.getMonth(), dd), k = d2iso(d), c = self.load[k] || 0, dots = '';
+        for (var j = 0; j < Math.min(c, 5); j++) dots += '<i></i>';
+        var off = d < TODAY || d > MAX;
+        h += '<button type="button" class="fx-day' + (d.getDay() % 6 ? '' : ' we') + (k === CFG.today ? ' today' : '') + (self.sel === k ? ' sel' : '')
+           + '" data-d="' + k + '"' + (off ? ' disabled' : '') + ' aria-label="' + words(d) + (c ? ', ' + c + ' follow-up' + (c > 1 ? 's' : '') + ' already' : '') + '"'
+           + (self.sel === k ? ' aria-pressed="true"' : '') + '>' + dd + '<span class="fx-dots">' + dots + '</span></button>';
+      }
+      box.innerHTML = h + '</div>';
+    }
+    box.addEventListener('click', function (e) {
+      var nav = e.target.closest('[data-nav]');
+      if (nav) { self.view = new Date(self.view.getFullYear(), self.view.getMonth() + (+nav.dataset.nav), 1); render(); return; }
+      var b = e.target.closest('.fx-day'); if (!b || b.disabled) return;
+      self.pick(b.dataset.d);
+    });
+    self.pick = function (k) {
+      self.sel = k || null;
+      if (k) { var d = iso2d(k); self.view = new Date(d.getFullYear(), d.getMonth(), 1); }
+      render(); onPick(self.sel);
+    };
+    self.reset = function (k) { self.load = {}; self.view = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1); self.pick(k && iso2d(k) >= TODAY ? k : null); };
+    self.setLoad = function (l) { self.load = l || {}; render(); };
+    render();
+    return self;
+  }
+
+  var who = 'They';
+  function pickedLine(el, k, cal) {
+    if (!k) { el.innerHTML = 'Pick a day on the calendar.'; return; }
+    var c = cal.load[k] || 0;
+    el.innerHTML = 'Next follow-up: <b>' + words(iso2d(k)) + '</b><br><span class="fx-busy">'
+      + (c ? esc(who) + (who === 'You' ? ' have ' : ' has ') + c + ' other follow-up' + (c > 1 ? 's' : '') + ' that day' : 'Nothing else booked that day') + '</span>';
+  }
+  function quick(box, cal) {
+    [['Tomorrow', plusWorking(1)], ['In 3 working days', plusWorking(3)], ['Next week', nextMonday()]].forEach(function (q) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'fx-chip'; b.textContent = q[0];
+      b.onclick = function () { cal.pick(d2iso(q[1])); }; box.appendChild(b);
+    });
+  }
+  function channels(box) {
+    var input = $(box.dataset.fxChannels);
+    CFG.channels.forEach(function (c) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'fx-chip'; b.dataset.v = c[0];
+      b.innerHTML = '<svg><use href="#fx-' + c[0] + '"/></svg>' + c[1];
+      b.onclick = function () { setChannel(box, c[0]); }; box.appendChild(b);
+    });
+    setChannel(box, input.value);
+  }
+  function setChannel(box, v) {
+    $(box.dataset.fxChannels).value = v;
+    box.querySelectorAll('.fx-chip').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.v === v ? 'true' : 'false'); });
+  }
+  function loadBusy(leadId, cal, after) {
+    fetch(CFG.workload_url + '?lead_id=' + (leadId || 0), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); }).then(function (d) { who = d.person || 'They'; cal.setLoad(d.days); after(); })
+      .catch(function () {});
+  }
+  function show(id) { $(id).hidden = false; document.body.style.overflow = 'hidden'; }
+  function hide() { ['fxLog', 'fxRes'].forEach(function (i) { $(i).hidden = true; }); document.body.style.overflow = ''; }
+  document.querySelectorAll('[data-fx-close]').forEach(function (b) { b.onclick = hide; });
+  ['fxLog', 'fxRes'].forEach(function (i) { $(i).addEventListener('mousedown', function (e) { if (e.target.id === i) hide(); }); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(); });
+
+  /* ── Log what happened ── */
+  var L = {};
+  var logCal = Calendar($('fxLogCal'), function (k) { $('fxLogDate').value = k || ''; pickedLine($('fxLogPicked'), k, logCal); sync(); });
+  quick(document.querySelector('[data-fx-quick="fxLogCal"]'), logCal);
+  var logCh = document.querySelector('[data-fx-channels="fxLogChannel"]'); channels(logCh);
+  CFG.naf_reasons.forEach(function (r) { var o = document.createElement('option'); o.value = o.textContent = r; if (r === CFG.naf_default) o.selected = true; $('fxNaf').appendChild(o); });
+
+  function closing() {
+    var k = $('fxKind').value, r = $('fxResult').value;
+    return L.open && L.canClose && CFG.can_naf && ((k === 'call' && r === 'not_needed') || (k === 'meeting' && r === 'not_fit'));
+  }
+  function setKind(k) {
+    $('fxKind').value = k || ''; $('fxResult').value = '';
+    $('fxKinds').querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.k === k ? 'true' : 'false'); });
+    var box = $('fxResults'); box.innerHTML = '<option value="">Choose…</option>';
+    (CFG.results[k] || []).forEach(function (r) {
+      if (k === 'email' && r[0] === 'replied' && !L.hasEmail) return;
+      var o = document.createElement('option'); o.value = r[0]; o.textContent = r[1]; box.appendChild(o);
+    });
+    $('fxStep2').hidden = !k;
+    $('fxMinWrap').style.display = k === 'call' ? '' : 'none';
+    $('fxNoteRow').className = 'fx-row' + (k === 'call' ? '' : ' one');
+    $('fxNote').previousElementSibling.innerHTML = (k === 'call' ? 'What was said' : 'What happened') + ' <span class="fx-req">*</span>';
+    sync();
+  }
+  function setResult(v) {
+    $('fxResult').value = v; $('fxResults').value = v;
+    $('fxNote').placeholder = v === 'other' ? 'Say what happened, e.g. Their receptionist took a message for the director.'
+                                            : 'e.g. Spoke to Gabriel. Interested, wants pricing for 20 staff seats before Tuesday. Decision is with their director.';
+    sync();
+  }
+  $('fxResults').addEventListener('change', function () { setResult(this.value); });
+  logCh.addEventListener('click', function () { L.nextChannelSet = true; });
+  function sync() {
+    var k = $('fxKind').value, r = $('fxResult').value, c = closing(), hint = $('fxLogHint'), save = $('fxLogSave');
+    $('fxStep3').hidden = !L.open || !r || c;
+    $('fxStepClose').hidden = !c;
+    hint.className = 'fx-hint';
+    save.className = 'fx-btn ' + (c ? 'danger' : 'primary');
+    save.textContent = c ? 'Save and mark Not a Fit' : (L.open ? 'Save and set next follow-up' : 'Save');
+    if (!k) hint.textContent = 'Choose what you did.';
+    else if (!r) hint.textContent = 'Choose how it went.';
+    else if (c) hint.textContent = 'Saves what happened and closes the lead.';
+    else if (!L.open) hint.textContent = 'This lead is closed, so no next date is needed.';
+    else if (!$('fxLogDate').value) hint.textContent = 'Pick the next follow-up date.';
+    else if (!$('fxLogChannel').value) hint.textContent = 'Choose how you will follow up.';
+    else if (!$('fxNextNote').value.trim()) hint.textContent = 'Write what to do next time.';
+    else hint.textContent = 'Ticks off the current follow-up and sets the next one for ' + words(iso2d($('fxLogDate').value)) + '.';
+  }
+  $('fxKinds').addEventListener('click', function (e) { var b = e.target.closest('button'); if (b) setKind(b.dataset.k); });
+  logCh.addEventListener('click', function () { setTimeout(sync, 0); });
+  $('fxNextNote').addEventListener('input', sync);
+  $('fxLogForm').addEventListener('submit', function (e) {
+    var noNote = !$('fxNote').value.trim();
+    var hint = $('fxLogHint'), miss = !$('fxKind').value ? 'Choose what you did.' : (!$('fxResult').value ? 'Choose how it went.'
+               : (noNote ? ($('fxKind').value === 'call' ? 'Write what was said.' : 'Write what happened.')
+               : (L.open && !closing() && !$('fxLogDate').value ? 'Pick the next follow-up date on the calendar.'
+               : (L.open && !closing() && !$('fxLogChannel').value ? 'Choose how you will follow up.'
+               : (L.open && !closing() && !$('fxNextNote').value.trim() ? 'Write what to do next time.' : '')))));
+    if (miss) { e.preventDefault(); hint.textContent = miss; hint.className = 'fx-hint err'; if (noNote && $('fxResult').value) $('fxNote').focus(); return; }
+    $('fxLogSave').disabled = true;
+  });
+
+  function openLog(o) {
+    L = { open: o.open !== false, canClose: o.canClose !== false, hasEmail: !!o.hasEmail, nextChannelSet: false };
+    $('fxLogForm').action = CFG.log_url.replace('/0/', '/' + o.leadId + '/');
+    $('fxLogName').textContent = o.name || '';
+    document.querySelectorAll('.fxBack').forEach(function (i) { i.value = o.back || (location.pathname + location.search); });
+    $('fxMinutes').value = ''; $('fxNote').value = ''; $('fxNextNote').value = '';
+    $('fxLogSave').disabled = false;
+    setChannel(logCh, ''); logCal.reset(null); who = 'They';
+    setKind(o.kind || ''); if (o.result) setResult(o.result);
+    show('fxLog'); loadBusy(o.leadId, logCal, function () { pickedLine($('fxLogPicked'), logCal.sel, logCal); });
+  }
+
+  /* ── Reschedule ── */
+  var resCal = Calendar($('fxResCal'), function (k) { $('fxResDate').value = k || ''; pickedLine($('fxResPicked'), k, resCal); $('fxResHint').textContent = ''; });
+  quick(document.querySelector('[data-fx-quick="fxResCal"]'), resCal);
+  var resCh = document.querySelector('[data-fx-channels="fxResChannel"]'); channels(resCh);
+  $('fxResForm').addEventListener('submit', function (e) {
+    var moving = R.due && $('fxResDate').value && $('fxResDate').value !== R.due;
+    var miss = !$('fxResDate').value ? 'Pick a day on the calendar.' : (!$('fxResChannel').value ? 'Choose how you will follow up.'
+               : (!$('fxResNote').value.trim() ? 'Write what to do.' : (moving && !$('fxResWhy').value.trim() ? "Say why it's moving." : '')));
+    if (miss) { e.preventDefault(); $('fxResHint').textContent = miss; $('fxResHint').className = 'fx-hint err'; return; }
+    $('fxResSave').disabled = true;
+  });
+  var R = {};
+  function openResched(o) {
+    R = { due: o.due || null };
+    $('fxResForm').action = CFG.set_url.replace('/0/', '/' + o.leadId + '/');
+    $('fxResTitle').textContent = o.due ? 'Change follow-up date' : 'Set a follow-up date';
+    $('fxResName').textContent = o.name || '';
+    $('fxResWhyWrap').style.display = o.due ? '' : 'none';
+    $('fxResNote').value = o.note || ''; $('fxResWhy').value = '';
+    $('fxResHint').textContent = o.moved >= 2 ? 'This follow-up has been moved ' + o.moved + ' times already.' : ''; $('fxResHint').className = 'fx-hint';
+    $('fxResSave').disabled = false; $('fxResSave').textContent = o.due ? 'Save new date' : 'Save date';
+    document.querySelectorAll('.fxBack').forEach(function (i) { i.value = o.back || (location.pathname + location.search); });
+    setChannel(resCh, o.channel || ''); who = 'They';
+    resCal.reset(o.due || null);
+    show('fxRes'); loadBusy(o.leadId, resCal, function () { pickedLine($('fxResPicked'), resCal.sel, resCal); });
+  }
+
+  /* A date box elsewhere (the demo outcome): a button that opens a calendar in place. */
+  function picker(input, btn, wrap) {
+    var cal = Calendar(wrap, function (k) {
+      input.value = k || '';
+      btn.className = 'fx-datebtn' + (k ? '' : ' empty');
+      btn.firstChild.textContent = k ? words(iso2d(k)) : 'Choose a date';
+      if (k) wrap.parentNode.hidden = true;
+    });
+    var q = document.createElement('div'); q.className = 'fx-quick'; wrap.parentNode.appendChild(q); quick(q, cal);
+    btn.onclick = function () { wrap.parentNode.hidden = !wrap.parentNode.hidden; };
+    return cal;
+  }
+
+  // Any button with data-fx-log / data-fx-resched='{json}' opens a box.
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-fx-log],[data-fx-resched]'); if (!b) return;
+    e.preventDefault();
+    if (b.dataset.fxLog) openLog(JSON.parse(b.dataset.fxLog)); else openResched(JSON.parse(b.dataset.fxResched));
+  });
+  return { openLog: openLog, openResched: openResched, picker: picker, words: words, iso2d: iso2d };
+})();
+</script>

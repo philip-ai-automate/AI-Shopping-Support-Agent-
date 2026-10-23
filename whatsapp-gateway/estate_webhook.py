@@ -9,6 +9,7 @@ import asyncio
 import hashlib
 import hmac
 import os
+import time
 
 import httpx
 import psycopg2
@@ -105,6 +106,202 @@ def _log_estate_wa(
         conn.close()
 
 
+
+# ── Voice notes (2026-10-22) ──────────────────────────────────────────────────
+# A buyer's WhatsApp voice note is downloaded, kept (staff can play it on the
+# chat), turned into text by the AI backend (/estate-transcribe), then answered
+# like a typed message. Switched on with KEYLAND_VOICE_NOTES=1 (paid speech-to-text).
+
+_VOICE_DIR = os.getenv("KEYLAND_VOICE_DIR", "/root/phixtra-app/data/keyland_voice")
+_VOICE_MAX_SECS = 600
+_VOICE_ASK_AGAIN = ("Sorry, I couldn't hear that voice note clearly. "
+                    "Could you send it again, or type your message?")
+_VOICE_TOO_LONG = ("Thanks for the voice note. It's a bit long for me, "
+                   "could you send a shorter one (under 10 minutes) or type the main points?")
+_voice_table_ready = False
+
+
+def _voice_on() -> bool:
+    return os.getenv("KEYLAND_VOICE_NOTES", "0").strip() == "1"
+
+
+def _ensure_voice_table(cur):
+    global _voice_table_ready
+    if _voice_table_ready:
+        return
+    cur.execute("SELECT to_regclass('re_voice_notes') IS NOT NULL")
+    if not cur.fetchone()[0]:
+        cur.execute("SET LOCAL lock_timeout = '3s'")
+        cur.execute("""CREATE TABLE IF NOT EXISTS re_voice_notes (
+            id BIGSERIAL PRIMARY KEY,
+            tenant_id INTEGER NOT NULL,
+            customer_phone VARCHAR(40) NOT NULL,
+            meta_message_id VARCHAR(128) UNIQUE,
+            file_path TEXT,
+            seconds INTEGER,
+            transcript TEXT,
+            status VARCHAR(12) NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
+        cur.execute("CREATE INDEX IF NOT EXISTS re_voice_notes_phone ON re_voice_notes (tenant_id, customer_phone, created_at)")
+    _voice_table_ready = True
+
+
+def _save_voice_row(tenant_id, customer_phone, meta_message_id, path, seconds, transcript, status):
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor()
+    try:
+        _ensure_voice_table(cur)
+        cur.execute("""INSERT INTO re_voice_notes (tenant_id, customer_phone, meta_message_id, file_path, seconds, transcript, status)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (meta_message_id) DO NOTHING""",
+                    (tenant_id, customer_phone, meta_message_id, path, seconds, transcript, status))
+        if transcript:
+            cur.execute("UPDATE re_wa_message_log SET content=%s WHERE meta_message_id=%s",
+                        (("🎤 Voice note: " + transcript)[:2000], meta_message_id))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"⚠️ [ESTATE VOICE] save error: {e}")
+    finally:
+        cur.close(); conn.close()
+
+
+def _probe(path: str):
+    """(seconds, format names) using ffprobe, or (None, '')."""
+    import json as _j, subprocess
+    try:
+        out = subprocess.run(["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", path],
+                             capture_output=True, text=True, timeout=20).stdout
+        fmt = (_j.loads(out or "{}").get("format") or {})
+        secs = float(fmt.get("duration")) if fmt.get("duration") else None
+        return (int(round(secs)) if secs is not None else None), (fmt.get("format_name") or "")
+    except Exception as e:
+        print(f"⚠️ [ESTATE VOICE] ffprobe error: {e}")
+        return None, ""
+
+
+def _to_mp3(path: str) -> str | None:
+    import subprocess
+    out = path.rsplit(".", 1)[0] + ".mp3"
+    try:
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", path, "-ac", "1", "-b:a", "48k", out],
+                       check=True, timeout=60)
+        return out
+    except Exception as e:
+        print(f"⚠️ [ESTATE VOICE] convert error: {e}")
+        return None
+
+
+async def _voice_to_text(tenant_id: int, api_key: str, access_token: str, customer_phone: str,
+                         media_id: str, meta_message_id: str) -> tuple:
+    """Returns (text, problem). problem: '' | 'too_long' | 'failed'."""
+    import base64, re as _re2
+    from media_resolver import resolve_and_download_media
+    audio = await resolve_and_download_media(media_id, access_token)
+    if not audio:
+        _save_voice_row(tenant_id, customer_phone, meta_message_id, None, None, None, "failed")
+        return "", "failed"
+    folder = os.path.join(_VOICE_DIR, str(tenant_id))
+    os.makedirs(folder, exist_ok=True)
+    safe = _re2.sub(r"[^A-Za-z0-9_.=-]", "_", meta_message_id or str(int(time.time())))[:120]
+    path = os.path.join(folder, safe + ".ogg")
+    with open(path, "wb") as f:
+        f.write(audio)
+    secs, fmt = await asyncio.to_thread(_probe, path)
+    if secs and secs > _VOICE_MAX_SECS:
+        _save_voice_row(tenant_id, customer_phone, meta_message_id, path, secs, None, "too_long")
+        return "", "too_long"
+    send_path, send_name = path, "voice.ogg"
+    if "ogg" not in (fmt or ""):            # WhatsApp voice notes are ogg; anything else becomes mp3
+        conv = await asyncio.to_thread(_to_mp3, path)
+        if conv:
+            send_path, send_name = conv, "voice.mp3"
+    with open(send_path, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode()
+    text = ""
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(f"{_AI_BACKEND_URL}/estate-transcribe",
+                                  json={"api_key": api_key, "audio_b64": b64, "filename": send_name})
+            if r.status_code == 200:
+                text = (r.json().get("text") or "").strip()
+            else:
+                print(f"⚠️ [ESTATE VOICE] transcribe status {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        print(f"⚠️ [ESTATE VOICE] transcribe error: {e}")
+    _save_voice_row(tenant_id, customer_phone, meta_message_id, path, secs, text or None, "done" if text else "failed")
+    return text, ("" if text else "failed")
+
+
+def _store_buyer_message(tenant_id: int, customer_phone: str, content: str):
+    """Save what the buyer wrote while a person is handling the chat (the AI
+    doesn't run then), so staff still see it in the Inbox conversation."""
+    cid = _ensure_estate_customer(tenant_id, customer_phone)
+    if not cid:
+        return
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute("INSERT INTO re_chat_messages (tenant_id, customer_id, role, content) VALUES (%s,%s,'user',%s)",
+                    (tenant_id, cid, content))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"⚠️ [ESTATE WA] store buyer message error: {e}")
+    finally:
+        cur.close(); conn.close()
+
+
+_STOP_WORDS  = {"stop", "unsubscribe", "stop messages", "stop promotions", "opt out", "optout"}
+_START_WORDS = {"start", "unstop", "resume messages"}
+
+
+def _stop_word(text: str):
+    t = " ".join((text or "").strip().lower().strip(".!").split())
+    if t in _STOP_WORDS:
+        return "stop"
+    if t in _START_WORDS:
+        return "start"
+    return None
+
+
+async def _handle_optout(tenant: dict, phone_number_id: str, access_token: str, customer_phone: str, stop: bool) -> bool:
+    """Exact-word STOP / START only, so "stop sending me houses in Lekki" still reaches the AI."""
+    tenant_id = int(tenant["id"])
+    digits = "".join(ch for ch in customer_phone if ch.isdigit())
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor()
+        try:
+            if stop:
+                cur.execute("""INSERT INTO re_wa_optouts (tenant_id, phone, source) VALUES (%s,%s,'reply')
+                               ON CONFLICT (tenant_id, phone) DO NOTHING""", (tenant_id, digits))
+            else:
+                cur.execute("DELETE FROM re_wa_optouts WHERE tenant_id=%s AND right(phone, 10)=%s",
+                            (tenant_id, digits[-10:]))
+                if not cur.rowcount:
+                    conn.rollback()
+                    return False   # wasn't opted out: an ordinary "start" goes to the AI
+            conn.commit()
+        except Exception as e:
+            print(f"⚠️ [ESTATE WA] opt-out save error: {e}")
+            conn.rollback()
+        finally:
+            cur.close(); conn.close()
+    biz = tenant.get("business_name") or "us"
+    reply = (f"Okay, you won't get any more follow-up or promotional messages from {biz}. "
+             "You can still message us here any time. Reply START if you change your mind."
+             if stop else
+             f"Welcome back. {biz} can send you updates again. Reply STOP at any time to stop them.")
+    await send_text(phone_number_id, access_token, customer_phone, reply)
+    _log_estate_wa(tenant_id, phone_number_id, customer_phone, "outbound", reply)
+    print(f"{'🚫' if stop else '✅'} [ESTATE WA] tenant={tenant_id} phone={customer_phone} opted {'out' if stop else 'back in'}")
+    return True
+
+
 def _is_estate_handoff_active(tenant_id: int, phone_number: str) -> bool:
     """
     True if this buyer has a pending handoff request that the AI logged
@@ -141,7 +338,7 @@ def _get_listing_by_id(tenant_id: int, listing_id: int) -> dict | None:
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute("""
-            SELECT id, title, property_type, transaction_type,
+            SELECT id, title, property_type, sub_type, transaction_type,
                    location, lga, state, price, price_negotiable,
                    bedrooms, bathrooms, size_sqm,
                    title_document, features, status
@@ -170,6 +367,10 @@ def _get_listing_by_id(tenant_id: int, listing_id: int) -> dict | None:
             result["price"] = fmt
         except Exception:
             pass
+        summary = _estate_summary(cur, tenant_id, result)
+        if summary:
+            result["estate_summary"] = summary
+            result["price"] = summary.split(" · ")[0]
         return result
     except Exception as e:
         print(f"⚠️ [ESTATE WA] _get_listing_by_id error: {e}")
@@ -248,6 +449,45 @@ def _ensure_estate_customer(tenant_id: int, phone: str) -> int | None:
         conn.close()
 
 
+def _refresh_readiness_after_booking(tenant_id: int, customer_id: int):
+    """A booked site inspection is a Ready signal for land buyers: let the AI
+    service re-run the readiness rules (fire and forget)."""
+    import threading
+
+    def _go():
+        try:
+            import requests as _req
+            _req.post(f"{os.getenv('AI_BACKEND_URL', 'http://127.0.0.1:8000')}/estate-readiness-refresh",
+                      json={"tenant_id": tenant_id, "customer_id": customer_id, "wants_inspection": True}, timeout=15)
+        except Exception as e:
+            print(f"⚠️ [ESTATE WA] readiness refresh error: {e}")
+    threading.Thread(target=_go, daemon=True).start()
+
+
+def _estate_summary(cur, tenant_id: int, listing: dict) -> str:
+    """'From ₦8,500,000 · 300–600 sqm · plans up to 12 months' for an estate."""
+    if listing.get("property_type") != "land" or listing.get("sub_type") != "Estate Land":
+        return ""
+    try:
+        cur.execute("SELECT size_sqm, price, plots_left FROM re_estate_plot_sizes WHERE tenant_id=%s AND listing_id=%s",
+                    (tenant_id, listing["id"]))
+        sizes = [r for r in cur.fetchall() if r["plots_left"] != 0]
+        cur.execute("SELECT COALESCE(MAX(months), 0) AS m FROM re_estate_payment_plans WHERE tenant_id=%s AND listing_id=%s",
+                    (tenant_id, listing["id"]))
+        longest = int(cur.fetchone()["m"] or 0)
+    except Exception:
+        return ""
+    if not sizes:
+        return ""
+    bits = ["From ₦{:,.0f}".format(min(float(r["price"]) for r in sizes))]
+    sq = sorted(float(r["size_sqm"]) for r in sizes if r["size_sqm"])
+    if sq:
+        bits.append(f"{sq[0]:g} sqm" if sq[0] == sq[-1] else f"{sq[0]:g}–{sq[-1]:g} sqm")
+    if longest:
+        bits.append(f"plans up to {longest} months")
+    return " · ".join(bits)
+
+
 def _book_slot_direct(
     slot_id: int,
     tenant_id: int,
@@ -286,6 +526,7 @@ def _book_slot_direct(
         booking["listing_id"]     = effective_listing
         conn.commit()
         print(f"   [ESTATE WA] Booking #{booking['id']} created — slot {slot_id}")
+        _refresh_readiness_after_booking(tenant_id, customer_id)
         return booking
     except Exception as e:
         print(f"⚠️ [ESTATE WA] _book_slot_direct error: {e}")
@@ -309,8 +550,9 @@ def _fmt_booking_confirmation(booking: dict, listing: dict | None) -> str:
     time = dt.strftime("%I:%M %p").lstrip("0")
     dur  = booking.get("duration_mins") or 60
 
+    visit = "site inspection" if (listing or {}).get("property_type") == "land" else "viewing"
     lines = [
-        "✅ *Viewing Appointment Confirmed!*",
+        f"✅ *{visit.title()} Confirmed!*" if visit != "viewing" else "✅ *Viewing Appointment Confirmed!*",
         "",
         f"📅 {day}",
         f"🕐 {time} ({dur} mins)",
@@ -327,7 +569,7 @@ def _fmt_booking_confirmation(booking: dict, listing: dict | None) -> str:
 
     lines += [
         "",
-        "One of our agents will contact you before the viewing with the full address and any instructions.",
+        f"One of our agents will contact you before the {visit} with the full address and any instructions.",
         "",
         "Reply *CALLBACK* if you would like to speak to someone sooner.",
     ]
@@ -501,11 +743,36 @@ async def handle_estate_message(
     # Mark as read — fire-and-forget
     asyncio.create_task(mark_as_read(phone_number_id, access_token, meta_message_id))
 
+    # ── Voice note: turn it into text first (when switched on) ─────────────
+    voice_note = False
+    if message_type == "audio" and _voice_on() and access_token:
+        heard, problem = await _voice_to_text(tenant_id, api_key, access_token, customer_phone,
+                                              msg.get("media_url") or "", meta_message_id)
+        if problem:
+            if _is_estate_handoff_active(tenant_id, customer_phone):
+                _store_buyer_message(tenant_id, customer_phone, "🎤 Voice note (couldn't be turned into text, play it here)")
+                return
+            reply_txt = _VOICE_TOO_LONG if problem == "too_long" else _VOICE_ASK_AGAIN
+            await send_text(phone_number_id, access_token, customer_phone, reply_txt)
+            _log_estate_wa(tenant_id, phone_number_id, customer_phone, "outbound", reply_txt)
+            _store_buyer_message(tenant_id, customer_phone, "🎤 Voice note (couldn't be turned into text, play it here)")
+            return
+        text, voice_note = heard, True
+        print(f"   🎤 [ESTATE VOICE] heard: {text[:120]}")
+
+    # ── STOP / START: buyer opts out of follow-ups and broadcasts (or back in) ─
+    if action_type is None and not voice_note:
+        word = _stop_word(text)
+        if word:
+            if await _handle_optout(tenant, phone_number_id, access_token, customer_phone, word == "stop"):
+                return
+
     # ── Handoff gate ──────────────────────────────────────────────────────────
     if _is_estate_handoff_active(tenant_id, customer_phone):
         print(f"   [ESTATE WA] Handoff active for tenant={tenant_id} "
               f"phone={customer_phone} — AI skipped")
-        # Don't reply — let the agent handle it
+        # Don't reply — let the agent handle it, but keep what the buyer said
+        _store_buyer_message(tenant_id, customer_phone, ("🎤 Voice note: " + text) if voice_note else text)
         return
 
     # ── Interactive: buyer selected a property from the list ──────────────────
@@ -535,6 +802,7 @@ async def handle_estate_message(
                 await send_inspection_slot_list(
                     phone_number_id, access_token, customer_phone,
                     slots, listing_title=listing_title,
+                    visit_word="site inspection" if (listing or {}).get("property_type") == "land" else "viewing",
                 )
                 await send_slot_text_fallback(
                     phone_number_id, access_token, customer_phone, slots,
@@ -627,6 +895,7 @@ async def handle_estate_message(
                 await send_inspection_slot_list(
                     phone_number_id, access_token, customer_phone,
                     slots, listing_title=listing_title,
+                    visit_word="site inspection" if (listing or {}).get("property_type") == "land" else "viewing",
                 )
                 await send_slot_text_fallback(
                     phone_number_id, access_token, customer_phone, slots,
@@ -646,6 +915,7 @@ async def handle_estate_message(
         "api_key":      api_key,
         "phone_number": customer_phone,
         "message":      text,
+        "voice_note":   voice_note,
     }
 
     try:

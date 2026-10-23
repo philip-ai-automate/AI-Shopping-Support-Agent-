@@ -1,0 +1,70 @@
+{% extends "portal/base.html" %}
+{% block title %}Businesses contacted — Team performance{% endblock %}
+{% block wrap_class %}page-wide{% endblock %}
+{% block content %}
+{# Daily record of businesses contacted personally (22 Oct 2026), from team_performance.contacted_list(). #}
+<style>
+.bc-top{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.bc-back{font-size:12.5px;font-weight:700;color:#0B1D40;text-decoration:none}
+.bc-sub{font-size:13px;color:var(--muted);margin-top:4px}
+.bc-f{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.bc-f a{font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:9px;border:1px solid var(--line);text-decoration:none;color:var(--muted);background:#fff}
+.bc-f a.on{background:#0B1D40;color:#fff;border-color:#0B1D40}
+.bc-f select,.bc-f input{width:auto!important;padding:6px 9px;border:1px solid var(--line);border-radius:9px;font-size:12.5px}
+.bc-sum{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+.bc-chip{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:12.5px;color:var(--muted)}
+.bc-chip b{display:block;font-size:20px;color:var(--ink);font-variant-numeric:tabular-nums}
+.bc-day{background:#fff;border:1px solid var(--line);border-radius:14px;margin-bottom:14px;overflow:hidden}
+.bc-dh{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:11px 16px;background:rgba(3,12,24,0.03);border-bottom:1px solid var(--line);font-size:13px}
+.bc-dh b{color:var(--ink)}
+.bc-dh a{font-size:12px;font-weight:700;color:#0B1D40}
+.bc-row{display:grid;grid-template-columns:56px minmax(180px,1.2fr) 2fr;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);font-size:13px;align-items:start}
+.bc-row:last-child{border-bottom:0}
+.bc-row time{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600}
+.bc-row a{color:var(--ink);font-weight:700}
+.bc-row .m{color:var(--muted);font-size:12px}
+.bc-empty{padding:22px;font-size:13px;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:14px}
+@media(max-width:700px){.bc-row{grid-template-columns:48px 1fr}.bc-row>span:last-child{grid-column:2}}
+</style>
+<div class="bc-top">
+  <div>
+    <a class="bc-back" href="{{ url_for('portal.team_performance') }}">‹ Team performance</a>
+    <h1 style="margin:8px 0 0">Businesses contacted personally</h1>
+    <div class="bc-sub">{{ label }} · {{ tz_label }} time · calls, WhatsApp, Messenger and web chat messages, LinkedIn requests and messages, and replies they answered. Automatic sequence emails aren't included.</div>
+  </div>
+  <a class="btn btn-sm" href="{{ url_for('portal.team_performance_contacted', period=period, person=person, csv=1, **({'from': start.isoformat(), 'to': end.isoformat()} if period == 'custom' else {})) }}">Download (CSV)</a>
+</div>
+<form class="bc-f" method="GET">
+  {% for k, l in [('today','Today'),('yesterday','Yesterday'),('week','This week'),('month','This month'),('all','Since recording started')] %}
+  <a href="{{ url_for('portal.team_performance_contacted', period=k, person=person) }}" class="{{ 'on' if period == k }}">{{ l }}</a>
+  {% endfor %}
+  <input type="hidden" name="period" value="custom">
+  <label for="bcFrom" style="font-size:12px;color:var(--muted)">From</label>
+  <input id="bcFrom" type="date" name="from" value="{{ start.isoformat() }}" min="{{ recording_started.isoformat() }}" max="{{ today.isoformat() }}">
+  <label for="bcTo" style="font-size:12px;color:var(--muted)">to</label>
+  <input id="bcTo" type="date" name="to" value="{{ end.isoformat() }}" min="{{ recording_started.isoformat() }}" max="{{ today.isoformat() }}">
+  <select name="person" aria-label="Team member">
+    <option value="">Everyone</option>
+    {% for k, n in people %}<option value="{{ k }}" {{ 'selected' if person == k }}>{{ n }}</option>{% endfor %}
+  </select>
+  <button type="submit" class="btn btn-sm">Show</button>
+</form>
+{% if totals %}
+<div class="bc-sum">
+  {% for k, n in people if k in totals %}<div class="bc-chip"><b>{{ totals[k] }}</b>{{ n }}</div>{% endfor %}
+</div>
+{% endif %}
+{% for g in groups %}
+<div class="bc-day">
+  <div class="bc-dh"><span><b>{{ g.day.strftime('%A %-d %B') }}</b> · {{ g.actor_name }} · <b>{{ g.count }}</b> business{{ 'es' if g.count != 1 }}</span>
+    <a href="{{ url_for('portal.team_performance_person', actor_key=g.actor_key, day=g.day.isoformat()) }}">Their full day ›</a></div>
+  {% for it in g['items'] %}
+  <div class="bc-row"><time>{{ it.first.strftime('%H:%M') }}</time>
+    <span>{% if it.lead_id %}<a href="{{ url_for('portal.lead_detail', lead_id=it.lead_id) }}">{{ it.business }}</a>{% else %}<b>{{ it.business }}</b>{% endif %}{% if it.person %}<br><span class="m">{{ it.person }}</span>{% endif %}</span>
+    <span class="m">{{ it.what|join(' · ') }}</span></div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="bc-empty">No business was contacted personally in this period{% if person %} by this person{% endif %}. Calls from their own phone appear here once they're logged with <b>Log a call</b> on the lead.</div>
+{% endfor %}
+{% endblock %}

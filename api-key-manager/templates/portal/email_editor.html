@@ -152,17 +152,23 @@ details.ne-panel:not([open]) > summary .ne-ph { border-bottom: none; }
 <div class="ne" id="ne">
   <header class="ne-bar">
     <div>
-      <div class="ne-crumbs"><a href="{{ url_for('portal.email_campaigns') }}">Email Campaigns</a> / <a href="{{ url_for('portal.email_saved_emails') }}">Saved Emails</a> / <b>{{ 'Edit email' if template else 'New email' }}</b></div>
+      <div class="ne-crumbs"><a href="{{ url_for('portal.email_campaigns') }}">Email Campaigns</a> / <a href="{{ url_for('portal.email_saved_emails') }}">Saved Emails</a>{% if template and template.back and template.back.startswith('/email/sequences/') %} / <a href="{{ template.back }}">Back to the sequence</a>{% endif %} / <b>{{ 'Edit email' if template else 'New email' }}</b></div>
       <h1><span id="neTitle">{{ template.name if template else 'New email' }}</span>
         <span class="ne-state {{ 'saved' if template }}" id="neState">{{ 'Saved' if template else 'Draft · not saved' }}</span></h1>
     </div>
     <div class="ne-acts">
       <button type="button" class="ne-pill" onclick="neGuide(true)">📘 How to use this page</button>
-      <a class="ne-btn quiet" href="{{ url_for('portal.email_saved_emails') }}">Cancel</a>
+      <a class="ne-btn quiet" href="{{ (template.back if template and template.back) or url_for('portal.email_saved_emails') }}">Cancel</a>
       <button type="button" class="ne-btn pri" id="neSave" onclick="neSaveEmail()">Save email</button>
     </div>
   </header>
   <div class="ne-msg" id="neMsg" hidden></div>
+  {% if template and template.used_in %}
+  <div class="ne-msg" style="background:#FEF6E7;border:1px solid #F6D9A8;color:#7A4B00">
+    <b>This email is used in {{ template.used_in|length }} sequence step{{ 's' if template.used_in|length != 1 }}:</b> {{ template.used_in|join(', ') }}.
+    Saving changes it there too, for everyone who hasn't had it yet. To change it in one place only, use <b>Make a copy</b> on Saved Emails instead.
+  </div>
+  {% endif %}
 
   <div class="ne-work">
     <div class="ne-col">
@@ -472,7 +478,7 @@ details.ne-panel:not([open]) > summary .ne-ph { border-bottom: none; }
   // save
   window.neSaveEmail = function () {
     const btn = $('neSave'); btn.disabled = true; btn.textContent = 'Saving…'
-    fetch('{{ url_for("portal.email_saved_email_save") }}', { method: 'POST', body: formData(TEMPLATE.id ? { template_id: TEMPLATE.id } : {}) })
+    fetch('{{ url_for("portal.email_saved_email_save") }}', { method: 'POST', body: formData(TEMPLATE.id ? { template_id: TEMPLATE.id, back: TEMPLATE.back || '' } : {}) })
       .then(r => r.json()).then(d => {
         if (d.ok) { dirty = false; window.location.href = d.next; return }
         showMsg(d.error || 'Could not save. Please try again.', 'err'); btn.disabled = false; btn.textContent = 'Save email'

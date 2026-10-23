@@ -1,0 +1,123 @@
+{% extends "estate/base.html" %}
+{% block title %}Estates Report — PhiXtra Real Estate{% endblock %}
+
+{% block head %}
+<style>
+.period-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.period-tab{display:inline-flex;align-items:center;padding:5px 14px;border-radius:8px;font-size:12.5px;font-weight:650;color:rgba(3,12,24,0.50);border:1.5px solid rgba(3,12,24,0.10);background:#fff;text-decoration:none;white-space:nowrap}
+.period-tab.active{background:#1a56db;color:#fff;border-color:#1a56db}
+.rp-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:9px;font-size:12.5px;font-weight:650;border:1.5px solid rgba(18,183,106,0.30);color:#0a7a3c;background:rgba(18,183,106,0.05);text-decoration:none}
+.es-card{background:#fff;border:1px solid rgba(3,12,24,0.08);border-radius:16px;box-shadow:0 2px 12px rgba(3,12,24,0.04);margin-bottom:18px;overflow:hidden}
+.es-head{padding:15px 18px;border-bottom:1px solid rgba(3,12,24,0.07);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.es-head b{font-size:15px;font-weight:800;color:#030C18}
+.es-head span{font-size:12.5px;color:rgba(3,12,24,0.5)}
+.es-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.es-table{width:100%;border-collapse:collapse;min-width:720px}
+.es-table th{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:rgba(3,12,24,0.42);padding:10px 12px;text-align:left;border-bottom:1px solid rgba(3,12,24,0.07);background:#fafbfc;vertical-align:bottom;line-height:1.35}
+.es-table td{padding:11px 12px;border-bottom:1px solid rgba(3,12,24,0.05);font-size:13px;color:#030C18;font-variant-numeric:tabular-nums;white-space:nowrap}
+.es-table tr:last-child td{border-bottom:none}
+.es-table td.n a{color:#1a56db;font-weight:700;text-decoration:none}
+.es-table td.n a:hover{text-decoration:underline}
+.es-table td.zero{color:rgba(3,12,24,0.35)}
+.es-rd{color:rgba(3,12,24,0.35)}
+.es-sizes{display:flex;gap:8px;flex-wrap:wrap;padding:14px 18px}
+.es-size{border:1px solid rgba(3,12,24,0.10);border-radius:10px;padding:8px 12px;font-size:12.5px}
+.es-size b{display:block;font-size:13.5px}
+.es-size.out{background:#FEF0EF;border-color:#FCD3CF;color:#B42318}
+.es-empty{padding:22px 18px;font-size:13px;color:rgba(3,12,24,0.5)}
+.es-note{font-size:12.5px;color:rgba(3,12,24,0.5);margin:-6px 0 18px;line-height:1.55}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="flex-wrap:wrap;gap:12px;margin-bottom:14px">
+  <div>
+    <h1 class="section-title" style="margin-bottom:3px">Reports</h1>
+    <p class="muted" style="margin:0">How each estate is selling · {{ period[1] }}{% if not _re_is_admin %} · your leads only{% endif %}</p>
+  </div>
+  <a href="{{ url_for('estate.reports_estates_csv', period=period[0]) }}" class="rp-btn">Export CSV</a>
+</div>
+{% include 'estate/_reports_tabs.html' %}
+
+<div class="period-bar">
+  {% for key, label, _ in periods %}
+  <a href="{{ url_for('estate.reports_estates', period=key) }}" class="period-tab{% if period[0] == key %} active{% endif %}">{{ label }}</a>
+  {% endfor %}
+</div>
+<p class="es-note">Click any figure to see the leads behind it. Enquiries and readiness count leads that came in during the period and asked about the estate. "Attended" counts visits marked Attended on the Inspections page.</p>
+
+{% macro n(e, m) -%}
+{% set v = e[m] %}<td class="n {{ 'zero' if not v }}">{% if v %}<a href="{{ url_for('estate.reports_estates_leads', estate=e.id, metric=m, period=period[0]) }}">{{ v }}</a>{% else %}0{% endif %}</td>
+{%- endmacro %}
+
+<div class="es-card">
+  <div class="es-head"><b>Estates</b><span>{{ d.estates|length }} estate{{ 's' if d.estates|length != 1 }}</span></div>
+  {% if d.estates %}
+  <div class="es-scroll">
+    <table class="es-table">
+      <thead><tr>
+        <th>Estate</th><th>Enquiries</th><th>Ready</th><th>Considering</th><th>Early</th>
+        <th>Inspections booked</th><th>Attended</th><th>Plots allocated</th><th>Deposits collected</th><th>First reply by a person</th>
+      </tr></thead>
+      <tbody>
+        {% for e in d.estates %}
+        <tr>
+          <td style="font-weight:750">{{ e.title }}</td>
+          {{ n(e, 'enquiries') }}{{ n(e, 'ready') }}{{ n(e, 'considering') }}{{ n(e, 'early') }}
+          {{ n(e, 'booked') }}{{ n(e, 'attended') }}{{ n(e, 'allocated') }}
+          <td class="n {{ 'zero' if not e.deposits }}">{% if e.deposits %}<a href="{{ url_for('estate.reports_estates_leads', estate=e.id, metric='deposits', period=period[0]) }}">₦{{ '{:,.0f}'.format(e.deposit_total) }}</a> <span class="es-rd">({{ e.deposits }})</span>{% else %}₦0{% endif %}</td>
+          <td>{{ e.first_reply or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="es-empty">No estates yet. Add a listing as "Estate (land with plots)" to see it here.</div>
+  {% endif %}
+</div>
+
+<div class="es-card">
+  <div class="es-head"><b>By salesperson</b><span>{{ period[1] }}; overdue actions and Ready buyers are as of now</span></div>
+  {% if d.people %}
+  <div class="es-scroll">
+    <table class="es-table">
+      <thead><tr><th>Salesperson</th><th>New leads</th><th>Ready buyers</th><th>Inspections</th><th>Allocations</th><th>Overdue actions</th><th>Alerts</th><th>Average time to act on an alert</th></tr></thead>
+      <tbody>
+        {% for r in d.people %}
+        <tr>
+          <td style="font-weight:750">{{ r.name }}</td>
+          <td class="{{ 'zero' if not r.leads }}">{{ r.leads }}</td>
+          <td class="{{ 'zero' if not r.ready }}">{{ r.ready }}</td>
+          <td class="{{ 'zero' if not r.inspections }}">{{ r.inspections }}</td>
+          <td class="{{ 'zero' if not r.allocations }}">{{ r.allocations }}</td>
+          <td class="n {{ 'zero' if not r.overdue }}">{% if r.overdue %}<a href="{{ url_for('estate.leads', view='overdue', agent=r.id if r.id else 'none') }}">{{ r.overdue }}</a>{% else %}0{% endif %}</td>
+          <td class="{{ 'zero' if not r.alerts }}">{{ r.alerts }}</td>
+          <td>{{ r.act or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="es-empty">No salespeople yet.</div>
+  {% endif %}
+</div>
+
+{% if d.estates %}
+<div class="es-card">
+  <div class="es-head"><b>Plots left</b><span>Right now</span></div>
+  {% for e in d.estates %}
+  <div style="padding:12px 18px 0;font-size:13px;font-weight:750">{{ e.title }}</div>
+  <div class="es-sizes">
+    {% for z in e.sizes %}
+    <div class="es-size {{ 'out' if z.plots_left is not none and z.plots_left <= 0 }}">
+      <b>{{ z.label or ('%g sqm'|format(z.size_sqm|float)) }}</b>
+      {% if z.plots_left is none %}Plots not counted{% elif z.plots_left <= 0 %}Sold out{% else %}{{ z.plots_left }} left{% endif %}
+    </div>
+    {% else %}<span class="es-rd" style="font-size:12.5px">No plot sizes</span>{% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

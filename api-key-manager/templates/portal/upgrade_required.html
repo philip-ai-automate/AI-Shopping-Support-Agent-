@@ -59,7 +59,7 @@
     {% elif ai_trial_available %}
     <div class="upgrade-title">Try this free for 2 weeks</div>
     <div class="upgrade-sub">
-      <strong>{{ feature_label }}</strong> is an AI feature, not included in
+      <strong>{{ feature_label }}</strong> is {{ 'an Enterprise' if feature_label in ('WhatsApp calls', 'Calls report') else 'an AI' }} feature, not included in
       {{ free_plan_name }}. Start your 2-week AI trial to use it free, or choose a plan.
     </div>
     {% else %}

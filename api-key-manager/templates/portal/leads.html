@@ -7,7 +7,7 @@
 {% block content %}
 {% from "portal/_labels_ui.html" import label_chip %}
 {% from "portal/_columns_ui.html" import cc_head, cc_cell, cc_filter_bar %}
-{% from "portal/_filter_ui.html" import fs_business, fs_columns, fs_contact, fs_labels, fs_location, fs_dates, fs_demo, demo_badge with context %}
+{% from "portal/_filter_ui.html" import fs_business, fs_columns, fs_contact, fs_labels, fs_location, fs_dates, fs_demo, fs_linkedin, fs_followup, demo_badge, followup_badge with context %}
 {% set can_label = staff_can('crm.tags_assign') %}
 {% set can_bulk = staff_can('leads.qualify') or staff_can('leads.assign') or can_label or (all_lead_cols|selectattr('can_fill')|list|length > 0) %}
 
@@ -559,6 +559,10 @@
       <div class="spf-body">
         {{ fs_demo(biz_state, opt_counts) }}
 
+        {{ fs_linkedin(biz_state, opt_counts, linkedin_filter_options) }}
+
+        {{ fs_followup(biz_state, opt_counts) }}
+
         {% if can_filter_assigned %}
         <section>
           <h3>Assigned to</h3>
@@ -698,7 +702,8 @@
   <span style="flex:1"></span>
   {% if staff_can('leads.qualify') %}<button type="button" class="lb-btn lb-white" onclick="lbOpenQualify()">✓ Qualify</button>{% endif %}
   {% if staff_can('leads.assign') %}<button type="button" class="lb-btn lb-ghost" onclick="lbOpenAssign()">👤 Assign to</button>{% endif %}
-  {% if staff_can('crm.pipeline_board_edit') %}<button type="button" class="lb-btn lb-ghost" onclick="lbOpenAddr()">📍 Set address</button>{% endif %}
+  {% if staff_can('crm.pipeline_board_edit') %}<button type="button" class="lb-btn lb-ghost" onclick="lbOpenAddr()">📍 Set address</button>
+  <button type="button" class="lb-btn lb-ghost" onclick="lbOpenCat()">🗂️ Set category</button>{% endif %}
   {% if can_label %}<button type="button" class="lb-btn lb-ghost" onclick="LabelUI.bulk(this, 'add', lbForm, lbLabelDone)">🏷️ Add label</button>
   <button type="button" class="lb-btn lb-ghost" onclick="LabelUI.bulk(this, 'remove', lbForm, lbLabelDone)">Remove label</button>{% endif %}
   {% if all_lead_cols %}<button type="button" class="lb-btn lb-ghost" onclick="ColumnUI.bulkFill(this, lbForm, lbLabelDone)">▦ Fill a column</button>{% endif %}
@@ -726,7 +731,7 @@
         {% for l in real_leads %}
         <tr class="lb-row" data-lead-id="{{ l.id }}">
           {% if can_bulk %}<td><input type="checkbox" class="lb-ck lb-row-ck" onchange="lbUpdate()" aria-label="Select {{ l.customer_name }}"></td>{% endif %}
-          <td><a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" style="color:var(--ink);font-weight:700;text-decoration:none">{{ l.customer_name }}</a>{{ demo_badge(l.demo) }}</td>
+          <td><a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" style="color:var(--ink);font-weight:700;text-decoration:none">{{ l.customer_name }}</a>{{ demo_badge(l.demo) }}{{ followup_badge(l.followup) }}</td>
           <td class="muted" style="white-space:nowrap">{{ l.business_category or '—' }}</td>
           <td class="muted" style="white-space:nowrap">{{ l.employees or '—' }}</td>
           <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{% set _w = (l.website or '')|replace('https://','')|replace('http://','') %}{% if _w %}<a href="{{ l.website }}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:none" title="{{ l.website }}">{{ _w.rstrip('/') }}</a>{% else %}—{% endif %}</td>
@@ -951,6 +956,27 @@ tr.lb-sel td{background:#eef2fa}
     </div>
   </div>
 </div>
+
+<div class="lm-over" id="lmCat" onclick="if(event.target===this)lbCloseModals()">
+  <div class="lm-box" role="dialog" aria-labelledby="lmCatTitle" style="max-width:480px">
+    <div>
+      <h2 class="lm-title" id="lmCatTitle">Set the business category for <span class="lmN">0</span> leads</h2>
+      <p class="lm-sub">For leads in the same line of business. It's also saved on each lead's contact.</p>
+    </div>
+    <div>
+      <label class="lm-sec" for="lmCatVal" style="display:block;margin-bottom:4px">Business category</label>
+      <input type="text" id="lmCatVal" class="finp" style="margin:0" list="lmCatList" maxlength="120" placeholder="Pick or type, e.g. Legal" autocomplete="off">
+      <datalist id="lmCatList">{% for v in biz_field_options().business_category %}<option value="{{ v }}">{% endfor %}</datalist>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" id="lmCatReplace" style="width:16px !important;flex:none;margin:0"> Replace the category on leads that already have one</label>
+    <div class="lm-note">Leads that already have a category are skipped unless you tick the box above.</div>
+    <div class="lm-err" id="lmCatErr"></div>
+    <div class="lm-acts">
+      <button type="button" class="btn btn-sm btn-ghost" onclick="lbCloseModals()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="lmCatGo" onclick="lbSubmitCat()">Set category</button>
+    </div>
+  </div>
+</div>
 {% endif %}
 {% if staff_can('leads.qualify') %}
 <div class="lm-over" id="lmQualify" onclick="if(event.target===this)lbCloseModals()">
@@ -1018,7 +1044,7 @@ tr.lb-sel td{background:#eef2fa}
 
 <script>
 var LB = { all: false, total: {{ filtered_total|int }}, preview: null,
-           filterKeys: ['q','tier','has_phone','has_email','has_whatsapp','has_company','check_numbers','assigned','added_from','added_to','country','state','city','addr_missing','biz_category','employees','label','hide_label','import'] };
+           filterKeys: ['q','tier','has_phone','has_email','has_whatsapp','has_company','check_numbers','assigned','added_from','added_to','country','state','city','addr_missing','biz_category','employees','label','hide_label','import','demo','linkedin','followup','lf_job'] };
 function lbRows(){ return Array.prototype.slice.call(document.querySelectorAll('.lb-row')); }
 function lbIds(){ return lbRows().filter(function(r){ var c=r.querySelector('.lb-row-ck'); return c && c.checked; })
                                  .map(function(r){ return r.dataset.leadId; }); }
@@ -1172,6 +1198,27 @@ function lbSubmitAddr(){
     if (d.error) { err.textContent = d.error; lbBusy(btn, false, 'Try again'); return; }
     var msg = 'Address saved on ' + lbFmt(d.saved) + ' leads.';
     if (d.skipped) msg += ' ' + lbFmt(d.skipped) + ' skipped (they already had an address).';
+    alert(msg); location.reload();
+  }).catch(function(){ err.textContent = 'Could not reach the server. Nothing was changed.'; lbBusy(btn, false, 'Try again'); });
+}
+function lbOpenCat(){
+  document.getElementById('lmCatVal').value = '';
+  document.getElementById('lmCatReplace').checked = false;
+  var b = document.getElementById('lmCatGo'); b.disabled = false; b.textContent = 'Set category';
+  lbOpen('lmCat');
+  document.getElementById('lmCatVal').focus();
+}
+function lbSubmitCat(){
+  var fd = lbForm(), err = document.getElementById('lmCatErr'), btn = document.getElementById('lmCatGo');
+  var v = document.getElementById('lmCatVal').value.trim();
+  if (!v) { err.textContent = 'Pick or type a category.'; return; }
+  fd.append('business_category', v);
+  if (document.getElementById('lmCatReplace').checked) fd.append('replace', '1');
+  lbBusy(btn, true, 'Saving…');
+  lbPost('/leads/bulk/set-category', fd).then(function(d){
+    if (d.error) { err.textContent = d.error; lbBusy(btn, false, 'Try again'); return; }
+    var msg = 'Category "' + v + '" saved on ' + lbFmt(d.saved) + ' leads.';
+    if (d.skipped) msg += ' ' + lbFmt(d.skipped) + ' skipped (they already had a category).';
     alert(msg); location.reload();
   }).catch(function(){ err.textContent = 'Could not reach the server. Nothing was changed.'; lbBusy(btn, false, 'Try again'); });
 }

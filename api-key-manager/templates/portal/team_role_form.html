@@ -43,6 +43,8 @@
 .rf-module[open] .rf-module-chevron{transform:rotate(180deg)}
 .rf-module-name{font-weight:700;font-size:14px}
 .rf-module-count{font-size:11.5px;color:var(--muted);font-weight:600;margin-left:8px}
+.rf-module-lock{font-size:11px;font-weight:700;color:#b45309;background:#fffbeb;border:1px solid #fde68a;
+                border-radius:999px;padding:2px 8px;white-space:nowrap}
 .rf-select-all{font-size:12px;font-weight:650;color:var(--txt);cursor:pointer;
                background:#fff;border:1px solid var(--line);border-radius:8px;
                padding:5px 10px;transition:.12s;flex-shrink:0}
@@ -139,6 +141,7 @@
             <span class="rf-module-chevron">▾</span>
             <span class="rf-module-name">{{ mod_name }}</span>
             <span class="rf-module-count" data-count>0/{{ feats|length }}</span>
+            {% if mod_name not in (platform_only_modules or ()) and not (feats|selectattr('0', 'in', granted_features)|list) %}<span class="rf-module-lock" title="Your plan doesn't include this yet. Ticks here only start working after you upgrade.">🔒 Not in your plan</span>{% endif %}
           </span>
           <button type="button" class="rf-select-all" onclick="rfToggleModule(event, this)">Select all</button>
         </summary>

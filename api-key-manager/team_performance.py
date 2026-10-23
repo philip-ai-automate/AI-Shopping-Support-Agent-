@@ -22,12 +22,25 @@ MESSAGE_ACTIONS = ("wa_sent", "messenger_sent", "webchat_sent")
 WORK_ACTIONS = ("call", "wa_sent", "messenger_sent", "webchat_sent", "email_sent", "seq_added",
                 "note_added", "lead_created", "lead_edited", "opportunity", "proposal", "won", "lost",
                 "not_a_fit", "reopened", "stage_moved", "chat_claimed", "reply_logged",
-                "contact_created", "contact_edited", "company_created", "leads_assigned")
+                "contact_created", "contact_edited", "company_created", "leads_assigned",
+                "wa_logged", "email_logged", "meeting_logged")
 
 CALL_OUTCOMES = [("answered", "Answered"), ("no_answer", "No answer"), ("busy", "Busy / call back"),
                  ("voicemail", "Left a voicemail"), ("wrong_number", "Wrong number"),
                  ("not_needed", "Doesn't need us")]
-CALL_OUTCOME_LABELS = dict(CALL_OUTCOMES)
+CALL_OUTCOME_LABELS = dict(CALL_OUTCOMES, other="Other")
+
+# A business contacted personally (22 Oct 2026): the person themselves called,
+# messaged, sent a LinkedIn request/message or answered a reply. Automatic
+# sequence emails, bulk stage moves and edits are not contact. A WhatsApp,
+# email or meeting logged by hand counts too (user 2026-10-23).
+CONTACT_SQL = """(NOT auto AND (action IN ('call', 'wa_sent', 'messenger_sent', 'webchat_sent', 'reply_logged',
+                                            'wa_logged', 'email_logged', 'meeting_logged')
+                   OR (action = 'linkedin' AND detail IN ('LinkedIn: request sent', 'LinkedIn: messaged'))))"""
+BIZ_SQL = "COALESCE('L' || lead_id, 'C' || contact_id, 'X' || id)"
+# Online time before this day was rebuilt from people's own actions (automatic
+# emails used to count as being online)
+PRESENCE_CLEAN_FROM = _dt.date(2026, 10, 23)
 
 IDLE_ALERT_MIN = 180        # "no activity for 3 hours" during the working day
 LOGIN_BY_HOUR = 10          # "no login by 10:00"
@@ -153,11 +166,15 @@ def can_view(tenant_id: int, viewer: dict, actor_key: str) -> bool:
 def _activity_totals(cur, tenant_id, start, end, tzn):
     cur.execute(f"""
         SELECT actor_key, max(actor_name) AS actor_name,
-               count(DISTINCT lead_id) FILTER (WHERE action = ANY(%s)) AS leads_worked,
+               count(DISTINCT lead_id) FILTER (WHERE action = ANY(%s) AND NOT auto) AS leads_worked,
+               count(DISTINCT {BIZ_SQL}) FILTER (WHERE {CONTACT_SQL}) AS contacted,
+               coalesce(sum(qty) FILTER (WHERE action='linkedin' AND NOT auto
+                        AND detail IN ('LinkedIn: request sent', 'LinkedIn: messaged')), 0) AS linkedin,
+               coalesce(sum(qty) FILTER (WHERE auto), 0) AS auto_emails,
                coalesce(sum(qty) FILTER (WHERE action='call'), 0) AS calls,
                coalesce(sum(qty) FILTER (WHERE action='call' AND detail LIKE 'Answered%%'), 0) AS calls_answered,
                coalesce(sum(qty) FILTER (WHERE action = ANY(%s)), 0) AS messages,
-               coalesce(sum(qty) FILTER (WHERE action='email_sent'), 0) AS emails,
+               coalesce(sum(qty) FILTER (WHERE action='email_sent' AND NOT auto), 0) AS emails,
                coalesce(sum(qty) FILTER (WHERE action='note_added'), 0) AS notes,
                coalesce(sum(qty) FILTER (WHERE action='opportunity'), 0) AS opps,
                coalesce(sum(qty) FILTER (WHERE action='proposal'), 0) AS proposals,
@@ -167,7 +184,7 @@ def _activity_totals(cur, tenant_id, start, end, tzn):
                coalesce(sum(fx_to_selling(value, (SELECT l.currency FROM merchant_pipeline_leads l
                                                    WHERE l.id = staff_activity.lead_id), tenant_id))
                         FILTER (WHERE action='won'), 0) AS won_value,
-               count(*) FILTER (WHERE action = ANY(%s)) AS work_rows
+               count(*) FILTER (WHERE action = ANY(%s) AND NOT auto) AS work_rows
         FROM staff_activity
         WHERE tenant_id=%s AND (created_at AT TIME ZONE %s)::date BETWEEN %s AND %s
         GROUP BY actor_key""",
@@ -175,8 +192,72 @@ def _activity_totals(cur, tenant_id, start, end, tzn):
     return {r["actor_key"]: r for r in cur.fetchall()}
 
 
+def _marked_only(cur, tenant_id, start, end, tzn):
+    """Leads a person moved to Contacted without a call or message on that lead that day."""
+    cur.execute(f"""
+        SELECT a.actor_key, count(DISTINCT a.lead_id) AS n
+        FROM staff_activity a
+        WHERE a.tenant_id=%s AND NOT a.auto AND a.action='stage_moved' AND a.detail LIKE '%%→contacted'
+          AND (a.created_at AT TIME ZONE %s)::date BETWEEN %s AND %s
+          AND NOT EXISTS (SELECT 1 FROM staff_activity b WHERE b.tenant_id=a.tenant_id AND b.actor_key=a.actor_key
+                            AND b.lead_id=a.lead_id AND {CONTACT_SQL.replace('auto', 'b.auto').replace('action', 'b.action').replace('detail', 'b.detail')}
+                            AND (b.created_at AT TIME ZONE %s)::date = (a.created_at AT TIME ZONE %s)::date)
+        GROUP BY 1""", (tenant_id, tzn, start, end, tzn, tzn))
+    return {r["actor_key"]: int(r["n"]) for r in cur.fetchall()}
+
+
+def contacted_list(tenant_id: int, keys, start, end) -> list:
+    """Every business each person contacted personally, day by day (back to when
+    recording started, 11 Oct 2026). [{day, actor_key, actor_name, items: [...]}]"""
+    tz = tz_for(tenant_id)
+    conn = get_db_connection()
+    try:
+        cur = _cur(conn)
+        cur.execute(f"""
+            SELECT a.actor_key, a.actor_name, a.action, a.detail, a.created_at, a.lead_id, a.contact_id,
+                   (a.created_at AT TIME ZONE %s)::date AS day,
+                   COALESCE(l.customer_name, wc.display_name, a.detail) AS business, l.contact_person,
+                   COALESCE(l.whatsapp_number, l.phone, wc.whatsapp_number) AS phone
+            FROM staff_activity a
+            LEFT JOIN merchant_pipeline_leads l ON l.id = a.lead_id
+            LEFT JOIN wa_contacts wc ON wc.id = a.contact_id
+            WHERE a.tenant_id=%s AND (%s::text[] IS NULL OR a.actor_key = ANY(%s)) AND {CONTACT_SQL.replace('auto', 'a.auto').replace('action', 'a.action').replace('detail', 'a.detail')}
+              AND (a.created_at AT TIME ZONE %s)::date BETWEEN %s AND %s
+            ORDER BY day DESC, a.actor_name, a.created_at""", (tz.key, tenant_id, None if keys is None else list(keys),
+                                                                None if keys is None else list(keys), tz.key, start, end))
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+    groups = {}
+    for r in rows:
+        g = groups.setdefault((r["day"], r["actor_key"]), {"day": r["day"], "actor_key": r["actor_key"],
+                                                          "actor_name": r["actor_name"], "items": {}, "touches": 0})
+        g["touches"] += 1
+        biz = ("L%s" % r["lead_id"]) if r["lead_id"] else ("C%s" % r["contact_id"]) if r["contact_id"] else "X%s" % id(r)
+        head = (r["detail"] or "").partition("\n")
+        what = ACTION_WORDS.get(r["action"], r["action"])
+        if r["action"] == "call":
+            what = "Call · " + head[0] if head[0] else "Call"
+        elif r["action"] == "linkedin":
+            what = (r["detail"] or "LinkedIn").replace("LinkedIn: ", "LinkedIn ")
+        it = g["items"].setdefault(biz, {"business": r["business"] if r["lead_id"] or r["contact_id"] else (r["detail"] or "Unknown"),
+                                         "person": r["contact_person"], "lead_id": r["lead_id"], "phone": r["phone"],
+                                         "first": r["created_at"].astimezone(tz), "what": []})
+        line = what + (f": {head[2].strip()[:160]}" if r["action"] == "call" and head[2].strip() else "")
+        if line not in it["what"]:
+            it["what"].append(line)
+    out = []
+    for g in groups.values():
+        g["items"] = sorted(g["items"].values(), key=lambda x: x["first"])
+        g["count"] = len(g["items"])
+        out.append(g)
+    out.sort(key=lambda g: (g["day"], g["actor_name"] or ""), reverse=False)
+    out.sort(key=lambda g: g["day"], reverse=True)
+    return out
+
+
 def _presence(cur, tenant_id, start, end):
-    cur.execute("""SELECT actor_key, max(actor_name) AS actor_name, count(*) AS days,
+    cur.execute("""SELECT actor_key, max(actor_name) AS actor_name, count(*) AS days, bool_or(from_actions) AS rebuilt,
                           min(first_seen) AS first_seen, max(last_seen) AS last_seen,
                           sum(active_minutes) AS active_minutes, max(longest_gap_min) AS longest_gap
                    FROM staff_presence WHERE tenant_id=%s AND day BETWEEN %s AND %s
@@ -224,12 +305,13 @@ def _replies(cur, tenant_id, start, end, tzn):
 
 
 def _daily_worked(cur, tenant_id, days, tzn):
-    cur.execute("""
-        SELECT actor_key, (created_at AT TIME ZONE %s)::date AS d, count(DISTINCT lead_id) AS n
+    """Businesses contacted personally per day (the sparkline)."""
+    cur.execute(f"""
+        SELECT actor_key, (created_at AT TIME ZONE %s)::date AS d, count(DISTINCT {BIZ_SQL}) AS n
         FROM staff_activity
-        WHERE tenant_id=%s AND action = ANY(%s)
+        WHERE tenant_id=%s AND {CONTACT_SQL}
           AND (created_at AT TIME ZONE %s)::date = ANY(%s)
-        GROUP BY 1, 2""", (tzn, tenant_id, list(WORK_ACTIONS), tzn, days))
+        GROUP BY 1, 2""", (tzn, tenant_id, tzn, days))
     out = {}
     for r in cur.fetchall():
         out.setdefault(r["actor_key"], {})[r["d"]] = int(r["n"])
@@ -267,6 +349,7 @@ def build(tenant_id: int, viewer: dict, period_key: str) -> dict:
     try:
         cur = _cur(conn)
         act = _activity_totals(cur, tenant_id, start, end, tzn)
+        marked = _marked_only(cur, tenant_id, start, end, tzn)
         prev = _activity_totals(cur, tenant_id, pstart, pend, tzn)
         pres = _presence(cur, tenant_id, start, end)
         assigned = _assigned(cur, tenant_id)
@@ -282,6 +365,8 @@ def build(tenant_id: int, viewer: dict, period_key: str) -> dict:
         spark_days.reverse()
         daily = _daily_worked(cur, tenant_id, spark_days, tzn)
         unanswered = _unanswered_replies(cur, tenant_id)
+        import lead_followups
+        fups = lead_followups.report_counts(cur, tenant_id, start, end, today, tzn)
     finally:
         conn.close()
 
@@ -313,6 +398,9 @@ def build(tenant_id: int, viewer: dict, period_key: str) -> dict:
             "role": (tm["role_name"] if tm else "Owner") or "Team member",
             "manager": tm["manager_name"] if tm else None,
             "leads_worked": int(a.get("leads_worked") or 0),
+            "contacted": int(a.get("contacted") or 0), "linkedin": int(a.get("linkedin") or 0),
+            "auto_emails": int(a.get("auto_emails") or 0), "marked_only": int(marked.get(k, 0)),
+            "presence_rebuilt": bool(p and p.get("rebuilt")),
             "calls": int(a.get("calls") or 0), "calls_answered": int(a.get("calls_answered") or 0),
             "messages": int(a.get("messages") or 0), "emails": int(a.get("emails") or 0),
             "notes": int(a.get("notes") or 0),
@@ -330,6 +418,12 @@ def build(tenant_id: int, viewer: dict, period_key: str) -> dict:
             "active_minutes": int(p["active_minutes"] or 0) if p else 0,
             "longest_gap": int(p["longest_gap"] or 0) if p else 0,
             "can_set_target": _can_target(viewer, k, scope),
+            "fu_due": int((fups.get(k) or {}).get("due") or 0),
+            "fu_on_time": int((fups.get(k) or {}).get("on_time") or 0),
+            "fu_late": int((fups.get(k) or {}).get("late") or 0),
+            "fu_missed": int((fups.get(k) or {}).get("missed") or 0),
+            "fu_overdue_now": int((fups.get(k) or {}).get("overdue_now") or 0),
+            "fu_resched_often": int((fups.get(k) or {}).get("rescheduled_often") or 0),
         }
         if person["opp_target"]:
             person["opp_pct"] = min(100, round(m_opps / person["opp_target"] * 100))
@@ -340,7 +434,7 @@ def build(tenant_id: int, viewer: dict, period_key: str) -> dict:
         person["status"] = (("Not recorded", "n", "before recording started") if before_recording
                             else _status(person, key, start, end, now, work_days_in_period))
         people.append(person)
-    people.sort(key=lambda x: (-x["leads_worked"], -x["assigned"], x["name"]))
+    people.sort(key=lambda x: (-x["contacted"], -x["leads_worked"], -x["assigned"], x["name"]))
 
     def tot(field, src):
         return sum(int(src.get(k, {}).get(field) or 0) for k in keys)
@@ -349,9 +443,14 @@ def build(tenant_id: int, viewer: dict, period_key: str) -> dict:
         "people": len(people),
         "present": sum(1 for x in people if x["days_present"]),
         "leads_worked": sum(x["leads_worked"] for x in people),
+        "contacted": sum(x["contacted"] for x in people),
+        "prev_contacted": tot("contacted", prev),
+        "auto_emails": sum(x["auto_emails"] for x in people),
         "calls": sum(x["calls"] for x in people),
         "opps": sum(x["opps"] for x in people),
         "won_value": sum(x["won_value"] for x in people),
+        "fu_due": sum(x["fu_due"] for x in people), "fu_on_time": sum(x["fu_on_time"] for x in people),
+        "fu_overdue_now": sum(x["fu_overdue_now"] for x in people),
         "prev_leads_worked": tot("leads_worked", prev), "prev_calls": tot("calls", prev),
         "prev_opps": tot("opps", prev),
         "prev_won_value": sum(float(prev.get(k, {}).get("won_value") or 0) for k in keys),
@@ -364,6 +463,7 @@ def build(tenant_id: int, viewer: dict, period_key: str) -> dict:
         "prev_recorded": pend >= RECORDING_STARTED,
         "pace_pct": round(pace * 100), "month_first": month_first,
         "recording_started": RECORDING_STARTED,
+        "presence_rebuilt": any(x["presence_rebuilt"] for x in people), "presence_clean_from": PRESENCE_CLEAN_FROM,
         "updated_at": now, "tz_label": tz_label(tz),
     }
 
@@ -438,6 +538,14 @@ def _attention(people, key, now, pace, unanswered, keys, tz):
             out.append(("a", f"<b>{p['name']}</b> is behind their month target: "
                              f"{p['month_opps']} of {p['opp_target']} opportunities, where {p['pace_should_be']} would be on pace.",
                         p["key"], "See target"))
+        if p.get("fu_overdue_now"):
+            n = p["fu_overdue_now"]
+            out.append(("r" if n >= 5 else "a", f"<b>{first}</b> has {n:,} overdue follow-up{'s' if n != 1 else ''}"
+                                                f" on open leads.", "followups:" + p["key"], "See them"))
+        if p.get("fu_resched_often"):
+            n = p["fu_resched_often"]
+            out.append(("a", f"<b>{first}</b> has moved {n:,} follow-up{'s' if n != 1 else ''} 3 or more times"
+                             f" (rescheduled often).", "followups:" + p["key"], "See them"))
         if p["untouched"]:
             out.append(("a", f"<b>{first}</b> has {p['untouched']:,} assigned open leads with no recorded contact"
                              f" since recording started.", "leads:" + p["key"], "See leads"))
@@ -461,13 +569,17 @@ ACTION_WORDS = {
     "not_a_fit": "Marked Not a Fit", "reopened": "Reopened", "stage_moved": "Stage moved",
     "chat_claimed": "Took over a chat", "reply_logged": "Marked as replied",
     "contact_created": "New contact", "contact_edited": "Contact edited", "company_created": "New company",
-    "leads_assigned": "Assigned leads",
+    "leads_assigned": "Assigned leads", "linkedin": "LinkedIn step",
+    "wa_logged": "WhatsApp (logged by hand)", "email_logged": "Email (logged by hand)", "meeting_logged": "Meeting",
+    "label_added": "Label added", "label_removed": "Label removed",
 }
 ACTION_ICONS = {"call": "CL", "wa_sent": "WA", "messenger_sent": "FB", "webchat_sent": "WC", "email_sent": "EM",
                 "seq_added": "SQ", "note_added": "NT", "lead_created": "LD", "lead_edited": "ED",
                 "opportunity": "OP", "proposal": "PR", "won": "₦", "lost": "LS", "not_a_fit": "NF",
                 "reopened": "RO", "stage_moved": "ST", "chat_claimed": "CH", "reply_logged": "RE",
-                "contact_created": "CT", "contact_edited": "CT", "company_created": "CO", "leads_assigned": "AS"}
+                "contact_created": "CT", "contact_edited": "CT", "company_created": "CO", "leads_assigned": "AS", "linkedin": "IN",
+                "wa_logged": "WA", "email_logged": "EM", "meeting_logged": "MT",
+                "label_added": "LB", "label_removed": "LB"}
 
 
 def person_day(tenant_id: int, actor_key: str, day) -> dict:
@@ -495,6 +607,19 @@ def person_day(tenant_id: int, actor_key: str, day) -> dict:
     if pres:
         events.append({"t": last_t, "icon": "IN", "kind": "in", "title": "First seen in the portal", "lead_id": None})
     counts = {}
+    autos = [r for r in rows if r.get("auto")]
+    rows = [r for r in rows if not r.get("auto")]
+    merged = []
+    for r in rows:
+        prev = merged[-1] if merged else None
+        if (prev and r["action"] in ("label_added", "label_removed") and prev["action"] == r["action"]
+                and prev["detail"] == r["detail"]
+                and (r["created_at"] - prev["created_at"]).total_seconds() < 600):
+            prev["qty"] = int(prev["qty"] or 1) + int(r["qty"] or 1)
+            prev["lead_id"] = None
+            continue
+        merged.append(dict(r))
+    rows = merged
     for r in rows:
         t = r["created_at"].astimezone(tz)
         if last_t and (t - last_t).total_seconds() >= 3600:
@@ -509,13 +634,15 @@ def person_day(tenant_id: int, actor_key: str, day) -> dict:
             # "Answered · 6 min" + newline + what was said (lead_log_call)
             head, _, note = r["detail"].partition("\n")
             title = f"Call · {head}"
-        if (r["qty"] or 1) > 1:
+        if r["action"] in ("label_added", "label_removed"):
+            title = f"{title}: {r['detail']}" + (f" · {r['qty']:,} leads" if (r["qty"] or 1) > 1 else "")
+        elif (r["qty"] or 1) > 1:
             title = f"{title} × {r['qty']:,}"
         who = r["customer_name"] or r["company_name"]
         extra = None
         if r["action"] == "won" and r["value"]:
             extra = f"₦{float(r['value']):,.0f}"
-        elif r["action"] not in ("call",) and r["detail"] and "→" not in (r["detail"] or "") and r["detail"] != "bulk":
+        elif r["action"] not in ("call", "label_added", "label_removed") and r["detail"] and "→" not in (r["detail"] or "") and r["detail"] != "bulk":
             extra = r["detail"]
         events.append({"t": t, "icon": ACTION_ICONS.get(r["action"], "··"),
                        "kind": "won" if r["action"] == "won" else "act",
@@ -529,8 +656,19 @@ def person_day(tenant_id: int, actor_key: str, day) -> dict:
                            "title": f"In the portal but no recorded activity for {_hm((lst - last_t).total_seconds() / 60)}",
                            "lead_id": None})
         events.append({"t": lst, "icon": "OUT", "kind": "in", "title": "Last seen in the portal", "lead_id": None})
+    if autos:
+        n = sum(int(r["qty"] or 1) for r in autos)
+        events.append({"t": autos[0]["created_at"].astimezone(tz), "icon": "AU", "kind": "auto",
+                       "title": f"{n:,} sequence email{'s' if n != 1 else ''} sent automatically",
+                       "extra": f"{autos[0]['created_at'].astimezone(tz):%H:%M}–{autos[-1]['created_at'].astimezone(tz):%H:%M}, "
+                                "from email sequences they set up. Not counted as their work or time online.",
+                       "lead_id": None})
+        events.sort(key=lambda e: e["t"])
     worked = len({r["lead_id"] for r in rows if r["lead_id"] and r["action"] in WORK_ACTIONS})
-    return {"events": events, "presence": pres, "counts": counts, "leads_worked": worked, "assigned": assigned,
+    contacted = contacted_list(tenant_id, [actor_key], day, day)
+    return {"events": events, "contacted": contacted[0]["items"] if contacted else [],
+            "auto_emails": sum(int(r["qty"] or 1) for r in autos),
+            "presence_rebuilt": bool(pres and pres.get("from_actions")), "presence": pres, "counts": counts, "leads_worked": worked, "assigned": assigned,
             "first_seen": pres["first_seen"].astimezone(tz) if pres else None,
             "last_seen": pres["last_seen"].astimezone(tz) if pres else None}
 

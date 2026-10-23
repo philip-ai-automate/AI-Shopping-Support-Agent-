@@ -1,4 +1,4 @@
-{# Email Campaigns How-To Guide (2026-10-08; Replies from Outlook added 2026-10-09; connect-before-start, opened/clicked/replied on sequences 2026-10-12). Ids are prefixed eml-, pictures live in
+{# Email Campaigns How-To Guide (2026-10-08; Replies from Outlook added 2026-10-09; connect-before-start, opened/clicked/replied on sequences 2026-10-12; plain look + signature, Send as, bounces, sequence wizard/tabs/schedule, split test 2026-10-20). Ids are prefixed eml-, pictures live in
    static/portal/tutorial/email/ (taken on the training account). Shown to every team member;
    the PhiXtra outreach appendix only shows for PhiXtra's own account (show_phixtra_appendix). #}
 {% macro shot(name, alt, caption) -%}
@@ -91,11 +91,11 @@
 <nav class="toc"><details open><summary>Contents</summary>
 <ol>
   <li><a href="#eml-intro">1. The big picture</a><ol><li><a href="#eml-intro-map">Where everything is</a></li><li><a href="#eml-intro-which">Campaign, sequence or saved email?</a></li></ol></li>
-  <li><a href="#eml-new">2. Writing an email</a><ol><li><a href="#eml-new-details">Email details</a></li><li><a href="#eml-new-names">Names that fill in</a></li><li><a href="#eml-new-message">The message</a></li><li><a href="#eml-new-button">Button, picture and video</a></li><li><a href="#eml-new-preview">Preview</a></li><li><a href="#eml-new-test">Send a test</a></li><li><a href="#eml-new-save">Save, and edit later</a></li></ol></li>
+  <li><a href="#eml-new">2. Writing an email</a><ol><li><a href="#eml-new-details">Email details</a></li><li><a href="#eml-new-names">Names that fill in</a></li><li><a href="#eml-new-message">The message</a></li><li><a href="#eml-new-look">Designed or plain</a></li><li><a href="#eml-new-button">Button, picture and video</a></li><li><a href="#eml-new-preview">Preview</a></li><li><a href="#eml-new-test">Send a test</a></li><li><a href="#eml-new-save">Save, and edit later</a></li></ol></li>
   <li><a href="#eml-ai">3. Write with AI</a></li>
   <li><a href="#eml-saved">4. Saved Emails</a><ol><li><a href="#eml-saved-find">Finding an email</a></li><li><a href="#eml-saved-use">Use ▾</a></li><li><a href="#eml-saved-staff">What staff see</a></li></ol></li>
   <li><a href="#eml-camp">5. One-off campaigns</a><ol><li><a href="#eml-camp-new">New Campaign, step by step</a></li><li><a href="#eml-camp-report">Campaign reports</a></li></ol></li>
-  <li><a href="#eml-seq">6. Sequences</a><ol><li><a href="#eml-seq-build">Build a sequence</a></li><li><a href="#eml-seq-add">Add people</a></li><li><a href="#eml-seq-before">Before you start: connect the reply mailbox</a></li><li><a href="#eml-seq-start">Start and pause</a></li><li><a href="#eml-seq-people">The people list</a></li><li><a href="#eml-seq-track">Who opened, clicked and replied</a></li><li><a href="#eml-seq-stop">Why someone stopped</a></li><li><a href="#eml-seq-change">Changing a running sequence</a></li></ol></li>
+  <li><a href="#eml-seq">6. Sequences</a><ol><li><a href="#eml-seq-build">Build a sequence: the wizard</a></li><li><a href="#eml-seq-page">The sequence page</a></li><li><a href="#eml-seq-sender">Send as a person</a></li><li><a href="#eml-seq-schedule">Sending schedule</a></li><li><a href="#eml-seq-split">Split test</a></li><li><a href="#eml-seq-add">Add people</a></li><li><a href="#eml-seq-before">Before you start: connect the reply mailbox</a></li><li><a href="#eml-seq-start">Start and pause</a></li><li><a href="#eml-seq-people">The people list</a></li><li><a href="#eml-seq-track">Who opened, clicked and replied</a></li><li><a href="#eml-seq-stop">Why someone stopped</a></li><li><a href="#eml-seq-change">Changing a running sequence</a></li></ol></li>
   <li><a href="#eml-lead">7. On each lead</a></li>
   <li><a href="#eml-outlook">8. Replies from Outlook</a><ol><li><a href="#eml-outlook-connect">Connect your mailbox</a></li><li><a href="#eml-outlook-reply">What happens to a reply</a></li><li><a href="#eml-outlook-which">Which mailbox to connect</a></li><li><a href="#eml-outlook-status">Needs reconnecting, IT approval, disconnect</a></li></ol></li>
   <li><a href="#eml-routine">9. A sales executive's routine</a></li>
@@ -149,7 +149,7 @@
   <ol class="steps">
     <li><b>Read the guide once.</b> The <span class="ui">📘 How to use this page</span> panel is open the first time. Hide it when you know the page. The button in the top bar brings it back.</li>
     <li><b>Write it, or let AI write it.</b> See <a href="#eml-ai">Write with AI</a>.</li>
-    <li><b>Fill in Email details, Message, Button and Sign-off</b>, as described below.</li>
+    <li><b>Fill in Email details, Message, Button and Signature</b>, and choose the <b>Look</b>, as described below.</li>
     <li><b>Check the preview</b> and send yourself a test.</li>
     <li>Press <span class="ui">Save email</span>. You land on Saved Emails with your email in the list.</li>
   </ol>
@@ -186,13 +186,27 @@
     <li>Blank lines are tidied up automatically, so the email has even spacing.</li>
   </ul>
 
+  <h3 id="eml-new-look">Designed or plain personal email</h3>
+  <p>At the top of the Message section, <b>Look</b> has two choices:</p>
+  <div class="tbl"><table>
+    <tr><th>Look</th><th>What people get</th><th>Best for</th></tr>
+    <tr><td>Designed</td><td class="wrapok">Your logo at the top, your brand colour, an optional heading and a big button.</td><td class="wrapok">Newsletters and announcements to customers.</td></tr>
+    <tr><td>Plain personal email</td><td class="wrapok">A white email that looks typed in Outlook: no banner or heading, the button shows as an ordinary link, then your <b>signature</b> with your logo under it.</td><td class="wrapok">Sales emails to people who don't know you yet. They look like a real person wrote them, so more people read and reply.</td></tr>
+  </table></div>
+  <ul>
+    <li>Bold, italic and colour in the message show exactly as you set them in both looks.</li>
+    <li>The heading box hides when you choose Plain, because a plain email has no heading.</li>
+    <li>Both looks keep the small company address and <b>Unsubscribe</b> line at the very bottom. The law needs it.</li>
+  </ul>
+  <div class="box tip"><b class="t">Tip</b><p>Fill in a full <b>Signature</b> for plain emails: your name, your job title and company, your email and phone number, and your website. People trust an email with a real signature, and are more likely to think one without it is fake.</p></div>
+
   <h3 id="eml-new-button">Button, picture and video</h3>
   {{ shot('e06_button', 'Button and Picture and video', 'One button with text and a link. Picture and video stay folded away until you open them.') }}
   <ul>
     <li><b>Button:</b> give it both text that says what happens ("Book a demo") and a link starting with https://. Use one button per email so the next step is clear.</li>
     <li><b>Picture above the message:</b> optional. It sits at the top of the email.</li>
     <li><b>Video link:</b> email can't play video, so PhiXtra shows a picture with a ▶ play button that opens your link. YouTube links use the video's own picture; for other links you can upload one with <span class="ui">Picture for the video</span>. To place the video inside the message, type <span class="tok">{{ '{{' }}Video}}</span> on its own line. Otherwise it goes under the message.</li>
-    <li><b>Sign-off:</b> the first line is your name, the lines under it are smaller. It starts as your business's default sign-off.</li>
+    <li><b>Signature:</b> the first line is your name in bold, the lines under it are smaller. It starts as your business's default sign-off. In a plain email your logo goes under it.</li>
   </ul>
 
   <h3 id="eml-new-preview">Preview</h3>
@@ -325,6 +339,7 @@
     <li><b>Clicked</b> counts a person pressing a link. Clicks in the first 90 seconds after sending are ignored, because company mail filters check links automatically.</li>
     <li><b>Replied</b> counts replies found in a connected Outlook mailbox (see <a href="#eml-outlook">Replies from Outlook</a>) and the <span class="ui">They replied</span> button on a lead.</li>
     <li>Each address in the list links to that person's ✉️ Emails tab, where you can read their reply.</li>
+    <li><b>Bounced</b> counts addresses that don't exist. PhiXtra records them by itself within minutes: the address is blocked so it's never emailed again, the lead gets the <b>Bounced</b> label, and any sequence for that person stops. Use the <span class="ui">Bounced</span> filter on the report to see them.</li>
   </ul>
   <a class="g-top" href="#eml-top">↑ Back to contents</a>
 </section>
@@ -335,24 +350,86 @@
   <p class="where">Email Campaigns › Sequences</p>
   <p>A sequence is a set of emails sent a few days apart, such as a first email, then a follow-up three days later, then a final note a week after that. Each person moves through it on their own timetable, and <b>stops getting emails as soon as they reply, unsubscribe, or their lead is closed</b>.</p>
   {{ shot('e20_sequences', 'The Sequences list', 'Sequences: each one with its emails, whether it is running, how many people are at each stage, and how many opened, clicked and replied.') }}
-  <p>The <b>Opened</b>, <b>Clicked</b> and <b>Replied</b> numbers on this list count people, not emails. Click a number to open that sequence showing only those people.</p>
+  <p>The <b>Opened</b>, <b>Clicked</b> and <b>Replied</b> numbers on this list count people, not emails. Click a number to open that sequence showing only those people. A sequence that isn't finished being set up shows <b>Setting up</b> with a <span class="ui">Continue setup →</span> link.</p>
 
-  <h3 id="eml-seq-build">Build a sequence</h3>
+  <h3 id="eml-seq-build">Build a sequence: the wizard</h3>
+  <p>Press <span class="ui">+ New sequence</span>. A short wizard walks you through five steps. The steps are shown across the top: click any step you've already visited to go back to it, or use <span class="ui">← Back</span>.</p>
+  <div class="tbl"><table>
+    <tr><th>Step</th><th>What you do</th><th>Can you skip it?</th></tr>
+    <tr><td>1 · Emails</td><td class="wrapok">Name the sequence and pick <b>Email 1</b> from your saved emails. Add more with <span class="ui">+ Add another email</span>, and set how many days to wait before each one and whether it goes automatically or waits for you ("I'll send it myself").</td><td><b>No.</b> A sequence needs at least one email.</td></tr>
+    <tr><td>2 · Sender</td><td class="wrapok">Send from the business address, or from a team member's own address (see <a href="#eml-seq-sender">Send as a person</a>). Optionally say where replies go.</td><td>Yes. It then sends from the business address.</td></tr>
+    <tr><td>3 · People</td><td class="wrapok">Choose leads (narrow by label, business category or stage), an Email Segment, or typed addresses. The green line says how many will be added and how many are skipped.</td><td>Yes. Add people later on the sequence page.</td></tr>
+    <tr><td>4 · Schedule</td><td class="wrapok">Pick the start and end dates, sending days and hours (see <a href="#eml-seq-schedule">Sending schedule</a>). It uses the number of people from step 3 to work out how many go each day.</td><td>Yes, but then everyone gets Email 1 within minutes of Start.</td></tr>
+    <tr><td>5 · Review</td><td class="wrapok">Everything in plain sentences. Press <span class="ui">Edit</span> (or <span class="ui">Set it up</span> on a skipped step) to change a line; <span class="ui">Save and back to review</span> brings you straight back.</td><td>-</td></tr>
+  </table></div>
+  <ul>
+    <li>The sequence is saved, <b>paused</b>, as soon as you finish step 1. If you close the page, open it again from the list with <span class="ui">Continue setup →</span>.</li>
+    <li>On Review, <span class="ui">▶ Start sequence</span> starts it. If nobody has been added yet, the button says <span class="ui">Save as paused</span> instead.</li>
+    <li>Whoever reads the replies mailbox must connect it before you start (see <a href="#eml-seq-before">Before you start</a>).</li>
+  </ul>
+
+  <h3 id="eml-seq-page">The sequence page</h3>
+  <p>Open any sequence from the list. From top to bottom:</p>
   <ol class="steps">
-    <li>On Sequences, type a name such as "Retail outreach" and press <span class="ui">+ New sequence</span>. New sequences start <b>paused</b>, so nothing goes out until you start them.</li>
-    <li>Under <b>The emails</b>, pick each email from your saved emails, then set:
-      <ul><li><b>Days to wait:</b> Email 1 counts from when the person is added (0 = straight away); later emails count from the email before.</li>
-          <li><b>How it's sent:</b> <b>Send automatically</b> goes out by itself when it's due. <b>I'll send it myself</b> waits in "Ready to send" for you to press Send, which suits emails you want to check or personalise first.</li></ul></li>
-    <li>Use <span class="ui">+ Add an email</span> for more and ✕ to remove one. Check <b>Replies go to</b>, then press <span class="ui">Save</span>. Whoever reads that mailbox must connect it before you start (see <a href="#eml-seq-before">Before you start</a>).</li>
+    <li><b>The top bar:</b> the name and <b>Running</b> or <b>Paused</b>, with <span class="ui">+ Add people</span>, the green <span class="ui">▶ Start sequence</span> (or <span class="ui">❚❚ Pause</span>) and Delete.</li>
+    <li><b>The ready strip:</b> four boxes, <b>Emails</b>, <b>Sender</b>, <b>Schedule</b> and <b>People</b>. A green ✓ means that part is done, a red <b>!</b> means it's missing, and an orange <b>–</b> on Schedule means there's no schedule. Click a box to go to that part.</li>
+    <li><b>The results:</b> Sent, Opened, Clicked, Replied and Stopped, for the whole sequence.</li>
+    <li><b>Four tabs:</b>
+      <ul><li><b>Overview:</b> the emails as a timeline (Email 1, "⏱ Wait 7 days, only if they haven't replied", Email 2…) with each email's results, and <b>When it sends</b>.</li>
+          <li><b>Emails:</b> change the emails, the waits and how each is sent, then <span class="ui">Save</span>.</li>
+          <li><b>People:</b> everyone in the sequence (see <a href="#eml-seq-people">The people list</a>). <span class="ui">+ Add people</span> opens here.</li>
+          <li><b>Settings:</b> the name, sender and replies, and the sending schedule.</li></ul></li>
   </ol>
-  {{ shot('e21_seq_emails', 'The emails of a sequence', 'Four emails: three automatic, one sent by hand. Under each, its results so far.') }}
-  <p>Once emails have gone out, each one shows <b>Sent · Opened · Clicked · Replied</b> and a <b>See who</b> link to its report.</p>
+  <p>After you save something you come back to the same tab.</p>
+
+  <h3 id="eml-seq-sender">Send as a person</h3>
+  <p class="where">Sequence › Settings › Name, sender and replies (or wizard step 2)</p>
+  <ul>
+    <li><b>Send as:</b> pick a team member's own work address, for example philip@yourcompany.com. Only addresses on your business's sending domain are listed.</li>
+    <li><b>Name people see:</b> the name in the inbox, for example "Philip". It fills in with the person's first name; change it if you like.</li>
+    <li><b>Replies go to:</b> leave it empty and replies go to the Send as address. That mailbox must be connected so replies stop the sequence.</li>
+    <li>Choose the business address at the top of the list to go back to sending as the business.</li>
+  </ul>
+  <div class="box tip"><b class="t">Tip</b><p>For first emails to new businesses, use <b>Send as</b> with the <b>Plain personal email</b> look and a full signature. It reads like a personal note from a real person, not a mailing.</p></div>
+
+  <h3 id="eml-seq-schedule">Sending schedule</h3>
+  <p class="where">Sequence › Settings › Sending schedule (or wizard step 4)</p>
+  <p>Without a schedule, everyone who is due gets their email <b>within minutes</b> of pressing Start. For a big list that looks like spam to Gmail and Outlook, and all the replies arrive on the same day. A schedule spreads it out.</p>
+  <ol class="steps">
+    <li>Tick <b>Use a sending schedule</b>.</li>
+    <li>Pick the <b>Start date</b> and <b>End date</b>, or press <span class="ui">1 week</span>, <span class="ui">2 weeks</span> or <span class="ui">1 month</span> to set the end date for you. You can also click a date in the calendar to make it the end date.</li>
+    <li>Choose the <b>Sending hours</b> and <b>Time zone</b>, for example 9am to 12pm, Nigeria.</li>
+    <li>Choose the <b>Sending days</b>, for example Monday to Thursday.</li>
+    <li>Leave <b>Follow-ups keep to these days and hours too</b> ticked, so a follow-up that falls on a Saturday waits for Monday morning.</li>
+    <li>Check the green line and calendar, then press <span class="ui">Save schedule</span>.</li>
+  </ol>
+  <p>PhiXtra works out the number per day for you. The green line says, for example, "<b>Email 1:</b> 300 a day on 5 sending days, Wed 21 Oct to Wed 28 Oct, 9am to 12pm", and the calendar shows the number for each sending day.</p>
+  <div class="box know"><b class="t">Good to know</b><ul>
+    <li>Each day's emails are spread evenly across the sending hours, not all sent at the start.</li>
+    <li>People added later are shared over the sending days that are left.</li>
+    <li>Anyone still waiting after the end date goes on the next sending day.</li>
+    <li>The schedule works even after you press Start: nothing goes out before the start date or outside the days and hours.</li>
+    <li><span class="ui">Send email 2 now</span> on a person still sends straight away. The schedule only controls automatic emails.</li>
+  </ul></div>
+
+  <h3 id="eml-seq-split">Split test: which email works better?</h3>
+  <p class="where">Leads › tick leads › ⚖️ Split test</p>
+  <p>To compare two emails, build two sequences (for example "Group A · WhatsApp AI" and "Group B · Website AI") and set a schedule on both. Then:</p>
+  <ol class="steps">
+    <li>On <b>Leads</b>, filter the list, tick the leads (or <b>Select all … matching leads</b>) and press <span class="ui">⚖️ Split test</span> on the bar at the bottom.</li>
+    <li>The window says how many can go in, and why the rest are left out: no email, unsubscribed or bounced, already in a sequence, or emailed in the last 30 days.</li>
+    <li>Choose <b>People per group</b>, the sequence for <b>Group A</b> and <b>Group B</b>, and a <b>Label</b> for each group.</li>
+    <li>Leave <b>Balance the groups</b> ticked, so both groups get the same mix of business categories and info@-type addresses. That keeps the test fair.</li>
+    <li>Press <span class="ui">Split and add</span>. The leads are shared at random, labelled, and added to the two sequences. Press Start on each sequence when you're ready.</li>
+  </ol>
+  <p>Later, compare the two sequences' Opened, Clicked and Replied numbers, or filter Leads by each label to see demos booked and deals won.</p>
+  <div class="box careful"><b class="t">Careful</b><p>If a sequence you pick has no sending schedule, the window warns you: everyone in that group would get Email 1 at once when it starts. Set a schedule first.</p></div>
 
   <h3 id="eml-seq-add">Add people</h3>
   {{ shot('e22_seq_add', 'Add people', 'Add people from your leads, an Email Segment, or typed addresses.') }}
   <div class="tbl"><table>
     <tr><th>Tab</th><th>How it works</th></tr>
-    <tr><td>From your leads</td><td class="wrapok">Choose a <b>Stage</b> (for example New Lead) and/or a <b>Business category</b> (for example Retail), then press <span class="ui">Add these leads</span>. Only leads you can see are added, up to 5,000 at a time.</td></tr>
+    <tr><td>From your leads</td><td class="wrapok">Choose a <b>Label</b>, a <b>Stage</b> (for example New Lead) and/or a <b>Business category</b> (for example Retail), then press <span class="ui">Add these leads</span>. Only leads you can see are added, up to 5,000 at a time.</td></tr>
     <tr><td>From an Email Segment</td><td class="wrapok">Adds everyone in the segment who has an email address.</td></tr>
     <tr><td>Type email addresses</td><td class="wrapok">One per line or separated by commas. If the address belongs to a lead, it's linked to that lead.</td></tr>
     <tr><td>From a lead's page</td><td class="wrapok">On any lead, ✉️ Emails › <b>add to a sequence</b>. Best for one lead at a time.</td></tr>
@@ -372,9 +449,9 @@
   <div class="box know"><b class="t">Already started without connecting?</b><p>Connect it now. On the first check PhiXtra looks back <b>14 days</b>, so recent replies are picked up and those people stop getting emails. For anything older, press <b>They replied</b> on the lead.</p></div>
 
   <h3 id="eml-seq-start">Start and pause</h3>
-  {{ shot('e23b_seq_top', 'Sequence top bar', 'Running shows in green. Pause and Delete sit at the top right.') }}
+  {{ shot('e23b_seq_top', 'Sequence top bar', 'Running shows in green. The buttons sit at the top right. (Older picture: the page now also has + Add people, the ready strip and tabs.)') }}
   <ul>
-    <li><span class="ui">▶ Start sequence</span>: automatic emails go out as they fall due. PhiXtra checks every minute, so an Email 1 with 0 days goes out within a minute or two.</li>
+    <li><span class="ui">▶ Start sequence</span>: automatic emails go out as they fall due. PhiXtra checks every minute, so an Email 1 with 0 days goes out within a minute or two, unless the <a href="#eml-seq-schedule">sending schedule</a> says to wait.</li>
     <li><span class="ui">❚❚ Pause</span>: nothing goes out automatically. You can still send anyone's next email yourself. When you start again, anything that fell due while paused goes out.</li>
     <li>Delete removes the sequence and its people list. Emails already sent stay on each lead's history and in reports.</li>
   </ul>
@@ -411,7 +488,8 @@
     <tr><td>Replied</td><td class="wrapok">Their reply was found in a connected Outlook mailbox, or someone pressed <b>They replied</b> on the lead.</td><td>Yes, if you want to carry on.</td></tr>
     <tr><td>Unsubscribed</td><td class="wrapok">They pressed Unsubscribe in one of your emails.</td><td>No.</td></tr>
     <tr><td>Lead marked Won / Lost / Dropped / Not a fit</td><td class="wrapok">The lead was closed in Leads or the pipeline.</td><td>Not while the lead is closed.</td></tr>
-    <tr><td>Email couldn't be delivered</td><td class="wrapok">The address bounced or the email was refused.</td><td>Yes, after fixing the address.</td></tr>
+    <tr><td>Email bounced</td><td class="wrapok">The address doesn't exist. PhiXtra blocked it and labelled the lead <b>Bounced</b>.</td><td>No. Find a working address for the lead instead.</td></tr>
+    <tr><td>Email couldn't be delivered</td><td class="wrapok">The email was refused when it was sent.</td><td>Yes, after fixing the address.</td></tr>
     <tr><td>Stopped by (name)</td><td class="wrapok">A team member pressed Stop.</td><td>Yes.</td></tr>
   </table></div>
 
@@ -533,7 +611,10 @@
     <tr><td>"A saved email already has that name"</td><td class="wrapok">Names are unique in your business.</td><td class="wrapok">Choose a different name.</td></tr>
     <tr><td>"This email is used in the sequence …"</td><td class="wrapok">You tried to delete an email a sequence needs.</td><td class="wrapok">Remove it from that sequence first, or keep it.</td></tr>
     <tr><td>"Choose the sequence's emails first"</td><td class="wrapok">You tried to add people to a sequence with no emails.</td><td class="wrapok">Pick at least one saved email and Save.</td></tr>
-    <tr><td>Nobody is getting sequence emails</td><td class="wrapok">The sequence is paused, or the first email waits some days.</td><td class="wrapok">Press Start sequence. Check "Next" on the people list.</td></tr>
+    <tr><td>Nobody is getting sequence emails</td><td class="wrapok">The sequence is paused, the first email waits some days, or the sending schedule hasn't reached its start date, days or hours yet.</td><td class="wrapok">Press Start sequence. Check "Next" on the people list and the schedule in Settings.</td></tr>
+    <tr><td>Everyone got Email 1 at the same time</td><td class="wrapok">The sequence had no sending schedule.</td><td class="wrapok">Set a schedule in Settings before adding a big list or pressing Start.</td></tr>
+    <tr><td>Only some people get emails each day</td><td class="wrapok">That's the sending schedule sharing them out.</td><td class="wrapok">Nothing. To go faster, choose an earlier end date or more sending days.</td></tr>
+    <tr><td>Leads with the Bounced label</td><td class="wrapok">Their email address doesn't exist.</td><td class="wrapok">Find a working address (website, phone call) and update the lead.</td></tr>
     <tr><td>"Not sent: unsubscribed / lead marked Lost…"</td><td class="wrapok">PhiXtra protected that person.</td><td class="wrapok">Nothing. That's by design.</td></tr>
     <tr><td>An email I need isn't in Saved Emails</td><td class="wrapok">It's someone else's and not shared with you.</td><td class="wrapok">Ask the owner or IT to Share it with you.</td></tr>
     <tr><td>No ✨ Write with AI box</td><td class="wrapok">Your role or plan doesn't include it.</td><td class="wrapok">Ask your manager.</td></tr>
@@ -600,9 +681,8 @@
   <h3>Set up the four sequences (once)</h3>
   <ol class="steps">
     <li><b>First, connect outreach@phixtra.com:</b> Integration › Microsoft 365 (Outlook) › <span class="ui">Connect my mailbox</span>, signing in as outreach@phixtra.com. Check it shows <b>Connected</b>. Without this, replies are never seen and people who reply keep getting emails.</li>
-    <li>Sequences › name it, for example <b>Retail outreach</b> › <span class="ui">+ New sequence</span>.</li>
-    <li>Pick Retail 1, 2, 3 and 4 as Emails 1 to 4. A starting rhythm to try is 0, 3, 4 and 7 days. Set any email you want to read before it goes, such as Email 3, to <b>I'll send it myself</b>.</li>
-    <li>Replies go to <b>outreach@phixtra.com</b>. Press Save.</li>
+    <li>Sequences › <span class="ui">+ New sequence</span>. In step 1, name it (for example <b>Retail outreach</b>) and pick Retail 1, 2, 3 and 4 as Emails 1 to 4. A starting rhythm to try is 3, 4 and 7 days between them. Set any email you want to read before it goes, such as Email 3, to <b>I'll send it myself</b>.</li>
+    <li>In step 2, replies go to <b>outreach@phixtra.com</b>. In step 4, set a sending schedule so the list is spread over the days.</li>
     <li>Repeat for Restaurants, Consultancy and B2B.</li>
   </ol>
   <h3>Add leads and start</h3>
