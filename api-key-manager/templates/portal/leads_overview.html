@@ -124,7 +124,7 @@
       <div class="lo-tile-label">Total leads</div>
       <div class="lo-tile-value">{{ '{:,}'.format(data.total_leads) }}</div>
     </div>
-    <div class="lo-tile" data-tip="How many new leads came in during this period, compared to the period before it">
+    <div class="lo-tile" data-tip="How many new leads came in during this period (not counting ones closed as Not a Fit), compared to the period before it">
       <div class="lo-tile-label">New leads</div>
       <div class="lo-tile-value">{{ '{:,}'.format(data.new_leads) }}</div>
       {% if data.new_leads_pct is not none %}

@@ -9243,6 +9243,7 @@ def _get_dashboard_crm_kpis(tenant_id: int, date_from, date_to, prev_from, prev_
             _ls_exec(cur, """
                 SELECT COUNT(*) AS n FROM merchant_pipeline_leads
                 WHERE tenant_id=%s AND created_at::date BETWEEN %s AND %s
+                  AND COALESCE(outcome, '') NOT IN ('not_a_fit', 'dropped') AND dropped_at IS NULL
             """, (tenant_id, d_from, d_to))
             return int((cur.fetchone() or {}).get("n") or 0)
 
@@ -34884,7 +34885,8 @@ def _get_leads_overview_data(tenant_id: int, date_from, date_to, prev_from, prev
         def _count_created(d_from, d_to):
             _ls_exec(cur, 
                 "SELECT count(*) AS c FROM merchant_pipeline_leads "
-                "WHERE tenant_id=%s AND created_at::date BETWEEN %s AND %s",
+                "WHERE tenant_id=%s AND created_at::date BETWEEN %s AND %s "
+                "AND COALESCE(outcome, '') NOT IN ('not_a_fit', 'dropped') AND dropped_at IS NULL",
                 (tenant_id, d_from, d_to),
             )
             return int(cur.fetchone()["c"])
