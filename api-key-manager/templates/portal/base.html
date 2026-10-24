@@ -121,7 +121,7 @@
     .sb-sub.sb-sub-tall.open{max-height:1200px}
     .sb-subgroup:not(:has(.sb-sub2 a)){display:none}
     .sb-subtoggle{display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%;
-                  font:inherit; font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+                  font:inherit; font-size:13px; font-weight:700;
                   color:rgba(3,12,24,0.60); background:none; border:0; cursor:pointer;
                   padding:10px 10px 6px; border-radius:8px; text-align:left}
     .sb-subtoggle:hover{background:rgba(3,12,24,0.04); color:var(--ink)}
@@ -1095,7 +1095,11 @@
         'portal.data_sources', 'portal.data_source_upload', 'portal.data_source_map',
         'portal.data_source_sync', 'portal.data_source_delete', 'portal.data_source_google_connect',
         'portal.data_source_google_callback', 'portal.data_source_google_setup',
-        'portal.wa_discount_settings') %}
+        'portal.wa_discount_settings',
+        'portal.cart_recovery_dashboard', 'portal.cart_recovery_save_settings',
+        'portal.cart_recovery_email_template') %}
+    {% set _cr_group = request.endpoint in ('portal.cart_recovery_dashboard', 'portal.cart_recovery_save_settings',
+                                             'portal.cart_recovery_email_template') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _commerce_group %}open{% endif %}"
            data-tour="nav-ecommerce" onclick="sbToggle(this)">
@@ -1104,7 +1108,7 @@
         </span>
         <span class="sb-arrow">▾</span>
       </div>
-      <div class="sb-sub {% if _commerce_group %}open{% endif %}">
+      <div class="sb-sub sb-sub-tall {% if _commerce_group %}open{% endif %}">
         {% if staff_can_open('portal.products') %}
         <a href="{{ url_for('portal.products') }}"
            class="{% if request.endpoint in ('portal.products','portal.product_add','portal.product_edit') %}active{% endif %}">
@@ -1157,6 +1161,33 @@
           Discount Settings
           {% if 'ecom.discount_settings_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
+        {% endif %}
+        {# Cart Recovery (2026-10-24): moved here from its own menu, as a sub-menu
+           with its own arrow like Campaigns › WhatsApp / Email. WooCommerce stores only. #}
+        {% if _has_woocommerce %}
+        <div class="sb-subgroup">
+          <button type="button" class="sb-subtoggle {% if _cr_group %}open{% endif %}"
+                  onclick="sbSubToggle(this)" aria-expanded="{{ 'true' if _cr_group else 'false' }}">
+            <span>Cart Recovery{% if 'woo.cart_recovery' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}</span>
+            <span class="sb-arrow" aria-hidden="true">▾</span>
+          </button>
+          <div class="sb-sub2 {% if _cr_group %}open{% endif %}">
+          {% if staff_can_open('portal.cart_recovery_dashboard') %}
+          <a href="{{ url_for('portal.cart_recovery_dashboard') }}"
+             class="{% if request.endpoint == 'portal.cart_recovery_dashboard' %}active{% endif %}">
+            Overview &amp; Settings
+            {% if 'woo.cart_recovery_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+          </a>
+          {% endif %}
+          {% if staff_can_open('portal.cart_recovery_email_template') %}
+          <a href="{{ url_for('portal.cart_recovery_email_template') }}"
+             class="{% if request.endpoint == 'portal.cart_recovery_email_template' %}active{% endif %}">
+            Email Templates
+            {% if 'woo.cart_recovery_templates_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+          </a>
+          {% endif %}
+          </div>
+        </div>
         {% endif %}
       </div>
     </div>
@@ -1296,37 +1327,6 @@
 
     {# ── WooCommerce-only items — hidden for WhatsApp-only tenants ── #}
     {% if _has_woocommerce %}
-
-    <!-- ── Cart Recovery group ── -->
-    {% set _cr_group = request.endpoint in ('portal.cart_recovery_dashboard',
-                                             'portal.cart_recovery_save_settings',
-                                             'portal.cart_recovery_email_template') %}
-    <div class="sb-group">
-      <div class="sb-group-toggle {% if _cr_group %}open{% endif %}"
-           onclick="sbToggle(this)">
-        <span class="sb-gtitle">
-          <span class="sb-icon">🛒</span> Cart Recovery
-          {% if 'woo.cart_recovery' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-        </span>
-        <span class="sb-arrow">▾</span>
-      </div>
-      <div class="sb-sub {% if _cr_group %}open{% endif %}">
-        {% if staff_can_open('portal.cart_recovery_dashboard') %}
-        <a href="{{ url_for('portal.cart_recovery_dashboard') }}"
-           class="{% if request.endpoint == 'portal.cart_recovery_dashboard' %}active{% endif %}">
-          Overview &amp; Settings
-          {% if 'woo.cart_recovery_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-        </a>
-        {% endif %}
-        {% if staff_can_open('portal.cart_recovery_email_template') %}
-        <a href="{{ url_for('portal.cart_recovery_email_template') }}"
-           class="{% if request.endpoint == 'portal.cart_recovery_email_template' %}active{% endif %}">
-          Email Templates
-          {% if 'woo.cart_recovery_templates_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-        </a>
-        {% endif %}
-      </div>
-    </div>
 
     <!-- Analytics -->
     {% if staff_can_open('portal.analytics') %}
