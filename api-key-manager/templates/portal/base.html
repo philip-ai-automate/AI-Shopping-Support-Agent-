@@ -747,6 +747,13 @@
           {% if 'crm.demos_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
+        {% if staff_can_open('portal.daily_targets') %}
+        <a href="{{ url_for('portal.daily_targets') }}"
+           class="{% if request.endpoint == 'portal.daily_targets' %}active{% endif %}">
+          Daily Targets
+          {% if 'crm.targets_own' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </a>
+        {% endif %}
         {% if staff_can_open('portal.whatsapp_segments') %}
         <a href="{{ url_for('portal.whatsapp_segments') }}"
            class="{% if request.endpoint in ('portal.whatsapp_segments','portal.whatsapp_segment_detail') %}active{% endif %}">
@@ -1624,6 +1631,7 @@
          'portal.crm_company_detail': 'crm-companies',
          'portal.crm_merge_review': 'crm-merge',
          'portal.report_pipeline_overview': 'crm-overview',
+         'portal.daily_targets': 'crm-targets',
          'portal.sales_pipeline': 'crm-board',
          'portal.lead_scoring_explainer': 'lead-score',
          'portal.lead_detail': 'lead-lead',

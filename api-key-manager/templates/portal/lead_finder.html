@@ -47,6 +47,10 @@
   .dd-opt:hover { background:#F3F6FB }
   .dd-opt input { accent-color:#0B1D40; width:15px; height:15px; margin:0; flex-shrink:0 }
   .dd-empty { font-size:13px; color:var(--muted); padding:10px 12px }
+  .dd-custom { border-top:1px solid var(--line); padding:8px 12px 10px; display:flex; flex-direction:column; gap:6px }
+  .dd-range { display:flex; align-items:center; gap:8px; font-size:13.5px; flex-wrap:wrap }
+  .dd-range label { display:inline-flex; align-items:center; gap:6px }
+  .dd-range input { font:inherit; font-size:13.5px; width:84px; height:34px; border:1px solid var(--line); border-radius:8px; padding:0 8px }
   .dd-foot { display:flex; justify-content:space-between; border-top:1px solid var(--line); padding:8px 10px; gap:8px }
   .dd-foot button { font:inherit; font-size:13px; font-weight:700; border-radius:8px; padding:6px 12px; cursor:pointer }
   .dd-clear { background:none; border:0; color:var(--muted) }
@@ -129,6 +133,7 @@
       {%- endfor %}
     </div>
     <div class="dd-empty" hidden>Nothing matches.</div>
+    {% if caller is defined %}{{ caller() }}{% endif %}
     <div class="dd-foot"><button type="button" class="dd-clear">Clear</button><button type="button" class="dd-done">Done</button></div>
   </div>
 </div>
@@ -180,7 +185,16 @@
     </div>
     {{ dd('ind', 'ind', 'Industry', 'Any industry', industries, f.industries, search=true) }}
     {{ dd('sen', 'sen', 'Job level', 'Any level', seniorities, f.seniority) }}
-    {{ dd('size', 'size', 'Company size (staff)', 'Any size', headcounts, f.sizes) }}
+    {% call dd('size', 'size', 'Company size (staff)', 'Any size', headcounts, f.sizes) %}
+    <div class="dd-custom">
+      <span class="dd-group" style="padding:0">Or your own range</span>
+      <div class="dd-range">
+        <label>From <input type="number" name="size_min" min="1" max="999999" inputmode="numeric" value="{{ f.size_min or '' }}" aria-label="Company size from"></label>
+        <label>to <input type="number" name="size_max" min="1" max="999999" inputmode="numeric" value="{{ f.size_max or '' }}" aria-label="Company size to"></label>
+        <span>staff</span>
+      </div>
+    </div>
+    {% endcall %}
     <div class="right">{{ dd('wa', 'wa', 'WhatsApp tools', 'Any', wa_tools, f.wa_tools,
           note='Tools Prospeo saw on the company website.') }}</div>
   </div>
@@ -345,8 +359,11 @@
   // ── Dropdowns ──────────────────────────────────────────────────────────
   const dds = [...document.querySelectorAll('.dd')];
   function boxes(d){ return [...d.querySelectorAll('.dd-list input[type=checkbox]')]; }
+  function range(d){ return [...d.querySelectorAll('.dd-range input')]; }
   function refresh(d){
     const on = boxes(d).filter(c => c.checked).map(c => c.value);
+    const [lo, hi] = range(d).map(i => i.value.trim());
+    if (lo || hi) on.splice(0, on.length, lo && hi ? lo + '–' + hi : lo ? lo + '+' : 'Up to ' + hi);
     const val = d.querySelector('.dd-val');
     val.textContent = !on.length ? d.dataset.any : on.length <= 2 ? on.join(', ') : on[0] + ' +' + (on.length - 1) + ' more';
     d.classList.toggle('on', on.length > 0);
@@ -368,7 +385,10 @@
     refresh(d);
     d.querySelector('.dd-btn').addEventListener('click', () => d.querySelector('.dd-panel').hidden ? open(d) : close(d));
     d.querySelector('.dd-list').addEventListener('change', () => refresh(d));
-    d.querySelector('.dd-clear').addEventListener('click', () => { boxes(d).forEach(c => c.checked = false); refresh(d); });
+    d.querySelector('.dd-clear').addEventListener('click', () => { boxes(d).forEach(c => c.checked = false); range(d).forEach(i => i.value = ''); refresh(d); });
+    // Company size: ticking a range clears your own range, and the other way round.
+    d.querySelector('.dd-list').addEventListener('change', () => { range(d).forEach(i => i.value = ''); refresh(d); });
+    range(d).forEach(i => i.addEventListener('input', () => { boxes(d).forEach(c => c.checked = false); refresh(d); }));
     d.querySelector('.dd-done').addEventListener('click', () => close(d, true));
     d.addEventListener('keydown', e => { if (e.key === 'Escape') close(d, true); });
     const s = d.querySelector('.dd-search');

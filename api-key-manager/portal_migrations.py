@@ -4637,6 +4637,26 @@ def ensure_portal_tables():
                 cur.execute(_GRANT_ONCE_SQL, (pid, k))
         cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('crm.demos_view'), ('crm.demos_all') ON CONFLICT DO NOTHING")
 
+        # ── Daily Targets (2026-10-24, daily_targets.py) ─────────────────────
+        # One target per person per start day; every plan with Leads gets the
+        # three CRM ticks (roles still tick them).
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS daily_targets (
+                tenant_id      INTEGER      NOT NULL,
+                actor_key      VARCHAR(40)  NOT NULL,
+                effective_from DATE         NOT NULL,
+                target         INTEGER,
+                set_by         VARCHAR(200),
+                updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (tenant_id, actor_key, effective_from)
+            )""")
+        cur.execute("SELECT DISTINCT plan_id FROM plan_feature_grants WHERE feature_key = 'leads.page'")
+        for (pid,) in cur.fetchall():
+            for k in ("crm.targets_own", "crm.targets_team", "crm.targets_set"):
+                cur.execute(_GRANT_ONCE_SQL, (pid, k))
+        cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('crm.targets_own'), ('crm.targets_team'), "
+                    "('crm.targets_set') ON CONFLICT DO NOTHING")
+
         # ── Selling currency (2026-10-11) ────────────────────────────────────
         # The currency a business's customers see (AI, WhatsApp, website chat)
         # and its CRM/reports use. Separate from plan payments (₦/£ only).

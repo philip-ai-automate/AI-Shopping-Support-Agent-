@@ -206,9 +206,10 @@ def _marked_only(cur, tenant_id, start, end, tzn):
     return {r["actor_key"]: int(r["n"]) for r in cur.fetchall()}
 
 
-def contacted_list(tenant_id: int, keys, start, end) -> list:
+def contacted_list(tenant_id: int, keys, start, end, contact_sql: str = None) -> list:
     """Every business each person contacted personally, day by day (back to when
-    recording started, 11 Oct 2026). [{day, actor_key, actor_name, items: [...]}]"""
+    recording started, 11 Oct 2026). [{day, actor_key, actor_name, items: [...]}]
+    contact_sql: a different rule for a table aliased a (Daily Targets also counts emails)."""
     tz = tz_for(tenant_id)
     conn = get_db_connection()
     try:
@@ -221,7 +222,7 @@ def contacted_list(tenant_id: int, keys, start, end) -> list:
             FROM staff_activity a
             LEFT JOIN merchant_pipeline_leads l ON l.id = a.lead_id
             LEFT JOIN wa_contacts wc ON wc.id = a.contact_id
-            WHERE a.tenant_id=%s AND (%s::text[] IS NULL OR a.actor_key = ANY(%s)) AND {CONTACT_SQL.replace('auto', 'a.auto').replace('action', 'a.action').replace('detail', 'a.detail')}
+            WHERE a.tenant_id=%s AND (%s::text[] IS NULL OR a.actor_key = ANY(%s)) AND {contact_sql or CONTACT_SQL.replace('auto', 'a.auto').replace('action', 'a.action').replace('detail', 'a.detail')}
               AND (a.created_at AT TIME ZONE %s)::date BETWEEN %s AND %s
             ORDER BY day DESC, a.actor_name, a.created_at""", (tz.key, tenant_id, None if keys is None else list(keys),
                                                                 None if keys is None else list(keys), tz.key, start, end))

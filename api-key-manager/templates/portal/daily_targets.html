@@ -1,0 +1,211 @@
+{% extends "portal/base.html" %}
+{% block title %}Daily Targets — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-wide{% endblock %}
+{% block content %}
+{# Daily Targets (2026-10-24): approved mock-up P198UJSJGn1qoqHf42928P.
+   Numbers come from daily_targets.build(); nothing here is typed in by staff. #}
+<style>
+.dt-head{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:18px}
+.dt-eyebrow{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.dt-sub{font-size:13px;color:var(--muted);margin-top:4px}
+.dt-seg{display:inline-flex;background:rgba(3,12,24,0.05);border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
+.dt-seg a{font-size:12.5px;font-weight:600;color:var(--muted);padding:8px 13px;border-radius:8px;text-decoration:none}
+.dt-seg a.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(3,12,24,.12)}
+.dt-nav{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.dt-nav a{font-size:12.5px;font-weight:700;color:#0B1D40;text-decoration:none;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 12px}
+.dt-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:18px}
+.dt-card h2{font-size:15px;font-weight:800;color:var(--ink);margin:0}
+.dt-row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.dt-big{display:flex;align-items:baseline;gap:8px;margin:14px 0 12px}
+.dt-big b{font-size:52px;font-weight:800;color:#0B1D40;line-height:1;font-variant-numeric:tabular-nums}
+.dt-big span{font-size:20px;font-weight:700;color:var(--muted)}
+.dt-bar{height:12px;background:#E8EEF8;border-radius:99px;overflow:hidden}
+.dt-bar i{display:block;height:100%;background:#0B1D40;border-radius:99px}
+.dt-bar.sm{height:8px;min-width:110px}
+.dt-pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.dt-pill.reached{background:#0B1D40;color:#fff}
+.dt-pill.behind{background:#FEF0C7;color:#93370D}
+.dt-pill.none{background:rgba(3,12,24,.06);color:var(--muted)}
+.dt-split{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:16px}
+.dt-split div{background:#F5F7FB;border-radius:10px;padding:11px 13px}
+.dt-split .l{font-size:12px;color:var(--muted)}
+.dt-split .v{font-size:19px;font-weight:800;color:#0B1D40;font-variant-numeric:tabular-nums}
+.dt-note{font-size:12px;color:var(--muted);margin:12px 0 0;line-height:1.55}
+.dt-week{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:14px}
+.dt-day{border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center;text-decoration:none;color:var(--ink)}
+.dt-day.on{border:2px solid #0B1D40}
+.dt-day.future{color:var(--muted)}
+.dt-day .l{font-size:12px;font-weight:700}
+.dt-day .v{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
+.dt-day .ok{font-size:11px;font-weight:700;color:#0B1D40}
+.dt-tbl-wrap{overflow-x:auto}
+.dt-tbl{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
+.dt-tbl th{text-align:left;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.dt-tbl td{padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.dt-tbl tr:last-child td{border-bottom:0}
+.dt-tbl .num{font-variant-numeric:tabular-nums;font-weight:700}
+.dt-who{display:flex;gap:10px;align-items:center;text-decoration:none}
+.dt-av{width:32px;height:32px;border-radius:50%;background:#E8EEF8;color:#0B1D40;display:grid;place-items:center;font-weight:800;font-size:12px;flex-shrink:0}
+.dt-who .n{font-weight:700;color:var(--ink);text-decoration:underline;text-decoration-color:#9DB8E8;text-underline-offset:3px}
+.dt-who .r{display:block;font-size:11.5px;color:var(--muted)}
+.dt-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.dt-tile{background:#fff;border:1px solid var(--line);border-radius:14px;padding:15px 16px}
+.dt-tile .l{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:6px}
+.dt-tile .v{font-size:24px;font-weight:800;color:#0B1D40;font-variant-numeric:tabular-nums}
+.dt-tile .v small{font-size:14px;color:var(--muted)}
+.dt-set{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin:14px 0}
+.dt-set label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:700;color:var(--ink)}
+.dt-set input{font:inherit;font-weight:400;height:44px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font-variant-numeric:tabular-nums}
+.dt-set small{font-weight:400;color:var(--muted);font-size:11.5px}
+.dt-empty{font-size:13px;color:var(--muted);padding:6px 0}
+@media (max-width:700px){.dt-split{grid-template-columns:repeat(2,minmax(0,1fr))}.dt-week{grid-template-columns:repeat(5,minmax(56px,1fr));overflow-x:auto}.dt-tiles{grid-template-columns:1fr}}
+</style>
+
+{% set p0 = d.people[0] if d.people else None %}
+<div class="dt-head">
+  <div>
+    <div class="dt-eyebrow">CRM › Daily Targets</div>
+    {% if who == 'team' %}
+    <h1 style="margin:0">Team daily targets</h1>
+    {% elif person and person != viewer.key %}
+    <h1 style="margin:0">{{ p0.name }}'s daily target</h1>
+    {% else %}
+    <h1 style="margin:0">My daily target</h1>
+    {% endif %}
+    <div class="dt-sub">
+      {% if who != 'team' and p0 %}{{ p0.name }}{% if p0.role %} · {{ p0.role }}{% endif %} · {% endif %}
+      {{ d.day.strftime('%A %-d %B %Y') }}{% if d.is_today %} · today{% endif %} · {{ d.tz_label }} time
+    </div>
+  </div>
+  <div class="dt-nav">
+    {% if viewer.can_own and viewer.can_team %}
+    <div class="dt-seg" role="group" aria-label="Whose targets">
+      <a href="{{ url_for('portal.daily_targets', view='me') }}" class="{% if who == 'me' and not person %}on{% endif %}">My target</a>
+      <a href="{{ url_for('portal.daily_targets', view='team') }}" class="{% if who == 'team' %}on{% endif %}">Team</a>
+    </div>
+    {% endif %}
+    {% if person and person != viewer.key %}<a href="{{ url_for('portal.daily_targets', view='team', day=d.day.isoformat()) }}">← Team</a>{% endif %}
+    <a href="{{ url_for('portal.daily_targets', view=who, person=person or None, day=d.prev_day.isoformat()) }}">← {{ d.prev_day.strftime('%a %-d') }}</a>
+    {% if d.next_day %}<a href="{{ url_for('portal.daily_targets', view=who, person=person or None, day=d.next_day.isoformat()) }}">{{ d.next_day.strftime('%a %-d') }} →</a>{% endif %}
+    {% if not d.is_today %}<a href="{{ url_for('portal.daily_targets', view=who, person=person or None) }}">Today</a>{% endif %}
+  </div>
+</div>
+
+{% if not d.workday %}
+<div class="dt-card" style="padding:12px 16px;font-size:13px">{{ d.day.strftime('%A') }} isn't a working day, so it has no target. Anything done today still shows below.</div>
+{% endif %}
+{% if d.before_recording %}
+<div class="dt-card" style="padding:12px 16px;font-size:13px">Contacts were first recorded on 11 October 2026, so there's nothing before that.</div>
+{% endif %}
+
+{% if who == 'me' and p0 %}
+{# ── One person's page ───────────────────────────────────────────────── #}
+<section class="dt-card" aria-label="Today">
+  <div class="dt-row">
+    <h2>Leads contacted {% if d.is_today %}today{% else %}on {{ d.day.strftime('%a %-d %b') }}{% endif %}</h2>
+    {% if p0.target %}<span class="dt-pill {{ p0.state }}">{% if p0.state == 'behind' %}{{ p0.target - p0.count }} more to reach the target{% else %}{{ p0.state_words }}{% endif %}</span>
+    {% else %}<span class="dt-pill none">No target set yet</span>{% endif %}
+  </div>
+  <div class="dt-big"><b>{{ p0.count }}</b>{% if p0.target %}<span>/ {{ p0.target }}</span>{% endif %}</div>
+  {% if p0.target %}
+  <div class="dt-bar" role="img" aria-label="{{ p0.count }} of {{ p0.target }}"><i style="width:{{ p0.pct }}%"></i></div>
+  {% endif %}
+  <div class="dt-split">
+    {% for c, label in d.channels %}<div><div class="l">{{ label }}</div><div class="v">{{ p0.split[c] }}</div></div>{% endfor %}
+  </div>
+  <p class="dt-note">Each lead counts once a day, whichever way it was reached: a call logged, a WhatsApp sent, a LinkedIn request or message, an email sent from the portal, or a meeting or reply logged. A lead reached two ways shows in both boxes but counts once. Automatic sequence emails and bulk stage moves don't count.{% if p0.set_by %} Target set by {{ p0.set_by }}.{% endif %}</p>
+</section>
+
+<section class="dt-card" aria-label="This week">
+  <h2>This week</h2>
+  <div class="dt-week">
+    {% for w in p0.week %}
+    <a class="dt-day {% if w.is_day %}on{% endif %} {% if w.future %}future{% endif %}"
+       href="{{ url_for('portal.daily_targets', view='me', person=person or None, day=w.day.isoformat()) }}"
+       {% if w.future %}aria-disabled="true" tabindex="-1"{% endif %}>
+      <div class="l">{{ w.day.strftime('%a %-d') }}{% if w.day == d.today %} · today{% endif %}</div>
+      <div class="v">{% if w.future %}–{% else %}{{ w.count }}{% if w.target %} / {{ w.target }}{% endif %}{% endif %}</div>
+      {% if w.reached %}<div class="ok">Reached</div>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  <p class="dt-note">This week: {{ p0.week_on }} of {{ p0.week_worked }} days on target{% if p0.last_week_days %} · last week: {{ p0.last_week_on }} of {{ p0.last_week_days }}{% endif %} · Monday to Friday</p>
+</section>
+
+<section class="dt-card" aria-label="Who was contacted">
+  <h2>{% if person and person != viewer.key %}Who {{ p0.name.split()[0] }} contacted{% else %}Who I contacted{% endif %} {% if d.is_today %}today{% else %}on {{ d.day.strftime('%a %-d %b') }}{% endif %}</h2>
+  {% if items %}
+  <div class="dt-tbl-wrap" style="margin-top:10px">
+    <table class="dt-tbl">
+      <thead><tr><th>Time</th><th style="min-width:220px">Lead</th><th>How</th></tr></thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td class="num">{{ it.first.strftime('%H:%M') }}</td>
+          <td>{% if it.lead_id %}<a href="{{ url_for('portal.lead_detail', lead_id=it.lead_id) }}">{{ it.business }}</a>{% else %}{{ it.business }}{% endif %}{% if it.person %}<span class="dt-sub" style="display:block;margin:0">{{ it.person }}</span>{% endif %}</td>
+          <td>{{ it.what|join(' · ') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="dt-empty">Nobody yet. Calls you log, WhatsApps and emails you send from the portal, and LinkedIn steps you click show up here straight away.</p>
+  {% endif %}
+</section>
+
+{% else %}
+{# ── Team page ───────────────────────────────────────────────────────── #}
+<div class="dt-tiles">
+  <div class="dt-tile"><div class="l">Leads contacted {% if d.is_today %}today{% endif %}</div><div class="v">{{ d.total }}{% if d.total_target %} <small>/ {{ d.total_target }}</small>{% endif %}</div></div>
+  <div class="dt-tile"><div class="l">On target</div><div class="v">{{ d.on_target }} <small>of {{ d.with_target }}</small></div></div>
+  <div class="dt-tile"><div class="l">People with a target</div><div class="v">{{ d.with_target }} <small>of {{ d.people|length }}</small></div></div>
+</div>
+
+<section class="dt-card" aria-label="Each person">
+  <h2>Each person</h2>
+  {% if d.people %}
+  <div class="dt-tbl-wrap" style="margin-top:10px">
+    <table class="dt-tbl">
+      <thead><tr><th>Person</th><th>{% if d.is_today %}Today{% else %}{{ d.day.strftime('%a %-d') }}{% endif %}</th><th>Progress</th>
+        <th>{% for c, label in d.channels %}{{ label }}{% if not loop.last %} · {% endif %}{% endfor %}</th><th>This week</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for p in d.people %}
+        <tr>
+          <td><a class="dt-who" href="{{ url_for('portal.daily_targets', person=p.key, day=d.day.isoformat()) }}"><span class="dt-av">{{ p.initials }}</span><span><span class="n">{{ p.name }}</span><span class="r">{{ p.role }}</span></span></a></td>
+          <td class="num">{{ p.count }}{% if p.target %} / {{ p.target }}{% endif %}</td>
+          <td>{% if p.target %}<div class="dt-bar sm" role="img" aria-label="{{ p.count }} of {{ p.target }}"><i style="width:{{ p.pct }}%"></i></div>{% else %}–{% endif %}</td>
+          <td>{% for c, label in d.channels %}{{ p.split[c] }}{% if not loop.last %} · {% endif %}{% endfor %}</td>
+          <td>{{ p.week_on }} of {{ p.week_worked }} days</td>
+          <td><span class="dt-pill {{ p.state }}">{{ p.state_words }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="dt-empty">Nobody to show yet. People appear here once they have open leads or a daily target.</p>
+  {% endif %}
+  <p class="dt-note">{% if viewer.is_team %}You see the people who report to you (Team settings).{% else %}You see everyone.{% endif %} Click a name to see who they contacted.</p>
+</section>
+
+{% set settable = d.people|selectattr('can_set')|list %}
+{% if settable %}
+<section class="dt-card" id="set" aria-label="Set daily targets">
+  <h2>Set daily targets</h2>
+  <p class="dt-note" style="margin-top:4px">Leads contacted per working day. A new number counts from today and stays until you change it. Leave a box empty for no target.</p>
+  <form method="POST" action="{{ url_for('portal.daily_targets_set') }}">
+    <div class="dt-set">
+      {% for p in settable %}
+      <label>{{ p.name }}
+        <input type="number" name="target__{{ p.key }}" min="0" max="1000" inputmode="numeric" value="{{ p.current_target or '' }}" placeholder="e.g. 30">
+        {% if p.set_by %}<small>Last set by {{ p.set_by }}</small>{% endif %}
+      </label>
+      {% endfor %}
+    </div>
+    <button type="submit" class="btn btn-primary" style="min-height:44px">Save targets</button>
+  </form>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

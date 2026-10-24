@@ -391,6 +391,9 @@ PLAN_FEATURE_CATALOG = {
         ("crm.bookings_connect",       "Connect Microsoft Bookings so booked demos show on leads automatically"),
         ("crm.demos_view",             "Demos page — their own demos and numbers"),
         ("crm.demos_all",              "See all demos — every salesperson's demos, plus manager alerts and the Monday summary"),
+        ("crm.targets_own",            "Daily Targets — see my own target, today's count, this week and who I contacted"),
+        ("crm.targets_team",           "Daily Targets — see the team (the people who report to them)"),
+        ("crm.targets_set",            "Set daily targets for the people they can see"),
         ("crm.tags_create",            "Create a label for everyone / import bounces"),
         ("crm.tags_edit",              "Edit a label for everyone — rename, colour, meaning"),
         ("crm.tags_delete",            "Delete a label for everyone"),
@@ -661,6 +664,7 @@ ROLE_FORM_GRID = {
         {"label": "Pipeline Settings", "view": "crm.pipeline_settings_view", "edit": "crm.pipeline_settings_edit"},
         {"label": "Microsoft Bookings (demos)", "other": ["crm.bookings_connect"]},
         {"label": "Demos", "view": "crm.demos_view", "other": ["crm.demos_all"]},
+        {"label": "Daily Targets", "view": "crm.targets_own", "other": ["crm.targets_team", "crm.targets_set"]},
     ],
     "Leads": [
         {"label": "Leads", "view": "leads.page", "create": "leads.create", "other": ["leads.qualify", "leads.assign", "leads.see_all"]},
@@ -35308,6 +35312,90 @@ def team_performance_targets():
         _tp.save_targets(tenant_id, data["month_first"], rows, viewer["label"])
         flash(f"Targets for {data['month_first']:%B %Y} saved.", "success")
     return redirect(url_for("portal.team_performance", period="month") + "#targets")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DAILY TARGETS (2026-10-24) — CRM › Daily Targets: one daily target per
+# person, "Leads contacted", counted from what they already do in the CRM.
+# Numbers: daily_targets.py. Approved mock-up: P198UJSJGn1qoqHf42928P.
+# ══════════════════════════════════════════════════════════════════════════════
+import daily_targets as _dtg
+
+
+def _dtg_guard():
+    r = _require_login()
+    if r: return None, None, None, r
+    _rperm = _require_any_team_permission([_dtg.OWN, _dtg.TEAM])
+    if _rperm: return None, None, None, _rperm
+    customer = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, _dtg.OWN, "Daily Targets")
+    if r2: return None, None, None, r2
+    viewer = _current_actor(customer)
+    viewer = dict(viewer,
+                  can_own=viewer["is_team"] and _team_member_has_permission(_dtg.OWN),
+                  can_team=not viewer["is_team"] or _team_member_has_permission(_dtg.TEAM),
+                  can_set=_team_member_has_permission(_dtg.SET))
+    return customer, int(customer["tenant_id"]), viewer, None
+
+
+@portal_bp.route("/crm/daily-targets")
+@team_feature(_dtg.OWN, _dtg.TEAM)
+def daily_targets():
+    customer, tenant_id, viewer, err = _dtg_guard()
+    if err: return err
+    today = _tp.now_local(_tp.tz_for(tenant_id)).date()
+    try:
+        day = _tpdt.date.fromisoformat(request.args.get("day") or "")
+    except ValueError:
+        day = today
+    day = min(day, today)
+    person = (request.args.get("person") or "").strip()
+    who = request.args.get("view") or ("me" if viewer["can_own"] else "team")
+    if who == "team" and not viewer["can_team"]:
+        who = "me"
+    if who == "me" and not viewer["is_team"] and not person:
+        who = "team"                                  # the owner has no target of their own
+    if person and person != viewer["key"]:
+        if not viewer["can_team"] or not _tp.can_view(tenant_id, viewer, person):
+            return _team_member_denied("You can only see your own daily target.")
+        who = "me"
+    elif person == viewer["key"] and not viewer["can_own"]:
+        return _team_member_denied("You don't have permission to do that.")
+    d = _dtg.build(tenant_id, viewer, day, who, person_key=person or None)
+    items = _dtg.contacted(tenant_id, d["people"][0]["key"], day) if who == "me" and d["people"] else []
+    return render_template("portal/daily_targets.html", customer=customer, d=d, who=who, viewer=viewer,
+                           person=person, items=items)
+
+
+@portal_bp.route("/crm/daily-targets/set", methods=["POST"])
+@team_feature(_dtg.SET)
+def daily_targets_set():
+    customer, tenant_id, viewer, err = _dtg_guard()
+    if err: return err
+    _rperm = _require_team_permission(_dtg.SET)
+    if _rperm: return _rperm
+    d = _dtg.build(tenant_id, viewer, None, "team")
+    rows = []
+    for p in d["people"]:
+        f = f"target__{p['key']}"
+        if not p["can_set"] or f not in request.form:
+            continue
+        raw = (request.form.get(f) or "").replace(",", "").strip()
+        if raw and not raw.isdigit():
+            flash("A daily target must be a whole number, for example 30.", "danger")
+            return redirect(url_for("portal.daily_targets", view="team") + "#set")
+        val = int(raw) if raw else None
+        if val is not None and val > 1000:
+            flash("A daily target can be at most 1,000 leads.", "danger")
+            return redirect(url_for("portal.daily_targets", view="team") + "#set")
+        if (val or None) != p["current_target"]:
+            rows.append((p["key"], val or None))
+    if rows:
+        _dtg.save(tenant_id, rows, viewer["label"], d["today"])
+        flash("Daily targets saved. They count from today.", "success")
+    else:
+        flash("Nothing changed.", "info")
+    return redirect(url_for("portal.daily_targets", view="team") + "#set")
 
 
 def _lead_is_open(lead: dict) -> bool:

@@ -213,7 +213,8 @@ def category_for(industry: str, own_categories) -> str:
 
 def build_filters(f: dict) -> dict:
     """The search form → Prospeo filters. f: lists for locations / industries /
-    seniority / sizes / wa_tools, text for title / keyword, bool one_per_company."""
+    seniority / sizes / wa_tools, text for title / keyword, bool one_per_company,
+    ints size_min / size_max for a custom company size."""
     out = {}
     if f.get("locations"):
         out["company_location_search"] = {"include": f["locations"][:20]}
@@ -225,7 +226,11 @@ def build_filters(f: dict) -> dict:
         titles = [t.strip() for t in f["title"].split(",") if len(t.strip()) >= 2][:20]
         if titles:
             out["person_job_title"] = {"include": titles, "match_mode": "CONTAINS"}
-    if f.get("sizes"):
+    if f.get("size_min") or f.get("size_max"):
+        # Custom "From … to … staff" (2026-10-24). Prospeo refuses it together
+        # with the fixed ranges, so a custom range replaces any ranges ticked.
+        out["company_headcount_custom"] = {"min": f.get("size_min") or 1, "max": f.get("size_max") or 999999}
+    elif f.get("sizes"):
         out["company_headcount_range"] = [s for s in f["sizes"] if s in HEADCOUNTS]
     if f.get("wa_tools"):
         out["company_technology"] = {"include": [t for t in f["wa_tools"] if t in WA_TOOLS]}

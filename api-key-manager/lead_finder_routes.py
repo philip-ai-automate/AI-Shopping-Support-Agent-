@@ -82,6 +82,16 @@ def _account():
     return _account_cache[1]
 
 
+def _size_range(a) -> dict:
+    """Custom company size "From … to … staff" (2026-10-24): whole numbers
+    1–999,999, swapped if typed the wrong way round; blank = no limit."""
+    lo, hi = [int(a.get(k)) if (a.get(k) or "").strip().isdigit() else None for k in ("size_min", "size_max")]
+    lo, hi = [min(max(v, 1), 999999) if v else None for v in (lo, hi)]
+    if lo and hi and lo > hi:
+        lo, hi = hi, lo
+    return {"size_min": lo, "size_max": hi}
+
+
 def _form_from_args(a) -> dict:
     run = bool(a.get("run"))
     return {
@@ -89,6 +99,7 @@ def _form_from_args(a) -> dict:
         "industries": [x for x in a.getlist("ind") if x in LF.INDUSTRIES],
         "seniority": [x for x in a.getlist("sen") if x in LF.SENIORITIES] if run else list(DEFAULT_SENIORITY),
         "sizes": [x for x in a.getlist("size") if x in LF.HEADCOUNTS],
+        **_size_range(a),
         "wa_tools": [x for x in a.getlist("wa") if x in LF.WA_TOOLS],
         "title": (a.get("title") or "").strip()[:300],
         "keyword": (a.get("kw") or "").strip()[:100],
