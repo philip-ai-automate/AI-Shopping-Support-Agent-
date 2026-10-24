@@ -118,7 +118,7 @@
     }
     .sb-sub.open{max-height:600px}
     /* Campaigns: WhatsApp and Email sub-menus inside one group (2026-10-24) */
-    .sb-sub.sb-sub-tall.open{max-height:1200px}
+    .sb-sub.sb-sub-tall.open{max-height:1800px}
     .sb-subgroup:not(:has(.sb-sub2 a)){display:none}
     .sb-subtoggle{display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%;
                   font:inherit; font-size:13px; font-weight:700;
@@ -128,7 +128,7 @@
     .sb-subtoggle .sb-arrow{font-size:12px; transition:transform .22s; opacity:.75}
     .sb-subtoggle.open .sb-arrow{transform:rotate(180deg); opacity:1}
     .sb-sub2{overflow:hidden; max-height:0; transition:max-height .25s cubic-bezier(.4,0,.2,1)}
-    .sb-sub2.open{max-height:500px}
+    .sb-sub2.open{max-height:700px}
     .sb-sub a{
       display:flex; align-items:center; gap:9px;
       padding:9px 10px; border-radius:8px;
@@ -643,30 +643,32 @@
     {% endif %}
 
     <!-- ── Outreach group (2026-10-24, was "Campaigns"): WhatsApp and Email
-         campaigns and Calls under one menu, each its own sub-menu. Only the menu changed: same pages, same
+         campaigns, Calls and Social Media under one menu, each its own
+         sub-menu (only the one you're on opens by itself). Only the menu changed: same pages, same
          role ticks and plan padlocks; a sub-menu with no page this person can
          open is hidden, and so is Campaigns when both are. ── -->
     {% set _camp_group = request.endpoint in ('portal.whatsapp_campaigns','portal.whatsapp_campaign_report','portal.whatsapp_campaigns_reports','portal.whatsapp_campaign_reviews','portal.whatsapp_message_templates','portal.whatsapp_campaign_segments_page') %}
     {% set _email_camp_group = request.endpoint in ('portal.email_campaigns', 'portal.email_sequences', 'portal.email_sequence_detail', 'portal.email_saved_emails', 'portal.email_new', 'portal.email_saved_email_edit', 'portal.email_campaign_segments_page') %}
     {% set _calls_group = request.endpoint in ('calls.calls_page', 'calls.calls_settings', 'calls.calls_settings_index') %}
-    {% set _campaigns_any = _camp_group or _email_camp_group or _calls_group %}
+    {% set _social_group = buffer_connected and request.endpoint in (social_menu_endpoints or ()) %}
+    {% set _campaigns_any = _camp_group or _email_camp_group or _calls_group or _social_group %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _campaigns_any %}open{% endif %}"
            data-tour="nav-campaigns" onclick="sbToggle(this)">
         <span class="sb-gtitle">
           <span class="sb-icon">📣</span> Outreach
-          {% if 'legacy:feat_broadcasts' not in granted_features and 'legacy:feat_email_campaigns' not in granted_features and 'voice.calls' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+          {% if 'legacy:feat_broadcasts' not in granted_features and 'legacy:feat_email_campaigns' not in granted_features and 'voice.calls' not in granted_features and not (buffer_connected and 'social.posts_view' in granted_features) %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </span>
         <span class="sb-arrow">▾</span>
       </div>
       <div class="sb-sub sb-sub-tall {% if _campaigns_any %}open{% endif %}">
         <div class="sb-subgroup">
-          <button type="button" class="sb-subtoggle {% if _camp_group or not _campaigns_any %}open{% endif %}"
-                  onclick="sbSubToggle(this)" aria-expanded="{{ 'true' if (_camp_group or not _campaigns_any) else 'false' }}">
+          <button type="button" class="sb-subtoggle {% if _camp_group %}open{% endif %}"
+                  onclick="sbSubToggle(this)" aria-expanded="{{ 'true' if _camp_group else 'false' }}">
             <span>WhatsApp{% if 'legacy:feat_broadcasts' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}</span>
             <span class="sb-arrow" aria-hidden="true">▾</span>
           </button>
-          <div class="sb-sub2 {% if _camp_group or not _campaigns_any %}open{% endif %}">
+          <div class="sb-sub2 {% if _camp_group %}open{% endif %}">
           {% if staff_can_open('portal.whatsapp_campaigns') %}
           <a href="{{ url_for('portal.whatsapp_campaigns') }}"
              class="{% if request.endpoint == 'portal.whatsapp_campaigns' and request.args.get('view') != 'segments' %}active{% endif %}">
@@ -712,12 +714,12 @@
           </div>
         </div>
         <div class="sb-subgroup">
-          <button type="button" class="sb-subtoggle {% if _email_camp_group or not _campaigns_any %}open{% endif %}"
-                  onclick="sbSubToggle(this)" aria-expanded="{{ 'true' if (_email_camp_group or not _campaigns_any) else 'false' }}">
+          <button type="button" class="sb-subtoggle {% if _email_camp_group %}open{% endif %}"
+                  onclick="sbSubToggle(this)" aria-expanded="{{ 'true' if _email_camp_group else 'false' }}">
             <span>Email{% if 'legacy:feat_email_campaigns' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}</span>
             <span class="sb-arrow" aria-hidden="true">▾</span>
           </button>
-          <div class="sb-sub2 {% if _email_camp_group or not _campaigns_any %}open{% endif %}">
+          <div class="sb-sub2 {% if _email_camp_group %}open{% endif %}">
           {% if staff_can_open('portal.email_campaigns') %}
           <a href="{{ url_for('portal.email_campaigns') }}"
              class="{% if request.endpoint == 'portal.email_campaigns' and request.args.get('view') != 'segments' %}active{% endif %}">
@@ -756,12 +758,12 @@
           </div>
         </div>
         <div class="sb-subgroup">
-          <button type="button" class="sb-subtoggle {% if _calls_group or not _campaigns_any %}open{% endif %}"
-                  onclick="sbSubToggle(this)" aria-expanded="{{ 'true' if (_calls_group or not _campaigns_any) else 'false' }}">
+          <button type="button" class="sb-subtoggle {% if _calls_group %}open{% endif %}"
+                  onclick="sbSubToggle(this)" aria-expanded="{{ 'true' if _calls_group else 'false' }}">
             <span>Calls{% if 'voice.calls' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}</span>
             <span class="sb-arrow" aria-hidden="true">▾</span>
           </button>
-          <div class="sb-sub2 {% if _calls_group or not _campaigns_any %}open{% endif %}">
+          <div class="sb-sub2 {% if _calls_group %}open{% endif %}">
             {% if staff_can_open('calls.calls_page') %}
             <a href="{{ url_for('calls.calls_page') }}" class="{% if request.endpoint == 'calls.calls_page' %}active{% endif %}">Call Log</a>
             {% endif %}
@@ -770,6 +772,59 @@
             {% endif %}
           </div>
         </div>
+        {# Social Media (2026-10-24): moved here from its own menu. Only once the business has connected Buffer, as before. #}
+        {% if buffer_connected %}
+        <div class="sb-subgroup">
+          <button type="button" class="sb-subtoggle {% if _social_group %}open{% endif %}"
+                  onclick="sbSubToggle(this)" aria-expanded="{{ 'true' if _social_group else 'false' }}">
+            <span>Social Media{% if 'social.posts_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}</span>
+            <span class="sb-arrow" aria-hidden="true">▾</span>
+          </button>
+          <div class="sb-sub2 {% if _social_group %}open{% endif %}">
+            {% if staff_can_open('socialcal.overview') %}
+            <a href="{{ url_for('socialcal.overview') }}"
+               class="{% if request.endpoint == 'socialcal.overview' %}active{% endif %}">Overview</a>
+            {% endif %}
+            {% if staff_can_open('social.new_post') %}
+            <a href="{{ url_for('social.new_post') }}"
+               class="{% if request.endpoint in ('social.new_post', 'social.pick', 'social.again', 'social.finish') %}active{% endif %}">New Post</a>
+            {% endif %}
+            {% if staff_can_open('upload.start') %}
+            <a href="{{ url_for('upload.start') }}"
+               class="{% if request.endpoint in ('upload.start', 'upload.check', 'upload.fix', 'upload.post', 'upload.size_guide') %}active{% endif %}">Upload Design</a>
+            {% endif %}
+            {% if staff_can_open('socialcal.calendar') %}
+            <a href="{{ url_for('socialcal.calendar') }}"
+               class="{% if request.endpoint in ('socialcal.calendar', 'socialcal.plan_month', 'socialcal.plan_review') %}active{% endif %}">Calendar</a>
+            {% endif %}
+            {% if staff_can_open('buffer.posts') %}
+            {% set _post_out = request.endpoint == 'socialcal.post_view' and p is defined and p and p.status in ('sent', 'partial') %}
+            <a href="{{ url_for('buffer.posts') }}"
+               class="{% if request.endpoint == 'buffer.posts' or (request.endpoint == 'socialcal.post_view' and not _post_out) %}active{% endif %}">Content</a>
+            {% endif %}
+            {% if staff_can_open('buffer.published') %}
+            <a href="{{ url_for('buffer.published') }}"
+               class="{% if request.endpoint == 'buffer.published' or _post_out %}active{% endif %}">Published</a>
+            {% endif %}
+            {% if staff_can_open('socialcal.analytics') %}
+            <a href="{{ url_for('socialcal.analytics') }}"
+               class="{% if request.endpoint == 'socialcal.analytics' %}active{% endif %}">Analytics</a>
+            {% endif %}
+            {% if staff_can_open('socialcal.approval') %}
+            <a href="{{ url_for('socialcal.approval') }}"
+               class="{% if request.endpoint == 'socialcal.approval' %}active{% endif %}">Approval{% if social_waiting_count %} <span class="sb-count" title="{{ social_waiting_count }} waiting for approval">{{ social_waiting_count }}</span>{% endif %}</a>
+            {% endif %}
+            {% if staff_can_open('social.brand_kit') %}
+            <a href="{{ url_for('social.brand_kit') }}"
+               class="{% if request.endpoint == 'social.brand_kit' %}active{% endif %}">Brand Kit</a>
+            {% endif %}
+            {% if staff_can_open('social.usage') %}
+            <a href="{{ url_for('social.usage') }}"
+               class="{% if request.endpoint == 'social.usage' %}active{% endif %}">AI Design Usage</a>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
       </div>
     </div>
 
@@ -929,64 +984,6 @@
       <span class="sb-icon">🚀</span> Accounts
       {% if accounts_menu_count %}<span class="sb-count">{{ accounts_menu_count }}</span>{% endif %}
     </a>
-    {% endif %}
-
-    <!-- ── Social Media group (Buffer + AI Post Designer, 2026-09-25) — only
-         once the business has connected its own Buffer on Integration › Buffer -->
-    {% if buffer_connected %}
-    {% set _social_group = request.endpoint in (social_menu_endpoints or ()) %}
-    <div class="sb-group">
-      <div class="sb-group-toggle {% if _social_group %}open{% endif %}" onclick="sbToggle(this)">
-        <span class="sb-gtitle">
-          <span class="sb-icon">📣</span> Social Media
-          {% if 'social.posts_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-        </span>
-        <span class="sb-arrow">▾</span>
-      </div>
-      <div class="sb-sub {% if _social_group %}open{% endif %}">
-        {% if staff_can_open('socialcal.overview') %}
-        <a href="{{ url_for('socialcal.overview') }}"
-           class="{% if request.endpoint == 'socialcal.overview' %}active{% endif %}">Overview</a>
-        {% endif %}
-        {% if staff_can_open('social.new_post') %}
-        <a href="{{ url_for('social.new_post') }}"
-           class="{% if request.endpoint in ('social.new_post', 'social.pick', 'social.again', 'social.finish') %}active{% endif %}">New Post</a>
-        {% endif %}
-        {% if staff_can_open('upload.start') %}
-        <a href="{{ url_for('upload.start') }}"
-           class="{% if request.endpoint in ('upload.start', 'upload.check', 'upload.fix', 'upload.post', 'upload.size_guide') %}active{% endif %}">Upload Design</a>
-        {% endif %}
-        {% if staff_can_open('socialcal.calendar') %}
-        <a href="{{ url_for('socialcal.calendar') }}"
-           class="{% if request.endpoint in ('socialcal.calendar', 'socialcal.plan_month', 'socialcal.plan_review') %}active{% endif %}">Calendar</a>
-        {% endif %}
-        {% if staff_can_open('buffer.posts') %}
-        {% set _post_out = request.endpoint == 'socialcal.post_view' and p is defined and p and p.status in ('sent', 'partial') %}
-        <a href="{{ url_for('buffer.posts') }}"
-           class="{% if request.endpoint == 'buffer.posts' or (request.endpoint == 'socialcal.post_view' and not _post_out) %}active{% endif %}">Content</a>
-        {% endif %}
-        {% if staff_can_open('buffer.published') %}
-        <a href="{{ url_for('buffer.published') }}"
-           class="{% if request.endpoint == 'buffer.published' or _post_out %}active{% endif %}">Published</a>
-        {% endif %}
-        {% if staff_can_open('socialcal.analytics') %}
-        <a href="{{ url_for('socialcal.analytics') }}"
-           class="{% if request.endpoint == 'socialcal.analytics' %}active{% endif %}">Analytics</a>
-        {% endif %}
-        {% if staff_can_open('socialcal.approval') %}
-        <a href="{{ url_for('socialcal.approval') }}"
-           class="{% if request.endpoint == 'socialcal.approval' %}active{% endif %}">Approval{% if social_waiting_count %} <span class="sb-count" title="{{ social_waiting_count }} waiting for approval">{{ social_waiting_count }}</span>{% endif %}</a>
-        {% endif %}
-        {% if staff_can_open('social.brand_kit') %}
-        <a href="{{ url_for('social.brand_kit') }}"
-           class="{% if request.endpoint == 'social.brand_kit' %}active{% endif %}">Brand Kit</a>
-        {% endif %}
-        {% if staff_can_open('social.usage') %}
-        <a href="{{ url_for('social.usage') }}"
-           class="{% if request.endpoint == 'social.usage' %}active{% endif %}">AI Design Usage</a>
-        {% endif %}
-      </div>
-    </div>
     {% endif %}
 
     <!-- ── SMS group (support@phixtra.com only; switched off for now: SMS_ENABLED) ── -->
@@ -1884,7 +1881,7 @@
       body:  'Customers showing strong buying intent are listed here. Focus your follow-ups where they will convert best.' },
     { sel: '[data-tour="nav-campaigns"]', pos: 'right',
       title: '📣 Outreach',
-      body:  'Send WhatsApp and email campaigns to your contacts, and make and answer calls. Great for promotions, flash sales, and re-engagement.' },
+      body:  'Send WhatsApp and email campaigns, make and answer calls, and post on social media. Great for promotions, flash sales, and re-engagement.' },
     { sel: '[data-tour="nav-whatsapp"]', pos: 'right',
       title: '📱 WhatsApp',
       body:  'Connect your WhatsApp Business number, manage the agent inbox, set message templates, and view your usage report.' },
