@@ -442,7 +442,7 @@
         <li>people who reply <b>keep getting the next automatic email</b>, because PhiXtra doesn't know they answered.</li></ul></div>
   <ol class="steps">
     <li>Look at the sequence's <b>Replies go to</b> address, for example outreach@yourcompany.com.</li>
-    <li>The person who reads that mailbox opens <b>Integration</b> in the side menu › <b>Microsoft 365 (Outlook)</b> › <span class="ui">Connect my mailbox</span>, and signs in <b>with that same address</b>. The steps are in <a href="#eml-outlook-connect">Connect your mailbox</a>.</li>
+    <li>The person who reads that mailbox opens <b>Settings › Integration</b> in the side menu › <b>Microsoft 365 (Outlook)</b> › <span class="ui">Connect my mailbox</span>, and signs in <b>with that same address</b>. The steps are in <a href="#eml-outlook-connect">Connect your mailbox</a>.</li>
     <li>Come back to the sequence. The orange box at the top is gone once it's connected. Then press <span class="ui">▶ Start sequence</span>.</li>
   </ol>
   <p>The orange box looks like this: <i>"Replies to this sequence go to … but that mailbox isn't connected to the portal, so replies won't show here and people who reply keep getting the next email."</i> If you can connect it, it has a <span class="ui">Connect it now →</span> link. If you can't, ask your IT admin or the business owner.</p>
@@ -520,7 +520,7 @@
 <!-- ═════ 8 ═════ -->
 <section class="part" id="eml-outlook">
   <h2><span class="num">8</span>Replies from Outlook</h2>
-  <p class="where">Side menu › Integration › Microsoft 365 (Outlook)</p>
+  <p class="where">Side menu › Settings › Integration › Microsoft 365 (Outlook)</p>
   <p>People reply to your emails in your own mailbox, not in PhiXtra. Connect your Outlook once, and every reply from someone your business emailed shows on their lead by itself, usually within two minutes. You no longer need to press "They replied".</p>
   <div class="flow" role="img" aria-label="Email sent, they reply in Outlook, PhiXtra finds it, it shows on the lead">
     <div class="n"><b>1 · Email goes out</b>From a campaign or a sequence</div><i>→</i>
@@ -532,7 +532,7 @@
   <h3 id="eml-outlook-connect">Connect your mailbox</h3>
   <figure class="small"><img src="{{ url_for('static', filename='portal/tutorial/email/e28_integration_card.jpg') }}" alt="The Microsoft 365 card on the Integration page" loading="lazy"><figcaption>The Microsoft 365 (Outlook) card on the Integration page, once connected.</figcaption></figure>
   <ol class="steps">
-    <li>Open <b>Integration</b> in the side menu and press <span class="ui">Connect my mailbox</span> on the <b>Microsoft 365 (Outlook)</b> card.</li>
+    <li>Open <b>Settings › Integration</b> in the side menu and press <span class="ui">Connect my mailbox</span> on the <b>Microsoft 365 (Outlook)</b> card.</li>
     <li>Press <span class="ui">Connect my Outlook mailbox</span>. Microsoft's own sign-in page opens.</li>
     <li>Sign in with <b>the mailbox your campaign replies go to</b> (see <a href="#eml-outlook-which">Which mailbox</a>) and press <b>Accept</b>.</li>
     <li>You come back to PhiXtra and see <b>Connected</b>. Replies from the last 14 days are picked up straight away.</li>
@@ -582,7 +582,7 @@
   <h2><span class="num">9</span>A sales executive's routine</h2>
   <h4>Every morning</h4>
   <ul class="check">
-    <li>Check that Integration › Microsoft 365 shows your mailbox as <b>Connected</b>. Replies then appear on leads by themselves: answer them in Outlook. Press <b>They replied</b> only for replies that came another way.</li>
+    <li>Check that Settings › Integration › Microsoft 365 shows your mailbox as <b>Connected</b>. Replies then appear on leads by themselves: answer them in Outlook. Press <b>They replied</b> only for replies that came another way.</li>
     <li>Open each running sequence and press the <b>Ready to send</b> filter. Read and send those emails, one at a time or with <b>Send to everyone ready</b>.</li>
     <li>Look at <b>Stopped</b>: anyone stopped with "Email couldn't be delivered" needs a corrected address.</li>
   </ul>
@@ -638,7 +638,7 @@
   <p>Saved Emails › Use ▾ › <b>Share…</b> and tick the team members who should see and use an email. Untick to stop sharing. To open every saved email to a whole role instead, tick "See all saved emails" for that role.</p>
   {{ shot('e14_share', 'Share dialog', 'Share an email with chosen team members.') }}
   <h3>Roles ticks</h3>
-  <p>Team › Roles › edit a role › <b>Email Campaigns</b>.</p>
+  <p>Settings › Team › Roles › edit a role › <b>Email Campaigns</b>.</p>
   {{ shot('e26_roles', 'Email Campaigns ticks in Roles', 'The Email Campaigns ticks on a role.') }}
   <div class="tbl"><table>
     <tr><th>Row</th><th>Ticks</th><th>Allows</th></tr>
@@ -651,7 +651,7 @@
   </table></div>
   <div class="box know"><b class="t">Who sees all</b><p>The owner, and anyone whose role can manage the Team, always see every saved email and can share them. Other staff see their own emails and ones shared with them, and only the leads assigned to them unless their role has "See all leads".</p></div>
   <h3>Team mailboxes</h3>
-  <p>On Integration › Microsoft 365, owners and anyone who manages the Team also see every connected mailbox: who, which address, whether it's connected, when it last checked and how many replies it found. <span class="ui">Disconnect</span> stops PhiXtra reading that mailbox, for example when someone leaves. A team member who is removed is disconnected automatically.</p>
+  <p>On Settings › Integration › Microsoft 365, owners and anyone who manages the Team also see every connected mailbox: who, which address, whether it's connected, when it last checked and how many replies it found. <span class="ui">Disconnect</span> stops PhiXtra reading that mailbox, for example when someone leaves. A team member who is removed is disconnected automatically.</p>
   {{ shot('e31_ms_team', 'Team mailboxes', 'Team mailboxes: one connected, one that needs its owner to reconnect.') }}
   <h3>Plans</h3>
   <p>Your plan decides whether Email Campaigns, opens and clicks on leads, Sequences, Write with AI and Outlook reply tracking are included. AI emails use the plan's AI designs; extra AI designs can be bought on the Billing page.</p>
@@ -669,7 +669,7 @@
     <li><b>16 outreach emails</b> in Saved Emails: four industries, four emails each. They're shared with the outreach team.</li>
     <li>Every email uses the agreed words, ends with the <b>Book a demo</b> button (our Bookings page), and is signed <b>Chinaza · PhiXtra · outreach@phixtra.com</b>.</li>
     <li>Email 4 of each industry includes the short demo video (it opens <b>phixtra.com/demo</b>).</li>
-    <li>Replies go to <b>outreach@phixtra.com</b>. Chinaza connects outreach@phixtra.com once at Integration › Microsoft 365, so every reply lands on its lead by itself.</li>
+    <li>Replies go to <b>outreach@phixtra.com</b>. Chinaza connects outreach@phixtra.com once at Settings › Integration › Microsoft 365, so every reply lands on its lead by itself.</li>
   </ul>
   <div class="tbl"><table>
     <tr><th>Industry</th><th>Email 1</th><th>Email 2</th><th>Email 3</th><th>Email 4</th></tr>
@@ -680,7 +680,7 @@
   </table></div>
   <h3>Set up the four sequences (once)</h3>
   <ol class="steps">
-    <li><b>First, connect outreach@phixtra.com:</b> Integration › Microsoft 365 (Outlook) › <span class="ui">Connect my mailbox</span>, signing in as outreach@phixtra.com. Check it shows <b>Connected</b>. Without this, replies are never seen and people who reply keep getting emails.</li>
+    <li><b>First, connect outreach@phixtra.com:</b> Settings › Integration › Microsoft 365 (Outlook) › <span class="ui">Connect my mailbox</span>, signing in as outreach@phixtra.com. Check it shows <b>Connected</b>. Without this, replies are never seen and people who reply keep getting emails.</li>
     <li>Sequences › <span class="ui">+ New sequence</span>. In step 1, name it (for example <b>Retail outreach</b>) and pick Retail 1, 2, 3 and 4 as Emails 1 to 4. A starting rhythm to try is 3, 4 and 7 days between them. Set any email you want to read before it goes, such as Email 3, to <b>I'll send it myself</b>.</li>
     <li>In step 2, replies go to <b>outreach@phixtra.com</b>. In step 4, set a sending schedule so the list is spread over the days.</li>
     <li>Repeat for Restaurants, Consultancy and B2B.</li>
@@ -699,7 +699,7 @@
   </div>
   <h3>Day to day</h3>
   <ul class="check">
-    <li>Mornings: check Integration › Microsoft 365 shows outreach@phixtra.com as Connected. Answer the replies in Outlook; they're already on each lead.</li>
+    <li>Mornings: check Settings › Integration › Microsoft 365 shows outreach@phixtra.com as Connected. Answer the replies in Outlook; they're already on each lead.</li>
     <li>Send any "Ready to send" emails.</li>
     <li>Leads who clicked "Book a demo" but didn't book: follow up on WhatsApp the same day.</li>
     <li>Weekly: compare replies per email per industry and improve the weakest one, using Make a copy so the original stays.</li>
