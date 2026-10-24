@@ -188,7 +188,7 @@
 
 {% if reply_unwatched %}
 <div class="sq-warn">↩ Replies to this sequence go to <strong>{{ reply_unwatched }}</strong>, but that mailbox isn't connected to the portal, so <strong>replies won't show here</strong> and people who reply keep getting the next email.
-  {% if staff_can_open('mailbox.page') %}<a href="{{ url_for('mailbox.page') }}" style="font-weight:700;color:#9a3412">Connect it now →</a> (sign in as {{ reply_unwatched }}).{% else %}Ask your IT admin or the business owner to connect it under Integration › Microsoft 365 (Outlook).{% endif %}
+  {% if staff_can_open('mailbox.page') %}<a href="{{ url_for('mailbox.page') }}" style="font-weight:700;color:#9a3412">Connect it now →</a> (sign in as {{ reply_unwatched }}).{% else %}Ask your IT admin or the business owner to connect it under Settings › Integration › Microsoft 365 (Outlook).{% endif %}
 </div>
 {% endif %}
 {% if not sender %}

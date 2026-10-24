@@ -48,7 +48,7 @@
 
 {% if not any_on %}
 <div class="cl-warn">Calls aren't switched on for any of your WhatsApp numbers yet, so customers can't call you.
-  {% if can_settings and numbers %}Open <a href="{{ url_for('calls.calls_settings_index') }}">Calls › Call Settings</a> to switch them on.{% else %}Ask the owner or IT to switch them on.{% endif %}</div>
+  {% if can_settings and numbers %}Open <a href="{{ url_for('calls.calls_settings_index') }}">Outreach › Calls › Call Settings</a> to switch them on.{% else %}Ask the owner or IT to switch them on.{% endif %}</div>
 {% endif %}
 
 <div class="cl-kpis">
