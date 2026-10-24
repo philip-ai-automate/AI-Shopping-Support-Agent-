@@ -587,7 +587,8 @@
   <button class="sb-close" id="sbClose" aria-label="Close menu">&#10005;</button>
 
   <!-- Brand -->
-  <a class="sb-brand" href="{{ url_for('portal.home') }}">
+  {# The logo opens phixtra.com in a new tab (2026-10-24; replaced the "PhiXtra Home" menu item). #}
+  <a class="sb-brand" href="https://phixtra.com" target="_blank" rel="noopener" title="Open phixtra.com">
     <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}" alt="PhiXtra" class="sb-logo-full"/>
     <img src="{{ url_for('static', filename='portal/phixtra-icon.png') }}" alt="PhiXtra" class="sb-logo-icon"/>
     <span class="sb-brand-label">Customer Portal</span>
@@ -641,19 +642,20 @@
     </a>
     {% endif %}
 
-    <!-- ── Campaigns group (2026-10-24): WhatsApp and Email campaigns under one
-         menu, each its own sub-menu. Only the menu changed: same pages, same
+    <!-- ── Outreach group (2026-10-24, was "Campaigns"): WhatsApp and Email
+         campaigns and Calls under one menu, each its own sub-menu. Only the menu changed: same pages, same
          role ticks and plan padlocks; a sub-menu with no page this person can
          open is hidden, and so is Campaigns when both are. ── -->
     {% set _camp_group = request.endpoint in ('portal.whatsapp_campaigns','portal.whatsapp_campaign_report','portal.whatsapp_campaigns_reports','portal.whatsapp_campaign_reviews','portal.whatsapp_message_templates','portal.whatsapp_campaign_segments_page') %}
     {% set _email_camp_group = request.endpoint in ('portal.email_campaigns', 'portal.email_sequences', 'portal.email_sequence_detail', 'portal.email_saved_emails', 'portal.email_new', 'portal.email_saved_email_edit', 'portal.email_campaign_segments_page') %}
-    {% set _campaigns_any = _camp_group or _email_camp_group %}
+    {% set _calls_group = request.endpoint in ('calls.calls_page', 'calls.calls_settings', 'calls.calls_settings_index') %}
+    {% set _campaigns_any = _camp_group or _email_camp_group or _calls_group %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _campaigns_any %}open{% endif %}"
            data-tour="nav-campaigns" onclick="sbToggle(this)">
         <span class="sb-gtitle">
-          <span class="sb-icon">📣</span> Campaigns
-          {% if 'legacy:feat_broadcasts' not in granted_features and 'legacy:feat_email_campaigns' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+          <span class="sb-icon">📣</span> Outreach
+          {% if 'legacy:feat_broadcasts' not in granted_features and 'legacy:feat_email_campaigns' not in granted_features and 'voice.calls' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </span>
         <span class="sb-arrow">▾</span>
       </div>
@@ -751,6 +753,21 @@
             {% if 'campaigns_email.sequences_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
           </a>
           {% endif %}
+          </div>
+        </div>
+        <div class="sb-subgroup">
+          <button type="button" class="sb-subtoggle {% if _calls_group or not _campaigns_any %}open{% endif %}"
+                  onclick="sbSubToggle(this)" aria-expanded="{{ 'true' if (_calls_group or not _campaigns_any) else 'false' }}">
+            <span>Calls{% if 'voice.calls' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}</span>
+            <span class="sb-arrow" aria-hidden="true">▾</span>
+          </button>
+          <div class="sb-sub2 {% if _calls_group or not _campaigns_any %}open{% endif %}">
+            {% if staff_can_open('calls.calls_page') %}
+            <a href="{{ url_for('calls.calls_page') }}" class="{% if request.endpoint == 'calls.calls_page' %}active{% endif %}">Call Log</a>
+            {% endif %}
+            {% if staff_can_open('calls.calls_settings_index') %}
+            <a href="{{ url_for('calls.calls_settings_index') }}" class="{% if request.endpoint in ('calls.calls_settings', 'calls.calls_settings_index') %}active{% endif %}">Call Settings</a>
+            {% endif %}
           </div>
         </div>
       </div>
@@ -912,27 +929,6 @@
       <span class="sb-icon">🚀</span> Accounts
       {% if accounts_menu_count %}<span class="sb-count">{{ accounts_menu_count }}</span>{% endif %}
     </a>
-    {% endif %}
-
-    <!-- Calls (WhatsApp calls, 2026-10-20 — replaced PressOne's Voice Calls) —
-         its own top-level item, like Voice Calls was. -->
-    {% if staff_can_open('calls.calls_page') or staff_can_open('calls.calls_settings_index') %}
-    {% set _calls_group = request.endpoint in ('calls.calls_page', 'calls.calls_settings', 'calls.calls_settings_index') %}
-    <div class="sb-group">
-      <div class="sb-group-toggle {% if _calls_group %}open{% endif %}" onclick="sbToggle(this)">
-        <span class="sb-gtitle"><span class="sb-icon">📞</span> Calls
-          {% if 'voice.calls' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}</span>
-        <span class="sb-arrow">▾</span>
-      </div>
-      <div class="sb-sub {% if _calls_group %}open{% endif %}">
-        {% if staff_can_open('calls.calls_page') %}
-        <a href="{{ url_for('calls.calls_page') }}" class="{% if request.endpoint == 'calls.calls_page' %}active{% endif %}">Call Log</a>
-        {% endif %}
-        {% if staff_can_open('calls.calls_settings_index') %}
-        <a href="{{ url_for('calls.calls_settings_index') }}" class="{% if request.endpoint in ('calls.calls_settings', 'calls.calls_settings_index') %}active{% endif %}">Call Settings</a>
-        {% endif %}
-      </div>
-    </div>
     {% endif %}
 
     <!-- ── Social Media group (Buffer + AI Post Designer, 2026-09-25) — only
@@ -1097,7 +1093,8 @@
         'portal.data_source_google_callback', 'portal.data_source_google_setup',
         'portal.wa_discount_settings',
         'portal.cart_recovery_dashboard', 'portal.cart_recovery_save_settings',
-        'portal.cart_recovery_email_template') %}
+        'portal.cart_recovery_email_template',
+        'portal.chat_archive', 'portal.chat_archive_session') %}
     {% set _cr_group = request.endpoint in ('portal.cart_recovery_dashboard', 'portal.cart_recovery_save_settings',
                                              'portal.cart_recovery_email_template') %}
     <div class="sb-group">
@@ -1160,6 +1157,14 @@
            class="{% if request.endpoint == 'portal.wa_discount_settings' %}active{% endif %}">
           Discount Settings
           {% if 'ecom.discount_settings_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </a>
+        {% endif %}
+        {# Chat Archive (2026-10-24): moved here from its own menu item. WooCommerce stores only, as before. #}
+        {% if _has_woocommerce and staff_can_open('portal.chat_archive') %}
+        <a href="{{ url_for('portal.chat_archive') }}"
+           class="{% if request.endpoint in ('portal.chat_archive', 'portal.chat_archive_session') %}active{% endif %}">
+          Chat Archive
+          {% if 'woo.chat_archive_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
         {# Cart Recovery (2026-10-24): moved here from its own menu, as a sub-menu
@@ -1328,22 +1333,13 @@
     {# ── WooCommerce-only items — hidden for WhatsApp-only tenants ── #}
     {% if _has_woocommerce %}
 
-    <!-- Analytics -->
-    {% if staff_can_open('portal.analytics') %}
-    <a class="sb-link {% if request.endpoint == 'portal.analytics' %}active{% endif %}"
-       href="{{ url_for('portal.analytics') }}">
-      <span class="sb-icon">📈</span> Analytics
-      {% if 'analytics.page' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-    </a>
-    {% endif %}
-
     <!-- ── Reports group — every report in the portal lives under this one
          menu now (2026-09-22): Pipeline Overview stayed under CRM (its own
          explicit request, alongside Pipeline Board/Settings), but every
          other report — including Leads Report, moved here from the Leads
          menu — is consolidated here so there's exactly one place to look
          for any report. ── -->
-    {% set _rep_group = request.endpoint in ('portal.reports', 'portal.report_usage', 'portal.report_cart', 'portal.report_billing', 'portal.report_ai_performance', 'portal.report_custom_picker', 'portal.report_custom_entity', 'portal.report_leads_sources', 'portal.report_not_a_fit', 'portal.email_campaigns_reports', 'portal.email_campaign_report', 'calls.calls_report') %}
+    {% set _rep_group = request.endpoint in ('portal.reports', 'portal.report_usage', 'portal.report_cart', 'portal.report_billing', 'portal.report_ai_performance', 'portal.report_custom_picker', 'portal.report_custom_entity', 'portal.report_leads_sources', 'portal.report_not_a_fit', 'portal.email_campaigns_reports', 'portal.email_campaign_report', 'calls.calls_report', 'portal.analytics') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _rep_group %}open{% endif %}"
            onclick="sbToggle(this)">
@@ -1353,6 +1349,14 @@
         <span class="sb-arrow">▾</span>
       </div>
       <div class="sb-sub {% if _rep_group %}open{% endif %}">
+        {# Analytics (2026-10-24): moved here from its own menu item. #}
+        {% if staff_can_open('portal.analytics') %}
+        <a href="{{ url_for('portal.analytics') }}"
+           class="{% if request.endpoint == 'portal.analytics' %}active{% endif %}">
+          Analytics
+          {% if 'analytics.page' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </a>
+        {% endif %}
         {% if staff_can_open('portal.report_usage') %}
         <a href="{{ url_for('portal.report_usage') }}"
            class="{% if request.endpoint == 'portal.report_usage' %}active{% endif %}">
@@ -1411,15 +1415,6 @@
         {% endif %}
       </div>
     </div>
-
-    <!-- Chat Archive -->
-    {% if staff_can_open('portal.chat_archive') %}
-    <a class="sb-link {% if request.endpoint in ('portal.chat_archive', 'portal.chat_archive_session') %}active{% endif %}"
-       href="{{ url_for('portal.chat_archive') }}">
-      <span class="sb-icon">💬</span> Chat Archive
-      {% if 'woo.chat_archive_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-    </a>
-    {% endif %}
 
     {% endif %}{# end _has_woocommerce #}
 
@@ -1508,11 +1503,6 @@
         </a>
       </div>
     </div>
-
-    <!-- PhiXtra Home -->
-    <a class="sb-link" href="https://phixtra.com" target="_blank" rel="noopener">
-      <span class="sb-icon">🏠</span> PhiXtra Home
-    </a>
 
     {% if session.get('portal_admin_logged_in') %}
     {% if staff_can_open('portal_admin.customers') %}
@@ -1893,8 +1883,8 @@
       title: '🔥 Leads',
       body:  'Customers showing strong buying intent are listed here. Focus your follow-ups where they will convert best.' },
     { sel: '[data-tour="nav-campaigns"]', pos: 'right',
-      title: '📣 Campaigns',
-      body:  'Send WhatsApp and email campaigns to your contacts. Great for promotions, flash sales, and re-engagement.' },
+      title: '📣 Outreach',
+      body:  'Send WhatsApp and email campaigns to your contacts, and make and answer calls. Great for promotions, flash sales, and re-engagement.' },
     { sel: '[data-tour="nav-whatsapp"]', pos: 'right',
       title: '📱 WhatsApp',
       body:  'Connect your WhatsApp Business number, manage the agent inbox, set message templates, and view your usage report.' },

@@ -661,15 +661,15 @@
 <!-- 9 -->
 <section class="part" id="crm-segments">
 <h2><span class="num">9</span>Segments</h2>
-<p class="where">CRM › Segments · Campaigns › WhatsApp › WhatsApp Segment · Campaigns › Email › Email Segment</p>
+<p class="where">CRM › Segments · Outreach › WhatsApp › WhatsApp Segment · Outreach › Email › Email Segment</p>
 <p>A segment is a named list of <b>people</b>, such as "Proposal follow-up" or "Monthly newsletter". You build it once and reuse it.</p>
 
 <h3 id="crm-s-kinds">Three kinds, one for each module</h3>
 <div class="tbl"><table>
 <tr><th>Segment</th><th>Where</th><th>Used for</th><th>Uses from each person</th><th>Controlled by</th></tr>
 <tr><td>CRM Segment</td><td class="wrapok">CRM › Segments</td><td class="wrapok">Organising and filtering contacts in the CRM</td><td class="wrapok">The contact</td><td class="wrapok">CRM › Segment ticks</td></tr>
-<tr><td>WhatsApp Segment</td><td class="wrapok">Campaigns › WhatsApp › WhatsApp Segment</td><td class="wrapok">WhatsApp campaigns</td><td class="wrapok">WhatsApp number only</td><td class="wrapok">WhatsApp Campaigns › Segment ticks</td></tr>
-<tr><td>Email Segment</td><td class="wrapok">Campaigns › Email › Email Segment</td><td class="wrapok">Email campaigns</td><td class="wrapok">Email address only</td><td class="wrapok">Email Campaigns › Segment ticks</td></tr>
+<tr><td>WhatsApp Segment</td><td class="wrapok">Outreach › WhatsApp › WhatsApp Segment</td><td class="wrapok">WhatsApp campaigns</td><td class="wrapok">WhatsApp number only</td><td class="wrapok">WhatsApp Campaigns › Segment ticks</td></tr>
+<tr><td>Email Segment</td><td class="wrapok">Outreach › Email › Email Segment</td><td class="wrapok">Email campaigns</td><td class="wrapok">Email address only</td><td class="wrapok">Email Campaigns › Segment ticks</td></tr>
 </table></div>
 <p>Each kind lives only in its own module. A WhatsApp Segment never appears in Email or CRM, and the other way round. So you can give someone Email Campaign without WhatsApp, and they'll see Email Segments only.</p>
 <div class="box know"><b class="t">Rules that apply to all three</b>
@@ -704,7 +704,7 @@
 </ul>
 
 <h3 id="crm-s-wa">WhatsApp Segments</h3>
-<p class="where">Campaigns › WhatsApp › WhatsApp Segment (or the <span class="ui">📋 WhatsApp Segments</span> button on WhatsApp Campaigns)</p>
+<p class="where">Outreach › WhatsApp › WhatsApp Segment (or the <span class="ui">📋 WhatsApp Segments</span> button on WhatsApp Campaigns)</p>
 <figure><img src="/static/portal/tutorial/crm/n01_wa_segments.jpg" width="1100" height="818" alt="WhatsApp Segments. Each card shows how many people can actually get a WhatsApp campaign." loading="lazy"><figcaption>WhatsApp Segments. Each card shows how many people can actually get a WhatsApp campaign.</figcaption></figure>
 <p>Each card shows the number of people, and <b>how many can get WhatsApp campaigns</b>: people with a WhatsApp number who haven't opted out. <span class="ui">Manage people</span> opens it, <span class="ui">📣 Use</span> starts a new WhatsApp campaign with it chosen, and <span class="ui">Delete</span> removes the list.</p>
 <h4>Creating one</h4>
@@ -722,11 +722,11 @@
 <p>Only people with a WhatsApp number are offered. People without one are skipped, and the message says how many. To take someone out, press ✕ next to their name. A person who has opted out stays in the list with an <b>opted out</b> tag, but campaigns skip them.</p>
 <p>You can also fill a WhatsApp Segment from the Pipeline Board (<a href="#crm-b-bulk">Add to WhatsApp Segment</a>).</p>
 <h4>Sending a WhatsApp campaign to it</h4>
-<figure><img src="/static/portal/tutorial/crm/n10_wa_campaign_segment.jpg" width="584" height="433" alt="Campaigns › WhatsApp › All Campaigns › New Campaign › Recipients." loading="lazy"><figcaption>Campaigns › WhatsApp › All Campaigns › New Campaign › Recipients.</figcaption></figure>
+<figure><img src="/static/portal/tutorial/crm/n10_wa_campaign_segment.jpg" width="584" height="433" alt="Outreach › WhatsApp › All Campaigns › New Campaign › Recipients." loading="lazy"><figcaption>Outreach › WhatsApp › All Campaigns › New Campaign › Recipients.</figcaption></figure>
 <p>In a new WhatsApp campaign, the Recipients step offers <b>Everyone in the Sales Pipeline</b> (contacts with an open lead and a WhatsApp number), <b>WhatsApp Segment</b>, or <b>Type WhatsApp numbers</b>. The number beside each segment is how many will actually receive it. Only WhatsApp numbers are used, never phone numbers, and opted-out people are left out.</p>
 
 <h3 id="crm-s-email">Email Segments</h3>
-<p class="where">Campaigns › Email › Email Segment (or the <span class="ui">📋 Email Segments</span> button on Email Campaigns)</p>
+<p class="where">Outreach › Email › Email Segment (or the <span class="ui">📋 Email Segments</span> button on Email Campaigns)</p>
 <figure><img src="/static/portal/tutorial/crm/n05_email_segments.jpg" width="1100" height="818" alt="Email Segments, with any older email groups listed underneath." loading="lazy"><figcaption>Email Segments, with any older email groups listed underneath.</figcaption></figure>
 <p>Email Segments work exactly like WhatsApp Segments, with the same three sources, but they hold <b>email addresses</b>: only contacts with an email can be added, and the card shows how many can get email campaigns (people who haven't opted out of email).</p>
 <figure><img src="/static/portal/tutorial/crm/n06_email_segment_detail.jpg" width="1100" height="818" alt="Inside an Email Segment." loading="lazy"><figcaption>Inside an Email Segment.</figcaption></figure>
@@ -882,10 +882,10 @@
 <p>Open the contact (All Contacts › click the name), type what was said in the note box on the right ("Called, wants 40 units by Friday"), and press <span class="ui">Add Note</span>. If the call moved the deal forward, also move the deal on the Pipeline Board.</p></div>
 
 <div class="recipe"><h4>Import a list from a trade fair and message them on WhatsApp</h4>
-<ol><li>Put a <b>whatsapp_number</b> column and a <b>labels</b> column ("Trade fair Sept") in the spreadsheet. All Contacts › <span class="ui">Import CSV</span>.</li><li>Campaigns › WhatsApp › WhatsApp Segment › create "Trade fair Sept".</li><li>All Contacts tab: search "Trade fair" or the names, and add them. (Or tick their deals on the Pipeline Board › <span class="ui">📱 Add to WhatsApp Segment</span>.)</li><li>Press <span class="ui">📣 Use</span> on the segment to start the campaign.</li></ol></div>
+<ol><li>Put a <b>whatsapp_number</b> column and a <b>labels</b> column ("Trade fair Sept") in the spreadsheet. All Contacts › <span class="ui">Import CSV</span>.</li><li>Outreach › WhatsApp › WhatsApp Segment › create "Trade fair Sept".</li><li>All Contacts tab: search "Trade fair" or the names, and add them. (Or tick their deals on the Pipeline Board › <span class="ui">📱 Add to WhatsApp Segment</span>.)</li><li>Press <span class="ui">📣 Use</span> on the segment to start the campaign.</li></ol></div>
 
 <div class="recipe"><h4>Email everyone who has a proposal waiting</h4>
-<p>Campaigns › Email › Email Segment › create "Proposals out" › open it › CRM tab › tick <b>Proposal Sent</b> and <b>Negotiating</b> › <span class="ui">Add everyone in the ticked stages</span> › <span class="ui">📣 Use</span>.</p></div>
+<p>Outreach › Email › Email Segment › create "Proposals out" › open it › CRM tab › tick <b>Proposal Sent</b> and <b>Negotiating</b> › <span class="ui">Add everyone in the ticked stages</span> › <span class="ui">📣 Use</span>.</p></div>
 
 <div class="recipe"><h4>Mark everyone you messaged as Contacted</h4>
 <p>Pipeline Board › List › filter or search to find them › tick them › <span class="ui">➡️ Move Stage</span> › Contacted › channel WhatsApp and today's date › <span class="ui">Move Contacts</span>.</p></div>
