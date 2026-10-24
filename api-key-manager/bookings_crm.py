@@ -188,6 +188,7 @@ def report_bookings(cur, tenant_id: int, recipients: list) -> dict:
         c.execute("""SELECT lower(email) AS email, start_at, COALESCE(booked_at, first_seen_at) AS booked_at,
                             lead_id, status
                      FROM booking_appointments WHERE tenant_id=%s AND lower(email) = ANY(%s)
+                       AND status <> 'removed'
                      ORDER BY 3 ASC""", (tenant_id, list(sent)))
         rows = c.fetchall()
     finally:

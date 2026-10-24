@@ -105,7 +105,7 @@ def page():
         tz = bookings_crm.tenant_tz(cur, tenant_id)
         cur.execute("""SELECT a.*, l.customer_name AS lead_name, l.assigned_to FROM booking_appointments a
                        LEFT JOIN merchant_pipeline_leads l ON l.id = a.lead_id
-                       WHERE a.tenant_id=%s AND (a.start_at >= NOW() - INTERVAL '1 day'
+                       WHERE a.tenant_id=%s AND a.status <> 'removed' AND (a.start_at >= NOW() - INTERVAL '1 day'
                              OR (a.status='cancelled' AND a.cancelled_at >= NOW() - INTERVAL '7 days'))
                        ORDER BY a.start_at ASC LIMIT 200""", (tenant_id,))
         for a in cur.fetchall():
