@@ -268,9 +268,12 @@
     .demo-bar a:hover{color:#fff}
     body:has(.demo-bar) .site-main,
     body:has(.demo-bar) .impersonate-bar{top:38px}
+    /* Phones/tablets (2026-10-25): the fixed bar assumed one line (38px) but
+       its text wraps to 2–3 lines and covered page titles. Here it sits in the
+       page under the top bar and scrolls away instead. */
     @media(max-width:860px){
-      .demo-bar{left:0; top:54px}
-      body:has(.demo-bar) .site-main{padding-top:92px}
+      .demo-bar{position:static; margin-top:54px}
+      body:has(.demo-bar) .site-main{padding-top:0}
     }
 
     /* ═══════════════════════════════════════════════════════════
@@ -436,6 +439,8 @@
       table.m-cards > tbody > tr.m-row > td[data-mrole="cb"]{display:block;grid-column:1;grid-row:1}
       table.m-cards > tbody > tr.m-row > td[data-mrole="main"]{display:block;grid-column:2;grid-row:1;font-size:14px}
       table.m-cards > tbody > tr.m-row > td[data-mrole="act"]{display:block;grid-column:3;grid-row:1}
+      table.m-cards > tbody > tr.m-row > td[data-mrole="foot"]{display:block;grid-column:1 / -1;margin-top:6px}
+      table.m-cards > tbody > tr.m-row > td[data-mrole="foot"] .row-actions{justify-content:flex-start!important}
       table.m-cards > tbody > tr.m-row > td[data-m]:not(.col-hidden){display:block;grid-column:2 / -1;font-size:12.5px;text-align:left!important}
       table.m-cards > tbody > tr.m-row > td[data-m]::before{content:attr(data-m) ": ";color:var(--muted);font-weight:600;
         font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}

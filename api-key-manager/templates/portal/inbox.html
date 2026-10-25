@@ -14,6 +14,13 @@
 /* ── Force full-screen layout ─────────────────────────────────────────────── */
 html, body { overflow: hidden; height: 100%; }
 .site-main  { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+/* Phones (2026-10-25): the training/demo banner scrolls with the page there
+   (base.html), but this page is exactly one screen tall, so the banner would
+   push the reply box off the bottom. Hide it on this page on phones. */
+@media(max-width:860px) {
+  html body:has(.demo-bar) .demo-bar { display: none }
+  html body:has(.demo-bar) .site-main { padding-top: 54px }
+}
 .inbox-fullpage {
   flex: 1; min-height: 0;
   display: flex; flex-direction: column;

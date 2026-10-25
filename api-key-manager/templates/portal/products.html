@@ -129,7 +129,7 @@
   </form>
 
   <div style="overflow-x:auto">
-    <table class="prod-table">
+    <table class="prod-table m-cards">
       <thead>
         <tr>
           <th>Product</th>
@@ -162,8 +162,8 @@
         {% endif %}
 
         {% for p in products %}
-        <tr class="{% if not p.is_active %}inactive{% endif %}">
-          <td>
+        <tr class="m-row{% if not p.is_active %} inactive{% endif %}">
+          <td data-mrole="main">
             <div class="prod-name-row">
               {% if p.image_url %}
               <img src="{{ p.image_url }}" alt="" class="prod-thumb" onerror="this.style.display='none'">
@@ -176,11 +176,11 @@
               </div>
             </div>
           </td>
-          <td class="col-cat">
+          <td class="col-cat" data-m="Category">
             {% if p.category %}<span class="prod-cat">{{ p.category }}</span>{% else %}<span class="muted">—</span>{% endif %}
           </td>
-          <td>{% if p.price_on_request %}<span class="muted">Price on request</span>{% else %}{{ (p.price|float)|money(p.currency) }}{% endif %}</td>
-          <td style="text-align:center">
+          <td data-m="Price">{% if p.price_on_request %}<span class="muted">Price on request</span>{% else %}{{ (p.price|float)|money(p.currency) }}{% endif %}</td>
+          <td data-m="Stock" style="text-align:center">
             {% if p.is_service %}
             <span class="stock-badge stock-in">Service</span>
             {% elif p.stock_quantity and p.stock_quantity > 0 %}
@@ -189,7 +189,7 @@
             <span class="stock-badge stock-out">Out of stock</span>
             {% endif %}
           </td>
-          <td>
+          <td data-mrole="foot">
             <div class="row-actions" style="justify-content:flex-end">
               {% if staff_can_open('portal.product_edit') %}
               <a href="{{ url_for('portal.product_edit', product_id=p.id) }}" class="btn btn-sm">Edit</a>
