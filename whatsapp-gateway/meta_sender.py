@@ -347,8 +347,17 @@ async def send_product_image(
     outbound image message doesn't accept, and WhatsApp fetching the link
     itself gives no visible error when it silently rejects the format."""
     try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            r = await client.get(image_url)
+        try:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+                r = await client.get(image_url)
+        except httpx.ConnectError as e:
+            # A store on this same server (e.g. behind Cloudflare) answers this
+            # server with a certificate only Cloudflare trusts. It's a public
+            # product photo, so one more try without the check (2026-10-25).
+            if "CERTIFICATE_VERIFY_FAILED" not in str(e):
+                raise
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True, verify=False) as client:
+                r = await client.get(image_url)
         if r.status_code != 200 or not r.content:
             print(f"⚠️ [META] product image download failed status={r.status_code} url={image_url}")
             return False

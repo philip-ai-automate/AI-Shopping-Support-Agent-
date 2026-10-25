@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}My Catalogue — PhiXtra Portal{% endblock %}
+{% block title %}Add products from our list — PhiXtra Portal{% endblock %}
 {% block content %}
 <style>
   .cat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px; margin-bottom:24px }
@@ -45,7 +45,7 @@
 
 <div class="page-header">
   <div>
-    <h1 class="section-title" style="margin:0">📦 My Catalogue</h1>
+    <h1 class="section-title" style="margin:0">📦 Add products from our list</h1>
     <p class="muted">Select products you sell in your store</p>
   </div>
   {% if total_selected > 0 %}
@@ -128,7 +128,7 @@
 <div class="card" style="text-align:center;padding:48px">
   <div style="font-size:40px;margin-bottom:12px">📭</div>
   <div style="font-size:15px;font-weight:700;margin-bottom:8px">No product categories yet</div>
-  <div class="muted">The Phixtra team is loading the product catalogue. Check back soon.</div>
+  <div class="muted">The PhiXtra team is loading the product list. Check back soon.</div>
 </div>
 {% endif %}
 

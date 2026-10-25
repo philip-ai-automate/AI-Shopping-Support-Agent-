@@ -83,3 +83,25 @@ def embed_image(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"embedding_failed: {exc}")
 
     return {"embedding": embedding, "dim": len(embedding), "width": width, "height": height}
+
+
+# ── Text embeddings (2026-10-25) ────────────────────────────────────────────
+# For product-photo label suggestions: the portal compares a photo's image
+# embedding with a few short phrases ("the back of a product", ...) and offers
+# the closest as a suggestion the business confirms. Same model, same space.
+_tokenizer = None
+
+
+@app.post("/embed-text")
+def embed_text(body: dict):
+    """Sync def for the same reason as /embed-image (blocking torch work)."""
+    global _tokenizer
+    texts = [str(t)[:200] for t in (body.get("texts") or []) if str(t).strip()][:32]
+    if not texts:
+        raise HTTPException(status_code=422, detail="no_texts")
+    if _tokenizer is None:
+        _tokenizer = open_clip.get_tokenizer(MODEL_NAME)
+    with torch.no_grad():
+        feats = _model.encode_text(_tokenizer(texts))
+        feats = feats / feats.norm(dim=-1, keepdim=True)
+    return {"embeddings": feats.cpu().numpy().astype(np.float32).tolist(), "dim": int(feats.shape[-1])}

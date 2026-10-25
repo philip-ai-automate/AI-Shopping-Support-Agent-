@@ -1020,7 +1020,7 @@
     </div>
     {% endif %}
 
-    <!-- ── Ecommerce group — My Products, My Catalogue, and Customers (order/
+    <!-- ── Products & Orders group — My Products & Services, Add products from Excel, Orders and Customers (order/
          spend history) are a different thing from a plain WhatsApp contact
          list; none of this is part of PhiXtra Connect ── -->
     {% set _commerce_group = request.endpoint in (
@@ -1041,7 +1041,7 @@
       <div class="sb-group-toggle {% if _commerce_group %}open{% endif %}"
            data-tour="nav-ecommerce" onclick="sbToggle(this)">
         <span class="sb-gtitle">
-          <span class="sb-icon">🏪</span> Ecommerce
+          <span class="sb-icon">🏪</span> Products &amp; Orders
         </span>
         <span class="sb-arrow">▾</span>
       </div>
@@ -1049,7 +1049,7 @@
         {% if staff_can_open('portal.products') %}
         <a href="{{ url_for('portal.products') }}"
            class="{% if request.endpoint in ('portal.products','portal.product_add','portal.product_edit') %}active{% endif %}">
-          My Products
+          My Products &amp; Services
           {% if 'ecom.products_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
@@ -1060,15 +1060,7 @@
           {% if 'ecom.orders_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
-        {% if not _has_woocommerce %}
-        {% if staff_can_open('portal.catalogue_browse') %}
-        <a href="{{ url_for('portal.catalogue_browse') }}"
-           class="{% if request.endpoint in ('portal.catalogue_browse','portal.catalogue_category','portal.catalogue_selections') %}active{% endif %}">
-          My Catalogue
-          {% if 'ecom.catalogue_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-        </a>
-        {% endif %}
-        {% endif %}
+        {# "Add products from our list" switched off 2026-10-25: the ready-made list was electronics only and mostly made-up phone versions. #}
         {% if staff_can_open('portal.customers') %}
         <a href="{{ url_for('portal.customers') }}"
            class="{% if request.endpoint in ('portal.customers','portal.customer_detail') %}active{% endif %}">
@@ -1088,7 +1080,7 @@
         {% if staff_can_open('portal.data_sources') %}
         <a href="{{ url_for('portal.data_sources') }}"
            class="{% if request.endpoint in ('portal.data_sources','portal.data_source_upload','portal.data_source_map','portal.data_source_sync','portal.data_source_delete','portal.data_source_google_connect','portal.data_source_google_callback','portal.data_source_google_setup') %}active{% endif %}">
-          Product Import
+          Add products from Excel
           {% if 'ecom.data_sources_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
@@ -1869,8 +1861,8 @@
       title: '🤖 AI Assistant',
       body:  'Customise your AI\'s personality and behaviour. Set handoff rules to decide when the AI steps aside for a human agent.' },
     { sel: '[data-tour="nav-ecommerce"]', pos: 'right',
-      title: '🏪 Ecommerce',
-      body:  'Manage your products, view customer profiles, sync your WooCommerce store, and browse your catalogue — all feeding your AI\'s knowledge.' },
+      title: '🏪 Products & Orders',
+      body:  'Manage your products, view customer profiles, sync your WooCommerce store, and add products from Excel — all feeding your AI\'s knowledge.' },
     { sel: '[data-tour="nav-settings"]', pos: 'right',
       title: '⚙️ Settings',
       body:  'Your account settings (profile, logo, business name, notifications), the services you connect under Integration, your Team, and Credits & Billing: top up credits, download invoices and manage your plan.' },
@@ -2061,10 +2053,10 @@
     { icon:'📊', title:'Handoff Reports',        desc:'Response times, missed handoffs, performance',  url:'{{ url_for("portal.whatsapp_reports") }}',           tags:'handoff response time missed reports analytics' },
     { icon:'📈', title:'WhatsApp Report',        desc:'Usage stats for your WhatsApp channel',        url:'{{ url_for("portal.reports_page") }}',               tags:'usage stats messages sent received analytics' },
     { icon:'📋', title:'Plan',                   desc:'View or upgrade your plan',                    url:'{{ url_for("portal.billing_plans") }}',              tags:'plan upgrade subscription quota limit whatsapp' },
-    { icon:'🏪', title:'My Products',            desc:'Add, edit and manage your products',           url:'{{ url_for("portal.products") }}',                   tags:'products inventory catalogue stock add edit' },
+    { icon:'🏪', title:'My Products & Services', desc:'Add, edit and manage your products and services',           url:'{{ url_for("portal.products") }}',                   tags:'products inventory catalogue stock add edit' },
     { icon:'👤', title:'My Customers',           desc:'View your customer list and profiles',         url:'{{ url_for("portal.customers") }}',                  tags:'customers buyers profiles crm list' },
     { icon:'💰', title:'Discount Settings',      desc:'Set WhatsApp discount offers',                 url:'{{ url_for("portal.wa_discount_settings") }}',       tags:'discount promo offer coupon price sale' },
-    { icon:'🗂️', title:'Product Import',          desc:'Import your product list from an Excel or CSV file',    url:'{{ url_for("portal.data_sources") }}',               tags:'upload files csv excel spreadsheet product import catalogue' },
+    { icon:'🗂️', title:'Add products from Excel', desc:'Import your product list from an Excel or CSV file',    url:'{{ url_for("portal.data_sources") }}',               tags:'upload files csv excel spreadsheet product import catalogue' },
     { icon:'🏬', title:'Store Information',      desc:'Update your business name and details',        url:'{{ url_for("portal.store_info") }}',                 tags:'business name address details profile store info list' },
     { icon:'➕', title:'Create Store Information', desc:'Add your own custom knowledge base entry',   url:'{{ url_for("portal.store_info_create") }}',          tags:'business store info create new custom entry' },
     { icon:'✏️', title:'Modify Store Information', desc:'Edit or rename a Store Information entry',   url:'{{ url_for("portal.store_info_modify") }}',          tags:'business store info edit modify rename' },
@@ -2088,7 +2080,6 @@
     { icon:'🎬', title:'Video Tutorials',        desc:'Help & Tutorials: short walkthrough videos',    url:'{{ url_for("portal.video_tutorials") }}',            tags:'video tutorial watch walkthrough demo guide' },
     { icon:'⚙️', title:'Account Settings',       desc:'Update profile, password and preferences',    url:'{{ url_for("portal.settings") }}',                   tags:'settings account profile password email notification preferences' },
     {% if _has_woocommerce %}
-    { icon:'📂', title:'My Catalogue',           desc:'Browse and select products from catalogue',    url:'{{ url_for("portal.catalogue_browse") }}',           tags:'catalogue browse products select' },
     { icon:'🔄', title:'WooCommerce Sync',       desc:'Sync products from your WordPress store',     url:'{{ url_for("portal.woo_sync") }}',                   tags:'woocommerce sync wordpress products import plugin' },
     { icon:'🛒', title:'Cart Recovery',          desc:'Recover abandoned shopping carts',             url:'{{ url_for("portal.cart_recovery_dashboard") }}',    tags:'abandoned cart recovery settings whatsapp' },
     { icon:'✉️', title:'Cart Email Templates',   desc:'Email messages sent for cart recovery',       url:'{{ url_for("portal.cart_recovery_email_template") }}',tags:'email template cart recovery message' },

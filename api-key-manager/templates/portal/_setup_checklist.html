@@ -69,6 +69,7 @@
           <button type="submit" class="su-btn">{{ st.action }}</button>
         </form>
       {% elif st.url and st.action %}<a class="su-btn{% if st.check %} line{% endif %}" href="{{ st.url }}"{% if st.url.startswith('http') %} target="_blank" rel="noopener"{% endif %}>{{ st.action }}</a>{% endif %}
+      {% if st.url2 and st.action2 %}<a class="su-btn line" href="{{ st.url2 }}">{{ st.action2 }}</a>{% endif %}
       {% if st.check %}
       <form method="POST" action="{{ url_for('portal.setup_check_chatbox') }}" style="margin:0">
         <button type="submit" class="su-btn">Check it's installed</button>

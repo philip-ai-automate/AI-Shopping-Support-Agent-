@@ -314,9 +314,7 @@ document.getElementById('scqForm').addEventListener('submit', function(e){
     {% endif %}
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
-    {% if customer.tenant_source_type == 'whatsapp' %}
-    <a href="{{ url_for('portal.onboarding_catalogue_start') }}" class="btn btn-primary btn-sm">⚙ Run Setup Wizard</a>
-    {% endif %}
+    {# Run Setup Wizard button removed 2026-10-25: the Get set up box replaces it; the list stays under Products & Orders › Add products from our list. #}
     {% if not dash_top_plan %}
     <a href="{{ url_for('portal.billing_plans') }}" class="btn btn-sm">↑ Upgrade Plan</a>
     {% endif %}

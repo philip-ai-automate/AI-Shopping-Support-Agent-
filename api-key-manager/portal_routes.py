@@ -486,8 +486,8 @@ PLAN_FEATURE_CATALOG = {
         ("woo.message_templates_view", "WhatsApp Message Templates — view"),
         ("woo.message_templates_edit", "Edit WhatsApp Message Templates"),
     ],
-    "Ecommerce & Integrations": [
-        ("ecom.products_view",           "My Products — view"),
+    "Products & Orders": [
+        ("ecom.products_view",           "My Products & Services — view"),
         ("ecom.products_create",         "Add a Product"),
         ("ecom.products_edit",           "Edit a Product / toggle stock"),
         ("ecom.products_delete",         "Delete a Product"),
@@ -497,14 +497,13 @@ PLAN_FEATURE_CATALOG = {
         ("ecom.customers_view",          "Customers — view"),
         ("ecom.woo_sync_view",           "WooCommerce Sync — view"),
         ("ecom.woo_sync_delete",         "Remove a WooCommerce Sync record"),
-        ("ecom.data_sources_view",       "Product Import — view"),
-        ("ecom.data_sources_create",     "Add a Product Import source"),
-        ("ecom.data_sources_edit",       "Edit a Product Import source's mapping / re-sync"),
-        ("ecom.data_sources_delete",     "Delete a Product Import source"),
+        ("ecom.data_sources_view",       "Add products from Excel — view"),
+        ("ecom.data_sources_create",     "Add products from an Excel file"),
+        ("ecom.data_sources_edit",       "Edit an Excel file's columns / re-sync"),
+        ("ecom.data_sources_delete",     "Delete an Excel product file"),
         ("ecom.discount_settings_view",  "Discount Settings — view"),
         ("ecom.discount_settings_edit",  "Edit Discount Settings"),
-        ("ecom.catalogue_view",          "My Catalogue — view"),
-        ("ecom.catalogue_edit",          "Add / remove a product from My Catalogue"),
+        # ecom.catalogue_view / ecom.catalogue_edit removed 2026-10-25 (ready-made list switched off).
     ],
     "Store Information": [
         ("store.info",                   "Store Information — view / list"),
@@ -713,15 +712,14 @@ ROLE_FORM_GRID = {
         {"label": "Chat History Import",    "view": "wa.history_import_view", "create": "wa.history_import_create",
          "delete": "wa.history_import_delete"},
     ],
-    "Ecommerce & Integrations": [
+    "Products & Orders": [
         {"label": "Product",  "view": "ecom.products_view", "create": "ecom.products_create", "edit": "ecom.products_edit", "delete": "ecom.products_delete"},
         {"label": "Order",    "view": "ecom.orders_view",   "edit": "ecom.orders_manage", "other": ["ecom.orders_cancel"]},
         {"label": "Customer", "view": "ecom.customers_view"},
         {"label": "WooCommerce Sync",  "view": "ecom.woo_sync_view", "delete": "ecom.woo_sync_delete"},
-        {"label": "Product Import",    "view": "ecom.data_sources_view", "create": "ecom.data_sources_create",
+        {"label": "Add products from Excel", "view": "ecom.data_sources_view", "create": "ecom.data_sources_create",
          "edit": "ecom.data_sources_edit", "delete": "ecom.data_sources_delete"},
         {"label": "Discount Settings", "view": "ecom.discount_settings_view", "edit": "ecom.discount_settings_edit"},
-        {"label": "My Catalogue",      "view": "ecom.catalogue_view", "edit": "ecom.catalogue_edit"},
     ],
     "Store Information": [
         {"label": "Store Information",  "view": "store.info", "create": "store.info_create", "edit": "store.info_edit", "delete": "store.info_delete"},
@@ -3927,6 +3925,10 @@ def register():
         if _perr:
             flash(_perr, "danger")
             return _register_page(request.form, form_data=request.form)
+        _taken = _phone_account_msg(mobile)
+        if _taken:
+            flash(_taken, "warning")
+            return _register_page(request.form, form_data=request.form)
         result = _register_web_merchant(
             first_name=first_name, last_name=last_name, email=email, password=password,
             phone_number=mobile, tenant_domain=site, hear_about_us=hear_about_us,
@@ -3951,6 +3953,10 @@ def register():
         wa_phone_number, _perr = _phone_from_form(request.form.get("wa_phone_number"), wa_phone_country)
         if _perr:
             flash(_perr, "danger")
+            return _register_page(request.form, form_data=request.form)
+        _taken = _phone_account_msg(wa_phone_number)
+        if _taken:
+            flash(_taken, "warning")
             return _register_page(request.form, form_data=request.form)
         return _register_whatsapp_merchant(
             business_country=wa_phone_country,
@@ -5985,9 +5991,10 @@ def _product_sources(tenant_id: int, cur=None) -> dict:
     own = cur is None
     if own:
         conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""SELECT COUNT(*) FILTER (WHERE id NOT LIKE 'xls-%%' AND id NOT LIKE 'site-%%') AS shop,
+    cur.execute("""SELECT COUNT(*) FILTER (WHERE id NOT LIKE 'xls-%%' AND id NOT LIKE 'site-%%' AND id NOT LIKE 'man-%%') AS shop,
                           COUNT(*) FILTER (WHERE id LIKE 'xls-%%') AS lists,
-                          COUNT(*) FILTER (WHERE id LIKE 'site-%%') AS site
+                          COUNT(*) FILTER (WHERE id LIKE 'site-%%') AS site,
+                          COUNT(*) FILTER (WHERE id LIKE 'man-%%') AS own
                      FROM documents WHERE tenant_id=%s AND type='product'""", (tenant_id,))
     r = cur.fetchone()
     cur.execute("SELECT read_products FROM website_sources WHERE tenant_id=%s", (tenant_id,))
@@ -5998,9 +6005,81 @@ def _product_sources(tenant_id: int, cur=None) -> dict:
     n_lists = int(cur.fetchone()["n"])
     if own:
         cur.close(); conn.close()
-    shop, from_lists, site = int(r["shop"]), int(r["lists"]), int(r["site"])
+    shop, from_lists, site, own = int(r["shop"]), int(r["lists"]), int(r["site"]), int(r["own"])
     return {"shop": shop, "lists": n_lists, "list_products": from_lists, "site": site, "read_products": reading,
-            "source": "list" if n_lists else ("shop" if shop else ("site" if (reading or site) else None))}
+            "own": own,
+            "source": "list" if n_lists else ("shop" if shop else ("site" if (reading or site) else ("own" if own else None)))}
+
+
+def _wa_setup_checklist(t, wa_on: bool, prod: dict):
+    """The Dashboard "Get set up" steps for WhatsApp sign-ups (2026-10-25).
+
+    Before this they got no steps, so nothing told them to add products and
+    the AI told real customers "we don't have that". Three steps, same box
+    as website sign-ups; it goes away once all three are done."""
+    n_prod = prod["list_products"] + prod["shop"] + prod["site"] + prod["own"]
+    paid = t["plan_slug"] not in AI_OFF_FREE_PLAN_SLUGS
+    steps = [
+        dict(key="whatsapp", title="Connect your WhatsApp number", done=wa_on,
+             text="Connected." if wa_on else "Use Meta's official sign-up window and keep your number.",
+             action="Connect WhatsApp", url=url_for("portal.whatsapp_connect")),
+        dict(key="products", title="Add your products or services", done=prod["source"] is not None,
+             text=(f"Your AI knows {n_prod} of your products and services." if prod["source"] else
+                   "Tell your AI what you sell and your prices, so it can answer customers. Upload a list (Excel or CSV), "
+                   "or add them one by one in My Products & Services. Until then, the AI passes these questions to your team."),
+             action="Upload a list", url=url_for("portal.data_sources"),
+             action2="I sell services", url2=url_for("portal.product_add", service=1)),
+        dict(key="trial", title="Start your free trial", done=bool(t["trial_granted_at"]) or paid,
+             text="Your AI answers WhatsApp customers for 14 days, free, no card needed. Until then your team answers from the Inbox.",
+             trial=not t["trial_granted_at"] and not paid),
+    ]
+    _howto = {"whatsapp": "set-whatsapp", "products": "set-list", "trial": "set-trial"}
+    nxt = next((i for i, st in enumerate(steps) if not st["done"]), None)
+    if nxt is None:
+        return None
+    for i, st in enumerate(steps, 1):
+        st["n"] = i
+        st["howto"] = url_for("portal.tutorials", topic="setup") + "#" + _howto[st["key"]]
+        st["state"] = "done" if st["done"] else "todo"
+        st["locked"] = (not st["done"]) and i > 1 and not wa_on
+        if st["locked"]:
+            st["text"] = st["text"] + " Available once WhatsApp is connected."
+    done = sum(1 for st in steps if st["done"])
+    return {"steps": steps, "extras": [], "done": done, "total": len(steps), "complete": False,
+            "chatbox_code": None, "checking": False, "domain": t["domain"]}
+
+
+# Hand-added products reach the AI straight after any change (2026-10-25);
+# own_products_ai.py --all also runs every 5 minutes for changes made
+# elsewhere (WhatsApp sign-up chat, stock taken by orders).
+_OWN_PRODUCT_ENDPOINTS = {
+    "portal.product_add", "portal.product_edit", "portal.product_delete", "portal.product_toggle_stock",
+    "portal.onboarding_manual_product", "portal.data_source_upload", "portal.data_source_map",
+    "portal.data_source_sync", "portal.data_source_delete",
+}
+
+
+@portal_bp.after_request
+def _own_products_after_change(resp):
+    if request.method == "POST" and request.endpoint in _OWN_PRODUCT_ENDPOINTS:
+        try:
+            cust = _get_customer(_customer_id()) if _customer_id() else None
+            if cust and cust.get("tenant_id"):
+                import own_products_ai
+                own_products_ai.sync(int(cust["tenant_id"]))
+        except Exception as e:
+            print("⚠️ own_products_ai after change:", e)
+    return resp
+
+
+# "Add products from our list" (and its old set-up wizard) switched off
+# 2026-10-25: the ready-made list had products for electronics only, mostly
+# made-up phone versions. Data kept; old links land on My Products.
+@portal_bp.before_request
+def _ready_made_list_off():
+    ep = request.endpoint or ""
+    if ep.startswith(("portal.catalogue_", "portal.onboarding_catalogue_")):
+        return redirect(url_for("portal.products"))
 
 
 def _setup_checklist(tenant_id: int):
@@ -6013,9 +6092,15 @@ def _setup_checklist(tenant_id: int):
     try:
         conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""SELECT t.signup_channel, t.website_platform, t.domain, t.source_type, t.trial_granted_at,
-                              t.chatbox_seen_at, p.slug AS plan_slug, COALESCE(p.channel_mode, 'whatsapp') AS channel_mode
+                              t.chatbox_seen_at, t.is_demo, p.slug AS plan_slug, COALESCE(p.channel_mode, 'whatsapp') AS channel_mode
                          FROM tenants t LEFT JOIN plans p ON p.id = t.plan_id WHERE t.id = %s""", (tenant_id,))
         t = cur.fetchone()
+        if t and t["signup_channel"] not in ("website", "both") and t["source_type"] == "whatsapp" and not t["is_demo"]:
+            cur.execute("SELECT 1 FROM wa_tenants WHERE tenant_id=%s AND active LIMIT 1", (tenant_id,))
+            wa_on = cur.fetchone() is not None
+            prod = _product_sources(tenant_id, cur)
+            cur.close(); conn.close()
+            return _wa_setup_checklist(t, wa_on, prod)
         if not t or t["signup_channel"] not in ("website", "both"):
             cur.close(); conn.close()
             return None
@@ -6105,6 +6190,8 @@ def _setup_checklist(tenant_id: int):
     elif prod["source"] == "site":
         p_text = (f"Your AI reads your products from your website's pages ({prod['site']} products so far). "
                   "Prices update each time your website is read.")
+    elif prod["source"] == "own":
+        p_text = f"Your AI knows the {prod['own']} products and services you added in My Products & Services."
     else:
         p_text = ("Optional. Choose which shop products the AI can recommend, inside the plugin, or upload a list instead (Excel or CSV). Use one or the other."
                   if wp else "Optional. Let your AI read your products from your website's own pages, or upload a list (Excel or CSV). Use one or the other.")
@@ -28230,8 +28317,8 @@ def _get_tenant_azure_index(tenant_id: int):
         return None
 
 
-def _get_products(tenant_id, q="", category="", page=1, per_page=40):
-    """Return (products, total, categories_list)."""
+def _get_products(tenant_id, q="", category="", page=1, per_page=40, only_ids=None):
+    """Return (products, total, categories_list). only_ids: just these products."""
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -28245,6 +28332,9 @@ def _get_products(tenant_id, q="", category="", page=1, per_page=40):
         if category:
             where += " AND category = %s"
             params.append(category)
+        if only_ids is not None:
+            where += " AND id::text = ANY(%s)"
+            params.append(list(only_ids) or [""])
 
         cur.execute(f"SELECT COUNT(*) AS cnt FROM products {where}", params)
         total = int((cur.fetchone() or {}).get("cnt", 0))
@@ -28260,7 +28350,8 @@ def _get_products(tenant_id, q="", category="", page=1, per_page=40):
         offset = (page - 1) * per_page
         cur.execute(f"""
             SELECT id, name, description, price, stock_quantity,
-                   reserved_quantity, category, image_url, is_active, created_at, currency
+                   reserved_quantity, category, image_url, is_active, created_at, currency,
+                   is_service, price_on_request
             FROM products {where}
             ORDER BY created_at DESC
             LIMIT %s OFFSET %s
@@ -28318,7 +28409,7 @@ def products():
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.products_view", "My Products")
+    r2 = _require_plan_sub_feature(customer, "ecom.products_view", "My Products & Services")
     if r2: return r2
 
     has_azure_index = bool(_get_tenant_azure_index(tenant_id))
@@ -28330,9 +28421,32 @@ def products():
     except (ValueError, TypeError):
         page = 1
 
+    photos_filter = request.args.get("photos") == "unlabelled"
+    _pc = get_db_connection()
+    try:
+        _pcur = _pc.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # without a label: a photo not labelled yet, or an old single photo (saved before galleries) not opened yet
+        _pcur.execute("""SELECT p.id::text AS id FROM products p WHERE p.tenant_id=%s AND p.is_active AND (
+                             EXISTS (SELECT 1 FROM product_photos ph WHERE ph.tenant_id=p.tenant_id AND ph.product_key='p:'||p.id::text AND ph.view_label IS NULL)
+                             OR (coalesce(p.image_url,'') <> '' AND NOT EXISTS (SELECT 1 FROM product_photos ph WHERE ph.tenant_id=p.tenant_id AND ph.product_key='p:'||p.id::text)))""",
+                      (tenant_id,))
+        _unl = {r["id"] for r in _pcur.fetchall()}
+        _pcur.execute("SELECT count(*) AS n FROM documents WHERE tenant_id=%s AND type='product' AND id LIKE 'product-%%'", (tenant_id,))
+        store_count = int(_pcur.fetchone()["n"])
+    finally:
+        _pc.close()
     product_list, total, categories = _get_products(
-        tenant_id, q=q, category=category, page=page
+        tenant_id, q=q, category=category, page=page, only_ids=_unl if photos_filter else None
     )
+    _pc = get_db_connection()
+    try:
+        _pcur = _pc.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        _cnt = _pp.counts(_pcur, tenant_id, [f"p:{p['id']}" for p in product_list])
+    finally:
+        _pc.close()
+    product_list = [dict(p, photo_n=_cnt.get(f"p:{p['id']}", (1 if p.get("image_url") else 0, 1 if p.get("image_url") else 0))[0],
+                         photo_unl=_cnt.get(f"p:{p['id']}", (1 if p.get("image_url") else 0, 1 if p.get("image_url") else 0))[1])
+                    for p in product_list]
     wa_stats    = _get_wa_product_stats(tenant_id) if has_azure_index else {}
     total_pages = max(1, (total + 39) // 40)
 
@@ -28340,6 +28454,9 @@ def products():
         "portal/products.html",
         customer        = customer,
         products        = product_list,
+        photos_filter   = photos_filter,
+        unlabelled_total = len(_unl),
+        store_count     = store_count,
         total           = total,
         total_pages     = total_pages,
         page            = page,
@@ -28361,7 +28478,7 @@ def product_add():
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.products_view", "My Products")
+    r2 = _require_plan_sub_feature(customer, "ecom.products_view", "My Products & Services")
     if r2: return r2
 
     if request.method == "POST":
@@ -28371,19 +28488,26 @@ def product_add():
         description = (request.form.get("description") or "").strip() or None
         category    = (request.form.get("category") or "").strip() or None
         image_url   = (request.form.get("image_url") or "").strip() or None
+        # Services (2026-10-25): no stock count, always available; a price
+        # can be "on request" (the AI then passes the question to the team).
+        is_service  = request.form.get("is_service") == "1"
+        on_request  = request.form.get("price_on_request") == "1"
 
         if not name:
             flash("Product name is required.", "danger")
             return redirect(url_for("portal.product_add"))
 
         try:
-            price = float(price_raw)
+            price = 0.0 if on_request else float(price_raw)
         except ValueError:
             flash("Price must be a valid number.", "danger")
             return redirect(url_for("portal.product_add"))
+        if not on_request and price <= 0:
+            flash("Add a price, or tick Price on request.", "danger")
+            return redirect(url_for("portal.product_add"))
 
         try:
-            stock = int(stock_raw)
+            stock = 0 if is_service else int(stock_raw)
         except ValueError:
             stock = 0
 
@@ -28407,12 +28531,25 @@ def product_add():
             cur.execute("""
                 INSERT INTO products
                   (id, tenant_id, name, description, price,
-                   stock_quantity, category, image_url)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                   stock_quantity, category, image_url, is_service, price_on_request)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (product_id, tenant_id, name, description, price,
-                  stock, category, image_url))
+                  stock, category, image_url, is_service, on_request))
             conn.commit()
             cur.close(); conn.close()
+            # Photo gallery (2026-10-25): every photo chosen goes in; the
+            # business then checks each one's label on the edit page.
+            files = [f for f in request.files.getlist("photos") if f and f.filename]
+            if image_url:
+                _cp = get_db_connection(); _cpc = _cp.cursor()
+                _pp.adopt_legacy(_cpc, tenant_id, f"p:{product_id}", image_url); _cp.commit(); _cpc.close(); _cp.close()
+            added, problems = _photo_uploads(tenant_id, product_id, files, customer)
+            if added or problems:
+                flash(f"'{name}' added. " + (f"{added} photo{'s' if added != 1 else ''} saved — check each photo's label below."
+                                             if added else ""), "success")
+                for p in problems[:5]:
+                    flash(p, "warning")
+                return redirect(url_for("portal.product_edit", product_id=product_id) + "#photos")
             flash(f"'{name}' added to your catalogue.", "success")
             return redirect(url_for("portal.products"))
         except Exception as e:
@@ -28421,7 +28558,8 @@ def product_add():
             return redirect(url_for("portal.product_add"))
 
     return render_template("portal/product_form.html",
-                           customer=customer, product=None, mode="add")
+                           customer=customer, product=None, mode="add",
+                           service_default=request.args.get("service") == "1")
 
 
 @portal_bp.route("/products/<product_id>/edit", methods=["GET", "POST"])
@@ -28434,7 +28572,7 @@ def product_edit(product_id: str):
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.products_view", "My Products")
+    r2 = _require_plan_sub_feature(customer, "ecom.products_view", "My Products & Services")
     if r2: return r2
 
     product = _get_product(tenant_id, product_id)
@@ -28449,19 +28587,26 @@ def product_edit(product_id: str):
         description = (request.form.get("description") or "").strip() or None
         category    = (request.form.get("category") or "").strip() or None
         image_url   = (request.form.get("image_url") or "").strip() or None
+        # Services (2026-10-25): no stock count, always available; a price
+        # can be "on request" (the AI then passes the question to the team).
+        is_service  = request.form.get("is_service") == "1"
+        on_request  = request.form.get("price_on_request") == "1"
 
         if not name:
             flash("Product name is required.", "danger")
             return redirect(url_for("portal.product_edit", product_id=product_id))
 
         try:
-            price = float(price_raw)
+            price = 0.0 if on_request else float(price_raw)
         except ValueError:
             flash("Price must be a valid number.", "danger")
             return redirect(url_for("portal.product_edit", product_id=product_id))
+        if not on_request and price <= 0:
+            flash("Add a price, or tick Price on request.", "danger")
+            return redirect(url_for("portal.product_edit", product_id=product_id))
 
         try:
-            stock = int(stock_raw)
+            stock = 0 if is_service else int(stock_raw)
         except ValueError:
             stock = 0
 
@@ -28481,10 +28626,10 @@ def product_edit(product_id: str):
                 UPDATE products
                    SET name=%s, description=%s, price=%s,
                        stock_quantity=%s, category=%s,
-                       image_url=%s, updated_at=NOW()
+                       image_url=%s, is_service=%s, price_on_request=%s, updated_at=NOW()
                  WHERE id=%s AND tenant_id=%s
             """, (name, description, price, stock, category,
-                  image_url, product_id, tenant_id))
+                  image_url, is_service, on_request, product_id, tenant_id))
             conn.commit()
             cur.close(); conn.close()
             flash(f"'{name}' updated successfully.", "success")
@@ -28493,8 +28638,252 @@ def product_edit(product_id: str):
             print("⚠️ product_edit error:", e)
             flash("Failed to update product — please try again.", "danger")
 
+    _gc = get_db_connection()
+    try:
+        _gcur = _gc.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        _pp.adopt_legacy(_gcur, tenant_id, f"p:{product_id}", product.get("image_url"))
+        _pp.fill_suggestions(_gcur, tenant_id, f"p:{product_id}")
+        _gc.commit()
+        gallery = _pp.photos(_gcur, tenant_id, f"p:{product_id}")
+        photo_limit = _pp.limit_for(_gcur, tenant_id)
+    finally:
+        _gc.close()
     return render_template("portal/product_form.html",
-                           customer=customer, product=product, mode="edit")
+                           customer=customer, product=product, mode="edit",
+                           gallery=gallery, photo_limit=photo_limit, photo_views=_pp.VIEWS)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PRODUCT PHOTO GALLERY (2026-10-25) — several photos per product, labels
+# written or confirmed by the business. Logic: product_photos.py. Approved
+# mock-up: 117JTXRzEwCjZSZk5yWnNn.
+# ══════════════════════════════════════════════════════════════════════════════
+import product_photos as _pp
+
+
+def _photo_uploads(tenant_id, product_id, files, customer):
+    """(saved, [problems]) for a list of uploaded files."""
+    actor = _current_actor(customer)["label"]
+    added, problems = 0, []
+    for f in files:
+        ok, why = _pp.add_upload(tenant_id, f"p:{product_id}", f, actor)
+        if ok:
+            added += 1
+        else:
+            problems.append(why)
+    return added, problems
+
+
+def _photo_guard(product_id):
+    r = _require_login()
+    if r: return None, None, r
+    _rperm = _require_team_permission("ecom.products_edit")
+    if _rperm: return None, None, _rperm
+    customer = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.products_view", "My Products & Services")
+    if r2: return None, None, r2
+    if not _get_product(tenant_id, product_id):
+        flash("Product not found.", "danger")
+        return None, None, redirect(url_for("portal.products"))
+    return customer, tenant_id, None
+
+
+def _back_to_photos(product_id):
+    return redirect(url_for("portal.product_edit", product_id=product_id) + "#photos")
+
+
+@portal_bp.route("/products/<product_id>/photos", methods=["POST"])
+@team_feature("ecom.products_edit")
+def product_photos_add(product_id: str):
+    _rperm = _require_team_permission("ecom.products_edit")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _photo_guard(product_id)
+    if err: return err
+    files = [f for f in request.files.getlist("photos") if f and f.filename]
+    if not files:
+        flash("Choose one or more photos first.", "warning")
+        return _back_to_photos(product_id)
+    added, problems = _photo_uploads(tenant_id, product_id, files, customer)
+    if added:
+        flash(f"{added} photo{'s' if added != 1 else ''} added. Check the label on each new photo.", "success")
+    for p in problems[:5]:
+        flash(p, "warning")
+    return _back_to_photos(product_id)
+
+
+@portal_bp.route("/products/<product_id>/photos/<int:photo_id>/label", methods=["POST"])
+@team_feature("ecom.products_edit")
+def product_photos_label(product_id: str, photo_id: int):
+    _rperm = _require_team_permission("ecom.products_edit")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _photo_guard(product_id)
+    if err: return err
+    if not _pp.set_label(tenant_id, f"p:{product_id}", photo_id, request.form.get("view") or "",
+                         request.form.get("colour") or ""):
+        flash("Pick what the photo shows (Front, Back, Side…).", "warning")
+    return _back_to_photos(product_id)
+
+
+@portal_bp.route("/products/<product_id>/photos/<int:photo_id>/move", methods=["POST"])
+@team_feature("ecom.products_edit")
+def product_photos_move(product_id: str, photo_id: int):
+    _rperm = _require_team_permission("ecom.products_edit")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _photo_guard(product_id)
+    if err: return err
+    c = get_db_connection()
+    try:
+        cur = c.cursor()
+        cur.execute("SELECT id FROM product_photos WHERE tenant_id=%s AND product_key=%s ORDER BY position, id",
+                    (tenant_id, f"p:{product_id}"))
+        ids = [r[0] for r in cur.fetchall()]
+    finally:
+        c.close()
+    if photo_id in ids:
+        i, how = ids.index(photo_id), request.form.get("to")
+        ids.pop(i)
+        j = 0 if how == "main" else max(0, i - 1) if how == "left" else min(len(ids), i + 1)
+        ids.insert(j, photo_id)
+        _pp.reorder(tenant_id, f"p:{product_id}", ids)
+    return _back_to_photos(product_id)
+
+
+@portal_bp.route("/products/<product_id>/photos/<int:photo_id>/delete", methods=["POST"])
+@team_feature("ecom.products_edit")
+def product_photos_delete(product_id: str, photo_id: int):
+    _rperm = _require_team_permission("ecom.products_edit")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _photo_guard(product_id)
+    if err: return err
+    if _pp.delete(tenant_id, f"p:{product_id}", photo_id):
+        flash("Photo removed.", "success")
+    return _back_to_photos(product_id)
+
+
+# ── Store products (2026-10-25): a WooCommerce store's products, so their
+# photos can be labelled in PhiXtra. Labels stay in PhiXtra (the store isn't
+# changed) and are kept when the store syncs again (matched by photo link).
+def _store_doc(cur, tenant_id, doc_id):
+    cur.execute("""SELECT id, title, price_min, price_max, currency, image_url, url, in_stock, categories_text
+                   FROM documents WHERE tenant_id=%s AND type='product' AND id=%s AND id LIKE 'product-%%'""",
+                (tenant_id, doc_id))
+    return cur.fetchone()
+
+
+def _store_photo_items(doc):
+    """The store's photos for a product, in the store's order (main first)."""
+    items = [(None, None, doc["image_url"])] if doc.get("image_url") else []
+    return items
+
+
+@portal_bp.route("/products/store")
+@team_feature("ecom.products_view")
+def products_store():
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("ecom.products_view")
+    if _rperm: return _rperm
+    customer = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.products_view", "My Products & Services")
+    if r2: return r2
+    q = (request.args.get("q") or "").strip()
+    photos_filter = request.args.get("photos") == "unlabelled"
+    try:
+        page = max(1, int(request.args.get("page") or 1))
+    except ValueError:
+        page = 1
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # photos without a confirmed label: listed photos without a label, or a main photo never opened yet
+        where, params = "tenant_id=%s AND type='product' AND id LIKE 'product-%%'", [tenant_id]
+        if q:
+            where += " AND title ILIKE %s"; params.append(f"%{q}%")
+        unl_sql = """(EXISTS (SELECT 1 FROM product_photos ph WHERE ph.tenant_id=documents.tenant_id AND ph.product_key='d:'||documents.id AND ph.view_label IS NULL)
+                      OR (coalesce(image_url,'') <> '' AND NOT EXISTS (SELECT 1 FROM product_photos ph WHERE ph.tenant_id=documents.tenant_id AND ph.product_key='d:'||documents.id)))"""
+        if photos_filter:
+            where += " AND " + unl_sql
+        cur.execute(f"SELECT count(*) AS n FROM documents WHERE {where}", params)
+        total = int(cur.fetchone()["n"])
+        cur.execute(f"SELECT count(*) AS n FROM documents WHERE tenant_id=%s AND type='product' AND id LIKE 'product-%%' AND {unl_sql}", (tenant_id,))
+        unlabelled_total = int(cur.fetchone()["n"])
+        per = 40
+        cur.execute(f"""SELECT id, title, price_min, currency, image_url, in_stock FROM documents WHERE {where}
+                        ORDER BY title LIMIT %s OFFSET %s""", params + [per, (page - 1) * per])
+        docs = [dict(d) for d in cur.fetchall()]
+        cnt = _pp.counts(cur, tenant_id, [f"d:{d['id']}" for d in docs])
+        for d in docs:
+            has = 1 if d.get("image_url") else 0
+            d["photo_n"], d["photo_unl"] = cnt.get(f"d:{d['id']}", (has, has))
+    finally:
+        conn.close()
+    return render_template("portal/products_store.html", customer=customer, docs=docs, total=total, q=q, page=page,
+                           total_pages=max(1, -(-total // 40)), photos_filter=photos_filter, unlabelled_total=unlabelled_total)
+
+
+@portal_bp.route("/products/store/<doc_id>")
+@team_feature("ecom.products_view")
+def product_store_photos(doc_id: str):
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("ecom.products_view")
+    if _rperm: return _rperm
+    customer = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.products_view", "My Products & Services")
+    if r2: return r2
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        doc = _store_doc(cur, tenant_id, doc_id)
+        if not doc:
+            flash("Product not found.", "danger")
+            return redirect(url_for("portal.products_store"))
+        _pp.sync_links(cur, tenant_id, f"d:{doc_id}", _store_photo_items(doc), "woo", "WooCommerce")
+        _pp.fill_suggestions(cur, tenant_id, f"d:{doc_id}")
+        conn.commit()
+        gallery = _pp.photos(cur, tenant_id, f"d:{doc_id}")
+    finally:
+        conn.close()
+    return render_template("portal/product_store_photos.html", customer=customer, doc=doc, gallery=gallery,
+                           photo_views=_pp.VIEWS, can_edit=_team_member_has_permission("ecom.products_edit"))
+
+
+@portal_bp.route("/products/store/<doc_id>/photos/<int:photo_id>/label", methods=["POST"])
+@team_feature("ecom.products_edit")
+def product_store_photo_label(doc_id: str, photo_id: int):
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("ecom.products_edit")
+    if _rperm: return _rperm
+    customer = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.products_view", "My Products & Services")
+    if r2: return r2
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        ok = _pp.set_label_any(cur, tenant_id, f"d:{doc_id}", photo_id, request.form.get("view") or "", request.form.get("colour") or "")
+        conn.commit()
+    finally:
+        conn.close()
+    if not ok:
+        flash("Pick what the photo shows (Front, Back, Side…).", "warning")
+    return redirect(url_for("portal.product_store_photos", doc_id=doc_id) + "#photos")
+
+
+@portal_bp.route("/media/product-photos/<int:tenant_id>/<fname>")
+@public_route
+def product_photo_file(tenant_id: int, fname: str):
+    """Product photos are public (customers, WhatsApp and the website chat
+    fetch them); names are random, so they can't be guessed."""
+    if not _pp.safe_media_name(fname):
+        return ("Not found", 404)
+    resp = send_from_directory(_os.path.join(_pp.MEDIA_DIR, str(int(tenant_id))), fname, mimetype="image/jpeg",
+                               max_age=60 * 60 * 24 * 30)
+    return resp
 
 
 @portal_bp.route("/products/<product_id>/delete", methods=["POST"])
@@ -28507,7 +28896,7 @@ def product_delete(product_id: str):
 
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.products_view", "My Products")
+    r2 = _require_plan_sub_feature(customer, "ecom.products_view", "My Products & Services")
     if r2: return r2
 
     try:
@@ -29289,7 +29678,7 @@ def catalogue_browse():
     if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
-    _gate = _require_plan_sub_feature(customer, "ecom.catalogue_view", "My Catalogue")
+    _gate = _require_plan_sub_feature(customer, "ecom.catalogue_view", "Add products from our list")
     if _gate: return _gate
     merchant_id = int(customer["id"])
 
@@ -29362,7 +29751,7 @@ def catalogue_category(category_id: int):
     if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
-    _gate = _require_plan_sub_feature(customer, "ecom.catalogue_view", "My Catalogue")
+    _gate = _require_plan_sub_feature(customer, "ecom.catalogue_view", "Add products from our list")
     if _gate: return _gate
     merchant_id = int(customer["id"])
 
@@ -29495,7 +29884,7 @@ def catalogue_toggle(category_id: int, product_id: int):
     if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
-    _gate = _require_plan_sub_feature(customer, "ecom.catalogue_edit", "My Catalogue")
+    _gate = _require_plan_sub_feature(customer, "ecom.catalogue_edit", "Add products from our list")
     if _gate: return _gate
     merchant_id = int(customer["id"])
 
@@ -29566,7 +29955,7 @@ def catalogue_selections():
     if _rperm: return _rperm
 
     customer    = _get_customer(_customer_id())
-    _gate = _require_plan_sub_feature(customer, "ecom.catalogue_view", "My Catalogue")
+    _gate = _require_plan_sub_feature(customer, "ecom.catalogue_view", "Add products from our list")
     if _gate: return _gate
     merchant_id = int(customer["id"])
 
@@ -30598,7 +30987,9 @@ def _import_rows(tenant_id: int, rows: list[dict], column_map: dict) -> tuple[in
         img_col   = column_map.get("image_url", "")
         description = str(raw.get(desc_col, "")).strip() if desc_col else ""
         category    = str(raw.get(cat_col, "")).strip()  if cat_col  else ""
-        image_url   = str(raw.get(img_col, "")).strip()  if img_col  else ""
+        photo_cell  = str(raw.get(img_col, "")).strip()  if img_col  else ""
+        photo_items = _pp.parse_cell(photo_cell)          # several links, each optionally Label|link (2026-10-25)
+        image_url   = photo_items[0][2] if photo_items else ""
         try:
             stock_val = int(float(str(raw.get(stock_col, "999")).replace(",", "").strip() or 999))
         except (ValueError, TypeError):
@@ -30614,7 +31005,10 @@ def _import_rows(tenant_id: int, rows: list[dict], column_map: dict) -> tuple[in
                 stock_quantity = EXCLUDED.stock_quantity,
                 image_url      = EXCLUDED.image_url,
                 is_active      = TRUE
+            RETURNING id
         """, (tenant_id, name, price, description, category, stock_val, image_url or None))
+        _pid = cur.fetchone()["id"]
+        _pp.sync_links(cur, tenant_id, f"p:{_pid}", photo_items, "import", "Spreadsheet import")
         count += 1
     conn.commit()
     cur.close(); conn.close()
@@ -30674,7 +31068,7 @@ def _list_products_to_ai(tenant_id: int, source_id: int, rows: list[dict], colum
                                        OR documents.title IS DISTINCT FROM EXCLUDED.title
                                      THEN NULL ELSE documents.embedding END
             """, (doc_id, tenant_id, name[:512], content, price or None, price or None, in_stock,
-                  cat or None, get(raw, "image_url")[:1024] or None, currency, f"list:{int(source_id)}"))
+                  cat or None, _pp.main_link(get(raw, "image_url")) or None, currency, f"list:{int(source_id)}"))
         gone = [i for i in before if i not in now_ids]
         if gone:
             cur.execute("DELETE FROM documents WHERE tenant_id=%s AND id = ANY(%s)", (tenant_id, gone))
@@ -30709,8 +31103,8 @@ def _remove_shop_products(tenant_id: int) -> int:
     while a list is in use)."""
     conn = get_db_connection(); cur = conn.cursor()
     try:
-        cur.execute("""DELETE FROM documents WHERE tenant_id=%s AND type='product' AND id NOT LIKE 'xls-%%'""",
-                    (tenant_id,))
+        cur.execute("""DELETE FROM documents WHERE tenant_id=%s AND type='product' AND id NOT LIKE 'xls-%%'
+                         AND id NOT LIKE 'man-%%'""", (tenant_id,))
         n = cur.rowcount
         cur.execute("UPDATE website_sources SET read_products=FALSE WHERE tenant_id=%s AND read_products", (tenant_id,))
         conn.commit()
@@ -31340,7 +31734,7 @@ def data_sources():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.data_sources_view", "Data Sources / Product Import")
+    r2 = _require_plan_sub_feature(customer, "ecom.data_sources_view", "Add products from Excel")
     if r2: return r2
     sources   = _get_data_sources(tenant_id)
     return render_template(
@@ -31363,7 +31757,7 @@ def data_source_upload():
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.data_sources_view", "Data Sources / Product Import")
+    r2 = _require_plan_sub_feature(customer, "ecom.data_sources_view", "Add products from Excel")
     if r2: return r2
     if _data_sources_left(tenant_id) == 0:
         flash(_limit_msg("product import sources", 0), "warning")
@@ -31432,7 +31826,7 @@ def data_source_map(source_id: int):
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.data_sources_view", "Data Sources / Product Import")
+    r2 = _require_plan_sub_feature(customer, "ecom.data_sources_view", "Add products from Excel")
     if r2: return r2
     source    = _get_data_source(tenant_id, source_id)
     if not source:
@@ -31493,7 +31887,7 @@ def data_source_sync(source_id: int):
     if _rperm: return _rperm
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "ecom.data_sources_view", "Data Sources / Product Import")
+    r2 = _require_plan_sub_feature(customer, "ecom.data_sources_view", "Add products from Excel")
     if r2: return r2
     source    = _get_data_source(tenant_id, source_id)
     if not source:
@@ -31971,40 +32365,107 @@ def _otp_rate_ok(phone: str) -> bool:
 
 # ─── WhatsApp message send (for OTP) ──────────────────────────────────────
 
-def _send_wa_otp(phone: str, otp: str) -> bool:
-    """
-    Send OTP via Meta Cloud API using the configured Phixtra OTP number.
-    Returns True on success, False if not configured or send fails.
-    Env vars required:  WA_OTP_PHONE_NUMBER_ID  +  WA_OTP_ACCESS_TOKEN
-    """
-    phone_number_id = _ds_os.getenv("WA_OTP_PHONE_NUMBER_ID", "")
-    access_token    = _ds_os.getenv("WA_OTP_ACCESS_TOKEN",    "")
-    if not phone_number_id or not access_token:
-        return False
+# Login codes (2026-10-25). They used to go as a plain text from the
+# ProfitBuyz number, which Meta only delivers inside the 24-hour window after
+# the person has written to that number — so no code ever arrived. Now they
+# go from the number in WA_OTP_PHONE_NUMBER_ID (PhiXtra AI, +44 7467 786954)
+# with Meta's login-code template (WA_OTP_TEMPLATE, "Copy code" button).
+# WhatsApp log-in stays hidden until Meta has approved that template.
+_WA_OTP_TEMPLATE = _ds_os.getenv("WA_OTP_TEMPLATE", "phixtra_login_code")
+_wa_login_ready_cache = {"at": 0.0, "ok": False}
 
-    to = phone.lstrip("+")  # Meta expects E.164 without leading +
-    body = (
-        f"Your PhiXtra portal login code is:\n\n"
-        f"*{otp}*\n\n"
-        f"This code expires in 10 minutes. Do not share it with anyone."
-    )
+
+def _wa_otp_sender():
+    """(phone_number_id, waba_id, access_token) of the login-code number, the
+    token read from wa_tenants so it stays current."""
+    pnid = _ds_os.getenv("WA_OTP_PHONE_NUMBER_ID", "")
+    if not pnid:
+        return None
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("SELECT waba_id, access_token FROM wa_tenants WHERE phone_number_id=%s AND active LIMIT 1", (pnid,))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ [OTP] sender lookup:", e)
+        return None
+    return (pnid, row[0], row[1]) if row and row[1] else None
+
+
+@portal_bp.app_template_global()
+def wa_login_ready() -> bool:
+    """True once Meta has approved the login-code template (checked at most
+    every 10 minutes)."""
+    import time as _t
+    if _t.time() - _wa_login_ready_cache["at"] < 600:
+        return _wa_login_ready_cache["ok"]
+    ok = False
+    sender = _wa_otp_sender()
+    if sender:
+        try:
+            r = _wa_requests.get(f"{_WA_GRAPH_BASE}/{sender[1]}/message_templates",
+                                 params={"name": _WA_OTP_TEMPLATE, "fields": "name,status"},
+                                 headers={"Authorization": f"Bearer {sender[2]}"}, timeout=8)
+            ok = any(t.get("name") == _WA_OTP_TEMPLATE and t.get("status") == "APPROVED"
+                     for t in (r.json().get("data") or []))
+        except Exception as e:
+            print("⚠️ [OTP] template check:", e)
+    _wa_login_ready_cache.update(at=_t.time(), ok=ok)
+    return ok
+
+
+def _send_wa_otp(phone: str, otp: str) -> bool:
+    """Send the login code with the approved template. True only when Meta
+    accepted it."""
+    sender = _wa_otp_sender()
+    if not sender:
+        return False
     try:
         r = _wa_requests.post(
-            f"{_WA_GRAPH_BASE}/{phone_number_id}/messages",
-            headers={"Authorization": f"Bearer {access_token}"},
+            f"{_WA_GRAPH_BASE}/{sender[0]}/messages",
+            headers={"Authorization": f"Bearer {sender[2]}"},
             json={
                 "messaging_product": "whatsapp",
                 "recipient_type":    "individual",
-                "to":                to,
-                "type":              "text",
-                "text":              {"preview_url": False, "body": body},
+                "to":                phone.lstrip("+"),  # Meta expects E.164 without the +
+                "type":              "template",
+                "template": {
+                    "name": _WA_OTP_TEMPLATE,
+                    "language": {"code": "en"},
+                    "components": [
+                        {"type": "body", "parameters": [{"type": "text", "text": otp}]},
+                        {"type": "button", "sub_type": "url", "index": "0",
+                         "parameters": [{"type": "text", "text": otp}]},
+                    ],
+                },
             },
             timeout=10,
         )
+        if r.status_code != 200:
+            print(f"⚠️ [OTP] WA send refused {r.status_code}: {r.text[:300]}")
         return r.status_code == 200
     except Exception as e:
         print("⚠️ [OTP] WA send failed:", e)
         return False
+
+
+def _phone_account_msg(phone: str):
+    """Sign-up: a message when this WhatsApp number already has an account
+    (2026-10-25 — Al amal made a second account after a failed log-in)."""
+    if not phone:
+        return None
+    from markupsafe import escape as _esc
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("SELECT email FROM customers WHERE phone_number=%s AND is_active LIMIT 1", (phone,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    if not row:
+        return None
+    local, _, domain = (row[0] or "").partition("@")
+    masked = (local[:2] + "•••@" + domain) if domain else "your email"
+    return (f"This WhatsApp number already has a PhiXtra account ({_esc(masked)}). "
+            f'<a href="{url_for("portal.login")}">Log in</a>, or '
+            f'<a href="{url_for("portal.forgot_password")}">reset your password</a> if you can\'t remember it.')
 
 
 # ─── WhatsApp merchant provisioning ───────────────────────────────────────
@@ -32381,6 +32842,9 @@ def pay_thank_you():
 def wa_login():
     if _logged_in():
         return redirect(url_for("portal.dashboard"))
+    if not wa_login_ready():
+        flash("Logging in with WhatsApp isn't available right now. Please log in with your email.", "info")
+        return redirect(url_for("portal.login"))
     return render_template("portal/wa_login.html")
 
 
@@ -32389,6 +32853,10 @@ def wa_login():
 def wa_login_send():
     if _logged_in():
         return redirect(url_for("portal.dashboard"))
+
+    if not wa_login_ready():
+        flash("Logging in with WhatsApp isn't available right now. Please log in with your email.", "info")
+        return redirect(url_for("portal.login"))
 
     raw_phone = (request.form.get("phone") or "").strip()
     phone, _perr = _phone_from_form(raw_phone, request.form.get("phone_country"))
@@ -32428,18 +32896,12 @@ def wa_login_send():
     _store_otp(phone, otp)
     sent = _send_wa_otp(phone, otp)
 
+    if not sent:
+        flash("We couldn't send a WhatsApp code just now. Please log in with your email instead.", "danger")
+        return redirect(url_for("portal.login"))
+
     session["wa_otp_phone"] = phone
-
-    if sent:
-        flash(f"A 6-digit code has been sent to {phone}. Enter it below.", "success")
-    else:
-        # Dev / unconfigured: show the code in the flash so testing works
-        flash(
-            f"WhatsApp delivery not yet configured — "
-            f"your code for testing is: <strong>{otp}</strong>",
-            "warning"
-        )
-
+    flash(f"A 6-digit code has been sent to {phone}. Enter it below.", "success")
     return redirect(url_for("portal.wa_login_verify"))
 
 
@@ -32509,10 +32971,7 @@ def wa_login_resend():
     if sent:
         flash("A new code has been sent.", "success")
     else:
-        flash(
-            f"WhatsApp delivery not configured — code for testing: <strong>{otp}</strong>",
-            "warning"
-        )
+        flash("We couldn't send a new WhatsApp code. Please log in with your email instead.", "danger")
     return redirect(url_for("portal.wa_login_verify"))
 
 

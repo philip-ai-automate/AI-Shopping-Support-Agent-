@@ -185,7 +185,7 @@ TUTORIAL_VIDEOS = [
     {"slug": "store-info", "title": "Store Information",
      "sub": "What your AI reads to answer customer questions — delivery, returns, payment, FAQs and more",
      "audience": "merchant"},
-    {"slug": "product-import", "title": "Product Import",
+    {"slug": "product-import", "title": "Add products from Excel",
      "sub": "Bulk-import your catalogue from a spreadsheet — upload, map columns, and sync in one flow",
      "audience": "merchant"},
     {"slug": "ambassador-onboarding", "title": "Sales Lead Pipeline",

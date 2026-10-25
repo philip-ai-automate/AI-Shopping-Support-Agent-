@@ -91,16 +91,36 @@ def find_matching_products(tenant_id: int, image_bytes: bytes, top_k: int = 3) -
         conn = _get_pg_conn()
         try:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            # Every photo of a product counts, not just the main one
+            # (2026-10-25): the product's closest photo decides its score.
+            # Gallery photos live in product_photos ('d:<doc id>', or the
+            # portal's 'p:<products.id>' for spreadsheet products, matched
+            # to their document by name).
             cur.execute(
                 """
-                SELECT id, title, url, price_min, price_max, in_stock, image_url, currency,
-                       1 - (image_embedding <=> %s::vector) AS score
-                FROM documents
-                WHERE tenant_id = %s AND image_embedding IS NOT NULL
-                ORDER BY image_embedding <=> %s::vector
+                WITH cand AS (
+                    SELECT id AS doc_id, image_embedding <=> %s::vector AS dist
+                    FROM documents WHERE tenant_id = %s AND image_embedding IS NOT NULL
+                  UNION ALL
+                    SELECT substring(ph.product_key from 3), ph.image_embedding <=> %s::vector
+                    FROM product_photos ph
+                    WHERE ph.tenant_id = %s AND ph.image_embedding IS NOT NULL AND ph.product_key LIKE 'd:%%'
+                  UNION ALL
+                    SELECT d.id, ph.image_embedding <=> %s::vector
+                    FROM product_photos ph
+                    JOIN products p ON ph.product_key = 'p:' || p.id::text AND p.tenant_id = ph.tenant_id AND p.is_active
+                    JOIN documents d ON d.tenant_id = p.tenant_id AND d.title = p.name AND (d.id LIKE 'xls-%%' OR d.id LIKE 'man-%%')
+                    WHERE ph.tenant_id = %s AND ph.image_embedding IS NOT NULL
+                ), best AS (
+                    SELECT doc_id, min(dist) AS dist FROM cand GROUP BY doc_id
+                )
+                SELECT d.id, d.title, d.url, d.price_min, d.price_max, d.in_stock, d.image_url, d.currency,
+                       1 - b.dist AS score
+                FROM best b JOIN documents d ON d.id = b.doc_id AND d.tenant_id = %s
+                ORDER BY b.dist
                 LIMIT %s
                 """,
-                (vec_literal, tenant_id, vec_literal, top_k),
+                (vec_literal, tenant_id, vec_literal, tenant_id, vec_literal, tenant_id, tenant_id, top_k),
             )
             rows = cur.fetchall() or []
             cur.close()

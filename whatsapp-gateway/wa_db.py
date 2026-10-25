@@ -1,3 +1,4 @@
+import json
 import os
 import psycopg2
 import psycopg2.extras
@@ -199,8 +200,8 @@ def cache_products(session_id: str, products: list):
                 """
                 INSERT INTO wa_product_cache
                   (session_id, product_id, product_name, product_url, cart_url, price,
-                   image_url, in_stock, description, list_order, is_related, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                   image_url, in_stock, description, list_order, is_related, images, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, NOW())
                 ON CONFLICT (session_id, product_id) DO UPDATE SET
                   product_name = EXCLUDED.product_name,
                   product_url  = EXCLUDED.product_url,
@@ -211,6 +212,7 @@ def cache_products(session_id: str, products: list):
                   description  = EXCLUDED.description,
                   list_order   = EXCLUDED.list_order,
                   is_related   = EXCLUDED.is_related,
+                  images       = EXCLUDED.images,
                   updated_at   = EXCLUDED.updated_at
                 """,
                 (
@@ -225,6 +227,7 @@ def cache_products(session_id: str, products: list):
                     (p.get("description") or "")[:600],
                     idx,
                     bool(p.get("related", False)),
+                    json.dumps(p.get("images") or []),
                 ),
             )
         conn.commit()
@@ -244,7 +247,7 @@ def get_cached_product(session_id: str, product_id: str) -> dict | None:
     try:
         cur.execute(
             """
-            SELECT product_name, product_url, cart_url, price, image_url, in_stock, description
+            SELECT product_name, product_url, cart_url, price, image_url, in_stock, description, images
             FROM wa_product_cache
             WHERE session_id = %s AND product_id = %s
             """,
@@ -385,7 +388,7 @@ def get_manual_product_in_stock(tenant_id: int, product_id) -> bool | None:
     try:
         cur.execute(
             """
-            SELECT stock_quantity, reserved_quantity
+            SELECT stock_quantity, reserved_quantity, is_service
             FROM products
             WHERE tenant_id = %s AND id = %s AND is_active = TRUE
             """,
@@ -394,7 +397,7 @@ def get_manual_product_in_stock(tenant_id: int, product_id) -> bool | None:
         row = cur.fetchone()
         if not row:
             return None
-        return row["stock_quantity"] > row["reserved_quantity"]
+        return bool(row["is_service"]) or row["stock_quantity"] > row["reserved_quantity"]
     except Exception as e:
         print("⚠️ get_manual_product_in_stock error:", e)
         return None
@@ -1097,7 +1100,8 @@ def search_tenant_products(tenant_id: int, query: str) -> list[dict]:
             SELECT id, name, price, stock_quantity, discount_type, discount_value, description, currency
             FROM products
             WHERE tenant_id = %s AND is_active = TRUE
-              AND stock_quantity > reserved_quantity
+              AND (is_service OR stock_quantity > reserved_quantity)
+              AND NOT price_on_request
               AND LOWER(name) LIKE LOWER(%s)
             ORDER BY name ASC
             LIMIT 5

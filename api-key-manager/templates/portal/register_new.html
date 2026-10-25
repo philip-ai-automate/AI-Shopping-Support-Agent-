@@ -243,7 +243,7 @@
       </section>
     </form>
 
-    <div class="rg-login">Already have an account? <a href="{{ url_for('portal.login') }}">Log in</a> · <a href="{{ url_for('portal.wa_login') }}">Log in with WhatsApp</a></div>
+    <div class="rg-login">Already have an account? <a href="{{ url_for('portal.login') }}">Log in</a>{% if wa_login_ready() %} · <a href="{{ url_for('portal.wa_login') }}">Log in with WhatsApp</a>{% endif %}</div>
   </main>
 </div>
 

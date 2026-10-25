@@ -550,6 +550,41 @@ def _log_overage_event(tenant_id: int, quota: dict) -> None:
         conn.close()
 
 
+_NO_PRODUCTS_INSTRUCTION = """
+
+[NO PRODUCT LIST YET — THIS OVERRIDES ANY EARLIER PRODUCT INSTRUCTION]
+This business has not added its product list yet, so the store data you are given has no products, prices or stock. That does NOT mean the business doesn't sell an item.
+- NEVER tell a customer an item is not available, not sold, out of stock, or that "we don't have that". Never guess or invent a price.
+- If the store information you are given answers the question, answer it normally.
+- When a customer asks about a specific item, its price or stock, or wants to order it, and the information you are given doesn't answer it: set needs_handoff to true, and your reply MUST tell the customer, in their language, that you will check with the team and a team member will reply shortly (even if you also greet them or ask their name).
+- Greetings and general questions: answer normally and do not hand off."""
+
+
+_PRICE_ON_REQUEST_INSTRUCTION = """
+
+[PRICE ON REQUEST]
+Some items in the store data say "Price: on request". For those, never give or guess a price: tell the customer, in their language, that the team will confirm the price and a team member will reply shortly, and set needs_handoff to true."""
+
+
+def _no_products_instruction(tenant_id: int) -> str:
+    """The rule above, only while the business has no products the AI can
+    read; plus the price-on-request rule when any item has no set price."""
+    conn = get_db_connection()
+    if not conn:
+        return ""
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM documents WHERE tenant_id=%s AND type='product' LIMIT 1", (tenant_id,))
+        has = cur.fetchone() is not None
+        cur.execute("""SELECT 1 FROM documents WHERE tenant_id=%s AND type='product' AND id LIKE 'man-%%'
+                         AND content LIKE '%%Price: on request%%' LIMIT 1""", (tenant_id,))
+        on_request = cur.fetchone() is not None
+        cur.close()
+    finally:
+        conn.close()
+    return ("" if has else _NO_PRODUCTS_INSTRUCTION) + (_PRICE_ON_REQUEST_INSTRUCTION if on_request else "")
+
+
 @app.post("/chat")
 def chat(req: ChatRequest):
     """WhatsApp replies (gateway sends channel="whatsapp") use the faster answer
@@ -685,6 +720,12 @@ def _chat(req: ChatRequest):
             system_prompt = system_prompt + _handoff_block
     except Exception as _hb_err:
         print("⚠️ build_handoff_instruction error:", _hb_err)
+    # No product list yet (2026-10-25): the AI told a business's real
+    # customers "we don't have HbA1c" only because no products were added.
+    try:
+        system_prompt += _no_products_instruction(int(tenant_id))
+    except Exception as _np_err:
+        print("⚠️ no-products check error:", _np_err)
     # ─────────────────────────────────────────────────────────────────────────
 
     print(f"   product_recommendation={'ON' if rec_enabled else 'OFF'}  related_products={'ON' if related_enabled else 'OFF'}")
@@ -1240,6 +1281,13 @@ def _chat(req: ChatRequest):
     }
     product_recommendations = _validate_products(product_recommendations)
     if product_recommendations:
+        # Every photo of each product, with its label (2026-10-25) — added
+        # after the answer, so no AI tokens; website gallery + WhatsApp MORE.
+        try:
+            import product_gallery as _pg
+            _pg.attach(tenant_id, product_recommendations)
+        except Exception as _pg_err:
+            print("⚠️ product gallery:", _pg_err)
         response["product_recommendations"] = product_recommendations
 
     return response

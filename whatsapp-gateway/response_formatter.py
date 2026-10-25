@@ -89,14 +89,24 @@ async def dispatch_response(
                      photo inline before the text (see _maybe_send_fashion_image).
                      All other categories are unaffected.
     """
+    # One product: its main photo first, for every kind of product (2026-10-25,
+    # was Apparel & Fashion only), and how many more photos there are.
+    more = ""
     if products and len(products) == 1:
-        await _maybe_send_fashion_image(phone_number_id, access_token, to, products[0])
+        import wa_photos
+        if products[0].get("images"):
+            if await wa_photos.send_main(phone_number_id, access_token, to, session_id, products[0]):
+                more = wa_photos.more_note(products[0]["images"], products[0].get("name", ""))
+        else:
+            await _maybe_send_fashion_image(phone_number_id, access_token, to, products[0])
 
     parts = []
     if reply:
         parts.append(reply)
     if products:
         parts.append(_format_product_list_text(products))
+    if more:
+        parts.append(more)
 
     combined = "\n\n".join(parts)
     if combined:

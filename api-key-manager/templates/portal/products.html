@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}My Products — PhiXtra Portal{% endblock %}
+{% block title %}My Products &amp; Services — PhiXtra Portal{% endblock %}
 
 {% block head %}
 <style>
@@ -72,24 +72,32 @@
   .prod-pager a:hover { background:#f5f5f5 }
   .prod-pager span.current { background:var(--txt); color:#fff; border-color:var(--txt) }
 </style>
+{% include 'portal/_photo_gallery_css.html' %}
 {% endblock %}
 
 {% block content %}
 
 <div class="page-header" style="margin-bottom:20px">
   <div>
-    <div class="section-title">My Products</div>
+    <div class="section-title">My Products &amp; Services</div>
     <p class="muted">Products your AI recommends on WhatsApp</p>
   </div>
   <div style="display:flex;gap:8px">
     {% if staff_can_open('portal.product_add') %}
     <a href="{{ url_for('portal.product_add') }}" class="btn btn-primary btn-sm">+ Add Product</a>
     {% endif %}
-    {% if staff_can_open('portal.catalogue_browse') %}
-    <a href="{{ url_for('portal.catalogue_browse') }}" class="btn btn-sm">Browse Catalogue</a>
+    {% if staff_can_open('portal.data_sources') %}
+    <a href="{{ url_for('portal.data_sources') }}" class="btn btn-sm">Add products from Excel</a>
     {% endif %}
   </div>
 </div>
+
+{% if store_count %}
+<nav class="pg-tabs" aria-label="Product lists">
+  <a href="{{ url_for('portal.products') }}" class="on">Products added here</a>
+  <a href="{{ url_for('portal.products_store') }}">Store products ({{ '{:,}'.format(store_count) }})</a>
+</nav>
+{% endif %}
 
 {% if has_azure_index and wa_stats.get('total_products') %}
 <div class="card" style="margin-bottom:20px;padding:16px 20px">
@@ -109,8 +117,13 @@
       {% endfor %}
     </select>
     <button type="submit" class="btn btn-sm">Search</button>
-    {% if q or category %}
+    {% if photos_filter %}<input type="hidden" name="photos" value="unlabelled">{% endif %}
+    {% if q or category or photos_filter %}
     <a href="{{ url_for('portal.products') }}" class="btn btn-sm">Clear</a>
+    {% endif %}
+    {% if unlabelled_total or photos_filter %}
+    <a href="{{ url_for('portal.products', photos=None if photos_filter else 'unlabelled', q=q or None, category=category or None) }}"
+       class="btn btn-sm" style="{% if photos_filter %}background:#0B1D40;color:#fff{% endif %}">Photos without a label ({{ unlabelled_total }})</a>
     {% endif %}
     <span class="prod-count">{{ total }} product{{ 's' if total != 1 }}</span>
   </form>
@@ -139,8 +152,8 @@
               {% if staff_can_open('portal.product_add') %}
               <a href="{{ url_for('portal.product_add') }}" class="btn btn-primary btn-sm">+ Add Product</a>
               {% endif %}
-              {% if staff_can_open('portal.catalogue_browse') %}
-              <a href="{{ url_for('portal.catalogue_browse') }}" class="btn btn-sm">Browse Catalogue</a>
+              {% if staff_can_open('portal.data_sources') %}
+              <a href="{{ url_for('portal.data_sources') }}" class="btn btn-sm">Add products from Excel</a>
               {% endif %}
             </div>
             {% endif %}
@@ -157,6 +170,8 @@
               {% endif %}
               <div>
                 <div class="prod-name">{{ p.name }}</div>
+                {% if p.photo_n %}<span class="pg-chip n">{{ p.photo_n }} photo{{ 's' if p.photo_n != 1 }}</span>{% endif %}
+                {% if p.photo_unl %}<a href="{{ url_for('portal.product_edit', product_id=p.id) }}#photos" class="pg-chip w" style="text-decoration:none">{{ p.photo_unl }} to label</a>{% endif %}
                 {% if p.description %}<div class="prod-desc">{{ p.description }}</div>{% endif %}
               </div>
             </div>
@@ -164,9 +179,11 @@
           <td class="col-cat">
             {% if p.category %}<span class="prod-cat">{{ p.category }}</span>{% else %}<span class="muted">—</span>{% endif %}
           </td>
-          <td>{{ (p.price|float)|money(p.currency) }}</td>
+          <td>{% if p.price_on_request %}<span class="muted">Price on request</span>{% else %}{{ (p.price|float)|money(p.currency) }}{% endif %}</td>
           <td style="text-align:center">
-            {% if p.stock_quantity and p.stock_quantity > 0 %}
+            {% if p.is_service %}
+            <span class="stock-badge stock-in">Service</span>
+            {% elif p.stock_quantity and p.stock_quantity > 0 %}
             <span class="stock-badge stock-in">In stock</span>
             {% else %}
             <span class="stock-badge stock-out">Out of stock</span>
@@ -177,7 +194,7 @@
               {% if staff_can_open('portal.product_edit') %}
               <a href="{{ url_for('portal.product_edit', product_id=p.id) }}" class="btn btn-sm">Edit</a>
               {% endif %}
-              {% if staff_can_open('portal.product_toggle_stock') %}
+              {% if staff_can_open('portal.product_toggle_stock') and not p.is_service %}
               <form method="POST" action="{{ url_for('portal.product_toggle_stock', product_id=p.id) }}">
                 <input type="hidden" name="action" value="{{ 'out_of_stock' if p.stock_quantity else 'in_stock' }}">
                 <button type="submit" class="btn btn-sm">
@@ -203,17 +220,17 @@
 {% if total_pages > 1 %}
 <div class="prod-pager">
   {% if page > 1 %}
-    <a href="{{ url_for('portal.products', q=q, category=category, page=page-1) }}">&laquo; Prev</a>
+    <a href="{{ url_for('portal.products', q=q, category=category, photos='unlabelled' if photos_filter else None, page=page-1) }}">&laquo; Prev</a>
   {% endif %}
   {% for p in range(1, total_pages + 1) %}
     {% if p == page %}
       <span class="current">{{ p }}</span>
     {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
-      <a href="{{ url_for('portal.products', q=q, category=category, page=p) }}">{{ p }}</a>
+      <a href="{{ url_for('portal.products', q=q, category=category, photos='unlabelled' if photos_filter else None, page=p) }}">{{ p }}</a>
     {% endif %}
   {% endfor %}
   {% if page < total_pages %}
-    <a href="{{ url_for('portal.products', q=q, category=category, page=page+1) }}">Next &raquo;</a>
+    <a href="{{ url_for('portal.products', q=q, category=category, photos='unlabelled' if photos_filter else None, page=page+1) }}">Next &raquo;</a>
   {% endif %}
 </div>
 {% endif %}

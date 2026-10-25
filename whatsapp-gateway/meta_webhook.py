@@ -790,6 +790,17 @@ async def receive_webhook(
     # number for full details, or "ORDER <number>" / "BUY <number>" to buy.
     # Resolves against the cached session products (same list_order the
     # numbered text was built from).
+    # ── Product photos (2026-10-25): "MORE", "show me the back", "in red" —
+    # answered from the photos the business labelled, without the AI.
+    if msg.get("message_type") == "text" and not is_handoff_active(session_id):
+        try:
+            import wa_photos
+            if await wa_photos.handle(phone_number_id, access_token, customer_phone, session_id, tenant_id, text):
+                log_message(tenant_id, phone_number_id, customer_phone, "outbound", "[Product photos sent]")
+                return {"status": "ok", "reason": "product_photos"}
+        except Exception as _wp_err:
+            print(f"⚠️ [META] product photos: {_wp_err}")
+
     _order_num = None
     if msg.get("message_type") == "text":
         _bare_num = re.fullmatch(r"(\d{1,2})", text.strip())

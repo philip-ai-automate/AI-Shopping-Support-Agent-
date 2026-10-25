@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}Product Import — PhiXtra Portal{% endblock %}
+{% block title %}Add products from Excel — PhiXtra Portal{% endblock %}
 
 {% block head %}
 <style>
@@ -44,10 +44,16 @@
 <div class="page-header" style="margin-bottom:20px">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
     <div>
-      <div class="section-title">Product Import</div>
+      <div class="section-title">Add products from Excel</div>
       <p class="muted">Upload your product list as an Excel or CSV file to keep your AI's pricing and stock accurate.</p>
     </div>
     <a href="javascript:history.back()" class="btn btn-sm" style="white-space:nowrap">← Back</a>
+  </div>
+</div>
+<div style="display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid #C9D3E6;border-radius:12px;padding:14px 16px;margin-bottom:18px">
+  <div>
+    <div style="font-size:14px;font-weight:800;color:#0B1D40">Selling services? Upload them here too</div>
+    <div class="muted" style="font-size:13px;margin-top:4px;line-height:1.55">A list with a name and a price for each service is enough. Leave out the stock column, and every service counts as always available. Everything you upload appears in My Products &amp; Services, so you manage it all in one list.</div>
   </div>
 </div>
 

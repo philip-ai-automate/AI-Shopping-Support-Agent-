@@ -213,8 +213,19 @@ async def handle_list_select(
     detail_text = _build_product_detail_message(name, price, in_stock, url, description)
     await send_text(phone_number_id, access_token, customer_phone, detail_text)
 
-    # Send product image (best-effort, after the text so text arrives first)
-    if image_url:
+    # Send product image (best-effort, after the text so text arrives first).
+    # With several photos (2026-10-25): the main one, then "Reply MORE".
+    images = product.get("images") or []
+    if images:
+        import wa_photos
+        if await wa_photos.send_main(phone_number_id, access_token, customer_phone, session_id,
+                                     {"name": name, "images": images}):
+            note = wa_photos.more_note(images, name)
+            if note:
+                await send_text(phone_number_id, access_token, customer_phone, note)
+        else:
+            print(f"⚠️ [INTERACTIVE] image send failed for product_id={product_id}")
+    elif image_url:
         sent = await send_product_image(
             phone_number_id, access_token, customer_phone, image_url,
             (product.get("product_name") or "").split(" - ")[0].strip(),

@@ -65,6 +65,18 @@
       ".cards{display:flex;flex-direction:column;gap:8px;align-self:flex-start;max-width:85%}",
       ".card{display:flex;gap:10px;background:#fff;border:1px solid #D9E1EE;border-radius:12px;padding:10px}",
       ".card img{width:64px;height:64px;object-fit:cover;border-radius:8px;flex:0 0 auto;background:#F4F6FA}",
+      /* photo gallery on a product card (2026-10-25) */
+      ".card.g{flex-direction:column;gap:8px}",
+      ".gal{position:relative}",
+      ".gal img.big{width:100%;height:200px;object-fit:cover;border-radius:10px;display:block;background:#F4F6FA}",
+      ".gal button.nav{position:absolute;top:78px;width:40px;height:40px;border-radius:50%;border:0;background:#fff;color:#0B1D40;font-size:20px;line-height:40px;cursor:pointer;box-shadow:0 1px 4px rgba(3,12,24,.25);padding:0}",
+      ".gal button.prev{left:6px}.gal button.next{right:6px}",
+      ".gal .cnt{position:absolute;right:8px;bottom:8px;background:rgba(11,29,64,.85);color:#fff;font-size:11px;font-weight:700;border-radius:99px;padding:2px 8px}",
+      ".gal .lab{position:absolute;left:8px;bottom:8px;background:rgba(255,255,255,.92);color:#111E2D;font-size:11px;font-weight:700;border-radius:99px;padding:2px 8px}",
+      ".thumbs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}",
+      ".thumbs button{border:2px solid transparent;border-radius:7px;padding:0;background:none;cursor:pointer;flex:0 0 auto}",
+      ".thumbs button.on{border-color:#0B1D40}",
+      ".thumbs img{width:40px;height:40px;object-fit:cover;border-radius:5px;display:block}",
       ".card b{font-size:13.5px;color:#111E2D;display:block}",
       ".card span{font-size:13px;color:#127A4A;font-weight:600;display:block;margin-top:2px}",
       ".card a{display:inline-block;margin-top:6px;font-size:12.5px;font-weight:700;color:#fff;background:" + color + ";padding:6px 10px;border-radius:8px;text-decoration:none}",
@@ -124,13 +136,41 @@
       var wrap = el("div", "cards");
       list.slice(0, 6).forEach(function (p) {
         var c = el("div", "card");
-        if (p.image_url) { var im = el("img"); im.src = p.image_url; im.alt = ""; im.onerror = function () { im.remove(); }; c.appendChild(im); }
+        var imgs = (p.images || []).filter(function (x) { return x && x.url; });
+        if (imgs.length > 1) { c.className = "card g"; c.appendChild(gallery(imgs, p.name || "")); }
+        else if (p.image_url) { var im = el("img"); im.src = p.image_url; im.alt = ""; im.onerror = function () { im.remove(); }; c.appendChild(im); }
         var t = el("div"); var n = el("b"); n.textContent = p.name || ""; t.appendChild(n);
         if (p.price) { var pr = el("span"); pr.textContent = p.price; t.appendChild(pr); }
         if (p.url) { var a = el("a"); a.href = p.url; a.target = "_blank"; a.rel = "noopener"; a.textContent = "View product"; t.appendChild(a); }
         c.appendChild(t); wrap.appendChild(c);
       });
       msgs.appendChild(wrap); msgs.scrollTop = msgs.scrollHeight;
+    }
+    // Several photos of one product: arrows, small pictures, swipe (2026-10-25).
+    function gallery(imgs, name) {
+      var g = el("div"), box = el("div", "gal"), big = el("img", "big"), cnt = el("span", "cnt"), lab = el("span", "lab");
+      var th = el("div", "thumbs"), i = 0, x0 = null;
+      function show(n) {
+        i = (n + imgs.length) % imgs.length;
+        big.src = imgs[i].url; big.alt = name + (imgs[i].label ? " · " + imgs[i].label : "") + " (photo " + (i + 1) + " of " + imgs.length + ")";
+        cnt.textContent = (i + 1) + " / " + imgs.length;
+        lab.textContent = imgs[i].label || ""; lab.hidden = !imgs[i].label;
+        Array.prototype.forEach.call(th.children, function (b, k) { b.className = k === i ? "on" : ""; b.setAttribute("aria-current", k === i ? "true" : "false"); });
+      }
+      var prev = el("button", "nav prev"), next = el("button", "nav next");
+      prev.type = next.type = "button"; prev.textContent = "\u2039"; next.textContent = "\u203A";
+      prev.setAttribute("aria-label", "Previous photo"); next.setAttribute("aria-label", "Next photo");
+      prev.addEventListener("click", function () { show(i - 1); }); next.addEventListener("click", function () { show(i + 1); });
+      box.addEventListener("touchstart", function (e) { x0 = e.touches[0].clientX; }, { passive: true });
+      box.addEventListener("touchend", function (e) { if (x0 === null) { return; } var dx = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(dx) > 35) { show(i + (dx < 0 ? 1 : -1)); } });
+      imgs.forEach(function (im, k) {
+        var b = el("button"); b.type = "button"; b.setAttribute("aria-label", "Photo " + (k + 1) + (im.label ? ": " + im.label : ""));
+        var t = el("img"); t.src = im.thumb || im.url; t.alt = ""; b.appendChild(t);
+        b.addEventListener("click", function () { show(k); }); th.appendChild(b);
+      });
+      box.appendChild(big); box.appendChild(prev); box.appendChild(next); box.appendChild(lab); box.appendChild(cnt);
+      g.appendChild(box); g.appendChild(th); show(0);
+      return g;
     }
     var DKEY = "phixtra_w_details_" + SITE;
     function contactForm() {

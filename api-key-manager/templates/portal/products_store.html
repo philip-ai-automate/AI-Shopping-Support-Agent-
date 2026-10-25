@@ -1,0 +1,60 @@
+{% extends "portal/base.html" %}
+{% block title %}Store products — PhiXtra Portal{% endblock %}
+{% block head %}{% include 'portal/_photo_gallery_css.html' %}
+<style>
+.sp-table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:620px}
+.sp-table th{text-align:left;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:10px;border-bottom:1px solid var(--line)}
+.sp-table td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.sp-thumb{width:44px;height:44px;border-radius:8px;object-fit:cover;background:#F5F7FB;flex-shrink:0}
+.sp-name{display:flex;gap:10px;align-items:center}
+</style>
+{% endblock %}
+{% block content %}
+{# Store products (2026-10-25): a WooCommerce store's products. Photos can be labelled here; the store isn't changed. #}
+<div class="page-header" style="margin-bottom:16px">
+  <div>
+    <div class="section-title">My Products &amp; Services</div>
+    <p class="muted">Products from your WooCommerce store. Label their photos here so the AI sends the right one; your store isn't changed.</p>
+  </div>
+</div>
+<nav class="pg-tabs" aria-label="Product lists">
+  <a href="{{ url_for('portal.products') }}">Products added here</a>
+  <a href="{{ url_for('portal.products_store') }}" class="on">Store products</a>
+</nav>
+<div class="card">
+  <form method="GET" action="{{ url_for('portal.products_store') }}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search store products…" style="flex:1;min-width:200px">
+    {% if photos_filter %}<input type="hidden" name="photos" value="unlabelled">{% endif %}
+    <button type="submit" class="btn btn-sm">Search</button>
+    <a href="{{ url_for('portal.products_store', photos=None if photos_filter else 'unlabelled', q=q or None) }}" class="btn btn-sm"
+       style="{% if photos_filter %}background:#0B1D40;color:#fff{% endif %}">Photos without a label ({{ '{:,}'.format(unlabelled_total) }})</a>
+    {% if q or photos_filter %}<a href="{{ url_for('portal.products_store') }}" class="btn btn-sm">Clear</a>{% endif %}
+    <span class="muted" style="margin-left:auto;font-size:13px">{{ '{:,}'.format(total) }} product{{ 's' if total != 1 }}</span>
+  </form>
+  <div style="overflow-x:auto">
+    <table class="sp-table">
+      <thead><tr><th>Product</th><th>Price</th><th>Photos</th><th style="text-align:right"></th></tr></thead>
+      <tbody>
+        {% for d in docs %}
+        <tr>
+          <td><div class="sp-name">{% if d.image_url %}<img class="sp-thumb" src="{{ d.image_url }}" alt="" loading="lazy">{% else %}<span class="sp-thumb"></span>{% endif %}<span>{{ d.title }}</span></div></td>
+          <td>{% if d.price_min %}{{ (d.price_min|float)|money(d.currency) }}{% else %}—{% endif %}</td>
+          <td>{% if d.photo_n %}<span class="pg-chip n">{{ d.photo_n }} photo{{ 's' if d.photo_n != 1 }}</span>{% else %}<span class="muted">No photo</span>{% endif %}
+              {% if d.photo_unl %} <span class="pg-chip w">{{ d.photo_unl }} to label</span>{% endif %}</td>
+          <td style="text-align:right"><a class="btn btn-sm" href="{{ url_for('portal.product_store_photos', doc_id=d.id) }}">Photos</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="muted" style="padding:24px;text-align:center">{{ 'No products match.' if (q or photos_filter) else 'No store products yet. They appear here after your WooCommerce store syncs.' }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if total_pages > 1 %}
+  <div style="display:flex;gap:8px;justify-content:center;margin-top:14px;font-size:13px">
+    {% if page > 1 %}<a href="{{ url_for('portal.products_store', q=q or None, photos='unlabelled' if photos_filter else None, page=page-1) }}">&laquo; Prev</a>{% endif %}
+    <span>Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}<a href="{{ url_for('portal.products_store', q=q or None, photos='unlabelled' if photos_filter else None, page=page+1) }}">Next &raquo;</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

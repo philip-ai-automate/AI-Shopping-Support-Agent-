@@ -1,0 +1,55 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ doc.title }} · Photos — PhiXtra Portal{% endblock %}
+{% block head %}{% include 'portal/_photo_gallery_css.html' %}{% endblock %}
+{% block content %}
+{# Store product photos (2026-10-25): label only. Order and photos come from the WooCommerce store. #}
+<div style="margin-bottom:18px">
+  <a href="{{ url_for('portal.products_store') }}" style="font-size:13px;color:var(--muted);text-decoration:none">← Back to Store products</a>
+</div>
+<div class="card pg-card" id="photos">
+  <div class="pg-head">
+    <div>
+      <h2>{{ doc.title }}</h2>
+      <p>Photos come from your WooCommerce store, in the store's order (the first is the main photo). Say what each photo shows, so the AI sends the right one when a customer asks "show me the back" or "do you have it in red?". Labels are saved in PhiXtra only and kept when your store syncs again.</p>
+    </div>
+    <span class="pg-count">{{ gallery|length }} photo{{ '' if gallery|length == 1 else 's' }}</span>
+  </div>
+  {% if gallery %}
+  <div class="pg-grid">
+    {% for ph in gallery %}
+    <div class="pg-tile {% if loop.first %}main{% endif %}">
+      <div class="pg-img">
+        <img src="{{ ph.thumb_url or ph.url }}" alt="{{ ph.label_text or 'Photo ' ~ loop.index }}" loading="lazy">
+        {% if loop.first %}<span class="pg-badge main">Main</span>{% endif %}
+        {% if not ph.view_label %}<span class="pg-badge need">Label needed</span>{% endif %}
+      </div>
+      <div class="pg-body">
+        {% if can_edit %}
+        <form method="POST" action="{{ url_for('portal.product_store_photo_label', doc_id=doc.id, photo_id=ph.id) }}" style="display:flex;flex-direction:column;gap:8px">
+          <label>What the photo shows
+            <select name="view" required>
+              {% set picked = ph.view_label or ph.suggested_view %}
+              <option value="" {% if not picked %}selected{% endif %} disabled>Choose…</option>
+              {% for v, t in photo_views %}<option value="{{ v }}" {% if picked == v %}selected{% endif %}>{{ t }}</option>{% endfor %}
+            </select>
+          </label>
+          <label>Colour <span>(optional)</span>
+            <input type="text" name="colour" maxlength="40" value="{{ ph.colour or '' }}" placeholder="e.g. Red">
+          </label>
+          {% if ph.view_label %}<span class="pg-ok">Saved: {{ ph.label_text }}</span>
+          {% elif ph.suggested_view %}<span class="pg-sugg">Suggested: {{ ph.suggested_text }}. Check it and confirm.</span>{% endif %}
+          <div class="pg-acts"><button type="submit">{{ 'Save label' if ph.view_label else 'Confirm label' }}</button></div>
+        </form>
+        {% else %}
+        <span class="{{ 'pg-ok' if ph.view_label else 'pg-sugg' }}">{{ ph.label_text or 'No label yet' }}</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">This product has no photo in your store.</p>
+  {% endif %}
+  <div class="pg-note">To add, remove or reorder these photos, change them in your WooCommerce store; they update here when the store syncs. Store gallery photos (beyond the main one) arrive once your PhiXtra plugin is updated.</div>
+</div>
+{% endblock %}

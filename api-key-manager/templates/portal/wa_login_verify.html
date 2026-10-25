@@ -48,6 +48,13 @@
     </a>
   </div>
 
+  <div style="margin-top:16px;padding:12px 14px;border-radius:10px;background:#F5F7FB;text-align:center;font-size:13px;line-height:1.6">
+    Code not arriving?
+    <a href="{{ url_for('portal.login') }}" style="color:var(--ink);font-weight:700">Log in with your email instead</a>
+    &nbsp;·&nbsp;
+    <a href="{{ url_for('portal.forgot_password') }}" style="color:var(--ink);font-weight:700">Forgot password?</a>
+  </div>
+
   <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line);
               font-size:12px;color:var(--muted);text-align:center">
     Codes expire after 10 minutes.

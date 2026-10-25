@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}{{ 'Edit Product' if mode == 'edit' else 'Add Product' }} — PhiXtra Portal{% endblock %}
+{% block title %}{{ 'Edit' if mode == 'edit' else 'Add' }} {{ 'Service' if (product.is_service if product else service_default) else 'Product' }} — PhiXtra Portal{% endblock %}
 
 {% block head %}
 <style>
@@ -10,25 +10,35 @@
   .img-or{font-size:12px;color:var(--muted);margin:10px 0 6px;font-weight:600;
     text-transform:uppercase;letter-spacing:.05em}
   .stock-hint{font-size:12px;color:var(--muted);margin-top:4px}
+  .svc-box{display:flex;gap:12px;align-items:flex-start;background:#E8EEF8;border:1px solid #C9D3E6;border-radius:12px;padding:14px 16px;margin-bottom:18px}
+  .svc-box input{width:20px;height:20px;margin:1px 0 0;accent-color:#0B1D40;flex:none}
+  .svc-box label{font-weight:800;color:#0B1D40;margin:0}
+  .svc-hint{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.5}
+  .por{display:flex;gap:8px;align-items:flex-start;margin-top:8px}
+  .por input{width:18px;height:18px;margin:1px 0 0;accent-color:#0B1D40;flex:none}
+  .por label{font-size:13px;font-weight:700;margin:0}
+  .svc-stock-note{font-size:13px;color:var(--muted);border:1px dashed #C9D3E6;border-radius:10px;padding:11px 12px;background:#F5F7FB}
 
   /* Category datalist suggestions */
   input[list]{cursor:pointer}
 </style>
+{% include 'portal/_photo_gallery_css.html' %}
 {% endblock %}
 
 {% block content %}
+{% set is_svc = (product.is_service if product else service_default) %}
 
 <div style="margin-bottom:18px">
   <a href="{{ url_for('portal.products') }}"
      style="font-size:13px;color:var(--muted);text-decoration:none;
             display:inline-flex;align-items:center;gap:5px">
-    ← Back to Products
+    ← Back to My Products &amp; Services
   </a>
 </div>
 
 <div class="page-header" style="margin-bottom:22px">
   <div class="section-title">
-    {{ 'Edit Product' if mode == 'edit' else 'Add New Product' }}
+    <span id="formHeading">{{ 'Edit' if mode == 'edit' else 'Add' }} {{ 'a service' if (is_svc and mode != 'edit') else ('Service' if is_svc else ('Product' if mode == 'edit' else 'a New Product')) }}</span>
   </div>
 </div>
 
@@ -37,9 +47,18 @@
         enctype="multipart/form-data"
         action="{{ url_for('portal.product_edit', product_id=product.id) if mode == 'edit' else url_for('portal.product_add') }}">
 
+    <!-- Service (2026-10-25): no stock count, always available -->
+    <div class="svc-box">
+      <input type="checkbox" id="is_service" name="is_service" value="1" {% if is_svc %}checked{% endif %}>
+      <div>
+        <label for="is_service">This is a service</label>
+        <div class="svc-hint">For things you do, not things you stock, like a consultation or a repair. A service has no stock count and is always available, so your AI can always offer it.</div>
+      </div>
+    </div>
+
     <!-- Name -->
     <div class="form-group">
-      <label for="name">Product Name *</label>
+      <label for="name" id="nameLabel">{{ 'Service' if is_svc else 'Product' }} Name *</label>
       <input type="text" id="name" name="name" required
              value="{{ product.name if product else '' }}"
              placeholder="e.g. Ankara Midi Dress">
@@ -49,12 +68,23 @@
     <div class="form-row">
       <div class="form-group" style="margin-bottom:0">
         <label for="price">Price ({{ cur_sign(product.currency if product else None) }}) *</label>
-        <input type="text" id="price" name="price" required
+        <input type="text" id="price" name="price" {% if not (product and product.price_on_request) %}required{% endif %}
                inputmode="numeric"
-               value="{{ '{:,.0f}'.format(product.price|float) if product and product.price else '' }}"
+               value="{{ '{:,.0f}'.format(product.price|float) if product and product.price and not product.price_on_request else '' }}"
                placeholder="e.g. 12500">
+        <div class="por">
+          <input type="checkbox" id="price_on_request" name="price_on_request" value="1" {% if product and product.price_on_request %}checked{% endif %}>
+          <div>
+            <label for="price_on_request">Price on request</label>
+            <div class="stock-hint" style="margin-top:2px">For prices that depend on the job. The AI tells the customer your team will confirm the price, and passes the chat to them.</div>
+          </div>
+        </div>
       </div>
-      <div class="form-group" style="margin-bottom:0">
+      <div class="form-group" style="margin-bottom:0" id="svcStockNote" {% if not is_svc %}hidden{% endif %}>
+        <label>Stock Quantity</label>
+        <div class="svc-stock-note">Not needed: services are always available.</div>
+      </div>
+      <div class="form-group" style="margin-bottom:0" id="stockGroup" {% if is_svc %}hidden{% endif %}>
         <label for="stock_quantity">Stock Quantity</label>
         <input type="number" id="stock_quantity" name="stock_quantity"
                min="0" max="99999"
@@ -97,50 +127,22 @@
                 placeholder="Brief product description the AI can use when answering customer questions...">{{ product.description if product and product.description else '' }}</textarea>
     </div>
 
-    <!-- Image -->
+    {% if mode != 'edit' %}
+    <!-- Photos (2026-10-25): several at once; labels are checked on the next screen -->
     <div class="form-group">
-      <label>Product Image <span style="color:var(--muted)">(optional)</span></label>
-
-      <!-- Current image preview (edit mode) -->
-      {% if mode == 'edit' and product and product.image_url %}
-      <div class="img-preview-wrap" style="margin-bottom:12px">
-        <img src="{{ product.image_url }}" alt="Current image" class="img-preview"
-             onerror="this.style.display='none'">
-        <div class="muted" style="font-size:12px;margin-top:6px">Current image</div>
-      </div>
-      {% endif %}
-
-      <!-- Upload file -->
-      <label style="font-size:12px;font-weight:600;color:var(--muted);
-                    text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">
-        Upload a photo
-      </label>
-      <input type="file" name="image_file" accept="image/*"
-             style="padding:8px;font-size:13px"
-             onchange="previewImage(this)">
-      <div id="uploadPreview" class="img-preview-wrap" style="display:none;margin-top:8px">
-        <img id="uploadPreviewImg" class="img-preview" alt="Preview">
-      </div>
+      <label for="photos">Photos <span style="color:var(--muted)">(optional)</span></label>
+      <input type="file" id="photos" name="photos" accept="image/*" multiple style="padding:8px;font-size:13px">
       <div class="muted" style="font-size:12px;margin-top:6px">
-        For best quality on WhatsApp, use a JPEG or PNG photo. WhatsApp doesn't accept
-        some other formats (like WebP) directly — we convert those automatically before
-        sending, but starting with JPEG or PNG avoids any quality loss from that conversion.
-      </div>
-
-      <div class="img-or">— or paste a URL —</div>
-
-      <input type="url" name="image_url"
-             value="{{ product.image_url if product and product.image_url else '' }}"
-             placeholder="https://example.com/product.jpg">
-      <div class="muted" style="font-size:12px;margin-top:4px">
-        Uploaded photo takes priority over URL if both are provided.
+        Choose several photos at once: front, back, side, close-ups, colours. The first one is the main photo.
+        Photos are made smaller automatically. After saving you'll check what each photo shows.
       </div>
     </div>
+    {% endif %}
 
     <!-- Submit -->
     <div style="display:flex;gap:10px;margin-top:8px;align-items:center">
-      <button type="submit" class="btn btn-primary">
-        {{ 'Save Changes' if mode == 'edit' else 'Add Product' }}
+      <button type="submit" class="btn btn-primary" id="saveBtn">
+        {{ 'Save Changes' if mode == 'edit' else ('Save service' if is_svc else 'Add Product') }}
       </button>
       <a href="{{ url_for('portal.products') }}" class="btn">Cancel</a>
 
@@ -157,6 +159,91 @@
 
   </form>
 </div>
+
+
+<script>
+(function(){
+  var svc = document.getElementById('is_service'), por = document.getElementById('price_on_request'),
+      price = document.getElementById('price'), stock = document.getElementById('stockGroup'),
+      note = document.getElementById('svcStockNote'), nameL = document.getElementById('nameLabel'),
+      btn = document.getElementById('saveBtn'), editing = {{ 'true' if mode == 'edit' else 'false' }};
+  function sync(){
+    var s = svc.checked;
+    stock.hidden = s; note.hidden = !s;
+    nameL.textContent = (s ? 'Service' : 'Product') + ' Name *';
+    if (!editing) btn.textContent = s ? 'Save service' : 'Add Product';
+    price.required = !por.checked; price.disabled = por.checked;
+    if (por.checked) price.value = '';
+  }
+  svc.addEventListener('change', sync); por.addEventListener('change', sync); sync();
+})();
+</script>
+
+{% if mode == 'edit' %}
+{# ── Photo gallery (2026-10-25). Plain forms, so it works without scripts. ── #}
+<div class="card pg-card" id="photos">
+  <div class="pg-head">
+    <div>
+      <h2>Photos</h2>
+      <p>The first photo is the main one: it shows first on WhatsApp, your website chat and in lists. Say what each photo shows, so the AI sends the right one when a customer asks "show me the back" or "do you have it in red?".</p>
+    </div>
+    <span class="pg-count">{{ gallery|length }} {% if photo_limit %}of {{ photo_limit }} photos{% else %}photo{{ '' if gallery|length == 1 else 's' }} · no limit on your plan{% endif %}</span>
+  </div>
+  <div class="pg-grid">
+    {% for ph in gallery %}
+    <div class="pg-tile {% if loop.first %}main{% endif %}">
+      <div class="pg-img">
+        <img src="{{ ph.thumb_url or ph.url }}" alt="{{ ph.label_text or 'Photo ' ~ loop.index }}" loading="lazy">
+        {% if loop.first %}<span class="pg-badge main">Main</span>{% endif %}
+        {% if not ph.view_label %}<span class="pg-badge need">Label needed</span>{% endif %}
+      </div>
+      <div class="pg-body">
+        <form method="POST" action="{{ url_for('portal.product_photos_label', product_id=product.id, photo_id=ph.id) }}" style="display:flex;flex-direction:column;gap:8px">
+          <label>What the photo shows
+            <select name="view" required>
+              {% set picked = ph.view_label or ph.suggested_view %}
+              <option value="" {% if not picked %}selected{% endif %} disabled>Choose…</option>
+              {% for v, t in photo_views %}<option value="{{ v }}" {% if picked == v %}selected{% endif %}>{{ t }}</option>{% endfor %}
+            </select>
+          </label>
+          <label>Colour <span>(optional)</span>
+            <input type="text" name="colour" maxlength="40" value="{{ ph.colour or '' }}" placeholder="e.g. Red">
+          </label>
+          {% if ph.view_label %}
+          <span class="pg-ok">Saved: {{ ph.label_text }}</span>
+          <div class="pg-acts"><button type="submit">Save label</button></div>
+          {% else %}
+          {% if ph.suggested_view %}<span class="pg-sugg">Suggested: {{ ph.suggested_text }}. Check it and confirm.</span>{% endif %}
+          <div class="pg-acts"><button type="submit">Confirm label</button></div>
+          {% endif %}
+        </form>
+        <div class="pg-acts">
+          {% if not loop.first %}
+          <form method="POST" action="{{ url_for('portal.product_photos_move', product_id=product.id, photo_id=ph.id) }}"><input type="hidden" name="to" value="main"><button type="submit">Make main</button></form>
+          <form method="POST" action="{{ url_for('portal.product_photos_move', product_id=product.id, photo_id=ph.id) }}"><input type="hidden" name="to" value="left"><button type="submit" aria-label="Move earlier">←</button></form>
+          {% endif %}
+          {% if not loop.last %}
+          <form method="POST" action="{{ url_for('portal.product_photos_move', product_id=product.id, photo_id=ph.id) }}"><input type="hidden" name="to" value="right"><button type="submit" aria-label="Move later">→</button></form>
+          {% endif %}
+          <form method="POST" action="{{ url_for('portal.product_photos_delete', product_id=product.id, photo_id=ph.id) }}" onsubmit="return confirm('Remove this photo?')"><button type="submit" class="del">Remove</button></form>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+    {% if not photo_limit or gallery|length < photo_limit %}
+    <form class="pg-add" method="POST" enctype="multipart/form-data" action="{{ url_for('portal.product_photos_add', product_id=product.id) }}">
+      <strong style="font-size:14px">Add photos</strong>
+      <span class="muted" style="font-size:12px">Choose several at once. JPG, PNG or WebP{% if photo_limit %} · {{ photo_limit - gallery|length }} more allowed{% endif %}</span>
+      <input type="file" name="photos" accept="image/*" multiple required aria-label="Choose photos">
+      <button type="submit" class="btn btn-primary btn-sm" style="min-height:40px">Upload</button>
+    </form>
+    {% else %}
+    <div class="pg-add"><strong style="font-size:14px">{{ photo_limit }} photos is the most for your plan</strong><span class="muted" style="font-size:12px">Remove one to add another. Enterprise plans have no limit.</span></div>
+    {% endif %}
+  </div>
+  <div class="pg-note">Photos are made smaller automatically (sharp on any phone, about 0.3 MB each). A photo without a confirmed label still shows in the gallery, but the AI won't pick it for a request like "show me the back"; it sends all the photos instead.</div>
+</div>
+{% endif %}
 
 <script>
 function previewImage(input) {

@@ -18,7 +18,7 @@
 <div class="page-header">
   <div>
     <h1 class="section-title" style="margin:0">My Selected Products</h1>
-    <p class="muted">Products you've added to your store catalogue</p>
+    <p class="muted">Products you've picked from our list</p>
   </div>
   <a href="{{ url_for('portal.catalogue_browse') }}" class="btn btn-sm">← Browse More</a>
 </div>
@@ -27,7 +27,7 @@
 <div class="card" style="text-align:center;padding:48px">
   <div style="font-size:40px;margin-bottom:12px">📭</div>
   <div style="font-size:15px;font-weight:700;margin-bottom:8px">No products selected yet</div>
-  <div class="muted" style="margin-bottom:20px">Browse the catalogue and add products you sell in your store</div>
+  <div class="muted" style="margin-bottom:20px">Browse our list and tick the products you sell</div>
   <a href="{{ url_for('portal.catalogue_browse') }}" class="btn btn-primary">Browse Catalogue →</a>
 </div>
 {% else %}

@@ -199,6 +199,7 @@ def _get_daily_stats(tenant_id: int, report_date: date) -> dict:
                 FROM products
                 WHERE tenant_id = %s
                   AND is_active = TRUE
+                  AND NOT is_service
                   AND stock_quantity <= %s
                   AND stock_quantity < 999
                 ORDER BY stock_quantity ASC
