@@ -671,7 +671,7 @@
 <!-- Pipeline table -->
 <div class="card" style="padding:0" data-sptour="pipeline-table">
   <div class="table-wrap">
-    <table>
+    <table class="m-cards">
       <thead>
         <tr>
           <th style="width:34px">{% if can_bulk_any %}<input type="checkbox" id="selectAllLeadsCb" onchange="toggleSelectAllLeads(this)">{% endif %}</th>
@@ -711,9 +711,9 @@
         </td></tr>
         {% endif %}
         {% for l in leads %}
-        <tr class="lead-row" data-stage="{{ l.stage }}" data-lead-id="{{ l.id }}">
-          <td>{% if can_bulk_any %}<input type="checkbox" class="lead-select-cb" onchange="updateBulkBar()">{% endif %}</td>
-          <td>
+        <tr class="lead-row m-row" data-stage="{{ l.stage }}" data-lead-id="{{ l.id }}">
+          <td data-mrole="cb">{% if can_bulk_any %}<input type="checkbox" class="lead-select-cb" onchange="updateBulkBar()">{% endif %}</td>
+          <td data-mrole="main">
             <div class="cust-cell">
               <span class="cust-avatar" style="background:{{ cust_color(l.customer_name) }}">{{ cust_initials(l.customer_name) }}</span>
               <div><a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" class="biz-name-cell lead-name-link" title="Open this Sales Lead">{{ l.customer_name }}</a>{{ demo_badge(l.demo) }}{{ followup_badge(l.followup) }}</div>
@@ -755,14 +755,14 @@
           <td data-col="biz_category" class="muted" style="font-size:12px;white-space:nowrap">{{ l.business_category or '—' }}</td>
           <td data-col="employees" class="muted" style="font-size:12px;white-space:nowrap">{{ l.employees or '—' }}</td>
           <td data-col="location" class="muted" style="font-size:12px;max-width:200px">{{ location_cell(l) }}</td>
-          <td data-col="contact_person" class="muted" style="font-size:12px">{{ l.contact_person or '—' }}</td>
-          <td data-col="phone" class="muted" style="font-size:12px">{{ l.phone|phone_display or '—' }}</td>
-          <td data-col="whatsapp" class="muted" style="font-size:12px">{{ l.whatsapp_number|phone_display or '—' }}</td>
+          <td data-m="Contact" data-col="contact_person" class="muted" style="font-size:12px">{{ l.contact_person or '—' }}</td>
+          <td data-m="Phone" data-col="phone" class="muted" style="font-size:12px">{{ l.phone|phone_display or '—' }}</td>
+          <td data-m="WhatsApp" data-col="whatsapp" class="muted" style="font-size:12px">{{ l.whatsapp_number|phone_display or '—' }}</td>
           <td data-col="email" class="col-hidden muted" style="font-size:12px">{{ emails_cell(l.email, l.other_emails) }}</td>
-          <td data-col="deal_value" class="muted">{{ (l.deal_value)|money(l.currency) if l.deal_value else '—' }}</td>
-          <td data-col="stage"><span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span></td>
+          <td data-m="Value" data-col="deal_value" class="muted">{{ (l.deal_value)|money(l.currency) if l.deal_value else '—' }}</td>
+          <td data-m="Stage" data-col="stage"><span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span></td>
           <td data-col="added" class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
-          <td data-col="assigned" class="muted">{{ (l.assigned_to|who(l.assigned_key)) if l.assigned_to else '—' }}</td>
+          <td data-m="Assigned" data-col="assigned" class="muted">{{ (l.assigned_to|who(l.assigned_key)) if l.assigned_to else '—' }}</td>
           {% if is_phixtra_support_account %}
           <td data-col="ambassador" style="font-size:12px">
             {% if l.assigned_ambassador_name %}
@@ -772,7 +772,7 @@
             {% endif %}
           </td>
           {% endif %}
-          <td>
+          <td data-mrole="act">
             {% set target = next_stage(l.stage) %}
             <div class="row-actions-wrap" {% if loop.first %}data-sptour="row-actions"{% endif %}>
               <button type="button" class="kebab-btn" onclick="toggleRowMenu(event, 'row-{{ l.id }}')" aria-label="Actions">
@@ -2166,7 +2166,9 @@ function spTourOpenFirstRowMenu() {
   document.addEventListener('DOMContentLoaded', function() {
     var done = false;
     try { done = !!localStorage.getItem('phixtra_portal_tour_sales_pipeline'); } catch(e){}
-    if (!done) { setTimeout(window.spTourStart, 800); }
+    // Not on phones (2026-10-25) — see the same rule in base.html.
+    var isPhone = window.matchMedia('(max-width: 640px)').matches;
+    if (!done && !isPhone) { setTimeout(window.spTourStart, 800); }
   });
 })();
 </script>

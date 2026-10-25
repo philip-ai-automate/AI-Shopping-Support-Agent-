@@ -235,6 +235,36 @@ html, body { overflow: hidden; height: 100%; }
   font-size: 22px; padding: 0 8px 0 0; color: var(--ink); line-height: 1;
 }
 @media(max-width:640px) { .chat-back-btn { display: inline } }
+/* Phone (2026-10-25, Android app prep): the fixed 60px one-row header
+   squeezed name, numbers, "Claimed by" and the buttons on top of each
+   other and pushed Take Over off screen. On phones the header grows: name
+   + numbers on row one, the buttons on their own row underneath. */
+@media(max-width:640px) {
+  .chat-header { height: auto; flex-wrap: wrap; padding: 8px 12px; row-gap: 8px }
+  .chat-header-left { flex: 1 1 100% }
+  .chat-sub { flex-wrap: wrap }
+  .chat-actions { flex: 1 1 100%; flex-wrap: wrap; justify-content: flex-end; row-gap: 6px }
+  .chat-actions .claim-note { margin-right: auto }
+}
+/* Claimed-by tag (2026-10-25): was a long "🔒 Claimed by …" text that
+   squeezed the customer's name on laptops; now a small tag. */
+.claim-note {
+  font-size: 11.5px; font-weight: 600; color: #475467; white-space: nowrap;
+  background: #F2F4F7; border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px;
+}
+/* Laptop/desktop (2026-10-25): the header was a fixed 60px and the buttons
+   never shrank, so the name was cut short and the numbers line wrapped over
+   three lines and got clipped. Now the header can grow, the numbers line
+   stays on one line (full text on hover), and when the panel is too narrow
+   the buttons drop to a second row instead of squeezing the name. */
+@media(min-width:641px) {
+  .chat-header { height: auto; min-height: 60px; flex-wrap: wrap; row-gap: 8px }
+  .chat-header-left { flex: 1 1 280px }
+  .chat-name-wrap, .name-display { min-width: 0; flex: 1 }
+  .chat-sub { display: block !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+  .chat-actions { margin-left: auto }
+  .chat-sub .chat-agent-dot { display: inline-block; margin-right: 4px }
+}
 
 /* Messages scroll area */
 .chat-messages {
@@ -846,14 +876,14 @@ html, body { overflow: hidden; height: 100%; }
             </div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <div class="chat-actions" style="display:flex;align-items:center;gap:8px;flex-shrink:0">
         {# WhatsApp calls (2026-10-20): wa-calls.js fills this with "On a call
            with …" and, where Meta allows calling customers, a 📞 Call button. #}
         <span id="waCallSlot" data-phone="{{ active_phone }}" style="display:inline-flex;gap:8px;align-items:center"></span>
         {% if has_team %}
           {% if active_conv and active_conv.assigned_to_label %}
-          <span style="font-size:11.5px;font-weight:600;color:var(--muted);white-space:nowrap">
-            {% if active_conv.assigned_to_key == current_actor_key %}🙋 Claimed by you{% else %}🔒 Claimed by {{ (active_conv.assigned_to_label|who(active_conv.assigned_to_key)) }}{% endif %}
+          <span class="claim-note">
+            {% if active_conv.assigned_to_key == current_actor_key %}🙋 Claimed by you{% else %}🔒 {{ (active_conv.assigned_to_label|who(active_conv.assigned_to_key)) }}{% endif %}
           </span>
           <form method="POST" action="{{ url_for('portal.inbox_release', phone=active_phone) }}">
             <button type="submit" class="btn btn-sm" style="background:#F2F4F7;color:var(--ink);border:1px solid var(--line);white-space:nowrap">Release</button>
@@ -1126,10 +1156,10 @@ html, body { overflow: hidden; height: 100%; }
             </div>
           </div>
           {% if has_team %}
-          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <div class="chat-actions" style="display:flex;align-items:center;gap:8px;flex-shrink:0">
             {% if active_msngr_conv and active_msngr_conv.assigned_to_label %}
-            <span style="font-size:11.5px;font-weight:600;color:var(--muted);white-space:nowrap">
-              {% if active_msngr_conv.assigned_to_key == current_actor_key %}🙋 Claimed by you{% else %}🔒 Claimed by {{ (active_msngr_conv.assigned_to_label|who(active_msngr_conv.assigned_to_key)) }}{% endif %}
+            <span class="claim-note">
+              {% if active_msngr_conv.assigned_to_key == current_actor_key %}🙋 Claimed by you{% else %}🔒 {{ (active_msngr_conv.assigned_to_label|who(active_msngr_conv.assigned_to_key)) }}{% endif %}
             </span>
             <form method="POST" action="{{ url_for('portal.inbox_release', phone=active_phone) }}">
               <button type="submit" class="btn btn-sm" style="background:#F2F4F7;color:var(--ink);border:1px solid var(--line);white-space:nowrap">Release</button>
@@ -1300,10 +1330,10 @@ html, body { overflow: hidden; height: 100%; }
             </div>
           </div>
           {% if has_team %}
-          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <div class="chat-actions" style="display:flex;align-items:center;gap:8px;flex-shrink:0">
             {% if active_webchat_conv and active_webchat_conv.assigned_to_label %}
-            <span style="font-size:11.5px;font-weight:600;color:var(--muted);white-space:nowrap">
-              {% if active_webchat_conv.assigned_to_key == current_actor_key %}🙋 Claimed by you{% else %}🔒 Claimed by {{ (active_webchat_conv.assigned_to_label|who(active_webchat_conv.assigned_to_key)) }}{% endif %}
+            <span class="claim-note">
+              {% if active_webchat_conv.assigned_to_key == current_actor_key %}🙋 Claimed by you{% else %}🔒 {{ (active_webchat_conv.assigned_to_label|who(active_webchat_conv.assigned_to_key)) }}{% endif %}
             </span>
             <form method="POST" action="{{ url_for('portal.inbox_release', phone=active_phone) }}">
               <button type="submit" class="btn btn-sm" style="background:#F2F4F7;color:var(--ink);border:1px solid var(--line);white-space:nowrap">Release</button>
@@ -2011,4 +2041,10 @@ RT.timer=setTimeout(rtTick,RT.FAST);
 </script>
 {% include "portal/_fix_answer_modal.html" %}
 {% if staff_can('inbox.send_new') %}{% include 'portal/_send_one_wa.html' %}{% endif %}
+<script>
+// Full "number · messages · PhiXtra number" text on hover, since laptops cut it with "…" (2026-10-25)
+document.querySelectorAll('.chat-header .chat-sub').forEach(function(el){
+  el.title = el.textContent.replace(/\s+/g,' ').trim();
+});
+</script>
 {% endblock %}

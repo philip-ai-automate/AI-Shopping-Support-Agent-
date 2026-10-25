@@ -715,7 +715,7 @@
 
 <div class="card" style="padding:0">
   <div class="table-wrap">
-    <table class="rpt-table">
+    <table class="rpt-table m-cards">
       <thead>
         <tr>
           {% if can_bulk %}<th style="width:34px"><input type="checkbox" id="lbSelectPage" class="lb-ck" onchange="lbTogglePage(this)" aria-label="Select all leads on this page"></th>{% endif %}
@@ -729,18 +729,18 @@
                             'import': ('#eef2ff','#3730a3','Import'), 'demo_booking': ('#E8EEF8','#0B1D40','Demo booking'), 'lead_finder': ('#E8EEF8','#0B1D40','Lead Finder')} %}
         {% set _sb = {'hot': ('🔥','#fef2f2','#b91c1c'), 'warm': ('🌤️','#fffbeb','#b45309'), 'cold': ('❄️','#eff6ff','#1d4ed8')} %}
         {% for l in real_leads %}
-        <tr class="lb-row" data-lead-id="{{ l.id }}">
-          {% if can_bulk %}<td><input type="checkbox" class="lb-ck lb-row-ck" onchange="lbUpdate()" aria-label="Select {{ l.customer_name }}"></td>{% endif %}
-          <td><a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" style="color:var(--ink);font-weight:700;text-decoration:none">{{ l.customer_name }}</a>{{ demo_badge(l.demo) }}{{ followup_badge(l.followup) }}</td>
+        <tr class="lb-row m-row" data-lead-id="{{ l.id }}">
+          {% if can_bulk %}<td data-mrole="cb"><input type="checkbox" class="lb-ck lb-row-ck" onchange="lbUpdate()" aria-label="Select {{ l.customer_name }}"></td>{% endif %}
+          <td data-mrole="main"><a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" style="color:var(--ink);font-weight:700;text-decoration:none">{{ l.customer_name }}</a>{{ demo_badge(l.demo) }}{{ followup_badge(l.followup) }}</td>
           <td class="muted" style="white-space:nowrap">{{ l.business_category or '—' }}</td>
           <td class="muted" style="white-space:nowrap">{{ l.employees or '—' }}</td>
           <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{% set _w = (l.website or '')|replace('https://','')|replace('http://','') %}{% if _w %}<a href="{{ l.website }}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:none" title="{{ l.website }}">{{ _w.rstrip('/') }}</a>{% else %}—{% endif %}</td>
           <td style="font-size:11px" data-lbl-lead="{{ l.id }}" data-ids="{{ l.labels|map(attribute='id')|join(',') }}"><div class="lbl-cell"><span class="lbl-chips">{% for lb in l.labels %}{{ label_chip(lb) }}{% else %}<span class="muted">—</span>{% endfor %}</span>{% if can_label %}<button type="button" class="lbl-edit" onclick="LabelUI.editLead(this, {{ l.id }})" aria-label="Edit labels on {{ l.customer_name }}">Edit</button>{% endif %}</div></td>
           {% for c in lead_cols %}{{ cc_cell(c, l.id, l.cc.get(c.id)) }}{% endfor %}
           <td class="muted" style="max-width:220px">{{ location_cell(l) }}</td>
-          <td class="muted">{{ l.contact_person or '—' }}</td>
-          <td class="muted" style="font-family:'SF Mono','Fira Code',monospace">{{ (l.phone|phone_display) or '—' }}{{ phone_flag(l.phone) }}</td>
-          <td class="muted" style="font-family:'SF Mono','Fira Code',monospace;color:#15803d">{{ (l.whatsapp_number|phone_display) or '—' }}{{ phone_flag(l.whatsapp_number) }}</td>
+          <td class="muted" data-m="Contact">{{ l.contact_person or '—' }}</td>
+          <td class="muted" data-m="Phone" style="font-family:'SF Mono','Fira Code',monospace">{{ (l.phone|phone_display) or '—' }}{{ phone_flag(l.phone) }}</td>
+          <td class="muted" data-m="WhatsApp" style="font-family:'SF Mono','Fira Code',monospace;color:#15803d">{{ (l.whatsapp_number|phone_display) or '—' }}{{ phone_flag(l.whatsapp_number) }}</td>
           <td class="muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ emails_cell(l.email, l.other_emails) }}</td>
           <td>
             {% if l.source and l.source in src_meta %}
@@ -750,15 +750,15 @@
           </td>
           <td class="muted">{{ l.product_interest or '—' }}</td>
           <td class="muted">{{ (l.deal_value)|money(l.currency) if l.deal_value else '—' }}</td>
-          <td class="muted">{{ (l.assigned_to|who(l.assigned_key)) if l.assigned_to else '—' }}</td>
-          <td>
+          <td class="muted" data-m="Assigned">{{ (l.assigned_to|who(l.assigned_key)) if l.assigned_to else '—' }}</td>
+          <td data-m="Stage">
             {% if l.outcome %}
             <span class="stage-pill" style="background:{{ '#f0fdf4' if l.outcome=='won' else '#f8fafc' }};color:{{ '#15803d' if l.outcome=='won' else '#64748b' }}">{{ stage_labels.get(l.outcome, l.outcome.capitalize()) }}</span>
             {% else %}
             <span class="stage-pill st-{{ l.stage }}">{{ 'New Lead' if l.stage == 'new_lead' else stage_labels.get(l.stage, l.stage) }}</span>
             {% endif %}
           </td>
-          <td>
+          <td data-m="Score">
             {% set icon, bg, fg = _sb.get(l.lead_tier, _sb['cold']) %}
             <span class="stage-pill" style="background:{{ bg }};color:{{ fg }}" title="{{ score_labels.get(l.lead_tier, l.lead_tier.capitalize()) }}">{{ icon }} {{ l.lead_score }}</span>
           </td>

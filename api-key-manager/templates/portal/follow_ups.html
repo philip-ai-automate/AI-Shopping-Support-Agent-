@@ -65,6 +65,7 @@
     .fq-row { grid-template-columns:4px minmax(0,1fr); row-gap:8px }
     .fq-what, .fq-act { grid-column:2 } .fq-act { justify-content:flex-start }
   }
+  @media (max-width:640px) { .fq-team.m-cards .fq-bar { display:inline-flex; vertical-align:middle } }
 </style>
 {% endblock %}
 
@@ -137,15 +138,15 @@
 {% if team_rows %}
 <div class="fq-card">
   <div style="overflow-x:auto">
-    <table class="fq-team">
+    <table class="fq-team m-cards">
       <thead><tr><th>Person</th><th class="n">Overdue</th><th class="n">Due today</th><th class="n">Next 7 days</th><th>On time this week</th><th class="n">Open leads with no date</th></tr></thead>
       <tbody>
         {% for t in team_rows %}
-        <tr><td><a href="{{ url_for('portal.follow_ups_page', who=t.key) }}">{{ t.display }}</a></td>
-          <td class="n">{% if t.overdue %}<span class="fq-pill red">{{ '{:,}'.format(t.overdue) }}</span>{% else %}0{% endif %}</td>
-          <td class="n">{{ '{:,}'.format(t.today) }}</td><td class="n">{{ '{:,}'.format(t.week) }}</td>
-          <td>{% if t.pct is not none %}<div class="fq-bar"><div class="fq-meter"><i class="{{ 'low' if t.pct < 70 }}" style="width:{{ t.pct }}%"></i></div>{{ t.pct }}%</div>{% else %}<span style="color:var(--muted)">Nothing due yet</span>{% endif %}</td>
-          <td class="n">{{ '{:,}'.format(t.no_date) }}</td></tr>
+        <tr class="m-row"><td data-mrole="main"><a href="{{ url_for('portal.follow_ups_page', who=t.key) }}">{{ t.display }}</a></td>
+          <td class="n" data-m="Overdue">{% if t.overdue %}<span class="fq-pill red">{{ '{:,}'.format(t.overdue) }}</span>{% else %}0{% endif %}</td>
+          <td class="n" data-m="Due today">{{ '{:,}'.format(t.today) }}</td><td class="n" data-m="Next 7 days">{{ '{:,}'.format(t.week) }}</td>
+          <td data-m="On time this week">{% if t.pct is not none %}<div class="fq-bar"><div class="fq-meter"><i class="{{ 'low' if t.pct < 70 }}" style="width:{{ t.pct }}%"></i></div>{{ t.pct }}%</div>{% else %}<span style="color:var(--muted)">Nothing due yet</span>{% endif %}</td>
+          <td class="n" data-m="Open leads with no date">{{ '{:,}'.format(t.no_date) }}</td></tr>
         {% endfor %}
       </tbody>
     </table>

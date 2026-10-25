@@ -770,7 +770,7 @@
         </div>
         {% else %}
         <div style="overflow-x:auto">
-          <table class="contacts-table">
+          <table class="contacts-table m-cards">
             <thead>
               <tr>
                 <th style="width:36px">{% if can_bulk %}<input type="checkbox" class="select-all-check" id="selectAll" title="Select all">{% endif %}</th>
@@ -793,11 +793,11 @@
             </thead>
             <tbody>
               {% for c in contacts %}
-              <tr>
-                <td>{% if can_bulk %}<input type="checkbox" class="row-check" name="contact_ids" value="{{ c.id }}">{% endif %}</td>
+              <tr class="m-row">
+                <td data-mrole="cb">{% if can_bulk %}<input type="checkbox" class="row-check" name="contact_ids" value="{{ c.id }}">{% endif %}</td>
                 {# Company is the main column (the old Name column was removed); no company → the contact's own name #}
                 {% set row_name = c.company_name or c.display_name %}
-                <td>
+                <td data-mrole="main">
                   <div style="display:flex;align-items:center;gap:6px;max-width:220px">
                     <a href="{{ url_for('portal.whatsapp_contact_detail', contact_id=c.id) }}" title="Open contact"
                        style="font-weight:700;font-size:13px;color:var(--ink);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
@@ -824,14 +824,14 @@
                   {% endif %}
                 </td>
                 <td data-col="location" style="font-size:12px;max-width:200px">{{ location_cell(c) }}</td>
-                <td data-col="contact_person">
+                <td data-m="Contact" data-col="contact_person">
                   {% if c.contact_person %}
                   <span style="font-size:12px;color:var(--ink)">{{ c.contact_person }}</span>
                   {% else %}
                   <span style="font-size:11px;color:var(--muted)">—</span>
                   {% endif %}
                 </td>
-                <td data-col="phone">
+                <td data-m="Phone" data-col="phone">
                   {% if c.phone %}
                   <span class="phone-pill">
                     <svg width="9" height="9" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
@@ -841,7 +841,7 @@
                   <span style="font-size:11px;color:var(--muted)">—</span>
                   {% endif %}
                 </td>
-                <td data-col="whatsapp">
+                <td data-m="WhatsApp" data-col="whatsapp">
                   {% if c.whatsapp_number %}
                   <span class="phone-pill" style="background:#ecfdf3;color:#15803d">
                     <svg width="9" height="9" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2a10 10 0 00-8.6 15.1L2 22l5-1.3A10 10 0 1012 2z"/></svg>
@@ -852,7 +852,7 @@
                   {% endif %}
                 </td>
                 <td data-col="email" style="font-size:12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ emails_cell(c.email, c.other_emails) }}</td>
-                <td data-col="status">
+                <td data-m="Status" data-col="status">
                   <span class="status-badge badge-{{ c.status or 'lead' }}">
                     <span class="status-dot"></span>{{ c.status|contact_status }}
                   </span>
@@ -871,7 +871,7 @@
                     {% endif %}
                   </div>
                 </td>
-                <td data-col="stage">
+                <td data-m="Stage" data-col="stage">
                   {% if c.pipeline_stage %}
                   <span class="stage-pill st-{{ c.pipeline_stage }}">{{ stage_labels.get(c.pipeline_stage, c.pipeline_stage) }}</span>
                   {% if c.active_deal_count and c.active_deal_count > 1 %}
@@ -891,7 +891,7 @@
                 <td data-col="added" style="font-size:11px;color:var(--muted);white-space:nowrap">
                   {{ c.created_at.strftime('%d %b %Y') if c.created_at else '—' }}
                 </td>
-                <td style="white-space:nowrap">
+                <td data-mrole="act" style="white-space:nowrap">
                   {% if c.in_pipeline %}
                   <span class="icon-btn" title="Already has a Sales Lead" style="color:#16a34a;cursor:default;margin-right:0">
                     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>

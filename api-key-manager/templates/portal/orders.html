@@ -14,7 +14,14 @@
   /* ── KPI row ── */
   .kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:22px}
   @media(max-width:860px){.kpi-row{grid-template-columns:repeat(2,1fr)}}
-  @media(max-width:480px){.kpi-row{grid-template-columns:1fr}}
+  /* Phones (2026-10-25, Android app prep): one box per row filled the whole
+     screen before the first order. Now 2 per row, with Today's Revenue first
+     across the full width (money amounts are the widest). */
+  @media(max-width:480px){
+    .kpi-row{gap:10px;margin-bottom:16px}
+    .kpi-card{padding:12px 14px}
+    .kpi-card.kpi-revenue{grid-column:1 / -1;order:-1}
+  }
   .kpi-card{background:#fff;border:1px solid var(--line);border-radius:16px;
             padding:16px 18px;box-shadow:var(--shadow2)}
   .kpi-card .card-title{margin-bottom:4px}
@@ -62,7 +69,7 @@
     <div class="card-title">Today's Orders</div>
     <div class="kpi">{{ kpis.total or 0 }}</div>
   </div>
-  <div class="kpi-card">
+  <div class="kpi-card kpi-revenue">
     <div class="card-title">Today's Revenue</div>
     <div class="kpi" style="font-size:20px">
       {{ ((kpis.revenue or 0)|float)|money_total }}

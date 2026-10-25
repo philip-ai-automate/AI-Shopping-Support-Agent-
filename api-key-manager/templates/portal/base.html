@@ -414,6 +414,24 @@
     table{width:100%;border-collapse:collapse}
     th,td{padding:11px 14px;font-size:13px;border-bottom:1px solid rgba(3,12,24,0.07);text-align:left}
     th{font-weight:700;color:var(--muted);background:rgba(3,12,24,0.025)}
+    /* Phone card lists (2026-10-25, Android app prep). A table with class
+       "m-cards" turns each tr.m-row into a small card on phones: checkbox
+       (data-mrole=cb), name (main), ⋮ menu (act) on top, then only the cells
+       marked data-m="Label" as "Label: value" lines. Desktop is untouched. */
+    @media(max-width:640px){
+      table.m-cards, table.m-cards > tbody{display:block;width:100%}
+      table.m-cards > thead{display:none}
+      table.m-cards > tbody > tr.m-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;
+        column-gap:10px;row-gap:4px;padding:12px 14px;border-bottom:1px solid rgba(3,12,24,0.07);align-items:center}
+      table.m-cards > tbody > tr.m-row > td{display:none;padding:0;border:0;background:none!important;
+        max-width:none!important;white-space:normal!important}
+      table.m-cards > tbody > tr.m-row > td[data-mrole="cb"]{display:block;grid-column:1;grid-row:1}
+      table.m-cards > tbody > tr.m-row > td[data-mrole="main"]{display:block;grid-column:2;grid-row:1;font-size:14px}
+      table.m-cards > tbody > tr.m-row > td[data-mrole="act"]{display:block;grid-column:3;grid-row:1}
+      table.m-cards > tbody > tr.m-row > td[data-m]:not(.col-hidden){display:block;grid-column:2 / -1;font-size:12.5px;text-align:left!important}
+      table.m-cards > tbody > tr.m-row > td[data-m]::before{content:attr(data-m) ": ";color:var(--muted);font-weight:600;
+        font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+    }
     .biz-name-cell{display:inline-block;max-width:220px;word-break:break-word;overflow-wrap:break-word;vertical-align:top}
     tbody tr:last-child td{border-bottom:none}
     tbody tr:hover{background:rgba(3,12,24,0.018)}
@@ -2017,7 +2035,11 @@
     var isDash = window.location.pathname.indexOf('/dashboard') !== -1;
     var done   = false;
     try { done = !!localStorage.getItem('phixtra_tour_done'); } catch(e){}
-    if (isDash && !done) {
+    // Phones (2026-10-25, Android app prep): the tour card covers most of
+    // the screen, so it no longer opens by itself there — "Take a Tour"
+    // still starts it.
+    var isPhone = window.matchMedia('(max-width: 640px)').matches;
+    if (isDash && !done && !isPhone) {
       setTimeout(tourStart, 800);
     }
   });
