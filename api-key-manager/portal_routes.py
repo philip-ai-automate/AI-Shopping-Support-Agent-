@@ -1003,6 +1003,26 @@ def _wa_dual_required_page(customer: dict, feature_label: str = "WhatsApp"):
     ), 403
 
 
+# Android app (2026-10-25): no buying plans, credits or top-ups inside the
+# Google Play app. static/portal/app-mode.js sets cookie px_app=1 only while
+# the portal runs full-screen in the app; every /billing page then shows
+# app_no_payments.html. Payment-provider webhooks/callbacks and the free AI
+# trial still work.
+def _app_blocks_billing(path: str) -> bool:
+    if not path.startswith("/billing"):
+        return False
+    if "webhook" in path or "callback" in path or path.startswith("/billing/start-ai-trial"):
+        return False
+    return True
+
+
+@portal_bp.before_request
+def _no_payments_in_app():
+    if request.cookies.get("px_app") == "1" and _app_blocks_billing(request.path):
+        return render_template("portal/app_no_payments.html")
+    return None
+
+
 @portal_bp.before_request
 def _record_portal_activity():
     """Inactive accounts (inactivity_core): using the portal counts as
@@ -2989,6 +3009,19 @@ def home():
     if _logged_in() and _customer_id():
         return redirect(url_for("portal.dashboard"))
     return render_template("portal/home.html")
+
+
+# Android app (2026-10-25): proves com.phixtra.app belongs to this site, so
+# the Play app opens full-screen with no browser bar. Fingerprints: our upload
+# key now; Google Play's app-signing key gets added once the Play account exists.
+@portal_bp.route("/.well-known/assetlinks.json")
+@public_route
+def android_asset_links():
+    return send_from_directory(
+        os.path.join(os.path.dirname(__file__), "static", "portal"),
+        "assetlinks.json",
+        mimetype="application/json"
+    )
 
 
 @portal_bp.route("/sw.js")

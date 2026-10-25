@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.phixtra.app",
+    "sha256_cert_fingerprints": [
+      "33:17:FA:49:6B:AC:DF:32:DD:8E:6D:44:C5:77:91:9C:6B:33:36:27:A4:10:82:C2:C0:48:19:C7:A7:D4:C7:86"
+    ]
+  }
+}]

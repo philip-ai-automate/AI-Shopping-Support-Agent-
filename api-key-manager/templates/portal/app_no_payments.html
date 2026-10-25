@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-app-blocked="1">
+<head>
+  <meta charset="utf-8"/>
+  <title>PhiXtra</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='portal/favicon.png') }}"/>
+  <meta name="theme-color" content="#030C18"/>
+  {# Shown instead of any /billing page inside the Android app — see
+     static/portal/app-mode.js. No link or hint to pay elsewhere (Google rule). #}
+  <script src="{{ url_for('static', filename='portal/app-mode.js') }}?v=1"></script>
+  <style>
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+         background:#F5F6F8;color:#030C18;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+    .box{background:#fff;border:1px solid rgba(3,12,24,.10);border-radius:18px;padding:32px 24px;
+         margin:16px;max-width:380px;text-align:center}
+    h1{font-size:20px;margin:0 0 10px}
+    p{font-size:14.5px;line-height:1.5;color:#475467;margin:0 0 22px}
+    a{display:inline-block;background:#030C18;color:#fff;text-decoration:none;font-weight:700;
+      font-size:14px;padding:11px 22px;border-radius:12px}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>Not available in the app</h1>
+    <p>Plans and payments aren't available in the app.</p>
+    <a href="{{ url_for('portal.dashboard') }}">Back to Dashboard</a>
+  </div>
+</body>
+</html>

@@ -6,6 +6,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='portal/favicon.png') }}"/>
   <link rel="manifest" href="/static/portal/manifest.json"/>
+  {# Android app mode: hides every buy/upgrade/top-up link inside the app (Google payment rules) — see app-mode.js #}
+  <script src="{{ url_for('static', filename='portal/app-mode.js') }}?v=1"></script>
+  <style>
+    html.in-app a[href^="/billing"]:not([href^="/billing/start-ai-trial"]),
+    html.in-app a[href^="https://portal.phixtra.com/billing"],
+    html.in-app form[action^="/billing"]:not([action^="/billing/start-ai-trial"]),
+    html.in-app .hide-in-app { display: none !important }
+  </style>
   <meta name="theme-color" content="#030C18"/>
   <meta name="mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
