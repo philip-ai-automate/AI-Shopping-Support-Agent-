@@ -76,7 +76,8 @@ def ensure_tables():
                 author_key      TEXT,
                 author_label    TEXT,
                 note            TEXT NOT NULL,
-                created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                follow_up_on    DATE
             )""")
         cur.execute("CREATE INDEX IF NOT EXISTS platform_account_notes_t_idx ON platform_account_notes (tenant_id, created_at DESC)")
         # Only ALTER when the column is really missing: even "IF NOT EXISTS" takes
@@ -162,16 +163,17 @@ def assign(tenant_id: int, team_member_id, by_label: str):
         cur.close(); conn.close()
 
 
-def _note(cur, tenant_id, author_key, author_label, text):
-    cur.execute("""INSERT INTO platform_account_notes (tenant_id, author_key, author_label, note)
-                   VALUES (%s, %s, %s, %s)""", (tenant_id, author_key, author_label, text))
+def _note(cur, tenant_id, author_key, author_label, text, follow_up_on=None):
+    cur.execute("""INSERT INTO platform_account_notes (tenant_id, author_key, author_label, note, follow_up_on)
+                   VALUES (%s, %s, %s, %s, %s)""", (tenant_id, author_key, author_label, text, follow_up_on))
 
 
-def add_note(tenant_id: int, author_key: str, author_label: str, text: str):
+def add_note(tenant_id: int, author_key: str, author_label: str, text: str, follow_up_on=None):
+    """follow_up_on: optional date to contact the customer again."""
     ensure_tables()
     conn, cur = _db()
     try:
-        _note(cur, tenant_id, author_key, author_label, text[:2000])
+        _note(cur, tenant_id, author_key, author_label, text[:2000], follow_up_on)
         conn.commit()
     finally:
         cur.close(); conn.close()
@@ -181,7 +183,7 @@ def notes_for(tenant_id: int) -> list:
     ensure_tables()
     conn, cur = _db()
     try:
-        cur.execute("""SELECT author_label, note, created_at, author_key FROM platform_account_notes
+        cur.execute("""SELECT author_label, note, created_at, author_key, follow_up_on FROM platform_account_notes
                         WHERE tenant_id=%s ORDER BY created_at DESC, id DESC LIMIT 200""", (tenant_id,))
         return cur.fetchall() or []
     finally:
@@ -189,13 +191,14 @@ def notes_for(tenant_id: int) -> list:
 
 
 def last_notes(tenant_ids) -> dict:
-    """tenant_id -> latest note written by a person (not the assign/unassign lines)."""
+    """tenant_id -> latest note written by a person (not the assign/unassign lines).
+    Its follow_up_on is the account's open follow-up: a newer note replaces it."""
     ids = [int(t) for t in tenant_ids or []]
     if not ids:
         return {}
     conn, cur = _db()
     try:
-        cur.execute("""SELECT DISTINCT ON (tenant_id) tenant_id, note, created_at, author_label
+        cur.execute("""SELECT DISTINCT ON (tenant_id) tenant_id, note, created_at, author_label, follow_up_on
                          FROM platform_account_notes
                         WHERE tenant_id = ANY(%s) AND author_key IS NOT NULL
                         ORDER BY tenant_id, created_at DESC, id DESC""", (ids,))

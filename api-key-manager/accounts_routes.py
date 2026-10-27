@@ -2,11 +2,12 @@
 accounts_routes.py — the "Accounts" page in the PLATFORM business's portal
 (the business PhiXtra's own staff log into). Lists the signed-up businesses
 an admin assigned to the logged-in staff member, the setup step each one
-stopped at, contact details, and notes. Logic lives in accounts_core.py.
+stopped at, the customer's details, and dated notes with an optional
+follow-up date. Logic lives in accounts_core.py.
 
   GET  /accounts                     list (To onboard / Onboarded)
-  GET  /accounts/<tenant_id>         one account: steps, contact, notes
-  POST /accounts/<tenant_id>/note    add a note / log a call
+  GET  /accounts/<tenant_id>         one account: details, steps, notes
+  POST /accounts/<tenant_id>/note    add a note (optional follow-up date)
 
 Only reachable when the logged-in business IS the platform business (setting
 PLATFORM_TENANT_ID); everyone else gets a 404, and the menu item and Roles
@@ -14,11 +15,14 @@ ticks never show for them. Staff need the "accounts.view" Roles tick and see
 only accounts assigned to them unless their role has "accounts.see_all".
 The owner sees every account.
 """
+from datetime import date, datetime
+
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 
 import accounts_core as A
+from portal_address import country_name
 from feature_access import team_feature
-from portal_routes import (_current_actor, _customer_id, _get_customer, _inject_granted_features,
+from portal_routes import (HEAR_ABOUT_US_OPTIONS, _current_actor, _customer_id, _get_customer, _inject_granted_features,
                            _require_login, _require_team_permission, _team_member_has_permission)
 
 accounts_bp = Blueprint("accounts", __name__)
@@ -61,7 +65,10 @@ def _rows(scope, only_tenant=None):
                    COALESCE(NULLIF(TRIM(CONCAT(tm.first_name, ' ', tm.last_name)), ''), tm.name) AS staff_name,
                    t.name AS business, t.created_at AS signed_up, t.trial_granted_at, t.trial_ends_at,
                    t.website_platform, t.domain, COALESCE(p.name, 'Free') AS plan_name, p.slug AS plan_slug,
-                   c.first_name, c.last_name, c.email, c.phone_number, c.last_login_at
+                   t.billing_cycle, t.signup_channel, t.source_type,
+                   c.first_name, c.last_name, c.email, c.phone_number, c.last_login_at,
+                   c.company_name, c.business_country, c.hear_about_us,
+                   c.billing_address_line1, c.billing_city, c.billing_postcode, c.billing_country
               FROM platform_account_assignments a
               JOIN tenants t ON t.id = a.tenant_id
               LEFT JOIN plans p ON p.id = t.plan_id
@@ -76,12 +83,23 @@ def _rows(scope, only_tenant=None):
     newly = [r["tenant_id"] for r in rows if steps.get(r["tenant_id"], {}).get("complete") and not r["onboarded_at"]]
     A.mark_onboarded(newly)
     notes = A.last_notes([r["tenant_id"] for r in rows])
+    today = date.today()
+    heard = dict(HEAR_ABOUT_US_OPTIONS)
     for r in rows:
         r["setup"] = steps.get(r["tenant_id"]) or {"type": "WhatsApp", "steps": [], "done": 0, "total": 0, "complete": False, "stuck": None}
         r["onboarded"] = bool(r["onboarded_at"]) or r["setup"]["complete"]
         r["contact"] = " ".join(x for x in [(r["first_name"] or "").strip(), (r["last_name"] or "").strip()] if x)
         r["last_note"] = notes.get(r["tenant_id"])
-        r["wa_number"] = "".join(ch for ch in (r["phone_number"] or "") if ch.isdigit())
+        fu = (r["last_note"] or {}).get("follow_up_on")
+        r["follow_up_on"] = fu
+        r["follow_up_due"] = bool(fu and fu <= today)
+        r["country"] = country_name(r["business_country"]) or (r["business_country"] or "")
+        r["heard"] = heard.get(r["hear_about_us"]) or ((r["hear_about_us"] or "").replace("_", " ").capitalize())
+        # Billing country alone is a form default, not an address the customer gave.
+        parts = [x.strip() for x in [r["billing_address_line1"], r["billing_city"], r["billing_postcode"]] if x and x.strip()]
+        if parts and r["billing_country"]:
+            parts.append(country_name(r["billing_country"]) or r["billing_country"])
+        r["address"] = ", ".join(parts)
     return rows
 
 
@@ -121,7 +139,7 @@ def account_detail(tenant_id: int):
         return redirect(url_for("accounts.accounts_list"))
     return render_template("portal/accounts_detail.html", customer=customer, a=rows[0],
                            notes=A.notes_for(tenant_id),
-                           can_note=_team_member_has_permission(NOTES))
+                           can_note=_team_member_has_permission(NOTES), today=date.today())
 
 
 @accounts_bp.route("/accounts/<int:tenant_id>/note", methods=["POST"])
@@ -138,8 +156,16 @@ def account_note(tenant_id: int):
     if not text:
         flash("Write the note first.", "warning")
         return redirect(url_for("accounts.account_detail", tenant_id=tenant_id))
+    follow_up_on = None
+    raw = (request.form.get("follow_up_on") or "").strip()
+    if raw:
+        try:
+            follow_up_on = datetime.strptime(raw, "%Y-%m-%d").date()
+        except ValueError:
+            flash("That follow-up date isn't a real date.", "warning")
+            return redirect(url_for("accounts.account_detail", tenant_id=tenant_id))
     me = _current_actor(customer)
-    A.add_note(tenant_id, me["key"], me["label"], text)
+    A.add_note(tenant_id, me["key"], me["label"], text, follow_up_on)
     flash("Note saved.", "success")
     return redirect(url_for("accounts.account_detail", tenant_id=tenant_id))
 
