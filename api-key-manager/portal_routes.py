@@ -36410,6 +36410,31 @@ def _leads_remember_filters(tenant_id: int, actor_key: str):
     return None
 
 
+def _leads_found_elsewhere(cur, tenant_id: int, search: str):
+    """All Leads search: the same search in Sales Pipeline (qualified leads)
+    and in closed leads, so a business that has moved on doesn't look
+    missing (user 2026-10-27). Same search fields as the list, same
+    own-leads rule for staff; this page's other filters are ignored.
+    None when there is nothing elsewhere."""
+    like = f"%{search}%"
+    _ssql, _sparams = _lead_scope("mpl")
+    base = ("mpl.tenant_id=%s AND (mpl.customer_name ILIKE %s OR mpl.contact_person ILIKE %s "
+            "OR mpl.email ILIKE %s OR mpl.other_emails ILIKE %s)" + _ssql)
+    groups = (("pipeline", "mpl.is_opportunity AND mpl.dropped_at IS NULL"),
+              ("closed", "(mpl.dropped_at IS NOT NULL OR (NOT mpl.is_opportunity AND mpl.outcome IS NOT NULL))"))
+    out = {}
+    for key, cond in groups:
+        cur.execute(f"""SELECT count(*) OVER () AS total, mpl.id, mpl.customer_name, mpl.contact_person,
+                               mpl.email, mpl.stage, mpl.assigned_to, mpl.outcome, mpl.dropped_reason,
+                               COALESCE(mpl.dropped_at, mpl.updated_at) AS closed_at
+                          FROM merchant_pipeline_leads mpl WHERE {base} AND {cond}
+                         ORDER BY mpl.updated_at DESC NULLS LAST, mpl.id DESC LIMIT 5""",
+                    [tenant_id, like, like, like, like] + _sparams)
+        rows = [dict(r) for r in cur.fetchall()]
+        out[key] = {"total": int(rows[0]["total"]) if rows else 0, "rows": rows}
+    return out if (out["pipeline"]["total"] or out["closed"]["total"]) else None
+
+
 @portal_bp.route("/leads", methods=["GET", "POST"])
 @team_feature("leads.create", "leads.page")
 def leads_page():
@@ -36625,6 +36650,9 @@ def leads_page():
                     [tenant_id] + _tp)
         tier_counts = {row["lead_tier"]: row["c"] for row in cur.fetchall()}
 
+    found_elsewhere = _leads_found_elsewhere(cur, tenant_id, search) \
+        if (search and view_mode == "list" and page == 1) else None
+
     addr_opts = _addr.address_filter_options(
         cur, "merchant_pipeline_leads", tenant_id,
         "NOT t.is_opportunity AND t.dropped_at IS NULL AND t.outcome IS NULL")
@@ -36682,6 +36710,7 @@ def leads_page():
         stage_labels=pipeline_effective_stage_labels(tenant_id),
         score_labels=pipeline_effective_score_labels(tenant_id),
         view_mode=view_mode, board_columns=board_columns, hot_leads_smart=hot_leads_smart,
+        found_elsewhere=found_elsewhere,
         stage_order=PIPELINE_STAGE_ORDER,
         lf=lf, fargs=lf["fargs"], assignees=_lead_assignees(tenant_id, customer),
         actor_key=actor["key"], not_a_fit_reasons=PIPELINE_NOT_A_FIT_REASONS,

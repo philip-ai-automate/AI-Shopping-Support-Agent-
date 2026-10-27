@@ -153,6 +153,21 @@
 .lead-already { display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:700; color:#15803d; }
 
 .empty-leads { text-align:center; padding:60px 20px; color:var(--muted) }
+.fe-box { background:#fff; border:1px solid var(--border,#dce3ee); border-radius:12px; padding:24px; display:flex; flex-direction:column; gap:14px }
+.fe-title { font-size:17px; font-weight:700 }
+.fe-why, .fe-closed { margin:0; font-size:14px; line-height:1.5 }
+.fe-closed { color:var(--muted) }
+.fe-table-box { border:1px solid var(--border,#dce3ee); border-radius:10px; overflow-x:auto }
+.fe-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; background:#e8eef8; padding:10px 14px; font-size:14px; font-weight:600; color:#0b1d40 }
+.fe-head a { color:#0b1d40; text-decoration:underline }
+.fe-table { width:100%; min-width:720px; border-collapse:collapse; font-size:14px }
+.fe-table th { text-align:left; font-weight:500; font-size:13px; color:var(--muted); padding:9px 14px; border-bottom:1px solid var(--border,#dce3ee) }
+.fe-table td { padding:10px 14px; border-bottom:1px solid #eef2f7 }
+.fe-table tr:last-child td { border-bottom:0 }
+.fe-co { font-weight:600 }
+.fe-open { display:inline-flex; align-items:center; min-height:36px; padding:0 14px; border:1px solid #0b1d40; border-radius:8px; font-weight:600; color:#0b1d40; text-decoration:none }
+.fe-note { margin:0 0 10px; font-size:14px; color:var(--muted) }
+.fe-note a { font-weight:600 }
 .empty-leads-icon { font-size:48px; margin-bottom:14px }
 
 .section-title-row { display:flex; align-items:center; justify-content:space-between; margin:30px 0 14px; flex-wrap:wrap; gap:10px }
@@ -687,6 +702,40 @@
   {% endfor %}
 </div>
 
+{% elif not real_leads and found_elsewhere %}
+{# Search found nothing here but the business is in Sales Pipeline or closed (2026-10-27) #}
+{% set fe = found_elsewhere %}
+{% set _can_pipe = staff_can_open('portal.sales_pipeline') %}
+<div class="fe-box">
+  <div class="fe-title">No leads here match "{{ search }}"</div>
+  {% if fe.pipeline.total %}
+  <p class="fe-why">{{ 'This business is' if fe.pipeline.total == 1 else 'These are' }} already qualified, so {{ 'it is' if fe.pipeline.total == 1 else 'they are' }} in <strong>Sales Pipeline</strong>. All Leads only shows leads that haven't been qualified yet.</p>
+  <div class="fe-table-box">
+    <div class="fe-head">
+      <span>Found in Sales Pipeline · {{ fe.pipeline.total }}</span>
+      {% if _can_pipe %}<a href="{{ url_for('portal.sales_pipeline', q=search) }}">See all {{ fe.pipeline.total }} in Sales Pipeline →</a>{% endif %}
+    </div>
+    <table class="fe-table">
+      <thead><tr><th>Company</th><th>Contact</th><th>Email</th><th>Stage</th><th>Assigned To</th><th><span class="spf-sr">Open</span></th></tr></thead>
+      <tbody>
+      {% for l in fe.pipeline.rows %}
+      <tr>
+        <td class="fe-co">{{ l.customer_name or '—' }}</td><td>{{ l.contact_person or '—' }}</td><td>{{ l.email or '—' }}</td>
+        <td><span class="stage-pill st-{{ l.stage }}">{{ stage_labels.get(l.stage, l.stage) }}</span></td>
+        <td>{{ l.assigned_to or 'Unassigned' }}</td>
+        <td style="text-align:right"><a class="fe-open" href="{{ url_for('portal.lead_detail', lead_id=l.id) }}">Open</a></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% if fe.closed.total %}
+  {% set _ow = {'not_a_fit': 'Not a Fit', 'lost': 'Lost', 'dropped': 'Dropped'} %}
+  <p class="fe-closed">{% if fe.pipeline.total %}Also {% endif %}{{ fe.closed.total }} closed lead{{ 's' if fe.closed.total != 1 }}:
+    {% for l in fe.closed.rows %}<a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}">{{ l.contact_person or l.customer_name or 'Lead' }}</a> · {{ _ow.get(l.outcome, 'Closed') }}{% if l.dropped_reason %} ({{ l.dropped_reason }}){% endif %}, closed {{ l.closed_at.strftime('%-d %b') }}{{ '; ' if not loop.last }}{% endfor %}{% if fe.closed.total > fe.closed.rows|length %} and {{ fe.closed.total - fe.closed.rows|length }} more{% endif %}.</p>
+  {% endif %}
+</div>
 {% elif not real_leads %}
 <div class="empty-leads">
   <div class="empty-leads-icon">📇</div>
@@ -694,6 +743,9 @@
   <p style="max-width:380px;margin:0 auto">Add one by hand above, or create one from a Hot Conversation.</p>
 </div>
 {% else %}
+{% if found_elsewhere %}
+<p class="fe-note">{% if found_elsewhere.pipeline.total %}{{ found_elsewhere.pipeline.total }} more matching "{{ search }}" in {% if staff_can_open('portal.sales_pipeline') %}<a href="{{ url_for('portal.sales_pipeline', q=search) }}">Sales Pipeline →</a>{% else %}Sales Pipeline{% endif %}{% endif %}{% if found_elsewhere.pipeline.total and found_elsewhere.closed.total %} · {% endif %}{% if found_elsewhere.closed.total %}{{ found_elsewhere.closed.total }} closed{% endif %}</p>
+{% endif %}
 {% if can_bulk %}
 <div class="lb-bar" id="lbBar" hidden>
   <strong><span id="lbCount">0</span> selected</strong>
