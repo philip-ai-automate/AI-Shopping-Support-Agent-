@@ -66,7 +66,7 @@ def _rows(scope, only_tenant=None):
                    t.name AS business, t.created_at AS signed_up, t.trial_granted_at, t.trial_ends_at,
                    t.website_platform, t.domain, COALESCE(p.name, 'Free') AS plan_name, p.slug AS plan_slug,
                    t.billing_cycle, t.signup_channel, t.source_type,
-                   c.first_name, c.last_name, c.email, c.phone_number, c.last_login_at,
+                   c.first_name, c.last_name, c.email, c.phone_number, c.phone_verified, c.email_verified, c.last_login_at,
                    c.company_name, c.business_country, c.hear_about_us,
                    c.billing_address_line1, c.billing_city, c.billing_postcode, c.billing_country
               FROM platform_account_assignments a

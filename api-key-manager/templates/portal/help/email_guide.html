@@ -97,7 +97,7 @@
   <li><a href="#eml-camp">5. One-off campaigns</a><ol><li><a href="#eml-camp-new">New Campaign, step by step</a></li><li><a href="#eml-camp-report">Campaign reports</a></li></ol></li>
   <li><a href="#eml-seq">6. Sequences</a><ol><li><a href="#eml-seq-build">Build a sequence: the wizard</a></li><li><a href="#eml-seq-page">The sequence page</a></li><li><a href="#eml-seq-sender">Send as a person</a></li><li><a href="#eml-seq-schedule">Sending schedule</a></li><li><a href="#eml-seq-split">Split test</a></li><li><a href="#eml-seq-add">Add people</a></li><li><a href="#eml-seq-before">Before you start: connect the reply mailbox</a></li><li><a href="#eml-seq-start">Start and pause</a></li><li><a href="#eml-seq-people">The people list</a></li><li><a href="#eml-seq-track">Who opened, clicked and replied</a></li><li><a href="#eml-seq-stop">Why someone stopped</a></li><li><a href="#eml-seq-change">Changing a running sequence</a></li></ol></li>
   <li><a href="#eml-lead">7. On each lead</a></li>
-  <li><a href="#eml-outlook">8. Replies from Outlook</a><ol><li><a href="#eml-outlook-connect">Connect your mailbox</a></li><li><a href="#eml-outlook-reply">What happens to a reply</a></li><li><a href="#eml-outlook-which">Which mailbox to connect</a></li><li><a href="#eml-outlook-status">Needs reconnecting, IT approval, disconnect</a></li></ol></li>
+  <li><a href="#eml-outlook">8. Outlook: replies and emails you send</a><ol><li><a href="#eml-outlook-connect">Connect your mailbox</a></li><li><a href="#eml-outlook-reply">What happens to a reply</a></li><li><a href="#eml-outlook-sent">Emailing a deal from Outlook</a></li><li><a href="#eml-outlook-which">Which mailbox to connect</a></li><li><a href="#eml-outlook-status">Needs reconnecting, IT approval, disconnect</a></li></ol></li>
   <li><a href="#eml-routine">9. A sales executive's routine</a></li>
   <li><a href="#eml-fix">10. Problems and fixes</a></li>
   <li><a href="#eml-admin">11. For owners and IT</a></li>
@@ -519,9 +519,9 @@
 
 <!-- ═════ 8 ═════ -->
 <section class="part" id="eml-outlook">
-  <h2><span class="num">8</span>Replies from Outlook</h2>
+  <h2><span class="num">8</span>Outlook: replies and emails you send</h2>
   <p class="where">Side menu › Settings › Integration › Microsoft 365 (Outlook)</p>
-  <p>People reply to your emails in your own mailbox, not in PhiXtra. Connect your Outlook once, and every reply from someone your business emailed shows on their lead by itself, usually within two minutes. You no longer need to press "They replied".</p>
+  <p>People reply to your emails in your own mailbox, not in PhiXtra. Connect your Outlook once, and every reply from someone your business emailed shows on their lead by itself, usually within two minutes. You no longer need to press "They replied". Emails you send from Outlook to a deal in the Sales Pipeline are picked up too: see <a href="#eml-outlook-sent">Emailing a deal from Outlook</a>.</p>
   <div class="flow" role="img" aria-label="Email sent, they reply in Outlook, PhiXtra finds it, it shows on the lead">
     <div class="n"><b>1 · Email goes out</b>From a campaign or a sequence</div><i>→</i>
     <div class="n"><b>2 · They reply</b>The reply lands in your Outlook as normal</div><i>→</i>
@@ -541,7 +541,7 @@
   {{ shot('e29_ms_page', 'Connected mailbox', 'Connected: when it last checked, how many replies it has found, and the buttons to check now, switch mailbox or disconnect.') }}
   <div class="box know"><b class="t">Good to know</b><ul>
     <li>PhiXtra can only <b>read</b> your mail. It never sends, moves or deletes anything.</li>
-    <li>It only keeps replies from people your business emailed in the last 60 days. Everything else in your mailbox is skipped and never stored.</li>
+    <li>It only keeps replies from people your business emailed in the last 60 days, and emails you send to deals in the Sales Pipeline. Everything else in your mailbox is skipped and never stored.</li>
     <li>Out-of-office replies and bounced emails are ignored.</li>
     <li>It works with Microsoft 365 work accounts. Gmail is coming later.</li>
     <li>Don't see Integration in your menu? Your role needs the "Outlook mailbox (replies)" tick. Ask your manager or IT.</li>
@@ -556,7 +556,32 @@
     <li>The campaign report's <b>Replied</b> count goes up.</li>
     <li>Answer them from Outlook as you normally would.</li>
   </ul>
-  <div class="box tip"><b class="t">Tip</b><p>In a hurry? <span class="ui">Check for replies now</span> on the Microsoft 365 page checks straight away instead of waiting up to two minutes.</p></div>
+  <div class="box tip"><b class="t">Tip</b><p>In a hurry? <span class="ui">Check now</span> on the Microsoft 365 page checks straight away instead of waiting up to two minutes.</p></div>
+
+  <h3 id="eml-outlook-sent">Emailing a deal from Outlook</h3>
+  <p>Write to a deal from your own Outlook, and PhiXtra records it on the deal for you. You don't need to log the email by hand.</p>
+  <ol class="steps">
+    <li>Click the deal's email address: on the deal's page (Details › Email), or in the <b>Email</b> column of the Sales Pipeline list (turn the column on with the Columns button if it's hidden).</li>
+    <li>Choose <span class="ui">Open in Outlook on the web</span> or <span class="ui">Open in Outlook app (desktop)</span>. A new email opens with their address filled in. The desktop app only opens if Outlook is your computer's default email app. If it isn't, press <span class="ui">Copy email address</span> and paste it into Outlook, or change your default.</li>
+    <li>Write the email and press <b>Send</b> in Outlook as normal.</li>
+  </ol>
+  {{ shot('e34_email_menu', 'The email menu on a deal', 'Clicking a deal’s email: Outlook on the web, the Outlook app, or copy the address.') }}
+  <p>Within about two minutes of sending:</p>
+  <ul>
+    <li>The email shows on the deal's <b>✉️ Emails</b> tab as <b>Email sent</b>, with the subject, its first lines and <span class="ui">Open in Outlook ↗</span>.</li>
+    <li>A deal at <b>New Opportunity</b> moves to <b>Contacted</b>. A deal already further on keeps its stage.</li>
+    <li>It counts towards your Daily Target <b>Leads contacted</b>.</li>
+    <li>Your next follow-up is booked by email, the number of days later that you chose (below).</li>
+  </ul>
+  <p>Any email you send from your connected Outlook to a deal's address counts, even one you didn't start from PhiXtra. Emails to leads still in All Leads (not yet on the Sales Pipeline) aren't picked up.</p>
+  <h4>Choose your follow-up days</h4>
+  <p>On <b>Settings › Integration › Microsoft 365 (Outlook)</b>, type a number in <span class="f">Follow-up after … days</span> and press <span class="ui">Save</span>. It's your own setting: each person on the team chooses their own.</p>
+  {{ shot('e33_followup_days', 'Follow-up after days', 'Your own follow-up days, on the Microsoft 365 page.') }}
+  <div class="box know"><b class="t">Good to know</b><ul>
+    <li>Until you choose a number, the email is still recorded and the deal still moves to Contacted, but no follow-up is booked. The page shows an amber reminder.</li>
+    <li>The date isn't moved for weekends. If it lands on a Saturday or Sunday, change it on the deal with <span class="ui">Reschedule</span>.</li>
+    <li>Not connected yet? Clicking the email shows <b>Connect your Outlook first</b>, with a button to the Integration page and <span class="ui">Copy email address</span>.</li>
+  </ul></div>
 
   <h3 id="eml-outlook-which">Which mailbox to connect</h3>
   <p>Connect the mailbox your replies go to. Every campaign and sequence has a <b>Replies go to</b> address, which starts as your own email. If you connect a different mailbox, the page warns you: "Your campaign emails ask people to reply to …".</p>

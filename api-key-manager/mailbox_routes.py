@@ -20,6 +20,17 @@ counts as a reply only if it's FROM someone this business emailed in the
 A reply does exactly what the lead's "They replied" button does: history
 entry, New → Contacted, running sequences stop, campaign report Replied.
 Nothing else in the mailbox is stored. Microsoft access: outlook_mail.py.
+
+Emails sent to a deal (2026-10-28, approved mock-up
+https://claude.ai/artifact/UxyxdHVQMCwyqxJZjjvDVT): clicking a deal's email
+in the Sales Pipeline opens a new email in the person's connected Outlook
+(web or desktop). An email the person sends from that mailbox to an open
+Sales Pipeline deal goes on the deal's Emails tab, moves a New Opportunity
+to Contacted, counts towards their Daily Target ("email_sent") and books the
+next follow-up their own "follow-up after N days" later (no weekend skip;
+nothing booked until they choose N).
+
+  POST /integrations/microsoft/followup-days      save my follow-up days
 """
 import secrets
 import threading
@@ -30,7 +41,9 @@ import psycopg2.extras
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
 import email_outreach
+import lead_followups as _fu
 import outlook_mail as M
+import staff_activity
 from db import get_db_connection
 from feature_access import public_route, team_feature
 from portal_routes import (
@@ -43,6 +56,7 @@ KEY = "campaigns_email.mailbox_connect"
 CHECK_EVERY = timedelta(minutes=2)
 LOOK_BACK_FIRST = timedelta(days=14)    # first check after connecting
 MATCH_WINDOW = timedelta(days=60)       # reply must come within 60 days of our email
+FOLLOWUP_DAYS_MAX = 60
 
 mailbox_bp = Blueprint("mailbox", __name__)
 mailbox_bp.context_processor(_inject_granted_features)
@@ -90,6 +104,32 @@ def team_mailboxes(tenant_id: int) -> list:
         cur.close(); conn.close()
 
 
+def followup_days(tenant_id: int, owner_key: str):
+    """This person's own "follow-up after N days" for emails they send, or None."""
+    conn, cur = _db()
+    try:
+        cur.execute("SELECT days FROM mailbox_followup_days WHERE tenant_id=%s AND owner_key=%s", (tenant_id, owner_key))
+        row = cur.fetchone()
+        return row["days"] if row else None
+    finally:
+        cur.close(); conn.close()
+
+
+@mailbox_bp.app_context_processor
+def _compose_helper():
+    """outlook_compose() in templates: the logged-in person's connected
+    mailbox address (to write from), or None. Only queried when called."""
+    def outlook_compose():
+        try:
+            customer = _get_customer(_customer_id())
+            mb = _my_mailbox(int(customer["tenant_id"]), _current_actor(customer)["key"]) if customer else None
+            return mb["email"] if mb and mb["status"] == "active" else None
+        except Exception as e:
+            print("⚠️ outlook_compose error:", e)
+            return None
+    return {"outlook_compose": outlook_compose}
+
+
 def card_summary(customer: dict) -> dict:
     """What the Integration page's Microsoft card shows."""
     tenant_id = int(customer["tenant_id"])
@@ -130,7 +170,7 @@ def page():
         mismatch=bool(mine and reply_to and mine["email"] and mine["email"].lower() != reply_to),
         is_manager=is_manager, team=team_mailboxes(tenant_id) if is_manager else [],
         configured=M.configured(), expired=M.secret_expired(), consent_url=M.admin_consent_url(),
-        me_key=me_key,
+        me_key=me_key, followup_days=followup_days(tenant_id, me_key), followup_days_max=FOLLOWUP_DAYS_MAX,
     )
 
 
@@ -243,11 +283,39 @@ def check_now():
         return redirect(url_for("mailbox.page"))
     res = check_mailbox(mine["id"], force=True)
     if res.get("ok"):
-        n = res.get("found", 0)
-        flash(f"Checked just now: {n} new repl{'y' if n == 1 else 'ies'} added to leads." if n else
-              "Checked just now: no new replies from people you've emailed.", "success")
+        n, sent = res.get("found", 0), res.get("sent", 0)
+        parts = ([f"{n} new repl{'y' if n == 1 else 'ies'} added to leads"] if n else []) + \
+                ([f"{sent} email{'' if sent == 1 else 's'} you sent added to deals"] if sent else [])
+        flash("Checked just now: " + " and ".join(parts) + "." if parts else
+              "Checked just now: no new replies, and no new emails you sent to deals.", "success")
     else:
         flash(res.get("error") or "Couldn't check the mailbox. Please try again.", "danger")
+    return redirect(url_for("mailbox.page"))
+
+
+@mailbox_bp.route("/integrations/microsoft/followup-days", methods=["POST"])
+@team_feature(KEY)
+def save_followup_days():
+    r = _require_login()
+    if r:
+        return r
+    customer = _get_customer(_customer_id())
+    r = _plan_gate(customer) or _require_team_permission(KEY)
+    if r:
+        return r
+    raw = (request.form.get("days") or "").strip()
+    if not raw.isdigit() or not 1 <= int(raw) <= FOLLOWUP_DAYS_MAX:
+        flash(f"Enter a number of days from 1 to {FOLLOWUP_DAYS_MAX}.", "danger")
+        return redirect(url_for("mailbox.page"))
+    conn, cur = _db()
+    try:
+        cur.execute("""INSERT INTO mailbox_followup_days (tenant_id, owner_key, days) VALUES (%s,%s,%s)
+                       ON CONFLICT (tenant_id, owner_key) DO UPDATE SET days=EXCLUDED.days, updated_at=NOW()""",
+                    (int(customer["tenant_id"]), _current_actor(customer)["key"], int(raw)))
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    flash(f"Saved. Emails you send to deals now book a follow-up {raw} day{'' if raw == '1' else 's'} later.", "success")
     return redirect(url_for("mailbox.page"))
 
 
@@ -382,6 +450,79 @@ def _record_reply(cur, mb, msg, sender: str, received: datetime, token: str) -> 
     return True
 
 
+def _record_sent(cur, mb, msg, sent_at: datetime) -> list:
+    """An email this person sent from Outlook to open Sales Pipeline deals:
+    on each deal's Emails tab, New Opportunity → Contacted. Returns what to
+    do once committed (Daily Target, follow-up) — one entry per deal."""
+    to = sorted({((r.get("emailAddress") or {}).get("address") or "").strip().lower()
+                 for r in (msg.get("toRecipients") or [])} - {"", (mb["email"] or "").lower()})
+    if not to:
+        return []
+    cur.execute("""SELECT id, stage, email, wa_contact_id FROM merchant_pipeline_leads l
+                   WHERE l.tenant_id=%s AND l.is_opportunity AND l.outcome IS NULL AND l.dropped_at IS NULL
+                     AND (lower(l.email) = ANY(%s)
+                          OR string_to_array(lower(COALESCE(l.other_emails, '')), ', ') && %s::text[])""",
+                (mb["tenant_id"], to, to))
+    deals = cur.fetchall()
+    if not deals:
+        return []   # not to a deal: skipped, never stored
+    who = mb["owner_label"] or mb["email"]
+    subject = (msg.get("subject") or "").strip()[:500]
+    days = None
+    cur.execute("SELECT days FROM mailbox_followup_days WHERE tenant_id=%s AND owner_key=%s", (mb["tenant_id"], mb["owner_key"]))
+    row = cur.fetchone()
+    if row:
+        from team_performance import tz_for
+        days = row["days"]
+        due = sent_at.astimezone(tz_for(mb["tenant_id"])).date() + timedelta(days=days)
+    after = []
+    for d in deals:
+        addr = (d["email"] or "").lower() if (d["email"] or "").lower() in to else to[0]
+        cur.execute("""INSERT INTO mailbox_sent_emails (tenant_id, mailbox_id, message_id, lead_id, to_email, subject,
+                           snippet, web_link, sent_at, followup_due)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (mailbox_id, message_id, lead_id) DO NOTHING RETURNING id""",
+                    (mb["tenant_id"], mb["id"], msg["id"], d["id"], addr, subject,
+                     M.reply_lines(msg.get("bodyPreview")), msg.get("webLink"), sent_at, due if days else None))
+        row = cur.fetchone()
+        if not row:
+            continue   # already on the deal (or the other portal worker got there first)
+        cur.execute("""INSERT INTO email_events (tenant_id, lead_id, contact_id, email, kind, detail, actor, created_at)
+                       VALUES (%s,%s,%s,%s,'outlook_sent',%s,%s,%s) RETURNING id""",
+                    (mb["tenant_id"], d["id"], d["wa_contact_id"], addr, subject or None, f"Outlook ({who})", sent_at))
+        cur.execute("UPDATE mailbox_sent_emails SET event_id=%s WHERE id=%s", (cur.fetchone()["id"], row["id"]))
+        if d["stage"] == "new_lead":
+            cur.execute("""UPDATE merchant_pipeline_leads SET stage='contacted', contact_channel='email',
+                               contact_date=COALESCE(contact_date, CURRENT_DATE), updated_at=NOW()
+                           WHERE id=%s AND stage='new_lead'""", (d["id"],))
+            if cur.rowcount:
+                cur.execute("""INSERT INTO merchant_pipeline_stage_history (lead_id, from_stage, to_stage, changed_by, notes)
+                               VALUES (%s, 'new_lead', 'contacted', %s, %s)""",
+                            (d["id"], f"Outlook ({who})"[:100], f"Emailed from Outlook — “{subject or 'no subject'}”"))
+        else:
+            cur.execute("UPDATE merchant_pipeline_leads SET updated_at=NOW() WHERE id=%s", (d["id"],))
+        after.append({"lead_id": d["id"], "contact_id": d["wa_contact_id"], "subject": subject,
+                      "due": due if days else None})
+    return after
+
+
+def _after_sent(mb, done: list) -> None:
+    """Once the deal rows are saved: the Daily Target / Team performance
+    entry for the person, and their follow-up booked N days on."""
+    who = mb["owner_label"] or mb["email"]
+    actor = {"key": mb["owner_key"], "label": who}
+    for d in done:
+        staff_activity.log("email_sent", mb["tenant_id"], lead_id=d["lead_id"], contact_id=d["contact_id"],
+                           actor_key=mb["owner_key"], actor_name=who,
+                           detail=f"Outlook · {d['subject'] or 'no subject'}"[:500])
+        if d["due"]:
+            try:
+                _fu.record_contact(mb["tenant_id"], d["lead_id"], "email_sent", actor, due=d["due"],
+                                   source="email_sent", channel="email")
+            except Exception as e:
+                print(f"⚠️ mailbox {mb['id']} follow-up error (deal {d['lead_id']}):", e)
+
+
 def check_mailbox(mb_id: int, force: bool = False) -> dict:
     conn, cur = _db()
     try:
@@ -408,13 +549,28 @@ def check_mailbox(mb_id: int, force: bool = False) -> dict:
         token = _access_token(cur, mb)
         since = mb["watermark"] or (mb["connected_at"] - LOOK_BACK_FIRST)
         messages = M.messages_since(token, since)
-        found, newest = 0, mb["watermark"]
+        found, sent, newest = 0, 0, mb["watermark"]
         own = (mb["email"] or "").lower()
         for msg in messages:
             received = _parse_dt(msg["receivedDateTime"])
             newest = max(newest, received) if newest else received
             sender = (((msg.get("from") or {}).get("emailAddress") or {}).get("address") or "").lower()
-            if not sender or sender == own:
+            if sender and sender == own:
+                # Sent by this person. Only from when they connected: the
+                # first look-back is for replies, not to book old follow-ups.
+                if received < mb["connected_at"]:
+                    continue
+                try:
+                    done = _record_sent(cur, mb, msg, received)
+                    conn.commit()
+                    if done:
+                        sent += len(done)
+                        _after_sent(mb, done)
+                except Exception as e:
+                    conn.rollback()
+                    print(f"⚠️ mailbox {mb_id} sent {msg.get('id', '')[:20]} error:", e)
+                continue
+            if not sender:
                 continue
             try:
                 if _record_reply(cur, mb, msg, sender, received, token):
@@ -427,7 +583,7 @@ def check_mailbox(mb_id: int, force: bool = False) -> dict:
                            last_error=NULL, replies_found=replies_found+%s, updated_at=NOW() WHERE id=%s""",
                     (newest, found, mb_id))
         conn.commit()
-        return {"ok": True, "found": found}
+        return {"ok": True, "found": found, "sent": sent}
     except M.GraphError as e:
         conn.rollback()
         if e.code in ("reconnect", "consent"):

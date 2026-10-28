@@ -82,6 +82,11 @@
   .pager .per-page select{padding:5px 8px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;background:#fff}
   .pager .pages{display:flex;align-items:center;gap:8px}
   .pager .btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
+  .signup-week{display:flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:14px;background:#fff;margin-bottom:14px;overflow:hidden}
+  .signup-week div{flex:1 1 160px;padding:12px 16px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:2px}
+  .signup-week div:last-child{border-right:0}
+  .signup-week b{font-size:22px;font-weight:800;color:#0B1D40;font-variant-numeric:tabular-nums}
+  .signup-week span{font-size:12.5px;color:var(--muted)}
   .clear-all-link{color:var(--bad);font-size:12.5px;font-weight:650;padding:9px 6px;align-self:center}
 </style>
 
@@ -114,6 +119,16 @@
     </div>
   </div>
 </div>
+
+{# Sign-ups need WhatsApp + email codes before an account exists (2026-10-27).
+   "Didn't finish" is a count only — no details are kept, so nobody chases them. #}
+{% if signup_week %}
+<div class="signup-week" aria-label="Sign-ups in the last 7 days">
+  <div><b>{{ signup_week.started }}</b><span>started sign-up (last 7 days)</span></div>
+  <div><b>{{ signup_week.finished }}</b><span>confirmed WhatsApp + email and got an account</span></div>
+  <div><b>{{ signup_week.not_finished }}</b><span>didn't finish (no details kept)</span></div>
+</div>
+{% endif %}
 
 <form method="GET" id="filtersForm">
   <div class="toolbar">
@@ -239,7 +254,7 @@
     </div>
     <div class="cc-fields">
       <div class="cc-field"><span>Email</span><span title="{{ c.email }}">{{ c.email }}</span></div>
-      <div class="cc-field"><span>Phone</span><span>{{ c.phone }}</span></div>
+      <div class="cc-field"><span>Phone</span><span>{{ c.phone }}{% if c.phone_ok %} <span class="pill pill-green" title="Confirmed by WhatsApp code">WhatsApp ✓</span>{% endif %}</span></div>
       {% if c.domain %}<div class="cc-field"><span>Domain</span><span title="{{ c.domain }}">{{ c.domain }}</span></div>{% endif %}
       {% if c.balance_credits is not none %}<div class="cc-field"><span>Balance</span><span><strong>{{ "%.1f"|format(c.balance_credits) }}</strong> cr</span></div>{% endif %}
       <div class="cc-field"><span>Plan</span><span>{{ c.plan_name }}</span></div>
@@ -319,7 +334,7 @@
           <td><span class="truncate" title="{{ c.business_name }}">{{ c.business_name }}</span></td>
           <td><span class="pill pill-grey">{{ PRODUCT_LABELS[c.product] }}</span></td>
           <td><span class="truncate" title="{{ c.email }}">{{ c.email }}</span></td>
-          <td class="muted">{{ c.phone }}</td>
+          <td class="muted">{{ c.phone }}{% if c.phone_ok %} <span class="pill pill-green" title="Confirmed by WhatsApp code">WhatsApp ✓</span>{% endif %}</td>
           <td class="muted">{{ c.plan_name }}</td>
           <td>
             {% if c.verified %}<span class="pill pill-green">✓</span>

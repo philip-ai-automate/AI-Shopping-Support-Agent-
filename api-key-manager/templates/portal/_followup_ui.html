@@ -4,12 +4,15 @@
    = month calendar with each day's follow-ups as dots. Needs `fu_ui` from
    _fu_ui_context(). #}
 <style>
+  /* 2026-10-28: the box scrolls inside itself, title and Save bar stay put, the page behind never moves. */
   .fx-back { position:fixed; inset:0; background:rgba(3,12,24,.5); z-index:2000; display:flex; align-items:flex-start;
-             justify-content:center; padding:4vh 16px; overflow-y:auto }
+             justify-content:center; padding:3vh 16px; overflow:hidden; overscroll-behavior:contain }
   .fx-back[hidden] { display:none !important }
-  .fx-box { background:#fff; border-radius:16px; width:100%; max-width:640px; box-shadow:0 20px 60px rgba(3,12,24,.28); color:#111E2D; font-size:13.5px }
+  .fx-box { background:#fff; border-radius:16px; width:100%; max-width:640px; box-shadow:0 20px 60px rgba(3,12,24,.28); color:#111E2D; font-size:13.5px;
+            max-height:94vh; max-height:94dvh; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch }
   .fx-box.wide { max-width:780px }
-  .fx-head { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:16px 22px; border-bottom:1px solid #E3E8F1 }
+  .fx-head { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:16px 22px; border-bottom:1px solid #E3E8F1;
+             position:sticky; top:0; z-index:3; background:#fff; border-radius:16px 16px 0 0 }
   .fx-head h3 { margin:0; font-size:16px; font-weight:800; color:#0B1D40 }
   .fx-head small { display:block; font-size:12.5px; color:#5A6B85; font-weight:600; margin-top:2px }
   .fx-x { background:none; border:0; font-size:24px; line-height:1; cursor:pointer; color:#5A6B85; padding:4px }
@@ -25,6 +28,7 @@
   .fx-seg button { font:inherit; font-size:13px; font-weight:700; border:1.5px solid #E3E8F1; background:#fff; color:#111E2D;
                    border-radius:10px; padding:9px 13px; cursor:pointer; display:inline-flex; gap:7px; align-items:center }
   .fx-seg button[aria-pressed="true"] { border-color:#0B1D40; background:#E8EEF8; color:#0B1D40 }
+  .fx-seg button[hidden], .fx-chip[hidden] { display:none }
   .fx-seg svg, .fx-chip svg { width:15px; height:15px; flex:none }
   .fx-chips { display:flex; gap:6px; flex-wrap:wrap }
   .fx-chip { font:inherit; font-size:13px; font-weight:600; border:1.5px solid #E3E8F1; background:#fff; color:#111E2D;
@@ -50,7 +54,10 @@
   .fx-close { border:1.5px solid #F3C2C2; background:#FDECEC; border-radius:10px; padding:12px 14px; display:grid; gap:8px }
   .fx-close b { color:#B42318 }
   .fx-foot { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 22px; background:#F8FAFD;
-             border-top:1px solid #E3E8F1; border-radius:0 0 16px 16px }
+             border-top:1px solid #E3E8F1; border-radius:0 0 16px 16px; position:sticky; bottom:0; z-index:3 }
+  .fx-ask-back { z-index:2100; align-items:center }
+  .fx-box.fx-ask { max-width:420px }
+  .fx-ask p { margin:0; padding:16px 22px; font-size:14px }
   .fx-hint { font-size:12.5px; color:#5A6B85; flex:1; min-width:200px }
   .fx-hint.err { color:#B42318; font-weight:700 }
   .fx-btn { font:inherit; font-size:13.5px; font-weight:800; border-radius:9px; padding:10px 16px; cursor:pointer; border:1.5px solid #E3E8F1;
@@ -81,11 +88,16 @@
   .fx-picked { background:#F8FAFD; border:1px solid #E3E8F1; border-radius:10px; padding:10px 12px; font-size:13.5px }
   .fx-picked b { color:#0B1D40 }
   .fx-res { display:grid; grid-template-columns:minmax(0,320px) minmax(0,1fr); gap:22px; padding:18px 22px; align-items:start }
-  @media (max-width:680px) {
+  /* Tablets and phones: calendar on top, full width; the boxes under it. */
+  @media (max-width:900px), (pointer:coarse) {
     .fx-next, .fx-res { grid-template-columns:minmax(0,1fr) }
+    .fx-next .fx-cal, .fx-res .fx-cal { max-width:480px }
+  }
+  @media (max-width:680px) {
     .fx-row { grid-template-columns:minmax(0,1fr) }
     .fx-step { padding:14px 16px; grid-template-columns:minmax(0,1fr) } .fx-n { display:none }
-    .fx-back { padding:0 } .fx-box { border-radius:0; min-height:100% }
+    .fx-back { padding:0 } .fx-box { border-radius:0; height:100%; max-height:none } .fx-head, .fx-foot { border-radius:0 }
+    .fx-ask-back { padding:16px } .fx-box.fx-ask { height:auto; border-radius:16px }
   }
 </style>
 
@@ -149,6 +161,17 @@
       <div style="display:flex;gap:8px"><button type="button" class="fx-btn" data-fx-close>Cancel</button>
         <button type="submit" class="fx-btn primary" id="fxLogSave">Save</button></div></div>
   </form>
+</div>
+
+{# ── Asked before closing a box with unsaved typing (2026-10-28) ── #}
+<div class="fx-back fx-ask-back" id="fxAsk" hidden role="alertdialog" aria-modal="true" aria-labelledby="fxAskTitle">
+  <div class="fx-box fx-ask">
+    <div class="fx-head"><h3 id="fxAskTitle">Discard what you wrote?</h3></div>
+    <p>What you entered for this lead hasn't been saved yet.</p>
+    <div class="fx-foot"><span></span><div style="display:flex;gap:8px">
+      <button type="button" class="fx-btn" id="fxAskDrop">Discard</button>
+      <button type="button" class="fx-btn primary" id="fxAskKeep">Keep editing</button></div></div>
+  </div>
 </div>
 
 {# ── Reschedule / set a date ── #}
@@ -257,11 +280,49 @@ var FU = (function () {
       .then(function (r) { return r.json(); }).then(function (d) { who = d.person || 'They'; cal.setLoad(d.days); after(); })
       .catch(function () {});
   }
-  function show(id) { $(id).hidden = false; document.body.style.overflow = 'hidden'; }
-  function hide() { ['fxLog', 'fxRes'].forEach(function (i) { $(i).hidden = true; }); document.body.style.overflow = ''; }
-  document.querySelectorAll('[data-fx-close]').forEach(function (b) { b.onclick = hide; });
-  ['fxLog', 'fxRes'].forEach(function (i) { $(i).addEventListener('mousedown', function (e) { if (e.target.id === i) hide(); }); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(); });
+  /* 2026-10-28: a touch outside never closes a box (on a tablet that is where you scroll);
+     only × / Cancel / Save do, and × / Cancel ask first when something was typed.
+     The page behind is pinned so iPad scrolling can't move it. */
+  var lockY = 0;
+  function lockPage() {
+    var b = document.body.style; if (b.position === 'fixed') return;
+    lockY = window.scrollY; b.position = 'fixed'; b.top = -lockY + 'px'; b.left = '0'; b.right = '0'; b.overflow = 'hidden';
+  }
+  function unlockPage() {
+    var b = document.body.style; if (b.position !== 'fixed') return;
+    b.position = ''; b.top = ''; b.left = ''; b.right = ''; b.overflow = ''; window.scrollTo(0, lockY);
+  }
+  function show(id) { $(id).hidden = false; $(id).querySelector('.fx-box').scrollTop = 0; lockPage(); }
+  function hide() { ['fxLog', 'fxRes', 'fxAsk'].forEach(function (i) { $(i).hidden = true; }); unlockPage(); }
+  function openBox() { return !$('fxLog').hidden ? L : (!$('fxRes').hidden ? R : null); }
+  function tryClose() {
+    var st = openBox(); if (!st || !$('fxAsk').hidden) return;
+    if (st.dirty) { $('fxAsk').hidden = false; $('fxAskKeep').focus(); } else hide();
+  }
+  document.querySelectorAll('[data-fx-close]').forEach(function (b) { b.onclick = tryClose; });
+  $('fxAskKeep').onclick = function () { $('fxAsk').hidden = true; };
+  $('fxAskDrop').onclick = function () { var st = openBox(); if (st) draftDrop(st.key); hide(); };
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (!$('fxAsk').hidden) $('fxAsk').hidden = true; else tryClose();
+  });
+
+  /* Drafts: what was typed is kept on this device per lead until Save or Discard,
+     so a box that closes (or a page that reloads) opens again as it was. */
+  function draftGet(k) {
+    try { var d = JSON.parse(localStorage.getItem(k) || 'null'); return d && Date.now() - d.t < 14 * 864e5 ? d : null; } catch (e) { return null; }
+  }
+  function draftPut(k, v) { try { v.t = Date.now(); localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  function draftDrop(k) { try { if (k) localStorage.removeItem(k); } catch (e) {} }
+  function watch(form, save) {
+    form.addEventListener('input', save);
+    form.addEventListener('change', save);
+    form.addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (b && b.type !== 'submit' && !b.hasAttribute('data-fx-close') && !b.closest('[data-nav]')) setTimeout(save, 0);
+    });
+  }
+  function usable(k) { return k && iso2d(k) >= TODAY && iso2d(k) <= MAX; }
 
   /* ── Log what happened ── */
   var L = {};
@@ -314,6 +375,12 @@ var FU = (function () {
   }
   $('fxKinds').addEventListener('click', function (e) { var b = e.target.closest('button'); if (b) setKind(b.dataset.k); });
   logCh.addEventListener('click', function () { setTimeout(sync, 0); });
+  watch($('fxLogForm'), function () {
+    if (!L.key) return;
+    L.dirty = true;
+    draftPut(L.key, { kind: $('fxKind').value, result: $('fxResult').value, minutes: $('fxMinutes').value, note: $('fxNote').value,
+                      date: $('fxLogDate').value, channel: $('fxLogChannel').value, next: $('fxNextNote').value, naf: $('fxNaf').value });
+  });
   $('fxNextNote').addEventListener('input', sync);
   $('fxLogForm').addEventListener('submit', function (e) {
     var noNote = !$('fxNote').value.trim();
@@ -323,18 +390,35 @@ var FU = (function () {
                : (L.open && !closing() && !$('fxLogChannel').value ? 'Choose how you will follow up.'
                : (L.open && !closing() && !$('fxNextNote').value.trim() ? 'Write what to do next time.' : '')))));
     if (miss) { e.preventDefault(); hint.textContent = miss; hint.className = 'fx-hint err'; if (noNote && $('fxResult').value) $('fxNote').focus(); return; }
-    $('fxLogSave').disabled = true;
+    $('fxLogSave').disabled = true; draftDrop(L.key);
   });
 
   function openLog(o) {
-    L = { open: o.open !== false, canClose: o.canClose !== false, hasEmail: !!o.hasEmail, nextChannelSet: false };
+    L = { open: o.open !== false, canClose: o.canClose !== false, hasEmail: !!o.hasEmail, nextChannelSet: false,
+          key: o.leadId ? 'fxDraft:log:' + o.leadId : '', dirty: false };
     $('fxLogForm').action = CFG.log_url.replace('/0/', '/' + o.leadId + '/');
     $('fxLogName').textContent = o.name || '';
     document.querySelectorAll('.fxBack').forEach(function (i) { i.value = o.back || (location.pathname + location.search); });
     $('fxMinutes').value = ''; $('fxNote').value = ''; $('fxNextNote').value = '';
     $('fxLogSave').disabled = false;
     setChannel(logCh, ''); logCal.reset(null); who = 'They';
-    setKind(o.kind || ''); if (o.result) setResult(o.result);
+    // LinkedIn is logged on Sales Pipeline deals only, not on leads (2026-10-28).
+    var noLi = o.opp === false;
+    $('fxKinds').querySelector('[data-k="linkedin"]').hidden = noLi;
+    logCh.querySelector('[data-v="linkedin"]').hidden = noLi;
+    setKind(o.kind && !(noLi && o.kind === 'linkedin') ? o.kind : ''); if (o.result) setResult(o.result);
+    var d = draftGet(L.key);
+    if (d && noLi) { if (d.kind === 'linkedin') { d.kind = ''; d.result = ''; } if (d.channel === 'linkedin') d.channel = ''; }
+    if (d) {
+      if (d.kind) setKind(d.kind);
+      if (d.result) setResult(d.result);
+      $('fxMinutes').value = d.minutes || ''; $('fxNote').value = d.note || ''; $('fxNextNote').value = d.next || '';
+      if (d.naf) $('fxNaf').value = d.naf;
+      if (d.channel) { setChannel(logCh, d.channel); L.nextChannelSet = true; }
+      if (usable(d.date)) logCal.pick(d.date);
+      L.dirty = true; sync();
+      $('fxLogHint').textContent = 'Carried on from what you typed before. ' + $('fxLogHint').textContent;
+    }
     show('fxLog'); loadBusy(o.leadId, logCal, function () { pickedLine($('fxLogPicked'), logCal.sel, logCal); });
   }
 
@@ -347,11 +431,16 @@ var FU = (function () {
     var miss = !$('fxResDate').value ? 'Pick a day on the calendar.' : (!$('fxResChannel').value ? 'Choose how you will follow up.'
                : (!$('fxResNote').value.trim() ? 'Write what to do.' : (moving && !$('fxResWhy').value.trim() ? "Say why it's moving." : '')));
     if (miss) { e.preventDefault(); $('fxResHint').textContent = miss; $('fxResHint').className = 'fx-hint err'; return; }
-    $('fxResSave').disabled = true;
+    $('fxResSave').disabled = true; draftDrop(R.key);
   });
   var R = {};
+  watch($('fxResForm'), function () {
+    if (!R.key) return;
+    R.dirty = true;
+    draftPut(R.key, { date: $('fxResDate').value, channel: $('fxResChannel').value, note: $('fxResNote').value, why: $('fxResWhy').value });
+  });
   function openResched(o) {
-    R = { due: o.due || null };
+    R = { due: o.due || null, key: o.leadId ? 'fxDraft:res:' + o.leadId : '', dirty: false };
     $('fxResForm').action = CFG.set_url.replace('/0/', '/' + o.leadId + '/');
     $('fxResTitle').textContent = o.due ? 'Change follow-up date' : 'Set a follow-up date';
     $('fxResName').textContent = o.name || '';
@@ -360,8 +449,17 @@ var FU = (function () {
     $('fxResHint').textContent = o.moved >= 2 ? 'This follow-up has been moved ' + o.moved + ' times already.' : ''; $('fxResHint').className = 'fx-hint';
     $('fxResSave').disabled = false; $('fxResSave').textContent = o.due ? 'Save new date' : 'Save date';
     document.querySelectorAll('.fxBack').forEach(function (i) { i.value = o.back || (location.pathname + location.search); });
-    setChannel(resCh, o.channel || ''); who = 'They';
+    var noLiR = o.opp === false;
+    resCh.querySelector('[data-v="linkedin"]').hidden = noLiR;
+    setChannel(resCh, o.channel && !(noLiR && o.channel === 'linkedin') ? o.channel : ''); who = 'They';
     resCal.reset(o.due || null);
+    var d = draftGet(R.key);
+    if (d) {
+      $('fxResNote').value = d.note || ''; $('fxResWhy').value = d.why || '';
+      if (d.channel && !(noLiR && d.channel === 'linkedin')) setChannel(resCh, d.channel);
+      if (usable(d.date)) resCal.pick(d.date);
+      R.dirty = true; $('fxResHint').textContent = 'Carried on from what you typed before.'; $('fxResHint').className = 'fx-hint';
+    }
     show('fxRes'); loadBusy(o.leadId, resCal, function () { pickedLine($('fxResPicked'), resCal.sel, resCal); });
   }
 

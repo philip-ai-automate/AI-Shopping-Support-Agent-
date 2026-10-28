@@ -2,8 +2,8 @@
 {% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% from "portal/_address_box.html" import emails_cell, other_emails_box, address_box, location_cell with context %}
 {% from "portal/_biz_fields.html" import biz_inputs with context %}
-{% set _fx_lead = {'leadId': lead.id, 'name': lead.customer_name, 'open': lead_open, 'canClose': lead_open, 'hasEmail': (lead.email and true) or false} %}
-{% block title %}{{ lead.customer_name }} — Lead — PhiXtra Portal{% endblock %}
+{% set _fx_lead = {'leadId': lead.id, 'name': lead.customer_name, 'open': lead_open, 'canClose': lead_open, 'hasEmail': (lead.email and true) or false, 'opp': (lead.is_opportunity and true) or false} %}
+{% block title %}{{ lead.customer_name }} — {{ 'Opportunity' if lead.is_opportunity else 'Lead' }} — PhiXtra Portal{% endblock %}
 
 {% block head %}
 <style>
@@ -67,13 +67,40 @@
 .li-hist{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.7}
 .li-arrow{color:#cbd5e1}
 .modal-confirm{flex:1;padding:10px;border:none;background:var(--ink);color:#fff;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+/* Opportunity page (2026-10-28) */
+.opp-tag{background:#E8EEF8;color:#0B1D40;border-radius:6px;padding:2px 8px;font-weight:700}
+.opp-stage{padding:18px 24px;border-top:1px solid var(--line);display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.opp-stage-head{display:flex;justify-content:space-between;align-items:center}
+.opp-link{background:none;border:0;padding:0;font:inherit;font-size:12.5px;font-weight:700;color:#2563eb;cursor:pointer}
+.opp-stage-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;min-width:0}
+.opp-steps{flex:1 1 520px;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;min-width:0}
+.opp-step{min-height:44px;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12.5px;font-weight:700;text-align:center;padding:4px 6px;box-sizing:border-box}
+.opp-step.done{background:#E8EEF8;color:#0B1D40}
+.opp-step.now{background:#0B1D40;color:#fff;font-weight:800}
+.opp-step.todo{border:1.5px dashed #C9D3E3;color:#5A6B85;font-weight:600}
+.opp-step svg{width:14px;height:14px;flex:none}
+.opp-move{min-height:44px;padding:0 18px;border-radius:9px;border:0;background:#0B1D40;color:#fff;font:inherit;font-size:13.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+.opp-closed{font-size:13px;font-weight:700;border-radius:8px;padding:10px 12px;background:#F8FAFD;color:var(--ink)}
+.opp-closed.won{background:#f0fdf4;color:#15803d}
+.opp-closed.lost,.opp-closed.not_a_fit{background:#fef2f2;color:#b91c1c}
+.opp-facts{padding:16px 24px;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.opp-fact{font-size:15px;font-weight:700;color:var(--ink)}
+@media (max-width:760px){
+  .opp-steps{grid-template-columns:repeat(5,minmax(104px,1fr));overflow-x:auto;flex-basis:100%}
+  .opp-move{width:100%}
+  .opp-facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
 </style>
 {% endblock %}
 
 {% block content %}
 {% from "portal/_labels_ui.html" import label_chip %}
 {% from "portal/_columns_ui.html" import cc_value %}
+{% if lead.is_opportunity %}
+<div class="crumb"><a href="{{ url_for('portal.sales_pipeline') }}">Sales Pipeline</a> / <b>{{ lead.customer_name }}</b></div>
+{% else %}
 <div class="crumb"><a href="{{ url_for('portal.leads_page') }}">Leads</a> / <b>{{ lead.customer_name }}</b></div>
+{% endif %}
 
 <div class="lc-card">
 
@@ -83,7 +110,11 @@
       <div class="lc-avatar">{{ (lead.customer_name or '?')[:2]|upper }}</div>
       <div>
         <div class="lc-name">{{ lead.customer_name }}</div>
+        {% if lead.is_opportunity %}
+        <div class="lc-sub"><span class="opp-tag">Opportunity</span>{% if lead.business_category %} · {{ lead.business_category }}{% endif %}{% if has_address(lead) %} · {{ location_text(lead) }}{% endif %}</div>
+        {% else %}
         <div class="lc-sub">{{ lead.product_interest or 'Sales Lead' }}</div>
+        {% endif %}
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
@@ -91,7 +122,7 @@
       {% if outc %}
       <span class="stage-pill" style="background:{{ '#f0fdf4' if outc=='won' else ('#fef2f2' if outc in ('lost','not_a_fit') else '#f8fafc') }};color:{{ '#15803d' if outc=='won' else ('#b91c1c' if outc in ('lost','not_a_fit') else '#64748b') }};font-size:13px;padding:7px 16px">{{ stage_labels.get(outc, outc.capitalize())|upper }}</span>
       {% elif lead.is_opportunity %}
-      <span class="stage-pill st-{{ lead.stage }}" style="font-size:13px;padding:7px 16px">{{ stage_labels.get(lead.stage, lead.stage)|upper }}</span>
+      {# the stage shows in the stage bar under the header #}
       {% else %}
       <span class="stage-pill" style="background:#fffbeb;color:#b45309;font-size:13px;padding:7px 16px">AWAITING QUALIFICATION</span>
       {% endif %}
@@ -106,14 +137,54 @@
       <button type="button" class="lc-edit-btn" style="background:#15803d;color:#fff;border-color:#15803d" onclick="document.getElementById('qualifyModal').classList.add('open')">✅ Qualify</button>
       {% endif %}
       {# Not a Fit works on Qualified deals too since 2026-10-15 (it replaced Dropped) #}
-      {% if not outc and staff_can_open('portal.leads_not_a_fit') %}
+      {% if not outc and not lead.is_opportunity and staff_can_open('portal.leads_not_a_fit') %}
       <button type="button" class="lc-edit-btn" style="background:#b91c1c;color:#fff;border-color:#b91c1c" onclick="document.getElementById('notAFitModal').classList.add('open')">🚫 Not a Fit</button>
       {% endif %}
       {% if staff_can_open('portal.sales_pipeline_edit') %}
-      <button type="button" class="lc-edit-btn" onclick="document.getElementById('editLeadModal').classList.add('open')">✏️ Edit Lead</button>
+      <button type="button" class="lc-edit-btn" onclick="document.getElementById('editLeadModal').classList.add('open')">✏️ {{ 'Edit' if lead.is_opportunity else 'Edit Lead' }}</button>
+      {% endif %}
+      {% if lead.is_opportunity and not outc %}
+      {% if staff_can_open('portal.sales_pipeline_drop') %}
+      <button type="button" class="lc-edit-btn" style="color:#b91c1c;border-color:#b91c1c" onclick="document.getElementById('oppLostModal').classList.add('open')">Lost</button>
+      {% endif %}
+      {% if staff_can_open('portal.sales_pipeline_bulk_advance') %}
+      <button type="button" class="lc-edit-btn" style="background:#15803d;color:#fff;border-color:#15803d" onclick="oppMove('won')">Won</button>
+      {% endif %}
       {% endif %}
     </div>
   </div>
+
+  {% if lead.is_opportunity %}
+  {# Opportunity page (2026-10-28): stage bar and the deal's key facts at the top #}
+  {% set _cur = stage_order.index(lead.stage) if lead.stage in stage_order else -1 %}
+  <div class="opp-stage">
+    <div class="opp-stage-head">
+      <span class="lc-field-label" style="margin:0">Stage</span>
+      <button type="button" class="opp-link" onclick="lcShowTab('history');document.getElementById('lcHistoryTab').scrollIntoView({behavior:'smooth',block:'center'})">Stage history</button>
+    </div>
+    <div class="opp-stage-row">
+      <div class="opp-steps">
+        {% for s in stage_order if s != 'won' %}
+        {% set i = stage_order.index(s) %}
+        {% set _done = i < _cur or (outc and i <= _cur) %}
+        <div class="opp-step {{ 'done' if _done else ('now' if i == _cur else 'todo') }}">{% if _done %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>{% endif %}{{ stage_labels.get(s, s) }}</div>
+        {% endfor %}
+      </div>
+      {% if not outc and next_stage and next_stage != 'won' and staff_can_open('portal.sales_pipeline_bulk_advance') %}
+      <button type="button" class="opp-move" onclick="oppMove('{{ next_stage }}')">Move to {{ stage_labels.get(next_stage, next_stage) }} →</button>
+      {% endif %}
+    </div>
+    {% if outc %}
+    <div class="opp-closed {{ outc }}">{{ stage_labels.get(outc, outc.replace('_', ' ')|capitalize) }}{% if lead.dropped_reason and outc != 'won' %} · Reason: {{ lead.dropped_reason }}{% endif %}</div>
+    {% endif %}
+  </div>
+  <div class="opp-facts">
+    <div><div class="lc-field-label">Deal value</div><div class="opp-fact">{% if lead.deal_value %}{{ lead.deal_value|money(lead.currency) }}{% else %}—{% if staff_can_open('portal.sales_pipeline_edit') %} <button type="button" class="opp-link" onclick="document.getElementById('editLeadModal').classList.add('open')">Add value</button>{% endif %}{% endif %}</div></div>
+    <div><div class="lc-field-label">Assigned salesperson</div><div class="opp-fact">{{ (lead.assigned_to|who(lead.assigned_key)) if lead.assigned_to else '—' }}</div></div>
+    <div><div class="lc-field-label">Contact person</div><div class="opp-fact">{{ lead.contact_person or '—' }}</div></div>
+    <div><div class="lc-field-label">Created</div><div class="opp-fact">{{ lead.created_at.strftime('%d %b %Y') if lead.created_at else '—' }}</div></div>
+  </div>
+  {% endif %}
 
   {# Next follow-up card (redesign 2026-10-23): first thing on the lead — when, how, what, and the two actions #}
   {% set fu = followup.current %}
@@ -291,7 +362,9 @@
       {% if li.url %}<span class="li-muted" style="font-size:11.5px">Leave it empty and save to remove the link.</span>{% endif %}
     </form>
     <div class="li-steps">
+      {% if lead.is_opportunity %}
       <button type="button" class="li-step" data-fx-log="{{ dict(_fx_lead, kind='linkedin')|tojson|forceescape }}">Log a LinkedIn step</button>
+      {% endif %}
       {% if li.current and li.current.actor_key == my_actor_key %}
       <form method="POST" action="{{ url_for('portal.lead_linkedin_undo', lead_id=lead.id) }}" style="margin:0">
         <input type="hidden" name="step_id" value="{{ li.current.id }}">
@@ -488,11 +561,12 @@
         {% endif %}
       </div>
       {% endif %}
-      {% set _email_words = {'sent': 'Email sent', 'opened': 'Opened the email', 'clicked': 'Clicked a link', 'replied': 'Replied', 'unsubscribed': 'Unsubscribed from emails', 'bounced': 'Email bounced — this address doesn\'t exist', 'soft_bounced': 'Email delayed (temporary problem at their end)'} %}
+      {% set _email_words = {'sent': 'Email sent', 'opened': 'Opened the email', 'clicked': 'Clicked a link', 'replied': 'Replied', 'unsubscribed': 'Unsubscribed from emails', 'bounced': 'Email bounced — this address doesn\'t exist', 'soft_bounced': 'Email delayed (temporary problem at their end)', 'outlook_sent': 'Email sent'} %}
       {% for e in email_history %}
       <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:8px">
         <strong>{{ _email_words.get(e.kind, e.kind) }}</strong>
-        <span style="color:var(--muted)"> — {{ e.created_at.strftime('%d %b %Y, %H:%M') if e.created_at else '' }}{% if e.reply_mailbox %}, found in {{ e.reply_mailbox_owner or e.reply_mailbox }}'s Outlook{% elif e.actor %}, marked by {{ e.actor }}{% endif %}</span>
+        <span style="color:var(--muted)"> — {{ e.created_at.strftime('%d %b %Y, %H:%M') if e.created_at else '' }}{% if e.reply_mailbox and e.kind == 'outlook_sent' %}, from {{ e.reply_mailbox_owner or e.reply_mailbox }}'s Outlook{% elif e.reply_mailbox %}, found in {{ e.reply_mailbox_owner or e.reply_mailbox }}'s Outlook{% elif e.actor %}, marked by {{ e.actor }}{% endif %}</span>
+        {% if e.kind == 'outlook_sent' and e.reply_subject %}<div style="margin-top:3px">Subject: <b>{{ e.reply_subject }}</b></div>{% endif %}
         {% if e.campaign_name %}<div style="color:var(--muted);margin-top:3px">Campaign: {{ e.campaign_name }}{% if e.kind == 'sent' and e.detail %} · “{{ e.detail }}”{% endif %}</div>{% endif %}
         {% if e.reply_snippet %}<div style="margin-top:8px;padding:8px 12px;border-left:3px solid #0B1D40;background:#fff;border-radius:0 8px 8px 0;white-space:pre-line;line-height:1.5">{{ e.reply_snippet }}</div>{% endif %}
         {% if e.reply_link %}<div style="margin-top:6px"><a href="{{ e.reply_link }}" target="_blank" rel="noopener" style="font-weight:600;color:#0B1D40">Open in Outlook ↗</a>{% if e.reply_mailbox %} <span style="color:var(--muted)">({{ e.reply_mailbox }}'s mailbox)</span>{% endif %}</div>{% endif %}
@@ -530,10 +604,10 @@
         {% if not lead_labels and not can_assign_labels %}—{% endif %}
       </div>
     </div>
-    <div><div class="lc-field-label">Contact Person</div><div class="lc-field-value">{{ lead.contact_person or '—' }}</div></div>
+    {% if not lead.is_opportunity %}<div><div class="lc-field-label">Contact Person</div><div class="lc-field-value">{{ lead.contact_person or '—' }}</div></div>{% endif %}
     <div><div class="lc-field-label">Phone Number</div><div class="lc-field-value" style="font-family:'SF Mono','Fira Code',monospace">{{ lead.phone|phone_display or '—' }}{{ phone_flag(lead.phone) }}{% if lead.phone and phone_problem(lead.phone) and staff_can_open('portal.lead_remove_number') %}<form method="POST" action="{{ url_for('portal.lead_remove_number', lead_id=lead.id) }}" style="display:inline;margin:0" onsubmit="return confirm('Remove this number? Only the number is removed — the lead is kept.')"><input type="hidden" name="field" value="phone"><button type="submit" style="margin-left:6px;background:none;border:0;padding:0;color:#b91c1c;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:underline">Remove number</button></form>{% endif %}</div></div>
     <div><div class="lc-field-label">WhatsApp Number</div><div class="lc-field-value" style="font-family:'SF Mono','Fira Code',monospace;color:#15803d">{{ lead.whatsapp_number|phone_display or '—' }}{{ phone_flag(lead.whatsapp_number) }}{% if lead.whatsapp_number and phone_problem(lead.whatsapp_number) and staff_can_open('portal.lead_remove_number') %}<form method="POST" action="{{ url_for('portal.lead_remove_number', lead_id=lead.id) }}" style="display:inline;margin:0" onsubmit="return confirm('Remove this number? Only the number is removed — the lead is kept.')"><input type="hidden" name="field" value="whatsapp_number"><button type="submit" style="margin-left:6px;background:none;border:0;padding:0;color:#b91c1c;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;text-decoration:underline">Remove number</button></form>{% endif %}</div></div>
-    <div><div class="lc-field-label">Email</div><div class="lc-field-value">{{ lead.email or '—' }}</div></div>
+    <div><div class="lc-field-label">Email</div><div class="lc-field-value" style="word-break:break-all">{% if lead.email %}<a href="mailto:{{ lead.email }}" style="color:#2563eb;text-decoration:none">{{ lead.email }}</a>{% else %}—{% endif %}</div></div>
     <div><div class="lc-field-label">Other emails</div><div class="lc-field-value" style="word-break:break-all">{% if lead.other_emails %}{% for e in lead.other_emails.split(', ') %}<a href="mailto:{{ e }}" style="color:#2563eb;text-decoration:none">{{ e }}</a>{% if not loop.last %}<br>{% endif %}{% endfor %}{% else %}—{% endif %}</div></div>
 
     <div>
@@ -581,9 +655,10 @@
     <div><div class="lc-field-label">Address{% if company %} <span style="font-weight:400;text-transform:none;letter-spacing:0">(company's)</span>{% endif %}</div>
       <div class="lc-field-value">{% if has_address(lead) %}{{ location_text(lead, with_street=True) }}{% if lead.addr_postcode %} · {{ lead.addr_postcode }}{% endif %}{% else %}{{ location_cell(lead) }}{% endif %}</div>
     </div>
-    <div><div class="lc-field-label">Created</div><div class="lc-field-value">{{ lead.created_at.strftime('%d %b %Y') if lead.created_at else '—' }}</div></div>
+    {% if not lead.is_opportunity %}<div><div class="lc-field-label">Created</div><div class="lc-field-value">{{ lead.created_at.strftime('%d %b %Y') if lead.created_at else '—' }}</div></div>{% endif %}
 
     <div><div class="lc-field-label">Product / Service</div><div class="lc-field-value">{{ lead.product_interest or '—' }}</div></div>
+    {% if not lead.is_opportunity %}
     <div><div class="lc-field-label">Assigned Salesperson</div><div class="lc-field-value">{{ (lead.assigned_to|who(lead.assigned_key)) if lead.assigned_to else '—' }}</div></div>
     <div style="opacity:.55">
       <div class="lc-field-label">Ambassador</div>
@@ -610,8 +685,10 @@
       <div class="lc-field-label">Deal Value</div>
       <div style="font-size:22px;font-weight:800;color:var(--ink);letter-spacing:-.5px">{{ (lead.deal_value)|money(lead.currency) if lead.deal_value else '—' }}</div>
     </div>
+    {% endif %}
   </div>
 
+  {% if not lead.is_opportunity %}{# a deal shows its stage in the bar at the top #}
   <!-- Pipeline -->
   <div class="lc-sec-head">
     <span>Pipeline</span>
@@ -688,6 +765,8 @@
   </div>
   {% endif %}
 
+  {% endif %}
+
   <!-- Conversations -->
   <div class="lc-sec-head">Conversations</div>
   <div style="padding:16px 24px;border-bottom:1px solid var(--line)">
@@ -721,7 +800,7 @@
 
 </div>
 
-<p style="font-size:11.5px;color:var(--muted);margin:14px 4px 0;line-height:1.6;max-width:900px">Instagram/Facebook conversations aren't built yet — shown here so you know where they'll slot in. Ambassador only applies to PhiXtra's own account.</p>
+<p style="font-size:11.5px;color:var(--muted);margin:14px 4px 0;line-height:1.6;max-width:900px">Instagram/Facebook conversations aren't built yet — shown here so you know where they'll slot in.{% if not lead.is_opportunity %} Ambassador only applies to PhiXtra's own account.{% endif %}</p>
 
 <!-- Edit Lead modal -->
 <div class="modal-over" id="editLeadModal" onclick="if(event.target===this)this.classList.remove('open')">
@@ -793,6 +872,97 @@
   </div>
 </div>
 
+{% if lead.is_opportunity %}
+<!-- Opportunity page (2026-10-28): move to the next stage / Won, same fields as the Sales Pipeline -->
+<div class="modal-over" id="oppMoveModal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal-card">
+    <div class="modal-title" id="oppMoveTitle"></div>
+    <form id="oppMoveForm" onsubmit="return oppMoveSubmit(event)">
+      <input type="hidden" name="lead_ids" value="{{ lead.id }}">
+      <input type="hidden" name="target_stage" id="oppMoveStage">
+      <div data-target="contacted" hidden>
+        <label class="flbl">Contact Channel</label>
+        <select name="contact_channel" class="finp" required style="margin-bottom:12px">
+          <option value="">Select…</option><option value="phone_call">Phone Call</option><option value="whatsapp">WhatsApp</option>
+          <option value="email">Email</option><option value="in_person">In Person</option>
+        </select>
+        <label class="flbl">Contact Date</label><input type="date" name="contact_date" class="finp opp-today" required style="margin-bottom:12px">
+        <label class="flbl">Notes</label><textarea name="contact_notes" class="finp" placeholder="What did they say?"></textarea>
+      </div>
+      <div data-target="qualified" hidden>
+        <label class="flbl">Qualified Date</label><input type="date" name="qualified_date" class="finp opp-today" required style="margin-bottom:12px">
+        <label class="flbl">Notes</label><textarea name="qualified_notes" class="finp" placeholder="Confirmed budget, timeline, and genuine need"></textarea>
+      </div>
+      <div data-target="proposal_sent" hidden>
+        <label class="flbl">Proposal Date</label><input type="date" name="proposal_date" class="finp opp-today" required style="margin-bottom:12px">
+        <label class="flbl">Deal Value <span style="font-weight:400;color:#9ca3af">(optional — updates the quoted amount)</span></label>
+        <input type="number" step="0.01" name="deal_value" class="finp" value="{{ lead.deal_value if lead.deal_value is not none else '' }}" style="margin-bottom:12px">
+        <label class="flbl">Notes</label><textarea name="proposal_notes" class="finp" placeholder="What was quoted?"></textarea>
+      </div>
+      <div data-target="negotiating" hidden>
+        <label class="flbl">Notes</label><textarea name="negotiation_notes" class="finp" placeholder="What's being discussed? Price, terms, delivery?"></textarea>
+      </div>
+      <div data-target="won" hidden>
+        <label class="flbl">Won Date</label><input type="date" name="won_date" class="finp opp-today" required style="margin-bottom:12px">
+        <label class="flbl">Final Deal Value <span style="font-weight:400;color:#9ca3af">(optional — updates the closed amount)</span></label>
+        <input type="number" step="0.01" name="deal_value" class="finp" value="{{ lead.deal_value if lead.deal_value is not none else '' }}">
+      </div>
+      <div id="oppMoveErr" style="color:#b91c1c;font-size:12.5px;font-weight:700;margin-top:8px"></div>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="document.getElementById('oppMoveModal').classList.remove('open')">Cancel</button>
+        <button type="submit" class="modal-confirm" id="oppMoveBtn">Confirm</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-over" id="oppLostModal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal-card">
+    <div class="modal-title">Mark {{ lead.customer_name }} as Lost?</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px">We tried, and the customer said no. This closes the deal.</div>
+    <form method="POST" action="{{ url_for('portal.sales_pipeline_drop', lead_id=lead.id) }}">
+      <input type="hidden" name="outcome" value="lost">
+      <label class="flbl">Reason <span style="font-weight:400;color:#9ca3af">(required)</span></label>
+      <select name="reason" class="finp" required onchange="document.getElementById('oppLostOther').style.display = this.value==='Other' ? 'block' : 'none'">
+        <option value="" disabled selected>Choose a reason…</option>
+        {% for r in lost_reasons %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+      </select>
+      <div id="oppLostOther" style="display:none;margin-top:8px"><input type="text" name="reason_other" class="finp" placeholder="Tell us more…"></div>
+      <div class="modal-actions">
+        <button type="button" class="modal-cancel" onclick="document.getElementById('oppLostModal').classList.remove('open')">Cancel</button>
+        <button type="submit" class="modal-confirm" style="background:#b91c1c">Confirm — Mark as Lost</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+var OPP_LABELS = {{ stage_labels|tojson }};
+function oppMove(t) {
+  var m = document.getElementById('oppMoveModal'), d = new Date();
+  var today = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  m.querySelectorAll('[data-target]').forEach(function (b) {
+    var on = b.dataset.target === t; b.hidden = !on;
+    b.querySelectorAll('input,select,textarea').forEach(function (i) { i.disabled = !on; if (on && i.classList.contains('opp-today') && !i.value) i.value = today; });
+  });
+  document.getElementById('oppMoveStage').value = t;
+  document.getElementById('oppMoveTitle').textContent = t === 'won' ? 'Mark ' + {{ lead.customer_name|tojson }} + ' as Won' : 'Move to ' + (OPP_LABELS[t] || t);
+  document.getElementById('oppMoveErr').textContent = '';
+  document.getElementById('oppMoveBtn').disabled = false;
+  m.classList.add('open');
+}
+function oppMoveSubmit(e) {
+  e.preventDefault();
+  var btn = document.getElementById('oppMoveBtn'), err = document.getElementById('oppMoveErr');
+  btn.disabled = true; err.textContent = '';
+  fetch({{ url_for('portal.sales_pipeline_bulk_advance')|tojson }}, { method: 'POST', body: new FormData(document.getElementById('oppMoveForm')), credentials: 'same-origin' })
+    .then(function (r) { return r.json(); })
+    .then(function (d) { if (d.error) { err.textContent = d.error; btn.disabled = false; } else { location.reload(); } })
+    .catch(function () { err.textContent = 'Could not save. Check your connection and try again.'; btn.disabled = false; });
+  return false;
+}
+</script>
+{% endif %}
+
 <!-- Qualify modal — Lead → Opportunity redesign, 2026-09-21 -->
 <div class="modal-over" id="qualifyModal" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal-card">
@@ -856,4 +1026,5 @@ if (location.hash === '#followups') lcShowTab('followups');
 {% include "portal/_labels_ui.html" %}
 {% include "portal/_columns_ui.html" %}
 {% include "portal/_followup_ui.html" %}
+{% if lead.is_opportunity %}{% include "portal/_outlook_compose.html" %}{% endif %}
 {% endblock %}

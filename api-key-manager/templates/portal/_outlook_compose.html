@@ -1,0 +1,77 @@
+{# Click a deal's email address → write to them from your connected Outlook
+   (2026-10-28, approved mock-up https://claude.ai/artifact/UxyxdHVQMCwyqxJZjjvDVT).
+   Include on pages whose mailto: links should get the menu; only for people
+   whose plan and role have the Outlook mailbox tick (others keep plain mailto). #}
+{% if 'campaigns_email.mailbox_connect' in (granted_features or []) and staff_can('campaigns_email.mailbox_connect') %}
+{% set _oc_from = outlook_compose() %}
+<style>
+  .oc-menu { position:fixed; z-index:1200; width:330px; max-width:calc(100vw - 24px); background:#fff; border:1px solid rgba(3,12,24,.14); border-radius:12px; box-shadow:0 12px 32px rgba(11,29,64,.18); padding:8px; display:none; font-size:14px; color:var(--ink) }
+  .oc-menu.open { display:block }
+  .oc-head { padding:8px 10px 10px; font-size:12.5px; line-height:1.5; color:var(--muted); border-bottom:1px solid var(--line); margin-bottom:4px; word-break:break-all }
+  .oc-head b { color:var(--ink) }
+  .oc-item { display:flex; align-items:center; gap:10px; width:100%; min-height:44px; padding:0 10px; border:0; border-radius:8px; background:none; color:var(--ink); text-decoration:none; font:inherit; font-weight:600; cursor:pointer; box-sizing:border-box; text-align:left }
+  .oc-item:hover, .oc-item:focus-visible { background:#E8EEF8 }
+  .oc-item svg { flex-shrink:0 }
+  .oc-item.main { background:#0B1D40; color:#fff; justify-content:center; margin-top:4px }
+  .oc-item.main:hover { background:#111E2D }
+  .oc-foot { padding:10px 10px 6px; font-size:12px; line-height:1.5; color:var(--muted); border-top:1px solid var(--line); margin-top:4px }
+  .oc-title { padding:8px 10px 4px; font-weight:800; color:#0B1D40 }
+  .oc-text { padding:0 10px 8px; font-size:13px; line-height:1.55; color:var(--txt) }
+</style>
+<div class="oc-menu" id="ocMenu" role="dialog" aria-label="Write an email">
+  {% if _oc_from %}
+  <div class="oc-head">Write to <b id="ocTo"></b><br>from your Outlook <b>{{ _oc_from }}</b></div>
+  <a class="oc-item" id="ocWeb" href="#" target="_blank" rel="noopener">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0B1D40" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/></svg>
+    Open in Outlook on the web</a>
+  <a class="oc-item" id="ocApp" href="#">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0B1D40" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+    Open in Outlook app (desktop)</a>
+  {% else %}
+  <div class="oc-title">Connect your Outlook first</div>
+  <div class="oc-text">Connect your own Outlook once on the Integration page. Then emails you send to deals are recorded on the deal, the deal moves to Contacted, and your follow-up is booked for you.</div>
+  <a class="oc-item main" href="{{ url_for('mailbox.page') }}">Connect my Outlook →</a>
+  {% endif %}
+  <button type="button" class="oc-item" id="ocCopy">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0B1D40" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg>
+    <span id="ocCopyLabel">Copy email address</span></button>
+  {% if _oc_from %}
+  <div class="oc-foot">The desktop app opens only if Outlook is this computer's default email app. If not, copy the address or change your default.</div>
+  {% endif %}
+</div>
+<script>
+(function () {
+  var menu = document.getElementById('ocMenu'), addr = '', opener = null;
+  var web = document.getElementById('ocWeb'), app = document.getElementById('ocApp');
+  function close() { menu.classList.remove('open'); if (opener) { opener.focus({ preventScroll: true }); opener = null; } }
+  function openFor(link) {
+    addr = decodeURIComponent(link.getAttribute('href').slice(7).split('?')[0]);
+    var to = document.getElementById('ocTo'); if (to) to.textContent = addr;
+    if (web) web.href = 'https://outlook.office.com/mail/deeplink/compose?to=' + encodeURIComponent(addr);
+    if (app) app.href = 'mailto:' + addr;
+    document.getElementById('ocCopyLabel').textContent = 'Copy email address';
+    menu.classList.add('open');
+    var r = link.getBoundingClientRect(), w = menu.offsetWidth, h = menu.offsetHeight;
+    var left = Math.min(Math.max(12, r.left), window.innerWidth - w - 12);
+    var top = r.bottom + 6 + h > window.innerHeight - 12 ? Math.max(12, r.top - h - 6) : r.bottom + 6;
+    menu.style.left = left + 'px'; menu.style.top = top + 'px';
+    opener = link;
+    (web || menu.querySelector('.oc-item')).focus({ preventScroll: true });
+  }
+  document.addEventListener('click', function (e) {
+    var link = e.target.closest && e.target.closest('a[href^="mailto:"]');
+    if (link && !menu.contains(link)) { e.preventDefault(); e.stopPropagation(); openFor(link); return; }
+    if (menu.classList.contains('open') && !menu.contains(e.target)) close();
+  }, true);
+  menu.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+  [web, app].forEach(function (a) { if (a) a.addEventListener('click', function () { setTimeout(close, 0); }); });
+  document.getElementById('ocCopy').addEventListener('click', function () {
+    var label = document.getElementById('ocCopyLabel');
+    function done() { label.textContent = 'Copied: ' + addr; }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(addr).then(done, function () { window.prompt('Copy this email address:', addr); });
+    else window.prompt('Copy this email address:', addr);
+  });
+  window.addEventListener('scroll', function () { if (menu.classList.contains('open')) close(); }, true);
+})();
+</script>
+{% endif %}

@@ -148,7 +148,7 @@ def messages_since(token: str, since: datetime, limit: int = 500) -> list:
     params = {
         "$filter": f"receivedDateTime ge {since.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
         "$orderby": "receivedDateTime asc",
-        "$select": "id,from,subject,bodyPreview,receivedDateTime,webLink,isDraft",
+        "$select": "id,from,toRecipients,subject,bodyPreview,receivedDateTime,webLink,isDraft",
         "$top": "50",
     }
     while url and len(out) < limit:

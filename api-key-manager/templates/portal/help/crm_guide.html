@@ -534,7 +534,7 @@
 <div class="tbl"><table>
 <tr><th>Control</th><th>What it does</th></tr>
 <tr><td>Search</td><td class="wrapok">Finds deals by customer name, contact person or phone. <span class="ui">Clear search</span> removes it.</td></tr>
-<tr><td><span class="ui">Filter</span></td><td class="wrapok">Tick <b>Has Phone</b>, <b>Has WhatsApp</b> or <b>Has Email</b> to show only deals with that detail. Changes apply at once.</td></tr>
+<tr><td><span class="ui">Filter</span></td><td class="wrapok">In <b>Contact details</b>, press <span class="ui">Has</span> or <span class="ui">Missing</span> for Phone number, WhatsApp number or Email to show only deals with that detail, or only deals without it.</td></tr>
 <tr><td><span class="ui">Hide Email segments</span></td><td class="wrapok">Hides deals whose contact is in the Email Segments you tick (older email groups are listed too, marked "older group"). Useful to avoid emailing the same people twice.</td></tr>
 <tr><td><span class="ui">Hide WhatsApp segments</span></td><td class="wrapok">The same for WhatsApp Segments.</td></tr>
 <tr><td><span class="ui">Label</span></td><td class="wrapok">For each label choose <b>Only</b> (show just deals with it) or <b>Hide</b> (leave them out).</td></tr>
@@ -642,21 +642,23 @@
 <!-- 8 -->
 <section class="part" id="crm-deal">
 <h2><span class="num">8</span>A deal's page</h2>
-<p class="where">Pipeline Board › ⋮ › Open Lead Page, or click a deal's name</p>
-<p>One page per deal, with everything about it.</p>
-<figure><img src="/static/portal/tutorial/crm/n08_lead_contact.jpg" width="1100" height="818" alt="The top of a deal&#x27;s page. &quot;Contact&quot; links to the person." loading="lazy"><figcaption>The top of a deal's page. "Contact" links to the person.</figcaption></figure>
-<figure><img src="/static/portal/tutorial/crm/c29_deal_page.jpg" width="1100" height="1158" alt="The whole page for a deal at the Proposal Sent stage." loading="lazy"><figcaption>The whole page for a deal at the Proposal Sent stage.</figcaption></figure>
-<p>The order, top to bottom: the header, then <b>Activity</b>, then the details, Pipeline and Conversations. Activity sits at the top so you see the notes and past calls before you pick up the phone.</p>
+<p class="where">Pipeline Board › click a deal's name, or ⋮ › Open Lead Page</p>
+<p>One page per deal, with everything about it. It belongs to the Sales Pipeline: the top says <b>Sales Pipeline / the deal's name</b>, and the side menu shows <b>CRM › Pipeline Board</b>. A lead that hasn't been qualified yet opens as a lead page under Leads instead.</p>
+<figure><img src="/static/portal/tutorial/crm/c30_opportunity_page.jpg" width="1076" height="700" alt="The top of a deal&#x27;s page: Opportunity, Edit, Lost and Won, the stage bar with Move to Negotiating, and the deal&#x27;s key facts." loading="lazy"><figcaption>The top of a deal's page: the stage bar, the key facts, then the next follow-up.</figcaption></figure>
+<p>The order, top to bottom: the header, the <b>stage bar</b>, the deal's key facts, the next follow-up, LinkedIn, <b>Activity</b>, then the details and Conversations.</p>
 <ul>
-  <li><b>Header</b>: customer name, product of interest, the current stage badge (or WON / LOST / NOT A FIT), <span class="ui">🚫 Not a Fit</span> while the deal is open, and <span class="ui">✏️ Edit Lead</span>. A deal closed as Not a Fit shows <span class="ui">↩️ Reopen on Sales Pipeline</span> instead.</li>
+  <li><b>Header</b>: customer name with the <b>Opportunity</b> tag, its business category and location, and <span class="ui">✏️ Edit</span>, <span class="ui">Lost</span> and <span class="ui">Won</span> while the deal is open. A closed deal shows WON, LOST or NOT A FIT instead, and one closed as Not a Fit shows <span class="ui">↩️ Reopen on Sales Pipeline</span>.</li>
+  <li><b>Stage bar</b>: the stages done (✓), the current stage (dark) and the ones still to come. <span class="ui">Move to [next stage] →</span> moves the deal one stage forward and asks for the same details as on the Pipeline Board (see <a href="#crm-b-move">Moving a deal</a>). <span class="ui">Stage history</span> opens the Stage History tab. On a closed deal, a line under the stages says how it ended and why.</li>
+  <li><span class="ui">Won</span> closes the deal as Won from any stage: enter the won date and, if you like, the final deal value. <span class="ui">Lost</span> asks for a reason, closes the deal and takes you back to the Pipeline Board.</li>
+  <li><b>Key facts</b>: Deal value (<span class="ui">Add value</span> opens Edit), Assigned salesperson, Contact person and Created.</li>
+  <li><b>Next follow-up</b> and <b>LinkedIn</b>: the follow-up card (Leads guide, section 11) and the LinkedIn profile with <span class="ui">Log a LinkedIn step</span>. LinkedIn steps are logged on deals only.</li>
   <li><b>Activity</b>: <b>Notes</b>, <b>Calls</b> (log a call and see every call on this deal), <b>Stage History</b> and <b>Emails</b>. Tasks is marked "New" and isn't available yet. When you log a call as <b>Doesn't need us</b>, you can close the deal as Not a Fit in the same step (Leads guide, section 12).</li>
   <li><b>Contact</b>: the contact this deal belongs to. Click the name to open their profile. If the deal has no phone, WhatsApp number or email yet, it says "No contact yet: add a phone, WhatsApp or email", with an <span class="ui">Add details →</span> button; once you add one, the deal is joined to a contact.</li>
-  <li><b>Details</b>: Contact Person, Phone, WhatsApp, Email, Source (WhatsApp, Facebook, Instagram or Manual), Campaign Source (the campaign that produced it, if any), Company, Created, Product / Service, Assigned Salesperson, Lead Score with its breakdown, and Deal Value.</li>
-  <li><b>Pipeline</b>: a progress line showing stages done (✓), the current stage (●) and the outcome. <span class="ui">Open on Pipeline Board →</span> jumps to it on the board.</li>
+  <li><b>Details</b>: Labels, Phone, WhatsApp, Email, Other emails, Source, Campaign Source (the campaign that produced it, if any), Company, Website, Business category, Number of employees, your own columns, Address and Product / Service. Lead Score is shown on leads only. Click the <b>Email</b> to write to them from your Outlook; the email you send is recorded on the deal by itself (Email guide, section 8).</li>
   <li><b>Conversations</b>: the last WhatsApp message and a link to the full chat. Instagram and Facebook are marked "Soon".</li>
 </ul>
-<p><span class="ui">✏️ Edit Lead</span> has the same fields as Edit Deal, plus <span class="f">Assigned Salesperson</span>. Type the name of the team member responsible. It's used on the Leads Overview team table.</p>
-<div class="box know"><b class="t">Not yet qualified?</b>If the page says "Awaiting qualification", the lead hasn't reached the Pipeline Board yet. Its <span class="ui">✅ Qualify</span> and <span class="ui">🚫 Not a Fit</span> buttons are explained in the Leads guide.</div>
+<p><span class="ui">✏️ Edit</span> has the same fields as Edit Deal, plus <span class="f">Assigned Salesperson</span>. Type the name of the team member responsible. It's used on the Leads Overview team table.</p>
+<div class="box know"><b class="t">Not yet qualified?</b>A lead that says "Awaiting qualification" hasn't reached the Pipeline Board yet, so it opens as a lead page under Leads. Its <span class="ui">✅ Qualify</span> and <span class="ui">🚫 Not a Fit</span> buttons are explained in the Leads guide.</div>
 </section>
 
 <!-- 9 -->
@@ -796,12 +798,12 @@
 <ul>
   <li>a call, when they press <span class="ui">Log a call</span> on the lead afterwards</li>
   <li>a WhatsApp, Messenger or web chat message sent from the portal</li>
-  <li>a LinkedIn connection request or message, using the LinkedIn step buttons on the lead</li>
-  <li>an email they send themselves from the portal</li>
+  <li>a LinkedIn connection request or message, using <span class="ui">Log a LinkedIn step</span> on the deal</li>
+  <li>an email they send themselves from the portal, or from their connected Outlook to a deal (Email guide, section 8)</li>
   <li>a WhatsApp, email or meeting logged by hand on the lead, or a reply marked on it</li>
 </ul>
 <p>Calling a lead and then sending them a WhatsApp still counts as <b>one</b> lead contacted.</p>
-<p><b>What doesn't count:</b> automatic emails from an email sequence (the system sent them, not the person), moving many leads at once to Contacted, and anything done outside the portal, such as a WhatsApp from a personal phone or an email from Outlook. A call that isn't logged doesn't count either.</p>
+<p><b>What doesn't count:</b> automatic emails from an email sequence (the system sent them, not the person), moving many leads at once to Contacted, and anything done outside the portal, such as a WhatsApp from a personal phone or an email from an Outlook that isn't connected. A call that isn't logged doesn't count either.</p>
 
 <h3 id="crm-t-mine">Your own page</h3>
 <p>A salesperson opens CRM › Daily Targets and sees their own numbers only.</p>
@@ -945,7 +947,7 @@
 <h4>The import was refused: "The first row of the file must name the columns".</h4>
 <p>Add a first row with column names, at least one of <b>phone_number</b>, <b>whatsapp_number</b> or <b>email</b>, and import again.</p>
 <h4>I called a lead but my daily count didn't go up.</h4>
-<p>Calls only count once you press <span class="ui">Log a call</span> on the lead. WhatsApps sent from your own phone and emails sent from Outlook don't count either: send them from the portal.</p>
+<p>Calls only count once you press <span class="ui">Log a call</span> on the lead. WhatsApps sent from your own phone don't count either: send them from the portal. Emails from Outlook count once your Outlook is connected on the Integration page (Email guide, section 8).</p>
 <h4>I made 15 calls but Daily Targets says 12.</h4>
 <p>It counts <b>leads</b>, not calls. Calling the same lead three times in a day counts once.</p>
 <h4>I can't see Daily Targets in my menu.</h4>

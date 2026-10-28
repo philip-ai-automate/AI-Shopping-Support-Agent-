@@ -31,12 +31,12 @@ CLOSE_ACTIONS = ("won", "lost", "not_a_fit")
 SOURCE_WORDS = {"call": "Call", "wa_sent": "WhatsApp", "messenger_sent": "Messenger", "webchat_sent": "Web chat",
                 "reply_logged": "Email reply", "linkedin": "LinkedIn", "demo": "Demo", "manual": "Date changed",
                 "reopened": "Reopened", "demo_held": "Demo", "wa_logged": "WhatsApp", "email_logged": "Email",
-                "meeting_logged": "Meeting"}
+                "meeting_logged": "Meeting", "email_sent": "Email"}
 # "Follow up after …" wording on the lead card and the Follow-ups list
 AFTER_WORDS = {"call": "the call", "wa_sent": "the WhatsApp message", "messenger_sent": "the Messenger reply",
                "webchat_sent": "the web chat reply", "reply_logged": "their email reply", "linkedin": "the LinkedIn step",
                "demo": "the demo", "demo_held": "the demo", "wa_logged": "the WhatsApp", "email_logged": "the email",
-               "meeting_logged": "the meeting"}
+               "meeting_logged": "the meeting", "email_sent": "the email"}
 # How the next follow-up will be done (redesign 2026-10-23). Optional; Call when not chosen.
 CHANNELS = [("call", "Call"), ("whatsapp", "WhatsApp"), ("email", "Email"), ("linkedin", "LinkedIn"), ("meeting", "Meeting")]
 CHANNEL_LABELS = dict(CHANNELS)

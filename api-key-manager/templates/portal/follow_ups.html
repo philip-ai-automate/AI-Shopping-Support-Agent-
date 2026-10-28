@@ -103,8 +103,8 @@
     </div>
     <div class="fq-act">
       {{ contact_btn(r, how) }}
-      <button type="button" class="fq-btn primary" data-fx-log="{{ {'leadId': r.lead_id, 'name': r.customer_name, 'hasEmail': (r.email and true) or false, 'kind': how}|tojson|forceescape }}">Log/Follow-up</button>
-      {% if _can_set %}<button type="button" class="fq-link" data-fx-resched="{{ {'leadId': r.lead_id, 'name': r.customer_name, 'due': r.due_date.isoformat(), 'channel': r.channel, 'note': r.note, 'moved': r.reschedule_count}|tojson|forceescape }}">Change date</button>{% endif %}
+      <button type="button" class="fq-btn primary" data-fx-log="{{ {'leadId': r.lead_id, 'name': r.customer_name, 'hasEmail': (r.email and true) or false, 'kind': how, 'opp': (r.is_opportunity and true) or false}|tojson|forceescape }}">Log/Follow-up</button>
+      {% if _can_set %}<button type="button" class="fq-link" data-fx-resched="{{ {'leadId': r.lead_id, 'name': r.customer_name, 'due': r.due_date.isoformat(), 'channel': r.channel, 'note': r.note, 'moved': r.reschedule_count, 'opp': (r.is_opportunity and true) or false}|tojson|forceescape }}">Change date</button>{% endif %}
     </div>
   </div>
 {%- endmacro %}
@@ -185,8 +185,8 @@
       <div class="fq-what"><span class="fq-pill amber" style="justify-self:start">No follow-up date</span><small>Nobody will be reminded about this lead.</small></div>
       <div class="fq-act">
         {{ contact_btn(r, 'call') }}
-        <button type="button" class="fq-btn primary" data-fx-log="{{ {'leadId': r.lead_id, 'name': r.customer_name, 'hasEmail': (r.email and true) or false}|tojson|forceescape }}">Log/Follow-up</button>
-        {% if _can_set %}<button type="button" class="fq-link" data-fx-resched="{{ {'leadId': r.lead_id, 'name': r.customer_name}|tojson|forceescape }}">Set a date</button>{% endif %}
+        <button type="button" class="fq-btn primary" data-fx-log="{{ {'leadId': r.lead_id, 'name': r.customer_name, 'hasEmail': (r.email and true) or false, 'opp': (r.is_opportunity and true) or false}|tojson|forceescape }}">Log/Follow-up</button>
+        {% if _can_set %}<button type="button" class="fq-link" data-fx-resched="{{ {'leadId': r.lead_id, 'name': r.customer_name, 'opp': (r.is_opportunity and true) or false}|tojson|forceescape }}">Set a date</button>{% endif %}
       </div>
     </div>
     {% else %}

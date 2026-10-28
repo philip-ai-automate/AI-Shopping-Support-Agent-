@@ -105,7 +105,7 @@
       </div>
 
       <div style="display:flex;flex-direction:column;gap:6px">
-        <label style="font-size:12.5px;font-weight:700">Mobile phone</label>
+        <label style="font-size:12.5px;font-weight:700">Mobile phone (on WhatsApp)</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           {% set pc_name = 'phone_country' %}{% set pc_id = 'fPhoneCountry' %}
           {% set pc_selected = form_data.get('phone_country', '') if form_data else '' %}
@@ -115,7 +115,7 @@
                  value="{{ form_data.get('phone_number', '') if form_data else '' }}"
                  style="flex:1 1 170px;min-width:0;padding:11px 13px;border:1px solid var(--line);border-radius:10px;font-size:14px"/>
         </div>
-        <span style="font-size:11.5px;color:var(--muted)">For billing alerts and optional two-factor login.</span>
+        <span style="font-size:11.5px;color:var(--muted)">Use a mobile number that has WhatsApp. We send your code there.</span>
       </div>
 
       <div style="display:none;visibility:hidden;position:absolute;left:-9999px">
@@ -130,6 +130,7 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
       </button>
     </form>
+    <p style="text-align:center;font-size:12.5px;color:var(--muted);margin:12px 0 0">Next we'll send a code to your WhatsApp and a code to your email.</p>
 
     <p style="text-align:center;font-size:12.5px;color:var(--muted);margin:18px 0 0">
       Already have a PhiXtra account? <a href="{{ url_for('portal.login') }}">Log in instead</a>

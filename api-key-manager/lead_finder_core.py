@@ -90,7 +90,7 @@ def configured() -> bool:
 def _call(path: str, body: dict, tries: int = 4) -> dict:
     key = (os.environ.get("PROSPEO_API_KEY") or "").strip()
     if not key:
-        raise ProspeoError("The Prospeo key isn't set up yet.")
+        raise ProspeoError("Lead Finder isn't set up yet.")
     data = json.dumps(body).encode()
     for attempt in range(tries):
         with _lock:
@@ -112,14 +112,14 @@ def _call(path: str, body: dict, tries: int = 4) -> dict:
                 if attempt < tries - 1:
                     time.sleep(1.5 * (attempt + 1))
                     continue
-                raise ProspeoError("Prospeo is busy (too many requests). Try again in a minute.")
+                raise ProspeoError("Lead Finder is busy (too many requests). Try again in a minute.")
             return out
         except Exception as e:
             if attempt < tries - 1:
                 time.sleep(1)
                 continue
-            raise ProspeoError(f"Couldn't reach Prospeo ({e.__class__.__name__}). Try again in a minute.")
-    raise ProspeoError("Couldn't reach Prospeo. Try again in a minute.")
+            raise ProspeoError(f"Couldn't reach Lead Finder ({e.__class__.__name__}). Try again in a minute.")
+    raise ProspeoError("Couldn't reach Lead Finder. Try again in a minute.")
 
 
 def account() -> dict:
@@ -351,14 +351,14 @@ def search(tenant_id: int, f: dict, page: int = 1) -> dict:
         if code == "PLAN_REQUIRED":
             fe = d.get("filter_error") or ""
             names = [v for k, v in _PLAN_FILTER_NAMES.items() if k in fe]
-            msg = (f"PhiXtra's Prospeo plan doesn't include the filter{'s' if len(names) > 1 else ''} "
-                   f"{', '.join(names) or fe}. Remove it and search again, or upgrade the Prospeo plan.")
+            msg = (f"The filter{'s' if len(names) > 1 else ''} {', '.join(names) or fe} "
+                   f"{'aren' if len(names) > 1 else 'isn'}'t available yet. Remove it and search again.")
         elif code == "NO_RESULTS":
             msg = None
         elif code == "INVALID_FILTERS" and d.get("filter_error"):
-            msg = f"Prospeo didn't accept this search: {d['filter_error']}. Remove that choice and search again."
+            msg = f"Lead Finder didn't accept this search: {d['filter_error']}. Remove that choice and search again."
         else:
-            msg = f"Prospeo didn't accept this search ({code or 'unknown error'})."
+            msg = f"Lead Finder didn't accept this search ({code or 'unknown error'})."
         out = {"total": 0, "pages": 0, "rows": [], "error": msg}
         if msg is None:
             _search_cache[ck] = (time.time(), out)
@@ -577,7 +577,7 @@ def _run_job(tenant_id: int, job_id: int, actor_name: str, req: dict, add_one):
                             results.append(outcome)
                             break
                         if code != "NO_MATCH":
-                            outcome.update(outcome="failed", why=f"Prospeo: {code}")
+                            outcome.update(outcome="failed", why=f"Lead Finder: {code}")
                             results.append(outcome)
                             _save_progress(job_id, results, credits)
                             continue

@@ -867,7 +867,7 @@
                                               'portal.crm_companies', 'portal.crm_company_detail',
                                               'portal.crm_merge_review',
                                               'portal.whatsapp_segments', 'portal.whatsapp_segment_detail',
-                                              'portal.sales_pipeline', 'portal.report_pipeline_overview',
+                                              'portal.sales_pipeline', 'portal.opportunity_detail', 'portal.report_pipeline_overview',
                                               'portal.sales_pipeline_settings', 'portal.lead_labels_page',
                                               'portal.lead_labels_import_bounces', 'bookings.demos', 'portal.follow_ups_page') %}
     <div class="sb-group">
@@ -902,7 +902,7 @@
         {% endif %}
         {% if staff_can_open('portal.sales_pipeline') %}
         <a href="{{ url_for('portal.sales_pipeline') }}"
-           class="{% if request.endpoint == 'portal.sales_pipeline' %}active{% endif %}">
+           class="{% if request.endpoint in ('portal.sales_pipeline', 'portal.opportunity_detail') %}active{% endif %}">
           Pipeline Board
           {% if 'crm.pipeline_board_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
@@ -1648,6 +1648,7 @@
          'portal.report_pipeline_overview': 'crm-overview',
          'portal.daily_targets': 'crm-targets',
          'portal.sales_pipeline': 'crm-board',
+         'portal.opportunity_detail': 'crm-board',
          'portal.lead_scoring_explainer': 'lead-score',
          'portal.lead_detail': 'lead-lead',
          'portal.follow_ups_page': 'lead-fu-page',

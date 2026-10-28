@@ -70,7 +70,7 @@
   {% for a in rows %}
   <tr>
     <td><b>{{ a.business or '—' }}</b>
-      <div class="ac-muted">{{ a.contact or '—' }}{% if a.phone_number %} · {{ a.phone_number }}{% endif %}</div>
+      <div class="ac-muted">{{ a.contact or '—' }}{% if a.phone_number %} · {{ a.phone_number }}{% if a.phone_verified %} <span title="Confirmed by code" style="font-size:11px;font-weight:700;color:#0F7A4A;background:#E6F4EC;border-radius:999px;padding:1px 7px;white-space:nowrap">WhatsApp ✓</span>{% endif %}{% endif %}</div>
       {% if a.email %}<div class="ac-muted">{{ a.email }}</div>{% endif %}
       {% if a.follow_up_on %}<span class="ac-fu {% if a.follow_up_due %}due{% endif %}">{% if a.follow_up_due %}Follow-up due{% else %}Follow up {{ a.follow_up_on.strftime('%-d %b') }}{% endif %}</span>{% endif %}
       <span class="ac-type">{{ a.setup.type }}{% if a.website_platform and a.setup.type != 'WhatsApp' %} · {{ a.website_platform|capitalize }}{% endif %}</span></td>

@@ -299,13 +299,13 @@ def reveal():
     if d.get("error"):
         code = d.get("error_code") or "unknown"
         flash("Your Lead Finder credits have run out." if code == "INSUFFICIENT_CREDITS" else
-              f"Prospeo has no {'mobile' if mobile else 'email'} for {person['name'] or 'this person'} (not charged)."
-              if code == "NO_MATCH" else f"Prospeo didn't answer ({code}). Try again later.",
+              f"Lead Finder has no {'mobile' if mobile else 'email'} for {person['name'] or 'this person'} (not charged)."
+              if code == "NO_MATCH" else f"Lead Finder didn't answer ({code}). Try again later.",
               "warning")
         return redirect(back)
     email, mob = LF.revealed(d, mobile)
     if not email and not mob:
-        flash(f"Prospeo has no {'mobile' if mobile else 'email'} for {person['name'] or 'this person'} (not charged).", "warning")
+        flash(f"Lead Finder has no {'mobile' if mobile else 'email'} for {person['name'] or 'this person'} (not charged).", "warning")
         return redirect(back)
     p, c = d.get("person") or {}, d.get("company") or {}
     phone, _err = _phone_entry(mob) if mob.startswith(("+", "00")) else ("", None)
@@ -384,7 +384,7 @@ def _add_one(cur, tenant_id: int, person: dict, d: dict, req: dict):
     website = _normalize_website_url(c.get("domain") or c.get("website") or "")
     country = (loc.get("country_code") or "").upper()[:2] or None
     notes = "\n".join(x for x in [
-        "Found with Lead Finder (Prospeo)." + ("" if email or phone or odd_mobile else " LinkedIn only: no email or mobile revealed."),
+        "Found with Lead Finder." + ("" if email or phone or odd_mobile else " LinkedIn only: no email or mobile revealed."),
         f"Job title: {title}" if title else "",
         f"LinkedIn: {linkedin}" if linkedin else "",
         f"Company LinkedIn: {c['linkedin_url']}" if c.get("linkedin_url") else "",
@@ -421,7 +421,7 @@ def _add_one(cur, tenant_id: int, person: dict, d: dict, req: dict):
 
 
 def _odd_mobile_note(mobile: str) -> str:
-    return (f"Mobile from Prospeo: {mobile} (our number check didn't accept it, so it isn't in the "
+    return (f"Mobile from Lead Finder: {mobile} (our number check didn't accept it, so it isn't in the "
             "phone box. Confirm it on a call.)") if mobile else ""
 
 

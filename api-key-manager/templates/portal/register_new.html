@@ -185,14 +185,14 @@
       {% include "portal/_selling_currency_field.html" %}
 
       <div class="rg-f" id="blkMobile" hidden>
-        <label for="fPhone">Mobile phone</label>
+        <label for="fPhone">Mobile phone (on WhatsApp)</label>
         <div class="rg-phone">
           {% set pc_name = 'phone_country' %}{% set pc_id = 'fPhoneCountry' %}{% set pc_required = false %}
           {% set pc_selected = fd.get('phone_country', '') %}{% set pc_style = '' %}{% set pc_placeholder = 'Country…' %}
           {% include "portal/_phone_country_select.html" %}
           <input type="tel" name="phone_number" id="fPhone" placeholder="801 234 5678" autocomplete="tel-national" value="{{ fd.get('phone_number', '') }}"/>
         </div>
-        <p class="rg-hint">Choose your country, then type your number. We add the country code for you.</p>
+        <p class="rg-hint">Use a mobile number that has WhatsApp. We send your code there. Choose your country, then type your number.</p>
         <p class="rg-err" id="hPhone" hidden>Please choose the country and enter your mobile number.</p>
       </div>
 
@@ -318,7 +318,7 @@ function el(id){ return document.getElementById(id); }
 
 function steps() {
   var wp = PLAT === 'wordpress', short = PLAT_SHORT[PLAT] || 'your website';
-  var verify = ['Verify your email.', 'Click the link we send you, then log in.'];
+  var verify = ['Confirm your WhatsApp and email.', 'We send a code to each. Enter both and your account is ready.'];
   var wa = ['Connect your WhatsApp.', "Use Meta's official sign-up window. You keep your number."];
   var site = ['Connect your website.', 'You give permission first, then click Sync now and your AI reads your public pages. If something blocks us, we tell you the reason and how to fix it.'];
   var box = ['Add the chat box.', wp ? 'Install the free PhiXtra plugin on WordPress and click Connect to PhiXtra inside it. No key to copy.' : 'Copy one line of code into ' + short + ', with a step-by-step guide.'];

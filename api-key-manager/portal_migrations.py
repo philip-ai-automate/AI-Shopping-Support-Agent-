@@ -4528,6 +4528,35 @@ def ensure_portal_tables():
                 UNIQUE (mailbox_id, message_id)
             )""")
         cur.execute("CREATE INDEX IF NOT EXISTS email_replies_event_idx ON email_replies (event_id)")
+        # Emails a person sends from their connected Outlook to a Sales
+        # Pipeline deal (2026-10-28): one row per message per deal, and each
+        # person's own "follow-up after N days" for those emails. New tables only.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS mailbox_sent_emails (
+                id          BIGSERIAL PRIMARY KEY,
+                tenant_id   INTEGER      NOT NULL,
+                mailbox_id  BIGINT       NOT NULL,
+                message_id  VARCHAR(255) NOT NULL,
+                lead_id     BIGINT       NOT NULL,
+                event_id    BIGINT,
+                to_email    VARCHAR(255),
+                subject     TEXT,
+                snippet     TEXT,
+                web_link    TEXT,
+                sent_at     TIMESTAMPTZ,
+                followup_due DATE,
+                created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                UNIQUE (mailbox_id, message_id, lead_id)
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS mailbox_sent_emails_event_idx ON mailbox_sent_emails (event_id)")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS mailbox_followup_days (
+                tenant_id   INTEGER     NOT NULL,
+                owner_key   VARCHAR(40) NOT NULL,
+                days        INTEGER     NOT NULL,
+                updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (tenant_id, owner_key)
+            )""")
         cur.execute("CREATE TABLE IF NOT EXISTS system_notices_sent (notice_key TEXT PRIMARY KEY, sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
         cur.execute("SELECT id FROM plans WHERE COALESCE(feat_email_campaigns, FALSE)")
         for (pid,) in cur.fetchall():

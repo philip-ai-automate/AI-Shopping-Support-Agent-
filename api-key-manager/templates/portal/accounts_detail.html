@@ -70,7 +70,7 @@
       <h3>Customer details</h3>
       <dl class="ad-dl">
         <dt>Contact person</dt>{% if a.contact %}<dd>{{ a.contact }}</dd>{% else %}<dd class="none">Not given</dd>{% endif %}
-        <dt>Phone</dt>{% if a.phone_number %}<dd>{{ a.phone_number }}</dd>{% else %}<dd class="none">Not given</dd>{% endif %}
+        <dt>Phone</dt>{% if a.phone_number %}<dd>{{ a.phone_number }}{% if a.phone_verified %} <span title="Confirmed by code" style="font-size:11px;font-weight:700;color:#0F7A4A;background:#E6F4EC;border-radius:999px;padding:1px 7px;white-space:nowrap">WhatsApp ✓</span>{% endif %}</dd>{% else %}<dd class="none">Not given</dd>{% endif %}
         <dt>Email</dt>{% if a.email %}<dd>{{ a.email }}</dd>{% else %}<dd class="none">Not given</dd>{% endif %}
         <dt>Country</dt>{% if a.country %}<dd>{{ a.country }}</dd>{% else %}<dd class="none">Not given</dd>{% endif %}
         <dt>Company name</dt>{% if a.company_name %}<dd>{{ a.company_name }}</dd>{% else %}<dd class="none">Not given</dd>{% endif %}

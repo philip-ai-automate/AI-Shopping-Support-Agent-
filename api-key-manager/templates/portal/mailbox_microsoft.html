@@ -23,6 +23,13 @@
   .mb-wrap { overflow-x:auto }
   .mb-copy { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px }
   .mb-copy input { flex:1; min-width:220px; padding:9px 12px; border:1.5px solid var(--line); border-radius:9px; font-size:12px; font-family:inherit }
+  .mb-fu { background:#F5F8FF; border:1px solid #D1E0FF; border-radius:12px; padding:16px; margin-bottom:16px }
+  .mb-fu-title { font-weight:800; color:#0B1D40; margin-bottom:4px }
+  .mb-fu-text { font-size:13px; line-height:1.55; color:var(--txt); margin-bottom:12px; max-width:680px }
+  .mb-fu form { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; margin:0 }
+  .mb-fu label { display:block; font-size:12.5px; font-weight:700; margin-bottom:5px }
+  .mb-fu input { width:90px; height:42px; box-sizing:border-box; padding:0 12px; border:1.5px solid var(--line); border-radius:9px; font:inherit; font-size:15px }
+  .mb-fu-hint { font-size:12px; color:var(--muted); margin-top:10px }
 </style>
 {% endblock %}
 
@@ -31,7 +38,7 @@
 <div class="wizard-header">
   <div>
     <div class="wizard-title">Microsoft 365 (Outlook)</div>
-    <div class="wizard-sub">Connect your own Outlook mailbox, and replies to your campaign and sequence emails show on the lead by themselves. No more ticking "They replied".</div>
+    <div class="wizard-sub">Connect your own Outlook mailbox. Replies to your campaign and sequence emails, and emails you send to Sales Pipeline deals, show on the lead or deal by themselves.</div>
   </div>
 </div>
 
@@ -74,6 +81,23 @@
   </div>
   {% endif %}
 
+  {% if mine and mine.status == 'active' %}
+  {% if not followup_days %}
+  <div class="mb-note warn"><b>Set your follow-up days.</b> Emails you send to deals are already recorded and the deal moves to Contacted, but no follow-up is booked until you choose how many days.</div>
+  {% endif %}
+  <div class="mb-fu">
+    <div class="mb-fu-title">Your follow-up after sending an email</div>
+    <div class="mb-fu-text">When you email a deal in the Sales Pipeline, PhiXtra books your next follow-up this many days later. This is your own setting. Other people on your team choose their own.</div>
+    <form method="POST" action="{{ url_for('mailbox.save_followup_days') }}">
+      <div>
+        <label for="mbFuDays">Follow-up after</label>
+        <input id="mbFuDays" type="number" name="days" min="1" max="{{ followup_days_max }}" value="{{ followup_days or '' }}" required> <span style="font-size:14px">days</span>
+      </div>
+      <button type="submit" class="btn btn-primary">Save</button>
+    </form>
+    <div class="mb-fu-hint">The date is not moved for weekends. If it lands on a Saturday or Sunday, change it on the deal with Reschedule.</div>
+  </div>
+  {% endif %}
   <div class="mb-acts">
     {% if configured and not expired %}
       {% if not mine %}
@@ -81,7 +105,7 @@
       {% elif mine.status != 'active' %}
       <a href="{{ url_for('mailbox.connect') }}" class="btn btn-primary">Reconnect →</a>
       {% else %}
-      <form method="POST" action="{{ url_for('mailbox.check_now') }}"><button type="submit" class="btn">Check for replies now</button></form>
+      <form method="POST" action="{{ url_for('mailbox.check_now') }}"><button type="submit" class="btn">Check now</button></form>
       <a href="{{ url_for('mailbox.connect') }}" class="btn">Connect a different mailbox</a>
       {% endif %}
     {% endif %}
@@ -97,7 +121,8 @@
   <div class="mb-title" style="margin-bottom:8px">How it works</div>
   <ul class="mb-how">
     <li>You sign in with Microsoft once. PhiXtra can only <b>read</b> your mail. It never sends, moves or deletes anything.</li>
-    <li>Every 2 minutes it looks for replies from people your business emailed in the last 60 days.</li>
+    <li>Every 2 minutes it looks for replies from people your business emailed in the last 60 days, and for emails you sent to deals in the Sales Pipeline.</li>
+    <li><b>An email you send</b> to a deal goes on its Emails tab with an "Open in Outlook" link, moves a New Opportunity to Contacted, counts towards your Daily Target "Leads contacted", and books your follow-up using your days above. Click a deal's email address in the Sales Pipeline to start one.</li>
     <li>A reply shows on that person's lead with its first few lines and an "Open in Outlook" link, moves a New lead to Contacted, and stops any email sequence they're in.</li>
     <li>All other mail is skipped and never stored. Out-of-office replies and bounced emails are ignored.</li>
     <li>When you first connect, replies from the last 14 days are picked up too.</li>

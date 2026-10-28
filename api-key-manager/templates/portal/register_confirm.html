@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if row and row.kind == 'login' %}Confirm your details{% else %}Confirm your WhatsApp and email{% endif %} — PhiXtra</title>
+  {#- 2026-10-27: no account until WhatsApp and email are both confirmed
+      (signup_confirm). Approved mock-up: https://claude.ai/artifact/YA9JNRrwNURksofBSHUfc9 -#}
+  <style>
+    :root{
+      --ink:#111E2D; --navy:#0B1D40; --bg:#F4F6FA; --card:#fff; --tint:#E8EEF8;
+      --line:rgba(17,30,45,0.12); --muted:#5A6B85;
+      --good:#0F7A4A; --goodbg:#E6F4EC; --bad:#B42318; --badbg:#FDECEA;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+    a{color:var(--navy)}
+    .wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:44px 16px 40px}
+    .card{width:100%;max-width:460px;background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:0 24px 60px rgba(11,29,64,0.10);padding:34px 30px 28px}
+    @media (max-width:480px){.card{padding:26px 18px}}
+    h1{font-size:21px;font-weight:800;letter-spacing:-.3px;margin:0 0 6px;line-height:1.3;color:var(--navy)}
+    .sub{font-size:13.5px;color:var(--muted);line-height:1.6;margin:0 0 18px}
+    .msg{font-size:12.5px;line-height:1.6;padding:10px 14px;border-radius:10px;margin-bottom:14px;background:var(--tint);color:var(--ink)}
+    .msg.success{background:var(--goodbg);color:var(--good)} .msg.danger{background:var(--badbg);color:var(--bad)}
+    .box{border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+    .box.ok{border-color:var(--good);background:var(--goodbg)}
+    .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+    .top b{font-size:14.5px} .top small{color:var(--muted);font-size:12.5px;overflow-wrap:anywhere}
+    .code{width:100%;font-size:22px;font-weight:700;letter-spacing:8px;text-align:center;padding:11px;border:1px solid var(--line);border-radius:10px;color:var(--ink);background:#fff;font-variant-numeric:tabular-nums}
+    .code:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px var(--tint)}
+    .st{font-size:13px;font-weight:600;margin:8px 0 0;min-height:1.1em}
+    .st.ok{color:var(--good)} .st.bad{color:var(--bad)}
+    .links{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px}
+    .links form{margin:0}
+    .link{background:none;border:0;padding:2px 0;color:var(--navy);font-size:13px;font-weight:600;text-decoration:underline;cursor:pointer;font-family:inherit}
+    .btn{display:flex;align-items:center;justify-content:center;width:100%;background:var(--navy);color:#fff;border:0;border-radius:10px;padding:13px 18px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;text-decoration:none}
+    .btn[disabled]{opacity:.35;cursor:not-allowed}
+    .note{font-size:12.5px;color:var(--muted);text-align:center;margin:12px 0 0}
+    .why{font-size:12.5px;color:var(--muted);background:var(--tint);border-radius:10px;padding:10px 12px;margin:14px 0 0;line-height:1.55}
+    .chg{margin-top:12px;display:none;gap:8px;flex-direction:column}
+    .chg.open{display:flex}
+    .chg .row{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px}
+    @media (max-width:420px){.chg .row{grid-template-columns:minmax(0,1fr)}}
+    .chg input,.chg select{width:100%;font-size:14px;padding:10px;border:1px solid var(--line);border-radius:10px;font-family:inherit}
+    .small-btn{background:var(--navy);color:#fff;border:0;border-radius:8px;padding:9px 12px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:22px">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 4h9a5 5 0 0 1 0 10H8v6H4V4z" fill="#0B1D40"/>
+      <path d="M20 4 6 20" stroke="#9DB8E8" stroke-width="3.4" stroke-linecap="round"/>
+    </svg>
+    <span style="font-size:17px;font-weight:800;letter-spacing:-.3px;color:var(--navy)">PhiXtra</span>
+  </div>
+
+  <div class="card">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}<div class="msg {{ category }}">{{ message | safe }}</div>{% endfor %}
+  {% endwith %}
+
+  {% if not row %}
+    <h1>Your sign-up has expired</h1>
+    <p class="sub">You didn't confirm both codes within 60 minutes, so we didn't create your account. Please sign up again. It takes about two minutes.</p>
+    <a class="btn" href="{{ url_for('portal.register') }}">Sign up again</a>
+    <p class="note">Were you logging in to an existing account? <a href="{{ url_for('portal.login') }}">Log in again</a></p>
+  {% else %}
+    {% set login = row.kind == 'login' %}
+    {% if login %}
+      <h1>Confirm your {% if not row.wa_ok and not row.email_ok %}WhatsApp number and email{% elif not row.wa_ok %}WhatsApp number{% else %}email{% endif %} to continue</h1>
+      <p class="sub">We've sent you a code. Enter it to open your account.</p>
+    {% else %}
+      <h1>Confirm your WhatsApp and email</h1>
+      <p class="sub">We've sent you two codes. Enter both to create your account.</p>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('portal.register_confirm') }}" id="codesForm">
+      <input type="hidden" name="action" value="create">
+
+      {% if not (login and row.wa_ok and not row.phone) %}
+      <div class="box{% if row.wa_ok %} ok{% endif %}" id="boxWa">
+        <div class="top"><b>WhatsApp {% if row.wa_ok and login %}number{% else %}code{% endif %}</b><small>{% if row.wa_ok and login %}{{ row.phone or '' }}{% else %}Sent to {{ row.phone }}{% endif %}</small></div>
+        {% if row.wa_ok %}
+          <p class="st ok" style="margin:0">✓ {{ 'Already confirmed' if login else 'Confirmed' }}</p>
+        {% else %}
+          <input class="code" name="code_wa" id="codeWa" inputmode="numeric" maxlength="6" placeholder="000000"
+                 autocomplete="one-time-code" aria-label="WhatsApp code" aria-describedby="stWa" autofocus>
+          <p class="st{% if wrong.wa %} bad{% endif %}" id="stWa" aria-live="polite">{% if wrong.wa %}That code isn't right. Check the latest message, or send a new code.{% endif %}</p>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <div class="box{% if row.email_ok %} ok{% endif %}" id="boxEm">
+        <div class="top"><b>Email {% if row.email_ok and login %}{% else %}code{% endif %}</b><small>{% if row.email_ok and login %}{{ row.email }}{% else %}Sent to {{ row.email }}{% endif %}</small></div>
+        {% if row.email_ok %}
+          <p class="st ok" style="margin:0">✓ {{ 'Already confirmed' if login else 'Confirmed' }}</p>
+        {% else %}
+          <input class="code" name="code_email" id="codeEm" inputmode="numeric" maxlength="6" placeholder="000000"
+                 autocomplete="one-time-code" aria-label="Email code" aria-describedby="stEm" {% if row.wa_ok %}autofocus{% endif %}>
+          <p class="st{% if wrong.email %} bad{% endif %}" id="stEm" aria-live="polite">{% if wrong.email %}That code isn't right. Check the latest email, or send a new code.{% endif %}</p>
+        {% endif %}
+      </div>
+
+      <button class="btn" type="submit" id="goBtn">{{ 'Continue' if login else 'Create my account' }}</button>
+    </form>
+
+    {# Resend / change, outside the codes form so each is its own small POST #}
+    {% if not row.wa_ok %}
+    <div class="links" id="waLinks">
+      <form method="POST" action="{{ url_for('portal.register_confirm') }}"><input type="hidden" name="action" value="resend"><input type="hidden" name="which" value="wa"><button class="link" type="submit">Send a new WhatsApp code</button></form>
+      {% if login %}
+        <button class="link" type="button" onclick="document.getElementById('chgWa').classList.toggle('open')">Wrong number? Change it</button>
+      {% else %}
+        <form method="POST" action="{{ url_for('portal.register_confirm') }}"><input type="hidden" name="action" value="change"><input type="hidden" name="which" value="wa"><button class="link" type="submit">Wrong number? Change it</button></form>
+      {% endif %}
+    </div>
+    {% if login %}
+    <form class="chg" id="chgWa" method="POST" action="{{ url_for('portal.register_confirm') }}">
+      <input type="hidden" name="action" value="change">
+      <label for="chgPhone" style="font-size:13px;font-weight:600">Your WhatsApp number</label>
+      <div class="row">
+        {% set pc_name = 'phone_country' %}{% set pc_id = 'chgCountry' %}{% set pc_required = true %}
+        {% set pc_selected = '' %}{% set pc_style = '' %}{% set pc_placeholder = 'Country…' %}
+        {% include "portal/_phone_country_select.html" %}
+        <input type="tel" name="phone_number" id="chgPhone" placeholder="801 234 5678" autocomplete="tel-national" required>
+      </div>
+      <button class="small-btn" type="submit">Send code to this number</button>
+    </form>
+    {% endif %}
+    {% endif %}
+
+    {% if not row.email_ok %}
+    <div class="links">
+      <form method="POST" action="{{ url_for('portal.register_confirm') }}"><input type="hidden" name="action" value="resend"><input type="hidden" name="which" value="email"><button class="link" type="submit">Send a new email code</button></form>
+      {% if not login %}
+        <form method="POST" action="{{ url_for('portal.register_confirm') }}"><input type="hidden" name="action" value="change"><input type="hidden" name="which" value="email"><button class="link" type="submit">Wrong email? Change it</button></form>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <p class="note">Each code works for 10 minutes. Can't find the email? Check spam.</p>
+    <p class="why">We check both so your account is secure and our team can reach you to help you get set up.</p>
+  {% endif %}
+  </div>
+</div>
+
+{% if row %}
+<script>
+(function(){
+  // Tick each box as soon as its 6 digits are right; the button still
+  // works without this (the form checks both codes when sent).
+  var form = document.getElementById('codesForm');
+  var state = {wa: {{ 'true' if row.wa_ok else 'false' }}, email: {{ 'true' if row.email_ok else 'false' }}};
+  var boxes = {wa: ['codeWa','boxWa','stWa'], email: ['codeEm','boxEm','stEm']};
+  function tick(key){
+    var b = boxes[key], input = document.getElementById(b[0]), st = document.getElementById(b[2]);
+    if (!input) return;
+    document.getElementById(b[1]).classList.add('ok');
+    input.disabled = true;
+    st.textContent = '✓ Confirmed'; st.className = 'st ok';
+  }
+  function maybeGo(){ if (state.wa && state.email) form.submit(); }
+  Object.keys(boxes).forEach(function(key){
+    var input = document.getElementById(boxes[key][0]);
+    if (!input) return;
+    input.addEventListener('input', function(){
+      input.value = input.value.replace(/\D/g, '').slice(0, 6);
+      var st = document.getElementById(boxes[key][2]);
+      if (input.value.length < 6) { st.textContent = ''; st.className = 'st'; return; }
+      var fd = new FormData();
+      fd.append('action', 'check');
+      fd.append('code_' + key, input.value);
+      fetch(form.getAttribute('action'), {method: 'POST', body: fd, credentials: 'same-origin'})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (d.stopped) { window.location.reload(); return; }
+          if (d[key]) { state[key] = true; tick(key); maybeGo(); }
+          else { st.textContent = "That code isn't right. Check the latest " + (key === 'wa' ? 'message' : 'email') + ', or send a new code.'; st.className = 'st bad'; }
+        })
+        .catch(function(){});
+    });
+  });
+  form.addEventListener('submit', function(){
+    // A ticked box is disabled; nothing to send for it.
+    document.getElementById('goBtn').disabled = true;
+  });
+})();
+</script>
+{% endif %}
+</body>
+</html>

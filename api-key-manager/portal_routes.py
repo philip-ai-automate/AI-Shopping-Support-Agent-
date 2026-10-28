@@ -3148,10 +3148,13 @@ def _register_whatsapp_merchant(
     business_name: str, phone_number: str = "",
     is_founder: bool = False, hear_about_us: str = "", business_country: str = None,
     signup_channel: str = None, domain: str = None, website_platform: str = None,
-    selling_currency: str = None,
+    selling_currency: str = None, pw_hash: str = None, confirmed: bool = False,
 ):
     """
     Self-service registration path for WhatsApp-only merchants.
+    confirmed=True (2026-10-27): WhatsApp and email were already confirmed by
+    code (register_confirm) — the account starts verified and active, no
+    verification email, and a dict comes back instead of a redirect.
     Creates tenant (source_type='whatsapp') + customer (real email/password)
     + whatsapp api_key.  Sends email verification like the web path.
     Pass is_founder=True to claim a Founder spot (1-year free, tracked separately).
@@ -3229,16 +3232,18 @@ def _register_whatsapp_merchant(
     cur2.close()
 
     # Create customer with real email + password (email_verified=0, needs email click)
-    verify_token = make_token(24)
-    pw_hash      = hash_password(password)
+    verify_token = None if confirmed else make_token(24)
+    pw_hash      = pw_hash or hash_password(password)
     cur3 = conn.cursor()
     cur3.execute("""
         INSERT INTO customers
             (tenant_id, first_name, last_name, email, password_hash,
-             phone_number, email_verified, verify_token, hear_about_us, business_country)
-        VALUES (%s, %s, %s, %s, %s, %s, FALSE, %s, %s, %s)
-    """, (tenant_id, first_name, last_name, email, pw_hash, phone_number or None, verify_token,
-          hear_about_us or None, business_country or None))
+             phone_number, email_verified, phone_verified, verify_token, hear_about_us, business_country)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """, (tenant_id, first_name, last_name, email, pw_hash, phone_number or None, confirmed,
+          bool(confirmed and phone_number), verify_token, hear_about_us or None, business_country or None))
+    if confirmed:
+        cur3.execute("UPDATE tenants SET status='active' WHERE id=%s", (tenant_id,))
     conn.commit()
     cur3.close()
 
@@ -3273,6 +3278,9 @@ def _register_whatsapp_merchant(
         business_name=business_name,
         hear_about_us=hear_about_us,
     )
+
+    if confirmed:
+        return {"ok": True, "tenant_id": tenant_id}
 
     # NOTE: the founder "your free year starts now" email used to fire here.
     # Founders now get the same 2-week AI trial as everyone else, started
@@ -3310,7 +3318,7 @@ def _register_whatsapp_merchant(
 def _register_web_merchant(first_name, last_name, email, password, phone_number,
                             tenant_domain, hear_about_us="", ref_code="", business_country=None,
                             signup_channel=None, business_name=None, website_platform=None,
-                            selling_currency=None):
+                            selling_currency=None, pw_hash=None, confirmed=False):
     """
     Self-service registration path for web (WooCommerce/Shopify/custom site)
     merchants. Creates tenant (if needed) + customer + trial api_key, and
@@ -3378,19 +3386,23 @@ def _register_web_merchant(first_name, last_name, email, password, phone_number,
             hear_about_us=hear_about_us,
         )
 
-    verify_token = make_token(24)
-    pw_hash      = hash_password(password)
+    # confirmed=True (2026-10-27): WhatsApp and email already confirmed by
+    # code (register_confirm), so the account starts verified and active.
+    verify_token = None if confirmed else make_token(24)
+    pw_hash      = pw_hash or hash_password(password)
 
     try:
         cur2 = conn.cursor()
         cur2.execute("""
             INSERT INTO customers
                 (tenant_id, first_name, last_name, email, password_hash,
-                 phone_number, email_verified, verify_token, hear_about_us, business_country)
-            VALUES (%s, %s, %s, %s, %s, %s, FALSE, %s, %s, %s)""",
+                 phone_number, email_verified, phone_verified, verify_token, hear_about_us, business_country)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (int(tenant["id"]), first_name, last_name, email,
-             pw_hash, phone_number or None, verify_token, hear_about_us or None,
-             business_country or None))
+             pw_hash, phone_number or None, confirmed, bool(confirmed and phone_number),
+             verify_token, hear_about_us or None, business_country or None))
+        if confirmed:
+            cur2.execute("UPDATE tenants SET status='active' WHERE id=%s", (int(tenant["id"]),))
         conn.commit()
         cur2.close()
     except Exception:
@@ -3432,6 +3444,9 @@ def _register_web_merchant(first_name, last_name, email, password, phone_number,
     )
     insert_audit_log(action="customer_registered", tenant_id=int(tenant["id"]),
                      website=tenant_domain, details={"email": email, "first_name": first_name})
+
+    if confirmed:
+        return {"ok": True, "email_sent": False, "tenant_id": int(tenant["id"]), "needs_phone_verify": False}
 
     email_sent = _send_verify_email(email, verify_token, first_name)
 
@@ -3557,35 +3572,14 @@ def wp_connect():
         return render_template("portal/wp_connect.html", domain=tenant_domain, email=email,
                                form_data=request.form)
 
-    result = _register_web_merchant(
-        first_name=first_name, last_name=last_name, email=email, password=password,
+    return _hold_signup("web", "wp_connect", dict(
+        first_name=first_name, last_name=last_name, email=email,
         phone_number=phone_number, tenant_domain=tenant_domain,
         hear_about_us="wordpress_plugin", business_country=phone_country,
         signup_channel="website" if NEW_WEBSITE_SIGNUP else None,
         website_platform="wordpress",
-    )
-
-    if not result["ok"]:
-        if result.get("reason") == "domain_taken":
-            flash("This website already has a PhiXtra account. Please log in, or contact "
-                  "support@phixtra.com if you need access.", "warning")
-        else:
-            flash("An account with that email already exists. Please log in.", "warning")
-        return redirect(url_for("portal.login"))
-
-    if result["needs_phone_verify"]:
-        return redirect(url_for("portal.register_verify_phone"))
-
-    if result["email_sent"]:
-        return redirect(url_for("portal.register_check_email", email=email))
-
-    resend_url = url_for("portal.resend_verify")
-    flash(
-        f"Account created! However we could not send the verification email to <strong>{email}</strong>. "
-        f"<a href='{resend_url}' style='text-decoration:underline'>Click here to resend</a>.",
-        "warning"
-    )
-    return redirect(url_for("portal.login"))
+    ), password, lambda: render_template("portal/wp_connect.html", domain=tenant_domain, email=email,
+                                         form_data=request.form))
 
 
 @portal_bp.route("/connect/status")
@@ -3962,23 +3956,13 @@ def register():
         if _taken:
             flash(_taken, "warning")
             return _register_page(request.form, form_data=request.form)
-        result = _register_web_merchant(
-            first_name=first_name, last_name=last_name, email=email, password=password,
+        return _hold_signup("web", "register", dict(
+            first_name=first_name, last_name=last_name, email=email,
             phone_number=mobile, tenant_domain=site, hear_about_us=hear_about_us,
             ref_code=ref_code, business_country=based, signup_channel="website",
             business_name=business_name, website_platform=website_platform,
             selling_currency=selling_currency,
-        )
-        if not result["ok"]:
-            if result.get("reason") == "domain_taken":
-                flash("This website already has a PhiXtra account. Please log in, or contact "
-                      "support@phixtra.com if you need access.", "warning")
-            else:
-                flash("An account with that email already exists. Please log in.", "warning")
-            return _register_page(request.form, form_data=request.form)
-        if result["needs_phone_verify"]:
-            return redirect(url_for("portal.register_verify_phone"))
-        return _account_created_redirect(email, result["email_sent"])
+        ), password, lambda: _register_page(request.form, form_data=request.form))
 
     # ── WhatsApp-only merchant registration ─────────────────────────────────
     if merchant_type in ("whatsapp", "both"):
@@ -3991,10 +3975,10 @@ def register():
         if _taken:
             flash(_taken, "warning")
             return _register_page(request.form, form_data=request.form)
-        return _register_whatsapp_merchant(
+        return _hold_signup("whatsapp", "register", dict(
             business_country=wa_phone_country,
             first_name=first_name, last_name=last_name,
-            email=email, password=password,
+            email=email,
             business_name=business_name,
             phone_number=wa_phone_number,
             is_founder=False,
@@ -4003,7 +3987,7 @@ def register():
             domain=site if merchant_type == "both" else None,
             website_platform=website_platform if merchant_type == "both" else None,
             selling_currency=selling_currency,
-        )
+        ), password, lambda: _register_page(request.form, form_data=request.form))
 
     # ── Website stores: WooCommerce merchants sign up only through the
     # PhiXtra plugin inside WordPress (the /connect page, wp_connect),
@@ -4158,6 +4142,274 @@ def register():
     return redirect(url_for("portal.login"))
 
 
+# ── Confirm WhatsApp + email before the account exists (2026-10-27) ────────
+# Approved mock-up: https://claude.ai/artifact/YA9JNRrwNURksofBSHUfc9
+# Every sign-up (website, WhatsApp, WordPress plugin) waits in signup_confirm
+# until the WhatsApp code AND the email code are right. Only then is the
+# account created — already confirmed — and the owner goes straight in.
+# Unfinished sign-ups are wiped after 60 minutes and never reach Admin or the
+# Accounts page. Owners from before this whose number or email was never
+# confirmed are asked for just what's missing when they log in.
+import signup_confirm
+
+
+def _confirm_send_wa(row) -> bool:
+    """WhatsApp code to the held number. True when Meta accepted it."""
+    otp = _generate_otp()
+    _store_otp(row["phone"], otp)
+    return _send_wa_otp(row["phone"], otp)
+
+
+def _confirm_send_email(row) -> bool:
+    import html as _h
+    code  = signup_confirm.new_email_code(row["id"])
+    first = _h.escape(((row.get("args") or {}).get("first_name") or "").strip()) or "there"
+    why   = ("If you didn't try to log in to PhiXtra, ignore this email." if row["kind"] == "login"
+             else "If you didn't sign up for PhiXtra, ignore this email.")
+    html  = f"""<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#111E2D">
+  <p>Hi {first},</p>
+  <p>Your code to confirm this email for PhiXtra is:</p>
+  <p style="font-size:28px;font-weight:700;letter-spacing:6px;color:#0B1D40;margin:14px 0">{code}</p>
+  <p>It works for 10 minutes. {why}</p>
+</div>"""
+    return send_email(row["email"], f"Your PhiXtra email code: {code}", html,
+                      text_body=f"Your PhiXtra email code is {code}. It works for 10 minutes. {why}")
+
+
+def _confirm_send_missing(row):
+    """Send a code for each thing not yet confirmed; say so if one couldn't go."""
+    if not row["wa_ok"] and not _confirm_send_wa(row):
+        flash(f"We couldn't send a WhatsApp code to {row['phone']}. Check the number is on WhatsApp, "
+              "or change it.", "danger")
+    if not row["email_ok"] and not _confirm_send_email(row):
+        flash(f"We couldn't send the email code to {row['email']}. Check the address, or change it.", "danger")
+
+
+def _hold_signup(creator, flow, args, password, on_error):
+    """Hold a sign-up until both codes are right. creator: 'whatsapp' or 'web'
+    (which create function runs at the end); on_error re-shows the form."""
+    email = args["email"]
+    site  = (args.get("tenant_domain") or args.get("domain") or "")
+    site  = site.replace("https://", "").replace("http://", "").rstrip("/").lower()
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        in_use = _email_in_use(cur, email)
+        taken  = False
+        if site and not in_use:
+            cur.execute("SELECT 1 FROM tenants WHERE regexp_replace(lower(domain), '^www\\.', '')"
+                        " = regexp_replace(%s, '^www\\.', '') LIMIT 1", (site,))
+            taken = cur.fetchone() is not None
+    finally:
+        cur.close(); conn.close()
+    if in_use:
+        flash("An account with that email already exists. Please log in.", "warning")
+        return on_error()
+    if taken:
+        flash("This website already has a PhiXtra account. Please log in, or contact "
+              "support@phixtra.com if you need access.", "warning")
+        return on_error()
+
+    form  = {k: v for k, v in request.form.items()
+             if k not in ("password", "confirm_password", "g-recaptcha-response", "website")}
+    token = signup_confirm.start(kind="signup", flow=flow, creator=creator, args=args, form=form,
+                                 pw_hash=hash_password(password), phone=args.get("phone_number") or "",
+                                 email=email)
+    session["signup_token"] = token
+    _confirm_send_missing(signup_confirm.get(token))
+    return redirect(url_for("portal.register_confirm"))
+
+
+def _confirm_needed(c):
+    """(need_wa, need_email) for an owner logging in, or None when nothing is
+    missing. PhiXtra's own business and demo businesses are left alone, and a
+    number the business has connected to PhiXtra through Meta already counts
+    as confirmed (a code sent there would land in their own PhiXtra inbox)."""
+    phone   = (c.get("phone_number") or "").strip()
+    need_em = not c.get("email_verified")
+    need_wa = bool(phone) and not c.get("phone_verified")
+    if not (need_wa or need_em):
+        return None
+    import accounts_core
+    if accounts_core.is_platform_tenant(c.get("tenant_id")):
+        return None
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT is_demo FROM tenants WHERE id=%s", (c.get("tenant_id"),))
+        t = cur.fetchone()
+        if t and t[0]:
+            return None
+        if need_wa:
+            cur.execute(r"""SELECT 1 FROM wa_tenants WHERE tenant_id=%s AND active
+                            AND regexp_replace(COALESCE(display_phone_number,''), '\D', '', 'g')
+                              = regexp_replace(%s, '\D', '', 'g') LIMIT 1""", (c.get("tenant_id"), phone))
+            if cur.fetchone():
+                cur.execute("UPDATE customers SET phone_verified=TRUE WHERE id=%s", (int(c["id"]),))
+                conn.commit()
+                need_wa = False
+    finally:
+        cur.close(); conn.close()
+    return (need_wa, need_em) if (need_wa or need_em) else None
+
+
+def _hold_login(c, need_wa, need_em, nxt=None, flow="login"):
+    token = signup_confirm.start(kind="login", flow=flow, customer_id=int(c["id"]),
+                                 phone=(c.get("phone_number") or "").strip(), email=c["email"],
+                                 args={"first_name": c.get("first_name") or ""},
+                                 wa_ok=not need_wa, email_ok=not need_em, next_url=nxt)
+    session["signup_token"] = token
+    _confirm_send_missing(signup_confirm.get(token))
+    return redirect(url_for("portal.register_confirm"))
+
+
+def _log_in_owner(customer_id: int):
+    """Same session the email/password login sets for a business owner."""
+    pending_key = session.pop("new_plain_key", None) or session.pop("pending_plain_key", None)
+    session.clear()
+    session["portal_logged_in"] = True
+    session["customer_id"]      = int(customer_id)
+    import accounts_core
+    accounts_core.record_owner_login(int(customer_id))
+    if pending_key:
+        session["new_plain_key"] = pending_key
+
+
+def _confirm_finish(row):
+    """Both codes right: create the account (sign-up) or mark it confirmed
+    (login), then log the owner in."""
+    session.pop("signup_token", None)
+    if row["kind"] == "login":
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("""UPDATE customers SET email_verified=TRUE, verify_token=NULL,
+                              phone_number=COALESCE(NULLIF(%s,''), phone_number),
+                              phone_verified=(phone_verified OR NULLIF(%s,'') IS NOT NULL)
+                       WHERE id=%s RETURNING tenant_id""",
+                    (row["phone"] or "", row["phone"] or "", row["customer_id"]))
+        tid = cur.fetchone()
+        if tid:
+            cur.execute("UPDATE tenants SET status='active' WHERE id=%s AND status='pending'", (tid[0],))
+        conn.commit(); cur.close(); conn.close()
+        signup_confirm.finish(row["id"])
+        _log_in_owner(row["customer_id"])
+        return redirect(_safe_next(row.get("next_url")) or url_for("portal.dashboard"))
+
+    args = dict(row["args"] or {})
+    make = _register_whatsapp_merchant if row["creator"] == "whatsapp" else _register_web_merchant
+    res  = make(**args, password="", pw_hash=row["pw_hash"], confirmed=True)
+    if not isinstance(res, dict) or not res.get("ok"):
+        # Someone took the email or website while the codes were on their way.
+        signup_confirm.drop(row["id"])
+        if not isinstance(res, dict):
+            return res
+        if res.get("reason") == "domain_taken":
+            flash("This website already has a PhiXtra account. Please log in, or contact "
+                  "support@phixtra.com if you need access.", "warning")
+        else:
+            flash("An account with that email already exists. Please log in.", "warning")
+        return redirect(url_for("portal.login"))
+    signup_confirm.finish(row["id"])
+
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("SELECT id FROM customers WHERE tenant_id=%s ORDER BY id LIMIT 1", (int(res["tenant_id"]),))
+    cid = int(cur.fetchone()[0])
+    cur.close(); conn.close()
+    _send_welcome_after_confirm(cid)
+    _log_in_owner(cid)
+    flash("Welcome to PhiXtra! Your WhatsApp number and email are confirmed.", "success")
+    return redirect(url_for("portal.dashboard"))
+
+
+def _confirm_change(row):
+    """'Wrong number? / Wrong email? Change it' on a sign-up: back to the form
+    with everything kept except the password. This held sign-up is dropped;
+    pressing the button again starts a fresh one with new codes."""
+    session.pop("signup_token", None)
+    signup_confirm.drop(row["id"], changed=True)
+    form = row.get("form") or {}
+    flash("Change your details, type your password again, and we'll send new codes.", "info")
+    if row.get("flow") == "wp_connect":
+        return render_template("portal/wp_connect.html", domain=form.get("tenant_domain", ""),
+                               email=form.get("email", ""), form_data=form)
+    return _register_page(form, form_data=form)
+
+
+@portal_bp.route("/register/confirm", methods=["GET", "POST"])
+@public_route
+def register_confirm():
+    row = signup_confirm.get(session.get("signup_token"))
+    if not row:
+        session.pop("signup_token", None)
+        return render_template("portal/register_confirm.html", row=None, wrong={})
+    if request.method == "GET":
+        return render_template("portal/register_confirm.html", row=row, wrong={})
+
+    action = request.form.get("action") or "create"
+    which  = request.form.get("which") or ""
+
+    if action == "resend":
+        if which == "wa" and not row["wa_ok"]:
+            if not _otp_rate_ok(row["phone"]):
+                flash("Please wait a minute before asking for another code.", "warning")
+            elif _confirm_send_wa(row):
+                flash("A new code has been sent to your WhatsApp.", "success")
+            else:
+                flash(f"We couldn't send a WhatsApp code to {row['phone']}. Check the number is on "
+                      "WhatsApp, or change it.", "danger")
+        elif which == "email" and not row["email_ok"]:
+            if signup_confirm.email_code_wait(row):
+                flash("Please wait a minute before asking for another code.", "warning")
+            elif _confirm_send_email(row):
+                flash("A new code has been sent to your email.", "success")
+            else:
+                flash(f"We couldn't send the email code to {row['email']}. Check the address, or change it.",
+                      "danger")
+        return redirect(url_for("portal.register_confirm"))
+
+    if action == "change":
+        if row["kind"] == "signup":
+            return _confirm_change(row)
+        # Existing account: a new WhatsApp number typed in on this page.
+        new_phone, perr = _phone_from_form(request.form.get("phone_number"), (request.form.get("phone_country") or "").strip().upper())
+        if perr or not new_phone:
+            flash(perr or "Please choose the country and enter your WhatsApp number.", "danger")
+        elif new_phone != row["phone"] and _phone_account_msg(new_phone):
+            flash("That WhatsApp number already belongs to another PhiXtra account.", "danger")
+        else:
+            signup_confirm.set_phone(row["id"], new_phone)
+            row["phone"] = new_phone
+            if _confirm_send_wa(row):
+                flash(f"We've sent a code to {new_phone} on WhatsApp.", "success")
+            else:
+                flash(f"We couldn't send a WhatsApp code to {new_phone}. Check the number is on WhatsApp.", "danger")
+        return redirect(url_for("portal.register_confirm"))
+
+    # Check the codes typed in ("check" = one box, from the page as it's typed).
+    import re as _re_c
+    wrong = {}
+    for key, field in (("wa", "wa_ok"), ("email", "email_ok")):
+        code = _re_c.sub(r"\D", "", request.form.get(f"code_{key}") or "")
+        if row[field] or len(code) != 6:
+            continue
+        ok = (_verify_otp(row["phone"], code) if key == "wa"
+              else signup_confirm.email_code_right(row["id"], code))
+        if ok:
+            signup_confirm.mark(row["id"], field)
+            row[field] = True
+        else:
+            wrong[key] = True
+            if signup_confirm.wrong_code(row["id"]):
+                session.pop("signup_token", None)
+                if action == "check":
+                    return jsonify(stopped=True)
+                flash("Too many wrong codes, so we stopped here. Please start again.", "danger")
+                return redirect(_register_url() if row["kind"] == "signup" else url_for("portal.login"))
+
+    if action == "check":
+        return jsonify(wa=bool(row["wa_ok"]), email=bool(row["email_ok"]), wrong=sorted(wrong))
+    if row["wa_ok"] and row["email_ok"]:
+        return _confirm_finish(row)
+    return render_template("portal/register_confirm.html", row=row, wrong=wrong)
+
+
 @portal_bp.route("/register/check-email")
 @public_route
 def register_check_email():
@@ -4234,48 +4486,10 @@ def register_resend_phone_otp():
     return redirect(url_for("portal.register_verify_phone"))
 
 
-@portal_bp.route("/verify", methods=["GET"])
-@public_route
-def verify_email():
-    token = (request.args.get("token") or "").strip()
-    if not token:
-        flash("Invalid verification link.", "danger")
-        return redirect(url_for("portal.login"))
-
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT id, email, email_verified FROM customers WHERE verify_token=%s", (token,))
-        c = cur.fetchone()
-        if not c:
-            cur.close(); conn.close()
-            print(f"[VERIFY] Token not found or already used: {token[:8]}...")
-            flash("Verification link is invalid or has already been used.", "danger")
-            return redirect(url_for("portal.login"))
-
-        customer_id = int(c["id"])
-        print(f"[VERIFY] Found customer id={customer_id} email={c.get('email')} already_verified={c.get('email_verified')}")
-
-        cur2 = conn.cursor()
-        cur2.execute("UPDATE customers SET email_verified=TRUE, verify_token=NULL WHERE id=%s", (customer_id,))
-        conn.cursor().execute("UPDATE tenants SET status='active' WHERE id=(SELECT tenant_id FROM customers WHERE id=%s)", (customer_id,))
-        rows_affected = cur2.rowcount
-        conn.commit()
-        print(f"[VERIFY] UPDATE rows_affected={rows_affected} for customer id={customer_id}")
-
-        # Confirm the update actually took effect
-        cur3 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur3.execute("SELECT email_verified FROM customers WHERE id=%s", (customer_id,))
-        confirm = cur3.fetchone()
-        print(f"[VERIFY] Confirmation SELECT: email_verified={confirm.get('email_verified') if confirm else 'NO ROW FOUND'}")
-        cur3.close()
-        cur2.close(); cur.close(); conn.close()
-
-    except Exception as e:
-        print(f"[VERIFY] ERROR during email verification: {e}")
-        flash("An error occurred during verification. Please try again or contact support.", "danger")
-        return redirect(url_for("portal.login"))
-
+def _send_welcome_after_confirm(customer_id: int):
+    """The "account is ready" / welcome email, sent once the email is
+    confirmed — by the old email link (verify_email) or by the sign-up email
+    code (register_confirm)."""
     # Send the post-verification welcome email now that email is confirmed —
     # WhatsApp merchants get the WA-specific version, everyone else (web/
     # WooCommerce) gets the plan+feature breakdown version.
@@ -4318,6 +4532,51 @@ def verify_email():
             )
     except Exception as _we:
         print("⚠️ [VERIFY] welcome email failed:", _we)
+
+
+@portal_bp.route("/verify", methods=["GET"])
+@public_route
+def verify_email():
+    token = (request.args.get("token") or "").strip()
+    if not token:
+        flash("Invalid verification link.", "danger")
+        return redirect(url_for("portal.login"))
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, email, email_verified FROM customers WHERE verify_token=%s", (token,))
+        c = cur.fetchone()
+        if not c:
+            cur.close(); conn.close()
+            print(f"[VERIFY] Token not found or already used: {token[:8]}...")
+            flash("Verification link is invalid or has already been used.", "danger")
+            return redirect(url_for("portal.login"))
+
+        customer_id = int(c["id"])
+        print(f"[VERIFY] Found customer id={customer_id} email={c.get('email')} already_verified={c.get('email_verified')}")
+
+        cur2 = conn.cursor()
+        cur2.execute("UPDATE customers SET email_verified=TRUE, verify_token=NULL WHERE id=%s", (customer_id,))
+        conn.cursor().execute("UPDATE tenants SET status='active' WHERE id=(SELECT tenant_id FROM customers WHERE id=%s)", (customer_id,))
+        rows_affected = cur2.rowcount
+        conn.commit()
+        print(f"[VERIFY] UPDATE rows_affected={rows_affected} for customer id={customer_id}")
+
+        # Confirm the update actually took effect
+        cur3 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur3.execute("SELECT email_verified FROM customers WHERE id=%s", (customer_id,))
+        confirm = cur3.fetchone()
+        print(f"[VERIFY] Confirmation SELECT: email_verified={confirm.get('email_verified') if confirm else 'NO ROW FOUND'}")
+        cur3.close()
+        cur2.close(); cur.close(); conn.close()
+
+    except Exception as e:
+        print(f"[VERIFY] ERROR during email verification: {e}")
+        flash("An error occurred during verification. Please try again or contact support.", "danger")
+        return redirect(url_for("portal.login"))
+
+    _send_welcome_after_confirm(customer_id)
 
     # If the plain key was stored during registration (same browser session),
     # keep it alive so it can be shown once after the customer logs in.
@@ -4456,25 +4715,11 @@ def login():
         flash("Your account has been disabled. Contact support.", "danger")
         return redirect(url_for("portal.login"))
 
-    if not int(c.get("email_verified") or 0):
-        resend_url = url_for("portal.resend_verify")
-        flash(
-            f"Please verify your email before logging in. Check your inbox for a message to <strong>{email}</strong>. "
-            f"<a href='{resend_url}' style='text-decoration:underline'>Resend verification email →</a>",
-            "warning"
-        )
-        return redirect(url_for("portal.login"))
-
-    if PHONE_VERIFICATION_ENABLED and not int(c.get("phone_verified") or 0) and (c.get("phone_number") or "").strip():
-        phone = c["phone_number"].strip()
-        session["reg_verify_email"] = email
-        session["reg_verify_phone"] = phone
-        if _otp_rate_ok(phone):
-            otp = _generate_otp()
-            _store_otp(phone, otp)
-            _send_registration_otp_sms(phone, otp)
-        flash("Please verify your phone number to continue. We've sent a code by SMS.", "warning")
-        return redirect(url_for("portal.register_verify_phone"))
+    # WhatsApp number and email must both be confirmed (2026-10-27) — anyone
+    # missing one gets a code for just that before they're let in.
+    _need = _confirm_needed(c)
+    if _need:
+        return _hold_login(c, *_need, nxt=nxt, flow="login")
 
     # Rescue any plain key saved during the registration/verify flow
     # BEFORE session.clear() wipes it.
@@ -25766,11 +26011,14 @@ def _lead_email_history(tenant_id: int, lead_id: int) -> list:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""SELECT e.kind, e.detail, e.actor, e.created_at, c.name AS campaign_name, c.subject,
-                              rp.snippet AS reply_snippet, rp.web_link AS reply_link, rp.subject AS reply_subject,
+                              COALESCE(rp.snippet, se.snippet) AS reply_snippet,
+                              COALESCE(rp.web_link, se.web_link) AS reply_link,
+                              COALESCE(rp.subject, se.subject) AS reply_subject,
                               mb.owner_label AS reply_mailbox_owner, mb.email AS reply_mailbox
                        FROM email_events e LEFT JOIN email_campaigns c ON c.id = e.campaign_id
                        LEFT JOIN email_replies rp ON rp.event_id = e.id
-                       LEFT JOIN mailbox_connections mb ON mb.id = rp.mailbox_id
+                       LEFT JOIN mailbox_sent_emails se ON se.event_id = e.id
+                       LEFT JOIN mailbox_connections mb ON mb.id = COALESCE(rp.mailbox_id, se.mailbox_id)
                        WHERE e.tenant_id=%s AND e.lead_id=%s ORDER BY e.created_at DESC LIMIT 50""",
                     (tenant_id, lead_id))
         rows = cur.fetchall()
@@ -32965,16 +33213,26 @@ def wa_login_verify():
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
-        SELECT id FROM customers
+        SELECT * FROM customers
         WHERE phone_number = %s AND is_active=TRUE
         LIMIT 1
     """, (phone,))
     c = cur.fetchone()
+    if c and not c.get("phone_verified"):
+        # The WhatsApp code just proved this number (2026-10-27).
+        cur.execute("UPDATE customers SET phone_verified=TRUE WHERE id=%s", (int(c["id"]),))
+        conn.commit()
+        c["phone_verified"] = True
     cur.close(); conn.close()
 
     if not c:
         flash("Account not found. Please contact support.", "danger")
         return redirect(url_for("portal.wa_login"))
+
+    _need = _confirm_needed(c)
+    if _need:
+        session.pop("wa_otp_phone", None)
+        return _hold_login(c, *_need, nxt=None, flow="wa_login")
 
     session.pop("wa_otp_phone", None)
     session.clear()
@@ -36683,7 +36941,7 @@ def leads_page():
                 assignee_options.append(_ao(a["key"], a["display"], _by.get(a["key"], 0),
                                             "".join(w[0] for w in a["display"].split()[:2]).upper() or "?"))
     _extra = []
-    if lf["has_company"]: _extra.append(("Contact", "Has company", "has_company"))
+    if lf["has_company"]: _extra.append(("Contact", "No company" if lf["has_company"] == "0" else "Has company", "has_company"))
     if lf["check_numbers"]: _extra.append(("Contact", "Phone number to check", "check_numbers"))
     if lf["added_from"]: _extra.append(("Added from", lf["added_from"].strftime("%-d %b %Y"), "added_from"))
     if lf["added_to"]: _extra.append(("Added to", lf["added_to"].strftime("%-d %b %Y"), "added_to"))
@@ -37449,10 +37707,10 @@ def _leads_list_filters(tenant_id: int, args, actor_key: str, need_flagged: bool
     tier   = (args.get("tier") or "all").strip().lower()
     if tier not in ("all", "hot", "warm", "cold"):
         tier = "all"
-    has_phone    = args.get("has_phone") == "1"
-    has_email    = args.get("has_email") == "1"
-    has_whatsapp = args.get("has_whatsapp") == "1"
-    has_company  = args.get("has_company") == "1"
+    has_phone    = _contact_pick(args.get("has_phone"))
+    has_email    = _contact_pick(args.get("has_email"))
+    has_whatsapp = _contact_pick(args.get("has_whatsapp"))
+    has_company  = _contact_pick(args.get("has_company"))
     check_numbers = args.get("check_numbers") == "1"
     assigned     = (args.get("assigned") or "").strip()
     added_from   = _parse_iso_date(args.get("added_from"))
@@ -37463,7 +37721,7 @@ def _leads_list_filters(tenant_id: int, args, actor_key: str, need_flagged: bool
         tier_filter=tier if tier != "all" else None, opportunity_only=False,
     )
     if has_company:
-        clauses.append("mpl.company_id IS NOT NULL")
+        clauses.append("mpl.company_id IS NOT NULL" if has_company == "1" else "mpl.company_id IS NULL")
     # need_flagged=False (live counts): only work the numbers out if that filter is on.
     flagged_ids = _flagged_lead_ids(tenant_id) if (need_flagged or check_numbers) else []
     if check_numbers:
@@ -37486,8 +37744,8 @@ def _leads_list_filters(tenant_id: int, args, actor_key: str, need_flagged: bool
     clauses += b_clauses; params += b_params
 
     fargs = {k: v for k, v in {
-        "has_phone": "1" if has_phone else None, "has_email": "1" if has_email else None,
-        "has_whatsapp": "1" if has_whatsapp else None, "has_company": "1" if has_company else None,
+        "has_phone": has_phone or None, "has_email": has_email or None,
+        "has_whatsapp": has_whatsapp or None, "has_company": has_company or None,
         "check_numbers": "1" if check_numbers else None,
         "assigned": assigned or None,
         "added_from": added_from.isoformat() if added_from else None,
@@ -37500,7 +37758,7 @@ def _leads_list_filters(tenant_id: int, args, actor_key: str, need_flagged: bool
              "has_whatsapp": has_whatsapp, "has_company": has_company, "assigned": assigned,
              "check_numbers": check_numbers, "flagged_count": len(flagged_ids),
              "added_from": added_from, "added_to": added_to, "fargs": fargs,
-             "contact_filter_count": sum([has_phone, has_email, has_whatsapp, has_company, check_numbers])}
+             "contact_filter_count": sum(bool(x) for x in (has_phone, has_email, has_whatsapp, has_company, check_numbers))}
     return clauses, params, state
 
 
@@ -38162,6 +38420,21 @@ def _pipeline_score_breakdown(lead: dict) -> list:
     ]
 
 
+def _contact_pick(v) -> str:
+    """Contact details filter (2026-10-28): '1' = Has, '0' = Missing, '' = either."""
+    v = (v or "").strip()
+    return v if v in ("1", "0") else ""
+
+
+def _contact_clause(col: str, want):
+    """WHERE piece for one Contact details choice; True / '1' = has it, '0' = missing."""
+    if want is True or want == "1":
+        return f"({col} IS NOT NULL AND {col} <> '')"
+    if want == "0":
+        return f"COALESCE({col}, '') = ''"
+    return None
+
+
 def _pipeline_filter_clauses(tenant_id, search, stage_filter, has_phone, has_whatsapp, has_email,
                               hide_segment_ids=None, hide_label_ids=None, show_label_ids=None,
                               hide_sms_segment_ids=None, hide_wa_segment_ids=None, tier_filter=None,
@@ -38195,12 +38468,10 @@ def _pipeline_filter_clauses(tenant_id, search, stage_filter, has_phone, has_wha
     if stage_filter != "all":
         clauses.append("mpl.stage=%s")
         params.append(stage_filter)
-    if has_phone:
-        clauses.append("(mpl.phone IS NOT NULL AND mpl.phone <> '')")
-    if has_whatsapp:
-        clauses.append("(mpl.whatsapp_number IS NOT NULL AND mpl.whatsapp_number <> '')")
-    if has_email:
-        clauses.append("(mpl.email IS NOT NULL AND mpl.email <> '')")
+    for _want, _col in ((has_phone, "mpl.phone"), (has_whatsapp, "mpl.whatsapp_number"), (has_email, "mpl.email")):
+        _cl = _contact_clause(_col, _want)
+        if _cl:
+            clauses.append(_cl)
     # Positive ids = older lead-based email groups; negative ids = the new
     # Email Segments (wa_segments module 'email'), matched through the deal's contact.
     old_hide = [i for i in (hide_segment_ids or []) if i > 0]
@@ -38261,7 +38532,9 @@ def _filter_option_counts(cur, where_sql: str, params: list, cols: list) -> dict
     r = q(f"""SELECT count(*) FILTER (WHERE COALESCE(mpl.phone,'')<>''), count(*) FILTER (WHERE COALESCE(mpl.email,'')<>''),
                      count(*) FILTER (WHERE COALESCE(mpl.whatsapp_number,'')<>''), count(*) FILTER (WHERE mpl.company_id IS NOT NULL),
                      count(*) {base}""")[0]
-    out["contact"] = {"has_phone": r[0], "has_email": r[1], "has_whatsapp": r[2], "has_company": r[3]}
+    out["contact"] = {"has_phone": r[0], "has_email": r[1], "has_whatsapp": r[2], "has_company": r[3],
+                      "no_phone": r[4] - r[0], "no_email": r[4] - r[1], "no_whatsapp": r[4] - r[2],
+                      "no_company": r[4] - r[3]}
     out["total"] = r[4]
     out["demo"] = bookings_crm.option_counts(cur, where_sql, params)
     out["linkedin"] = _li.option_counts(cur, where_sql, params)
@@ -38316,10 +38589,11 @@ def _pipeline_filter_chips(stage_filter, search, assigned, assignee_options, tie
         add("Stage", stage_labels.get(stage_filter, stage_filter), without("stage"))
     if tier != "all":
         add("Score", tier.capitalize(), without("tier"))
-    for on, key, text in ((has_phone, "has_phone", "Has phone"), (has_whatsapp, "has_whatsapp", "Has WhatsApp"),
-                          (has_email, "has_email", "Has email")):
+    for on, key, text, miss in ((has_phone, "has_phone", "Has phone", "No phone"),
+                                (has_whatsapp, "has_whatsapp", "Has WhatsApp", "No WhatsApp"),
+                                (has_email, "has_email", "Has email", "No email")):
         if on:
-            add("Contact", text, without(key))
+            add("Contact", miss if on == "0" else text, without(key))
     if addr_state.get("country"):
         add("Country", next((n for iso, n, _c in addr_opts["countries"] if iso == addr_state["country"]),
                             addr_state["country"]), without("country", "state"))
@@ -38651,9 +38925,9 @@ def sales_pipeline():
 
     search        = (request.args.get("q") or "").strip()
     stage_filter  = (request.args.get("stage") or "all").strip()
-    has_phone     = request.args.get("has_phone") == "1"
-    has_whatsapp  = request.args.get("has_whatsapp") == "1"
-    has_email     = request.args.get("has_email") == "1"
+    has_phone     = _contact_pick(request.args.get("has_phone"))
+    has_whatsapp  = _contact_pick(request.args.get("has_whatsapp"))
+    has_email     = _contact_pick(request.args.get("has_email"))
     tier_filter   = (request.args.get("tier") or "all").strip().lower()
     if tier_filter not in ("all", "hot", "warm", "cold"):
         tier_filter = "all"
@@ -39065,9 +39339,9 @@ def sales_pipeline_export():
 
     search       = (request.args.get("q") or "").strip()
     stage_filter = (request.args.get("stage") or "all").strip()
-    has_phone    = request.args.get("has_phone") == "1"
-    has_whatsapp = request.args.get("has_whatsapp") == "1"
-    has_email    = request.args.get("has_email") == "1"
+    has_phone    = _contact_pick(request.args.get("has_phone"))
+    has_whatsapp = _contact_pick(request.args.get("has_whatsapp"))
+    has_email    = _contact_pick(request.args.get("has_email"))
     if stage_filter != "all" and stage_filter not in PIPELINE_STAGE_ORDER:
         stage_filter = "all"
 
@@ -39782,7 +40056,7 @@ def sales_pipeline_settings():
 
 @portal_bp.route("/leads/<int:lead_id>")
 @team_feature("leads.page")
-def lead_detail(lead_id: int):
+def lead_detail(lead_id: int, opp_view: bool = False):
     """The Lead Command Centre — everything a salesperson needs to close this
     one deal, on one page. Lives under Leads, not Sales Pipeline (see
     project_leads_page_redesign memory): the Lead record (business, contact,
@@ -39802,6 +40076,11 @@ def lead_detail(lead_id: int):
     if not lead:
         flash("Lead not found.", "danger")
         return redirect(url_for("portal.leads_page"))
+    # 2026-10-28: a Qualified deal opens as its Opportunity page under Sales
+    # Pipeline; an old /leads/<id> link for it lands there (and the reverse).
+    if bool(lead.get("is_opportunity")) != opp_view:
+        return redirect(url_for("portal.opportunity_detail" if lead.get("is_opportunity") else "portal.lead_detail",
+                                lead_id=lead_id, **request.args.to_dict(flat=False)))
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -39931,8 +40210,18 @@ def lead_detail(lead_id: int):
         my_actor_key=_current_actor(customer)["key"],
         call_outcomes=_tp.CALL_OUTCOMES,
         not_needed_reason=PIPELINE_NOT_NEEDED_REASON,
+        lost_reasons=PIPELINE_LOST_REASONS,
+        next_stage=pipeline_next_stage(lead["stage"]) if lead.get("is_opportunity") else None,
         **_fu_ui_context(tenant_id),
     )
+
+
+@portal_bp.route("/sales-pipeline/<int:lead_id>")
+@team_feature("leads.page")
+def opportunity_detail(lead_id: int):
+    """The Opportunity page (2026-10-28): the same record as the lead page,
+    shown as a deal (stage bar, Won / Lost) and reached from the Sales Pipeline."""
+    return lead_detail(lead_id, opp_view=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

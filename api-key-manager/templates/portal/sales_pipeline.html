@@ -3,6 +3,7 @@
 {% from "portal/_address_box.html" import emails_cell, other_emails_box, address_box, location_cell, address_filters with context %}
 {% from "portal/_biz_fields.html" import biz_inputs, biz_filters with context %}
 {% block title %}Sales Pipeline — PhiXtra Portal{% endblock %}
+{% block head %}{% include "portal/_filter_ui_css.html" %}{% endblock %}
 {% block content %}
 {# Role-aware buttons — same route labels the save routes enforce. #}
 {% set can_edit_deal = staff_can_open('portal.sales_pipeline_edit') %}
@@ -375,8 +376,8 @@
   'negotiating':   {'bg':'#fff7ed','border':'#fed7aa','fg':'#9a3412'},
   'won':           {'bg':'#f0fdf4','border':'#bbf7d0','fg':'#15803d'},
 } %}
-{% set filter_args = {'per_page': per_page, 'has_phone': '1' if has_phone else none,
-                       'has_whatsapp': '1' if has_whatsapp else none, 'has_email': '1' if has_email else none,
+{% set filter_args = {'per_page': per_page, 'has_phone': has_phone or none,
+                       'has_whatsapp': has_whatsapp or none, 'has_email': has_email or none,
                        'hide_segment': hide_segment_ids or none, 'hide_label': hide_label_ids or none,
                        'label': show_label_ids or none, 'hide_sms_segment': hide_sms_segment_ids or none,
                        'hide_wa_segment': hide_wa_segment_ids or none,
@@ -542,6 +543,23 @@
     </span>
     {% endfor %}
     {% if filter_chips %}<a href="{{ clear_url }}" class="spf-clearall">Clear all</a>{% else %}<span class="spf-none">· No filters on</span>{% endif %}
+    {% if view_mode == 'list' and leads %}
+    {# Per page at the top too (2026-10-28); it sets the one at the bottom, which is what's saved. #}
+    <label style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);white-space:nowrap">Per page
+      <select aria-label="Deals per page" onchange="spPerPageTop(this.value)"
+              style="height:34px;padding:0 8px;border:1px solid #DCE3EE;border-radius:8px;font:inherit;font-size:12.5px;color:#111E2D;background:#fff">
+        {% for opt in per_page_options %}
+        <option value="{{ opt }}" {% if per_page == opt %}selected{% endif %}>{{ 'All' if opt == 'all' else opt }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <script>
+    function spPerPageTop(v) {
+      var b = document.querySelector('select[name="per_page"][form="spFilterForm"]'); if (!b) return;
+      b.value = v; b.form.requestSubmit ? b.form.requestSubmit() : b.form.submit();
+    }
+    </script>
+    {% endif %}
   </div>
 
   {% if stage_filter != 'all' and view_mode == 'list' %}<input type="hidden" name="stage" value="{{ stage_filter }}">{% endif %}
@@ -588,9 +606,9 @@
 
         {{ fs_columns(all_lead_cols, col_filter_state, opt_counts) }}
 
-        {{ fs_contact([('has_phone', 'Has phone number', has_phone, opt_counts.contact.has_phone),
-                       ('has_whatsapp', 'Has WhatsApp number', has_whatsapp, opt_counts.contact.has_whatsapp),
-                       ('has_email', 'Has email', has_email, opt_counts.contact.has_email)]) }}
+        {{ fs_contact([('has_phone', 'Phone number', has_phone, opt_counts.contact.has_phone, opt_counts.contact.no_phone),
+                       ('has_whatsapp', 'WhatsApp number', has_whatsapp, opt_counts.contact.has_whatsapp, opt_counts.contact.no_whatsapp),
+                       ('has_email', 'Email', has_email, opt_counts.contact.has_email, opt_counts.contact.no_email)]) }}
 
         {{ fs_location(addr_state, addr_opts) }}
 
@@ -716,7 +734,7 @@
           <td data-mrole="main">
             <div class="cust-cell">
               <span class="cust-avatar" style="background:{{ cust_color(l.customer_name) }}">{{ cust_initials(l.customer_name) }}</span>
-              <div><a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" class="biz-name-cell lead-name-link" title="Open this Sales Lead">{{ l.customer_name }}</a>{{ demo_badge(l.demo) }}{{ followup_badge(l.followup) }}</div>
+              <div><a href="{{ url_for('portal.opportunity_detail', lead_id=l.id) }}" class="biz-name-cell lead-name-link" title="Open this deal">{{ l.customer_name }}</a>{{ demo_badge(l.demo) }}{{ followup_badge(l.followup) }}</div>
             </div>
           </td>
           <td data-col="segment" class="col-hidden" style="font-size:11px">
@@ -779,7 +797,7 @@
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
               </button>
               <div class="row-action-menu" id="row-menu-row-{{ l.id }}">
-                <a class="row-action-item" href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" style="text-decoration:none">
+                <a class="row-action-item" href="{{ url_for('portal.opportunity_detail', lead_id=l.id) }}" style="text-decoration:none">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg>
                   Open Lead Page
                 </a>
@@ -915,7 +933,7 @@
         <div class="board-card-top">
           <div class="board-card-name">
             <span class="cust-avatar" style="width:22px;height:22px;font-size:9.5px;margin-right:0;background:{{ cust_color(l.customer_name) }}">{{ cust_initials(l.customer_name) }}</span>
-            <a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" class="nm lead-name-link" title="Open this Sales Lead">{{ l.customer_name }}</a>
+            <a href="{{ url_for('portal.opportunity_detail', lead_id=l.id) }}" class="nm lead-name-link" title="Open this deal">{{ l.customer_name }}</a>
           </div>
           <span class="score-break" aria-hidden="true"></span>
           <button type="button" class="score-dot-btn" onclick="toggleScoreBreakdown('hotsmart-{{ l.id }}')" title="Why this score?">
@@ -957,7 +975,7 @@
         <div class="board-card-top">
           <div class="board-card-name">
             <span class="cust-avatar" style="width:22px;height:22px;font-size:9.5px;margin-right:0;background:{{ cust_color(l.customer_name) }}">{{ cust_initials(l.customer_name) }}</span>
-            <a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" class="nm lead-name-link" title="Open this Sales Lead">{{ l.customer_name }}</a>
+            <a href="{{ url_for('portal.opportunity_detail', lead_id=l.id) }}" class="nm lead-name-link" title="Open this deal">{{ l.customer_name }}</a>
           </div>
           <span class="score-break" aria-hidden="true"></span>
           <button type="button" class="score-dot-btn" onclick="toggleScoreBreakdown('{{ col.key }}-{{ l.id }}')" title="Why this score?">
@@ -968,7 +986,7 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
             </button>
             <div class="row-action-menu" id="row-menu-board-{{ l.id }}">
-              <a class="row-action-item" href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" style="text-decoration:none">
+              <a class="row-action-item" href="{{ url_for('portal.opportunity_detail', lead_id=l.id) }}" style="text-decoration:none">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg>
                 Open Lead Page
               </a>
@@ -1067,7 +1085,7 @@
       <tbody>
         {% for l in dropped_leads %}
         <tr>
-          <td><a href="{{ url_for('portal.lead_detail', lead_id=l.id) }}" class="biz-name-cell lead-name-link">{{ l.customer_name }}</a></td>
+          <td><a href="{{ url_for('portal.opportunity_detail', lead_id=l.id) }}" class="biz-name-cell lead-name-link">{{ l.customer_name }}</a></td>
           <td>
             {% set outc = l.outcome or 'dropped' %}
             <span class="stage-pill" style="background:{{ '#fef2f2' if outc in ('lost','not_a_fit') else '#f8fafc' }};color:{{ '#b91c1c' if outc in ('lost','not_a_fit') else '#64748b' }}">{{ stage_labels.get(outc, 'Not a Fit' if outc == 'not_a_fit' else outc.capitalize()) }}</span>
@@ -2300,4 +2318,5 @@ function bpMoveToLeads(){
 {% include "portal/_labels_ui.html" %}
 {% include "portal/_columns_ui.html" %}
 {% include "portal/_filter_ui.html" %}
+{% include "portal/_outlook_compose.html" %}
 {% endblock %}

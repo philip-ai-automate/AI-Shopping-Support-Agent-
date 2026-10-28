@@ -28,6 +28,7 @@ from lead_pipeline import (STAGE_ORDER, STAGE_LABELS, STAGE_DESCRIPTIONS,
 from portal_utils import (money_fmt, tokens_to_credits, credits_to_tokens,
                           send_email_with_attachment, TUTORIAL_VIDEOS)
 import accounts_core
+import signup_confirm
 from portal_routes import (PLAN_EDITOR_CATALOG, PLATFORM_ONLY_FEATURE_KEYS)
 from portal_routes import (_COMEBACK_VARIANTS, _render_comeback_email_html, PLAN_FEATURE_CATALOG,
                            ROLE_FORM_GRID, PLAN_ONLY_FEATURE_KEYS,
@@ -713,7 +714,7 @@ def customers():
         where.append("c.created_at < (%s::date + INTERVAL '1 day')"); params.append(date_to)
 
     cur.execute(f"""
-        SELECT c.id, c.first_name, c.last_name, c.email, c.phone_number,
+        SELECT c.id, c.first_name, c.last_name, c.email, c.phone_number, c.phone_verified,
                c.email_verified, c.is_active, c.created_at, c.hear_about_us,
                t.id AS tenant_id, t.name AS tenant_name, t.domain, t.signup_product, t.source_type,
                COALESCE(p.name,'Free') AS plan_name,
@@ -741,6 +742,7 @@ def customers():
             "product": row["signup_product"], "ref_id": row["tenant_id"], "customer_id": row["id"],
             "full_name": f"{fn} {ln}".strip() or "—", "business_name": row["tenant_name"] or "—",
             "email": row["email"], "phone": row["phone_number"] or "—", "domain": row["domain"],
+            "phone_ok": bool(row.get("phone_verified") and row["phone_number"]),
             "verified": row["email_verified"], "active": row["is_active"],
             "created_at": row["created_at"], "plan_name": row["plan_name"],
             "balance_credits": tokens_to_credits(int(row.get("token_balance") or 0)),
@@ -957,6 +959,7 @@ def customers():
         date_from=date_from, date_to=date_to,
         chips=chips, active_count=len(chips), clear_all_url=clear_all_url,
         paging=paging, per_page_options=CUSTOMERS_PER_PAGE_OPTIONS,
+        signup_week=signup_confirm.week_counts(),
     )
 
 
