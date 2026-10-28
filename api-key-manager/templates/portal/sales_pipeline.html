@@ -712,9 +712,6 @@
           <th data-col="stage">Stage</th>
           <th data-col="added">Added</th>
           <th data-col="assigned">Assigned To</th>
-          {% if is_phixtra_support_account %}
-          <th data-col="ambassador">Assigned Ambassador</th>
-          {% endif %}
           <th>Actions</th>
         </tr>
       </thead>
@@ -781,15 +778,6 @@
           <td data-m="Stage" data-col="stage"><span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span></td>
           <td data-col="added" class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
           <td data-m="Assigned" data-col="assigned" class="muted">{{ (l.assigned_to|who(l.assigned_key)) if l.assigned_to else '—' }}</td>
-          {% if is_phixtra_support_account %}
-          <td data-col="ambassador" style="font-size:12px">
-            {% if l.assigned_ambassador_name %}
-              <span class="stage-pill" style="background:#dcfce7;color:#166534">{{ l.assigned_ambassador_name }}</span>
-            {% else %}
-              <span class="muted">Unassigned</span>
-            {% endif %}
-          </td>
-          {% endif %}
           <td data-mrole="act">
             {% set target = next_stage(l.stage) %}
             <div class="row-actions-wrap" {% if loop.first %}data-sptour="row-actions"{% endif %}>
@@ -825,13 +813,6 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.6 7.3L3 20.5l1.7-5.2A8.5 8.5 0 1 1 21 11.5z"/></svg>
                 Send WhatsApp message
               </button>{% endif %}
-                {% if is_phixtra_support_account and can_edit_deal %}
-                <button type="button" class="row-action-item"
-                        onclick='closeAllRowMenus(); openAssignAmbassadorModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ l.assigned_ambassador_id or "null" }})'>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6"/></svg>
-                  Assign Ambassador
-                </button>
-                {% endif %}
                 <button type="button" class="row-action-item" {% if loop.first %}data-sptour="history-btn"{% endif %} onclick="closeAllRowMenus(); openHistoryModal({{ l.id }})">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
                   View History
@@ -1015,13 +996,6 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.6 7.3L3 20.5l1.7-5.2A8.5 8.5 0 1 1 21 11.5z"/></svg>
                 Send WhatsApp message
               </button>{% endif %}
-              {% if is_phixtra_support_account and can_edit_deal %}
-              <button type="button" class="row-action-item"
-                      onclick='closeAllRowMenus(); openAssignAmbassadorModal({{ l.id }}, {{ (l.customer_name or "")|tojson }}, {{ l.assigned_ambassador_id or "null" }})'>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6"/></svg>
-                Assign Ambassador
-              </button>
-              {% endif %}
               <button type="button" class="row-action-item" onclick="closeAllRowMenus(); openHistoryModal({{ l.id }})">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
                 View History
@@ -1282,28 +1256,6 @@
   </div>
 </div>
 
-{% if is_phixtra_support_account %}
-<!-- ── Assign Ambassador modal ── -->
-<div class="modal-over" id="assignAmbassadorModal" onclick="if(event.target===this)closeAssignAmbassadorModal()">
-  <div class="modal-card">
-    <div class="modal-title" id="assignAmbassadorTitle">Assign to Ambassador</div>
-    <p class="modal-sub">When this contact becomes a paying client, the assigned ambassador earns 20% commission on their payments (company-sourced lead rate, vs. 30% for the ambassador's own direct referrals).</p>
-    <form method="POST" id="assignAmbassadorForm">
-      <label class="flbl">Ambassador</label>
-      <select name="ambassador_id" id="assignAmbassadorSelect" class="finp" style="margin-bottom:14px">
-        <option value="">— Unassigned —</option>
-        {% for a in all_ambassadors %}
-        <option value="{{ a.id }}">{{ a.first_name }} {{ a.last_name }} ({{ a.ref_code }})</option>
-        {% endfor %}
-      </select>
-      <div class="modal-actions">
-        <button type="button" class="modal-cancel" onclick="closeAssignAmbassadorModal()">Cancel</button>
-        <button type="submit" class="modal-confirm">Save Assignment</button>
-      </div>
-    </form>
-  </div>
-</div>
-{% endif %}
 
 <!-- ── Bulk "Add to SMS Segment" modal (support@phixtra.com only) ── -->
 {% if sms_cols %}
@@ -1344,7 +1296,6 @@ function closeAdvanceModal(){ document.getElementById('advanceModal').classList.
 function closeDropModal(){ document.getElementById('dropModal').classList.remove('open'); }
 function closeHistoryModal(){ document.getElementById('historyModal').classList.remove('open'); }
 function closeEditModal(){ document.getElementById('editModal').classList.remove('open'); }
-function closeAssignAmbassadorModal(){ var m = document.getElementById('assignAmbassadorModal'); if (m) m.classList.remove('open'); }
 
 // ── Bulk-select + "Add to SMS Segment" (mirrors Add to WhatsApp Segment above,
 // support@phixtra.com only) — populates SMS Segments manageable under the SMS
@@ -1671,12 +1622,6 @@ function openEditModal(id, customerName, contactPerson, phone, email, dealValue,
   document.getElementById('editModal').classList.add('open');
 }
 
-function openAssignAmbassadorModal(id, customerName, currentAmbassadorId) {
-  document.getElementById('assignAmbassadorForm').action = `/sales-pipeline/${id}/assign-ambassador`;
-  document.getElementById('assignAmbassadorTitle').textContent = `Assign to Ambassador — ${customerName}`;
-  document.getElementById('assignAmbassadorSelect').value = currentAmbassadorId !== null ? currentAmbassadorId : '';
-  document.getElementById('assignAmbassadorModal').classList.add('open');
-}
 
 /* ── Column picker ───────────────────────────────────────────────────── */
 const COL_STORAGE_KEY = 'phixtra_pipeline_visible_cols';
@@ -1919,7 +1864,7 @@ function openHistoryModal(id) {
 }
 
 function spTourCloseModals() {
-  closeAdvanceModal(); closeDropModal(); closeHistoryModal(); closeEditModal(); closeAssignAmbassadorModal();
+  closeAdvanceModal(); closeDropModal(); closeHistoryModal(); closeEditModal();
   closeAllRowMenus();
 }
 function spTourOpenFirstRowMenu() {

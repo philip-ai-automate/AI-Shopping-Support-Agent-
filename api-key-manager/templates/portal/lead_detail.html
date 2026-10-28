@@ -660,14 +660,6 @@
     <div><div class="lc-field-label">Product / Service</div><div class="lc-field-value">{{ lead.product_interest or '—' }}</div></div>
     {% if not lead.is_opportunity %}
     <div><div class="lc-field-label">Assigned Salesperson</div><div class="lc-field-value">{{ (lead.assigned_to|who(lead.assigned_key)) if lead.assigned_to else '—' }}</div></div>
-    <div style="opacity:.55">
-      <div class="lc-field-label">Ambassador</div>
-      {% if is_phixtra_support_account and ambassador %}
-      <div class="lc-field-value">{{ ambassador }}</div>
-      {% else %}
-      <div style="font-size:12px;font-weight:600;color:var(--muted);border:1px dashed #cbd5e1;border-radius:6px;padding:2px 8px;display:inline-block">Not applicable</div>
-      {% endif %}
-    </div>
     <div><div class="lc-field-label">Lead Score</div>
       {% set _sb = {'hot': ('🔥','#fef2f2','#b91c1c'), 'warm': ('🌤️','#fffbeb','#b45309'), 'cold': ('❄️','#eff6ff','#1d4ed8')} %}
       {% set icon, bg, fg = _sb.get(lead_tier, _sb['cold']) %}
@@ -800,7 +792,7 @@
 
 </div>
 
-<p style="font-size:11.5px;color:var(--muted);margin:14px 4px 0;line-height:1.6;max-width:900px">Instagram/Facebook conversations aren't built yet — shown here so you know where they'll slot in.{% if not lead.is_opportunity %} Ambassador only applies to PhiXtra's own account.{% endif %}</p>
+<p style="font-size:11.5px;color:var(--muted);margin:14px 4px 0;line-height:1.6;max-width:900px">Instagram/Facebook conversations aren't built yet — shown here so you know where they'll slot in.</p>
 
 <!-- Edit Lead modal -->
 <div class="modal-over" id="editLeadModal" onclick="if(event.target===this)this.classList.remove('open')">
