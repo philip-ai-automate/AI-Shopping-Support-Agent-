@@ -38670,13 +38670,11 @@ def _build_pipeline_kanban_board(cur, tenant_id, search, tier_filter,
     cur.execute(
         f"""
         SELECT * FROM (
-            SELECT mpl.*, a.first_name AS assigned_ambassador_first_name,
-                   a.last_name AS assigned_ambassador_last_name,
+            SELECT mpl.*,
                    count(*) OVER (PARTITION BY mpl.stage) AS stage_match_count,
                    COALESCE(sum(fx_to_selling(mpl.deal_value, mpl.currency, mpl.tenant_id)) OVER (PARTITION BY mpl.stage), 0) AS stage_match_value,
                    row_number() OVER (PARTITION BY mpl.stage ORDER BY mpl.created_at DESC, mpl.id DESC) AS rn
               FROM {scored_from} mpl
-              LEFT JOIN ambassadors a ON a.id = mpl.assigned_ambassador_id
              WHERE {board_where}
         ) sub
         WHERE rn <= %s
@@ -38701,10 +38699,8 @@ def _build_pipeline_kanban_board(cur, tenant_id, search, tier_filter,
     HOT_SMART_LIMIT = 20
     cur.execute(
         f"""
-        SELECT mpl.*, a.first_name AS assigned_ambassador_first_name,
-               a.last_name AS assigned_ambassador_last_name
+        SELECT mpl.*
           FROM {scored_from} mpl
-          LEFT JOIN ambassadors a ON a.id = mpl.assigned_ambassador_id
          WHERE {hot_where}
          ORDER BY mpl.lead_score DESC, mpl.updated_at DESC
          LIMIT %s
@@ -38755,10 +38751,6 @@ def _build_pipeline_kanban_board(cur, tenant_id, search, tier_filter,
         r["wa_segment_names"] = board_wa_map.get(r["id"], [])
         r["label_names"]      = board_label_map.get(r["id"], [])
         r["score_breakdown"]  = _pipeline_score_breakdown(r)
-        if r.get("assigned_ambassador_first_name"):
-            r["assigned_ambassador_name"] = f"{r['assigned_ambassador_first_name']} {r['assigned_ambassador_last_name'] or ''}".strip()
-        else:
-            r["assigned_ambassador_name"] = None
 
     board_by_stage = {}
     for r in board_rows:
@@ -39017,27 +39009,12 @@ def sales_pipeline():
     # separate paginated queries when ties exist, which duplicates/skips rows
     # between pages.
     _ls_exec(cur, 
-        f"""SELECT mpl.*, a.first_name AS assigned_ambassador_first_name,
-                   a.last_name AS assigned_ambassador_last_name
+        f"""SELECT mpl.*
               FROM {scored_from} mpl
-              LEFT JOIN ambassadors a ON a.id = mpl.assigned_ambassador_id
              WHERE {where} ORDER BY {pipe_order} {limit_clause}""",
         [tenant_id] + params + limit_params,
     )
     leads = [dict(r) for r in cur.fetchall()]
-    for l in leads:
-        if l.get("assigned_ambassador_first_name"):
-            l["assigned_ambassador_name"] = f"{l['assigned_ambassador_first_name']} {l['assigned_ambassador_last_name'] or ''}".strip()
-        else:
-            l["assigned_ambassador_name"] = None
-
-    all_ambassadors = []
-    if tenant_id == PHIXTRA_SUPPORT_TENANT_ID:
-        _ls_exec(cur, """
-            SELECT id, first_name, last_name, ref_code FROM ambassadors
-            WHERE status='active' ORDER BY first_name, last_name
-        """)
-        all_ambassadors = [dict(r) for r in cur.fetchall()]
 
     # Which email segment(s), if any, each lead on this page already belongs to — shown
     # as a badge so you can see at a glance who's already tagged before adding more
@@ -39311,7 +39288,6 @@ def sales_pipeline():
         total_pages           = total_pages,
         filtered_total        = filtered_total,
         per_page_options      = PIPELINE_PER_PAGE_OPTIONS,
-        all_ambassadors       = all_ambassadors,
         assignees             = _lead_assignees(tenant_id, customer),
         actor_key             = actor_key,
         can_filter_assigned   = can_filter_assigned,
@@ -39614,56 +39590,6 @@ def sales_pipeline_edit(lead_id: int):
     # Editing can happen from the Lead's own page or from Sales Pipeline —
     # go back to wherever the edit was submitted from, not always Pipeline.
     return redirect(request.referrer or url_for("portal.sales_pipeline"))
-
-
-@portal_bp.route("/sales-pipeline/<int:lead_id>/assign-ambassador", methods=["POST"])
-@team_feature("crm.pipeline_board_edit")
-def sales_pipeline_assign_ambassador(lead_id: int):
-    """Assign (or unassign) a company-sourced pipeline contact to an ambassador.
-    Restricted to support@phixtra.com (PHIXTRA_SUPPORT_TENANT_ID) — this is how
-    PhiXtra hands a lead it sourced itself to an ambassador for the 20%
-    company-lead commission tier, as opposed to the ambassador's own 30%
-    direct-referral-link tier. See record_ambassador_commission() in
-    ambassador_routes.py for how this assignment is matched at payment time."""
-    r = _require_login()
-    if r: return r
-    _rperm = _require_team_permission("crm.pipeline_board_edit")
-    if _rperm: return _rperm
-    customer  = _get_customer(_customer_id())
-    tenant_id = int(customer["tenant_id"])
-    if tenant_id != PHIXTRA_SUPPORT_TENANT_ID:
-        flash("Not available on this account.", "danger")
-        return redirect(url_for("portal.sales_pipeline"))
-
-    lead = _pipeline_lead_owned_by_tenant(lead_id, tenant_id)
-    if not lead:
-        flash("Deal not found.", "danger")
-        return redirect(url_for("portal.sales_pipeline"))
-
-    ambassador_id_raw = (request.form.get("ambassador_id") or "").strip()
-    ambassador_id = int(ambassador_id_raw) if ambassador_id_raw.isdigit() else None
-
-    conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    if ambassador_id is not None:
-        cur.execute("SELECT id, first_name, last_name FROM ambassadors WHERE id=%s AND status='active'", (ambassador_id,))
-        amb = cur.fetchone()
-        if not amb:
-            flash("Ambassador not found.", "danger")
-            cur.close(); conn.close()
-            return redirect(url_for("portal.sales_pipeline"))
-    cur.execute("""
-        UPDATE merchant_pipeline_leads SET assigned_ambassador_id=%s, updated_at=NOW()
-        WHERE id=%s AND tenant_id=%s
-    """, (ambassador_id, lead_id, tenant_id))
-    conn.commit()
-    cur.close(); conn.close()
-
-    if ambassador_id is not None:
-        flash(f"Assigned to {amb['first_name']} {amb['last_name']}.", "success")
-    else:
-        flash("Ambassador assignment removed.", "success")
-    return redirect(url_for("portal.sales_pipeline"))
 
 
 @portal_bp.route("/sales-pipeline/<int:lead_id>/advance", methods=["POST"])
@@ -40115,14 +40041,6 @@ def lead_detail(lead_id: int, opp_view: bool = False):
         cur.execute("SELECT id, name, website FROM crm_companies WHERE id=%s", (lead["company_id"],))
         company = cur.fetchone()
 
-    # Ambassador — PhiXtra's own account only, never shown as if it applies elsewhere.
-    ambassador = None
-    if tenant_id == PHIXTRA_SUPPORT_TENANT_ID and lead.get("assigned_ambassador_id"):
-        cur.execute("SELECT first_name, last_name FROM ambassadors WHERE id=%s", (lead["assigned_ambassador_id"],))
-        a = cur.fetchone()
-        if a:
-            ambassador = f"{a['first_name']} {a['last_name'] or ''}".strip()
-
     # Conversation preview — last WhatsApp message on this lead's number, and
     # a link to the real Contact page for the full history. Never rebuilt here.
     last_message = None
@@ -40191,7 +40109,6 @@ def lead_detail(lead_id: int, opp_view: bool = False):
         stage_order=PIPELINE_STAGE_ORDER,
         campaign=campaign,
         company=company,
-        ambassador=ambassador,
         is_phixtra_support_account=(tenant_id == PHIXTRA_SUPPORT_TENANT_ID),
         last_message=last_message,
         contact_id=contact_id,
@@ -40228,8 +40145,7 @@ def opportunity_detail(lead_id: int):
 # SMS CAMPAIGN (support@phixtra.com only)
 #
 # Sends bulk SMS through PhiXtra's single shared eBulkSMS account. Restricted
-# to PHIXTRA_SUPPORT_TENANT_ID the same way sales_pipeline_assign_ambassador
-# is — every other tenant never sees the "SMS" sidebar menu and every route
+# to PHIXTRA_SUPPORT_TENANT_ID — every other tenant never sees the "SMS" sidebar menu and every route
 # below 403s if hit directly. Has its own sidebar menu (Sent SMS / Compose and
 # Send SMS / SMS Segments — see sms_campaigns() below) rather than living
 # inside the Sales Pipeline page.
