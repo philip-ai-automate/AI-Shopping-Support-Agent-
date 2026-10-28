@@ -34970,11 +34970,6 @@ def _activate_plan_subscription(tenant_id: int, plan_id: int, cycle: str,
     cur  = conn.cursor()
     period_start = _d.today()
 
-    # Capture previous plan_id before updating (needed for upsell bonus detection)
-    cur.execute("SELECT plan_id FROM tenants WHERE id=%s", (tenant_id,))
-    _prev = cur.fetchone()
-    prev_plan_id = int(_prev[0]) if _prev and _prev[0] else 0
-
     # Activate tenant plan
     cur.execute("""
         UPDATE tenants
@@ -35010,16 +35005,6 @@ def _activate_plan_subscription(tenant_id: int, plan_id: int, cycle: str,
 
     conn.commit(); cur.close(); conn.close()
     _sync_wa_ai_to_plan([tenant_id])
-
-    # Record ambassador commission if this tenant was referred by an ambassador
-    try:
-        from ambassador_routes import record_ambassador_commission
-        record_ambassador_commission(
-            tenant_id=tenant_id, plan_id=plan_id, prev_plan_id=prev_plan_id,
-            amount=amount, currency=currency,
-        )
-    except Exception as _ce:
-        print("⚠️ ambassador commission hook error:", _ce)
 
 
 @portal_bp.route("/billing/start-ai-trial", methods=["POST"])

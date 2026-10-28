@@ -153,13 +153,6 @@ def activate_plan_subscription(school_id: int, plan_id: int, cycle: str,
 
     conn.commit(); cur.close(); conn.close()
 
-    # Record ambassador commission if this school was referred by an ambassador
-    try:
-        from ambassador_routes import record_school_ambassador_commission
-        record_school_ambassador_commission(school_id=school_id, amount=amount, currency="NGN")
-    except Exception as _ce:
-        print("⚠️ ambassador commission hook error (school):", _ce)
-
 
 def verify_transaction(transaction_id: str) -> dict | None:
     """Verify a Flutterwave transaction by ID. Returns the txn dict on success."""

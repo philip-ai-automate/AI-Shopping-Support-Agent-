@@ -3014,15 +3014,6 @@ def _re_activate_subscription(tenant_id: int, plan_id: int, cycle: str,
           provider_customer_id, period_end, period_end))
     conn.commit(); cur.close(); conn.close()
 
-    # Record ambassador commission if this estate tenant was referred by an ambassador
-    try:
-        from ambassador_routes import record_estate_ambassador_commission
-        record_estate_ambassador_commission(
-            tenant_id=tenant_id, amount=amount, currency=currency,
-        )
-    except Exception as _ce:
-        print("⚠️ ambassador commission hook error (estate):", _ce)
-
 
 @estate_bp.route("/estate/billing/upgrade", methods=["POST"])
 def billing_upgrade():
