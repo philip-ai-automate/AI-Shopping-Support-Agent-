@@ -321,40 +321,6 @@
        href="{{ url_for('portal_admin.recovery_queue') }}">
       <span class="asb-icon">🛒</span> Recovery
     </a>
-    <a class="asb-link {% if request.endpoint=='portal_admin.ambassadors' %}active{% endif %}"
-       href="{{ url_for('portal_admin.ambassadors') }}">
-      <span class="asb-icon">🌟</span> Ambassadors
-    </a>
-    <a class="asb-link {% if request.endpoint=='portal_admin.ambassador_report' %}active{% endif %}"
-       href="{{ url_for('portal_admin.ambassador_report') }}"
-       style="padding-left:36px;font-size:12.5px">
-      <span class="asb-icon">📊</span> Reports
-    </a>
-    <a class="asb-link {% if request.endpoint=='portal_admin.ambassador_demo_accounts' %}active{% endif %}"
-       href="{{ url_for('portal_admin.ambassador_demo_accounts') }}"
-       style="padding-left:36px;font-size:12.5px">
-      <span class="asb-icon">🧪</span> Demo Accounts
-    </a>
-    <a class="asb-link {% if request.endpoint=='portal_admin.admin_leads' %}active{% endif %}"
-       href="{{ url_for('portal_admin.admin_leads') }}"
-       style="padding-left:36px;font-size:12.5px">
-      <span class="asb-icon">🎯</span> CRM Pipeline
-    </a>
-    <a class="asb-link {% if request.endpoint=='portal_admin.ambassador_documents' %}active{% endif %}"
-       href="{{ url_for('portal_admin.ambassador_documents') }}"
-       style="padding-left:36px;font-size:12.5px">
-      <span class="asb-icon">📄</span> Documents
-    </a>
-    <a class="asb-link {% if request.endpoint=='portal_admin.ambassador_broadcast' %}active{% endif %}"
-       href="{{ url_for('portal_admin.ambassador_broadcast') }}"
-       style="padding-left:36px;font-size:12.5px">
-      <span class="asb-icon">📣</span> Broadcast
-    </a>
-    <a class="asb-link {% if request.endpoint and request.endpoint.startswith('portal_admin.feature_releases') %}active{% endif %}"
-       href="{{ url_for('portal_admin.feature_releases') }}"
-       style="padding-left:36px;font-size:12.5px">
-      <span class="asb-icon">🆕</span> What's New (Releases)
-    </a>
   </div>
 
   <div class="asb-footer">
@@ -431,11 +397,6 @@
     { icon:'🧑‍💼', title:'Team',              desc:'Manage support logins and permissions',     url:'{{ url_for("portal_admin.admin_team") }}',          tags:'team support staff logins permissions roles' },
     {% endif %}
     { icon:'🛒', title:'Recovery Queue',     desc:'View abandoned cart recovery queue',        url:'{{ url_for("portal_admin.recovery_queue") }}',      tags:'cart recovery abandoned queue' },
-    { icon:'🌟', title:'Ambassadors',        desc:'Manage ambassador referral accounts',       url:'{{ url_for("portal_admin.ambassadors") }}',         tags:'ambassadors referrals partners commission' },
-    { icon:'🧪', title:'Demo Accounts',      desc:'Ambassador demo/sandbox shop accounts',     url:'{{ url_for("portal_admin.ambassador_demo_accounts") }}', tags:'ambassador demo sandbox test accounts' },
-    { icon:'📄', title:'Ambassador Documents', desc:'Share PDF/Word/Excel/PPT files with ambassadors', url:'{{ url_for("portal_admin.ambassador_documents") }}', tags:'ambassador documents files upload pdf word excel powerpoint share' },
-    { icon:'📣', title:'Ambassador Broadcast', desc:'Send a WhatsApp update to ambassadors', url:'{{ url_for("portal_admin.ambassador_broadcast") }}', tags:'ambassador broadcast whatsapp notification message template send' },
-    { icon:'🆕', title:"What's New (Releases)", desc:'Publish new features for ambassadors to sell', url:'{{ url_for("portal_admin.feature_releases") }}', tags:'feature releases whats new whatsnew changelog announce ambassador sales enablement' },
   ];
 
   var input   = document.getElementById('asbSearchInput');

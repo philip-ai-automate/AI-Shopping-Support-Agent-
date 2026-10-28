@@ -29,7 +29,6 @@ def create_app():
     from social_calendar_routes import socialcal_bp
     from mailbox_routes import mailbox_bp
     from bookings_routes import bookings_bp
-    from ambassador_routes import ambassador_bp
     from school_routes import school_bp
     from school_migrations import ensure_school_tables
     from portal_routes_estate import estate_bp
@@ -53,7 +52,6 @@ def create_app():
     flask_app.register_blueprint(accounts_bp)
     from lead_finder_routes import leadfinder_bp
     flask_app.register_blueprint(leadfinder_bp)
-    flask_app.register_blueprint(ambassador_bp)
     flask_app.register_blueprint(school_bp, url_prefix="/school")
     flask_app.register_blueprint(estate_bp)
 
