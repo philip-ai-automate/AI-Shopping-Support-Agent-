@@ -118,7 +118,7 @@
 
     <div class="rg-chosen" id="chosenBar" hidden>
       <div><small>You are signing up for</small><b id="chosenLabel"></b></div>
-      <button type="button" class="rg-btn-line" onclick="openPicker()">Change</button>
+      <button type="button" class="rg-btn-line" id="chosenBtn" onclick="openPicker()">Change</button>
     </div>
 
     <form method="POST" action="{{ url_for('portal.register') }}" novalidate id="regForm">
@@ -161,7 +161,7 @@
           {% include "portal/_phone_country_select.html" %}
           <input type="tel" name="wa_phone_number" id="fPhoneWa" placeholder="801 234 5678" autocomplete="tel-national" value="{{ fd.get('wa_phone_number', '') }}"/>
         </div>
-        <p class="rg-hint">Use the number your customers already message. You keep it. Choose your country, then type your number. We add the country code for you.</p>
+        <p class="rg-hint">Use the number your customers already message, or a new one. Once connected, it works through PhiXtra, not in the WhatsApp app on your phone. Choose your country, then type your number. We add the country code for you.</p>
         <p class="rg-err" id="hPhoneWa" hidden>Please choose the country and enter your WhatsApp number.</p>
       </div>
 
@@ -252,7 +252,7 @@
   <div class="rg-dialog" role="dialog" aria-modal="true" aria-labelledby="pickTitle">
     <div class="rg-dialog-top">
       <span class="rg-step" id="stepLabel">Step 1</span>
-      <button type="button" class="rg-x" id="pickClose" aria-label="Close" onclick="closePicker()" hidden>
+      <button type="button" class="rg-x" id="pickClose" aria-label="Close" onclick="closePicker()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#111E2D" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
       </button>
     </div>
@@ -304,13 +304,13 @@ var PLAT_SHORT = {shopify:'Shopify', wix:'Wix', squarespace:'Squarespace', other
 var TYPE_NAMES = {whatsapp:'WhatsApp only', web:'Website only', both:'WhatsApp and website'};
 var ASIDE = {
   '':      ['PhiXtra AI', 'Your WhatsApp, website and CRM on one platform.', 'AI answers your customers, and your team sees every conversation in one place.',
-            ['Official WhatsApp Business API, keep your number', 'AI chat for WordPress, Shopify, Wix, Squarespace or any site', 'A free CRM with a sales pipeline', 'Try the AI free for 2 weeks, whenever you are ready']],
+            ['Official WhatsApp Business API, approved by Meta', 'AI chat for WordPress, Shopify, Wix, Squarespace or any site', 'A free CRM with a sales pipeline', 'Try the AI free for 2 weeks, whenever you are ready']],
   whatsapp:['WhatsApp AI + CRM', 'Turn every WhatsApp message into a sale.', 'Your team works from one official WhatsApp number and a free CRM. Add the AI when you are ready.',
-            ['Keep the number your customers already message', 'One shared inbox for your whole team', 'Every customer saved in a free CRM, with a sales pipeline', 'Try the AI free for 2 weeks, whenever you are ready']],
+            ['Use the number your customers already message, or a new one', 'One shared inbox for your whole team', 'Every customer saved in a free CRM, with a sales pipeline', 'Try the AI free for 2 weeks, whenever you are ready']],
   web:     ['Website AI', 'Let AI answer every visitor on your website.', 'Works on WordPress, Shopify, Wix, Squarespace or a site built for you.',
             ['Answers from your own website pages and product list', 'Recommends products and passes serious buyers to your team', 'Every visitor conversation in one inbox, with a free CRM', 'Try the AI free for 2 weeks, whenever you are ready']],
   both:    ['WhatsApp + Website AI', 'One AI on WhatsApp and your website.', 'The same AI answers on both, and your team sees every conversation in one inbox.',
-            ['Keep the number your customers already message', 'Chat on WordPress, Shopify, Wix, Squarespace or any site', 'One shared inbox and a free CRM for both channels', 'Try the AI free for 2 weeks, whenever you are ready']]
+            ['Use the number your customers already message, or a new one', 'Chat on WordPress, Shopify, Wix, Squarespace or any site', 'One shared inbox and a free CRM for both channels', 'Try the AI free for 2 weeks, whenever you are ready']]
 };
 var CHECK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9DB8E8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M7.5 12.5l3 3 6-6.5"/></svg>';
 function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
@@ -319,7 +319,7 @@ function el(id){ return document.getElementById(id); }
 function steps() {
   var wp = PLAT === 'wordpress', short = PLAT_SHORT[PLAT] || 'your website';
   var verify = ['Confirm your WhatsApp and email.', 'We send a code to each. Enter both and your account is ready.'];
-  var wa = ['Connect your WhatsApp.', "Use Meta's official sign-up window. You keep your number."];
+  var wa = ['Connect your WhatsApp.', "Use Meta's official sign-up window. The number then works through PhiXtra, not the phone app."];
   var site = ['Connect your website.', 'You give permission first, then click Sync now and your AI reads your public pages. If something blocks us, we tell you the reason and how to fix it.'];
   var box = ['Add the chat box.', wp ? 'Install the free PhiXtra plugin on WordPress and click Connect to PhiXtra inside it. No key to copy.' : 'Copy one line of code into ' + short + ', with a step-by-step guide.'];
   var prod = wp ? ['Choose your products (optional).', 'Pick which WooCommerce products the AI can recommend, inside the plugin.'] : ['Add your products (optional).', "Your AI can read them from your website's pages, or you upload an Excel or CSV list."];
@@ -334,8 +334,11 @@ function render() {
   el('asKicker').textContent = a[0]; el('asTitle').textContent = a[1]; el('asSub').textContent = a[2];
   el('asList').innerHTML = a[3].map(function(t){ return '<li>' + CHECK + '<span>' + esc(t) + '</span></li>'; }).join('');
   var isWeb = TYPE === 'web' || TYPE === 'both';
-  el('chosenBar').hidden = !TYPE;
-  el('chosenLabel').textContent = (TYPE_NAMES[TYPE] || '') + (isWeb && PLAT ? ' · ' + PLAT_NAMES[PLAT] : '');
+  // Close button on step 1 (2026-10-29): closing before choosing shows the
+  // form with "Nothing chosen yet"; Create free account asks again.
+  el('chosenBar').hidden = false;
+  el('chosenLabel').textContent = TYPE ? (TYPE_NAMES[TYPE] || '') + (isWeb && PLAT ? ' · ' + PLAT_NAMES[PLAT] : '') : 'Nothing chosen yet';
+  el('chosenBtn').textContent = TYPE ? 'Change' : 'Choose';
   el('blkWa').hidden = !(TYPE === 'whatsapp' || TYPE === 'both');
   el('blkWeb').hidden = !isWeb;
   el('blkBased').hidden = TYPE !== 'web';
@@ -354,8 +357,8 @@ window.showStep = function(which) {
   el('stepPlatform').hidden = which !== 'platform';
   el('stepLabel').textContent = which === 'platform' ? 'Step 2 of 2' : 'Step 1';
 };
-window.openPicker = function() { showStep('type'); el('picker').hidden = false; el('pickClose').hidden = !TYPE; };
-window.closePicker = function() { if (!TYPE) return; el('picker').hidden = true; };
+window.openPicker = function() { showStep('type'); el('picker').hidden = false; };
+window.closePicker = function() { el('picker').hidden = true; if (!TYPE) render(); };
 window.pickType = function(t) {
   if (t === 'whatsapp') { TYPE = t; PLAT = ''; el('picker').hidden = true; render(); el('fFirstName').focus(); return; }
   TYPE = t; showStep('platform');

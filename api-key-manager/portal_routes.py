@@ -2810,7 +2810,7 @@ def _send_account_ready_email(
 
     if kind == "both":
         account_for = biz
-        features = ["The official WhatsApp Business API. You keep your number.",
+        features = ["The official WhatsApp Business API on your business number.",
                     f"A chat box on {site}",
                     "One shared inbox for WhatsApp and website chats",
                     "A free CRM with a sales pipeline"]
@@ -2828,7 +2828,7 @@ def _send_account_ready_email(
                                     "your website visitors", "Enterprise Website plan")
     else:
         account_for = biz
-        features = ["The official WhatsApp Business API. You keep your number.",
+        features = ["The official WhatsApp Business API on your business number.",
                     "One shared inbox for your whole team",
                     "A free CRM with a sales pipeline"]
         team_line = "Your team replies to your customers. There's no AI on this plan."
@@ -2838,7 +2838,7 @@ def _send_account_ready_email(
     steps = [("Log in to the PhiXtra portal.", "")]
     if kind in ("whatsapp", "both"):
         steps.append(("Connect your WhatsApp number.",
-                      "Use Meta's official sign-up window inside the portal. You keep your number."))
+                      "Use Meta's official sign-up window inside the portal. The number then works through PhiXtra, not the phone app."))
     if kind in ("both", "website"):
         steps.append(("Connect your website.",
                       f"Give permission for {site}, then click Sync now so the AI can read your pages."))
@@ -6307,7 +6307,7 @@ def _wa_setup_checklist(t, wa_on: bool, prod: dict):
     paid = t["plan_slug"] not in AI_OFF_FREE_PLAN_SLUGS
     steps = [
         dict(key="whatsapp", title="Connect your WhatsApp number", done=wa_on,
-             text="Connected." if wa_on else "Use Meta's official sign-up window and keep your number.",
+             text="Connected." if wa_on else "Use Meta's official sign-up window.",
              action="Connect WhatsApp", url=url_for("portal.whatsapp_connect")),
         dict(key="products", title="Add your products or services", done=prod["source"] is not None,
              text=(f"Your AI knows {n_prod} of your products and services." if prod["source"] else
@@ -6487,7 +6487,7 @@ def _setup_checklist(tenant_id: int):
     wa_ok = t["channel_mode"] in ("dual", "both")
     extras.append(dict(key="whatsapp", title="WhatsApp", done=wa_on,
                        text=("Connected." if wa_on else
-                             "Let the AI answer on WhatsApp too. Use Meta's official sign-up window and keep your number." if wa_ok else
+                             "Let the AI answer on WhatsApp too. Use Meta's official sign-up window." if wa_ok else
                              "Answer customers on WhatsApp too. This needs a Dual-Agent plan."),
                        action=("Connect WhatsApp" if wa_ok else "See Dual-Agent plans"),
                        url=(url_for("portal.whatsapp_connect") if wa_ok else url_for("portal.billing_plans"))))
