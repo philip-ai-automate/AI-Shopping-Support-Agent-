@@ -933,10 +933,8 @@ async def receive_webhook(
 
         elif vm_result["branch"] == "uncertain" and vm_result["action"] == "handoff":
             print(f"   [VISUAL_MATCH] uncertain match, handing off session={session_id}")
-            handoff_msg = (
-                "Thanks for the photo! I'm not 100% sure which item that is from our catalog, "
-                "so I'm getting a team member to help confirm — they'll be with you shortly."
-            )
+            import reply_language
+            handoff_msg = reply_language.text("photo_check", media_caption)
             await send_text(phone_number_id, access_token, customer_phone, handoff_msg)
             log_message(tenant_id, phone_number_id, customer_phone, "outbound", handoff_msg)
             create_handoff(session_id, tenant_id, customer_phone)

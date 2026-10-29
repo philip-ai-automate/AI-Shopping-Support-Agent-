@@ -220,7 +220,7 @@ def build_handoff_instruction(tenant_id: int) -> str:
         "Your response includes a separate needs_handoff field (true/false). Set it to true",
         "when this visitor needs a human team member — evaluate this on EVERY reply, not just",
         "when asked directly. When you set needs_handoff to true, ALSO warmly tell the visitor",
-        "in your reply text that a team member will be in touch shortly.",
+        "in your reply text, in the visitor's own language, that a team member will be in touch soon.",
         "",
         "Set needs_handoff to true when ANY of the following occur:",
     ]

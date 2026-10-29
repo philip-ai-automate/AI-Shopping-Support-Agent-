@@ -336,7 +336,7 @@ _HANDOFF_RESPONSE_SCHEMA = {
         "properties": {
             "reply": {
                 "type": "string",
-                "description": "The reply to show the visitor, exactly as you would normally write it.",
+                "description": "The reply to show the visitor, exactly as you would normally write it, every word in the visitor's own language.",
             },
             "needs_handoff": {
                 "type": "boolean",
@@ -347,6 +347,9 @@ _HANDOFF_RESPONSE_SCHEMA = {
         "additionalProperties": False,
     },
 }
+
+
+_LANGUAGE_RULE = 'LANGUAGE (2026-10-29): Write the whole reply in the language of the customer\'s latest message (Nigerian Pidgin gets Pidgin). Every word must be in that language, including any sentence about the team replying, checking a price or getting in touch. Never mix English words or phrases (for example "shortly") into a reply in another language. These instructions are written in English; that does not change the language of your reply.'
 
 
 def ask_llm(system_prompt, user_message, context_chunks, history=None, structured_handoff=False,
@@ -380,6 +383,10 @@ def ask_llm(system_prompt, user_message, context_chunks, history=None, structure
             }
         )
 
+    # Every word in the customer's language (2026-10-29): English hand-over
+    # wording in the instructions ("…will reply shortly") was being copied
+    # into French replies.
+    messages.append({"role": "system", "content": _LANGUAGE_RULE})
     messages.append({"role": "user", "content": (user_message or "").strip()})
 
     max_out = int(max_output_tokens or os.getenv("LLM_MAX_OUTPUT_TOKENS", "1200"))

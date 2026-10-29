@@ -192,10 +192,9 @@ def plugin_reply(tenant_id: int, session_id: str, text: str) -> dict:
     plugin show its own name / phone / email form (it does so once)."""
     saved = save_visitor_message(tenant_id, session_id, text)
     c = saved["contact"]
-    if c["email"] or c["phone"]:
-        reply = "Thanks for your message. Our team will get back to you soon."
-    else:
-        reply = ("Thanks for your message. Our team will get back to you soon. "
-                 "Please leave your email address or phone number so we can reach you.")
+    import reply_language
+    reply = reply_language.text("team_will_reply", text)
+    if not (c["email"] or c["phone"]):
+        reply += " " + reply_language.text("leave_contact", text)
     return {"reply": reply, "session_id": session_id, "product_recommendations": [],
             "handoff_triggered": not (c["email"] or c["phone"]), "team_chat": True}

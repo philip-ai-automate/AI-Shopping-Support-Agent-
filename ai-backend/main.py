@@ -556,14 +556,14 @@ _NO_PRODUCTS_INSTRUCTION = """
 This business has not added its product list yet, so the store data you are given has no products, prices or stock. That does NOT mean the business doesn't sell an item.
 - NEVER tell a customer an item is not available, not sold, out of stock, or that "we don't have that". Never guess or invent a price.
 - If the store information you are given answers the question, answer it normally.
-- When a customer asks about a specific item, its price or stock, or wants to order it, and the information you are given doesn't answer it: set needs_handoff to true, and your reply MUST tell the customer, in their language, that you will check with the team and a team member will reply shortly (even if you also greet them or ask their name).
+- When a customer asks about a specific item, its price or stock, or wants to order it, and the information you are given doesn't answer it: set needs_handoff to true, and your reply MUST tell the customer, with every word in their own language, that you will check with the team and a team member will reply soon (even if you also greet them or ask their name).
 - Greetings and general questions: answer normally and do not hand off."""
 
 
 _PRICE_ON_REQUEST_INSTRUCTION = """
 
 [PRICE ON REQUEST]
-Some items in the store data say "Price: on request". For those, never give or guess a price: tell the customer, in their language, that the team will confirm the price and a team member will reply shortly, and set needs_handoff to true."""
+Some items in the store data say "Price: on request". For those, never give or guess a price: tell the customer, with every word in their own language, that the team will confirm the price and a team member will reply soon, and set needs_handoff to true."""
 
 
 def _no_products_instruction(tenant_id: int) -> str:
@@ -987,7 +987,8 @@ def _chat(req: ChatRequest):
     # customer asks for a person) with a polite reply.
     if not (answer or "").strip():
         print(f"⚠️ blank AI answer for session={session_id} — handing to the team")
-        answer = "Sorry, I couldn't answer that just now. A member of our team will get back to you shortly."
+        import reply_language
+        answer = reply_language.text("blank_answer", req.message)
         needs_handoff = True
 
     # Fold the relevance-classification call's token cost (if any) into the

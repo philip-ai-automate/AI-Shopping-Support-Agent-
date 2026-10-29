@@ -369,27 +369,12 @@
 <div class="card" style="margin-bottom:20px">
   <div class="card-title">Add a WhatsApp Number</div>
   <p class="muted" style="margin-bottom:20px;font-size:13px">
-    Pick the option that matches your number. A Meta window opens and walks you through it — it takes about 5 minutes.
+    A Meta window opens and walks you through it — it takes about 5 minutes.
   </p>
 
+  {# "Keep my phone app" (WhatsApp Business app number) option removed 2026-10-29: it did not work. #}
   <div class="wa-choice">
-    <div class="wa-choice-title">My number is on the WhatsApp Business app</div>
-    <div class="wa-choice-sub">
-      Keep your number <strong>and</strong> keep using the app on your phone. You scan a QR code with the app,
-      and new customer messages show here as well as on your phone.
-    </div>
-    <button class="wa-signup-btn" onclick="launchWhatsAppSignup('coexist')" id="signupBtnCoexist">
-      Connect and keep my phone app
-    </button>
-    <div class="wa-choice-note">
-      <strong>Important:</strong> Meta should show you a QR code to scan with the app. If it asks for an SMS or call code instead,
-      stop and close the window — Meta is not allowing this for your number yet, and carrying on will take the number off your phone app.
-      Meta may not allow this for Nigerian numbers yet. Once connected, open the app at least once every 14 days.
-    </div>
-  </div>
-
-  <div class="wa-choice">
-    <div class="wa-choice-title">A new number, or one not on the WhatsApp Business app</div>
+    <div class="wa-choice-title">Use a new number, or one not on the WhatsApp Business app</div>
     <div class="wa-choice-sub">
       The number will only work through PhiXtra, not in a WhatsApp app on a phone.
     </div>

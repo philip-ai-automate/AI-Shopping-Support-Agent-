@@ -52,6 +52,9 @@ _HANDOFF_RESPONSE_SCHEMA = {
 }
 
 
+_LANGUAGE_RULE = 'LANGUAGE (2026-10-29): Write the whole reply in the language of the customer\'s latest message (Nigerian Pidgin gets Pidgin). Every word must be in that language, including any sentence about the team replying, checking a price or getting in touch. Never mix English words or phrases (for example "shortly") into a reply in another language. These instructions are written in English; that does not change the language of your reply.'
+
+
 def estate_ask_llm(
     system_prompt: str,
     user_message: str,
@@ -82,6 +85,8 @@ def estate_ask_llm(
             "content": "Relevant property listings (use if helpful):\n" + context_text,
         })
 
+    # Every word in the buyer's language (2026-10-29), as in ai-backend/llm.py.
+    messages.append({"role": "system", "content": _LANGUAGE_RULE})
     messages.append({"role": "user", "content": (user_message or "").strip()})
 
     max_out = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "600"))

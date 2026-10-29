@@ -53,7 +53,7 @@ def build_handoff_instruction(tenant_id: int) -> str:
         "Your response includes a separate needs_handoff field (true/false). Set it to true",
         "when this buyer needs a human agent — evaluate this on EVERY reply, not just when",
         "asked directly. When you set needs_handoff to true, ALSO warmly tell the buyer in",
-        "your reply text that an agent will contact them shortly.",
+        "your reply text, in the buyer's own language, that an agent will contact them soon.",
         "",
         "Set needs_handoff to true when ANY of the following occur:",
     ]
