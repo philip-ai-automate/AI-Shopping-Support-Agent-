@@ -7,6 +7,7 @@ import staff_activity
 import contact_status as _contact_status
 import lead_linkedin as _li
 import lead_followups as _fu
+import auto_followups as _af
 import psycopg2.extras
 import psycopg2.errors
 import os, secrets, string, json as _json
@@ -5721,7 +5722,8 @@ def team_deactivate(member_id: int):
     cur.execute("UPDATE team_members SET is_active=FALSE WHERE id=%s AND tenant_id=%s", (member_id, tenant_id))
     conn.commit()
     cur.close(); conn.close()
-    flash("Team member deactivated.", "success")
+    moved, to = _af.reassign_member_deals(tenant_id, member_id)
+    flash("Team member deactivated." + (f" Their {moved} open deal{'s' if moved != 1 else ''} moved to {to}." if moved else ""), "success")
     return redirect(url_for("portal.team_page"))
 
 
@@ -5763,10 +5765,16 @@ def team_remove(member_id: int):
     tenant_id = int(customer["tenant_id"])
     conn = get_db_connection()
     cur  = conn.cursor()
+    cur.close(); conn.close()
+    # Their open deals go to the person chosen in Pipeline Settings first,
+    # while their name can still be found.
+    moved, to = _af.reassign_member_deals(tenant_id, member_id)
+    conn = get_db_connection()
+    cur  = conn.cursor()
     cur.execute("DELETE FROM team_members WHERE id=%s AND tenant_id=%s", (member_id, tenant_id))
     conn.commit()
     cur.close(); conn.close()
-    flash("Team member removed.", "success")
+    flash("Team member removed." + (f" Their {moved} open deal{'s' if moved != 1 else ''} moved to {to}." if moved else ""), "success")
     return redirect(url_for("portal.team_page"))
 
 
@@ -26285,7 +26293,7 @@ def _seq_stop_reason(cur, person):
                 return "Lead marked Dropped"
             if lead["stage"] == "won":
                 return "Lead marked Won"
-    return None
+    return _af.extra_stop_reason(cur, person)
 
 
 def _seq_stop_matching(cur, tenant_id: int, reason: str, email: str = None, lead_id: int = None):
@@ -26371,6 +26379,66 @@ def _seq_deliver(cur, camp, tenant_id: int, email: str, sender: dict, lead_id=No
     return ok, err
 
 
+def _seq_advance(cur, p, seq, steps):
+    """Move a person on to their next message (or finish them)."""
+    if p["steps_sent"] + 1 < len(steps):
+        nxt = steps[p["steps_sent"] + 1]
+        cur.execute("""UPDATE email_sequence_people SET steps_sent=steps_sent+1, last_sent_at=NOW(),
+                           status='active', next_due_at=%s, updated_at=NOW()
+                       WHERE id=%s""", (_seq_due_after(_seq_schedule(seq), int(nxt["wait_days"] or 0)), p["id"]))
+    else:
+        cur.execute("""UPDATE email_sequence_people SET steps_sent=steps_sent+1, last_sent_at=NOW(),
+                           status='finished', next_due_at=NULL, updated_at=NOW() WHERE id=%s""", (p["id"],))
+
+
+def _seq_step_other(conn, cur, p, seq, steps, step, tenant_id):
+    """A WhatsApp step, or an email step for someone with no email address.
+    Returns (ok, message) like _seq_send_next."""
+    if (step.get("channel") or "email") != "whatsapp":
+        _seq_advance(cur, p, seq, steps)
+        conn.commit()
+        return False, f"Email {step['position']} skipped: no email address."
+    result, msg, retry = _af.send_wa_step(cur, p, step)
+    if result == "sent":
+        _seq_advance(cur, p, seq, steps)
+        conn.commit()
+        try:
+            staff_activity.log("wa_sent", tenant_id, lead_id=p.get("lead_id"), contact_id=p.get("contact_id"),
+                               actor_key="system:followup", actor_name=_af.FU_LABEL, auto=True,
+                               detail=f"{seq.get('name') or 'Follow-up'} · WhatsApp {step['position']}")
+        except Exception as e:
+            print("⚠️ follow-up activity log error:", e)
+        return True, msg
+    if result == "skip":
+        _seq_advance(cur, p, seq, steps)
+        conn.commit()
+        if msg.startswith("No WhatsApp number") and _af.get_settings(tenant_id, cur)["no_wa_mode"] == "email_ask":
+            try:
+                who = ""
+                if p.get("lead_id"):
+                    cur.execute("SELECT customer_name FROM merchant_pipeline_leads WHERE id=%s", (p["lead_id"],))
+                    who = (cur.fetchone() or {}).get("customer_name") or ""
+                _af.notify(cur, tenant_id, "owner", f"nowa:{p['id']}", f"Add a WhatsApp number: {who or 'a deal'}",
+                           [f"The automatic follow-up \"{seq.get('name')}\" wanted to send {who or 'this deal'} a WhatsApp message, "
+                            "but the deal has no WhatsApp number. Emails still go out.",
+                            "Add their WhatsApp number on the deal so the next WhatsApp message reaches them."],
+                           lead_id=p.get("lead_id"), link=_af.deal_link(p.get("lead_id")))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                print("⚠️ follow-up no-WhatsApp notice error:", e)
+        return False, f"Skipped: {msg}"
+    if result == "wait":
+        cur.execute("UPDATE email_sequence_people SET status='active', next_due_at=%s, updated_at=NOW() WHERE id=%s",
+                    (retry, p["id"]))
+        conn.commit()
+        return False, msg
+    cur.execute("""UPDATE email_sequence_people SET status='stopped', stop_reason=%s, next_due_at=NULL,
+                       updated_at=NOW() WHERE id=%s""", (msg[:200], p["id"]))
+    conn.commit()
+    return False, f"Stopped: {msg}"
+
+
 def _seq_send_next(person_id: int, due_step=None):
     """Send one person their next email now (automatic step that's due, or a
     team member pressing Send). Claims the row first, so two portal workers
@@ -26418,10 +26486,14 @@ def _seq_send_next(person_id: int, due_step=None):
                                updated_at=NOW() WHERE id=%s""", (reason, p["id"]))
             conn.commit()
             return False, f"Not sent: {reason.lower()}."
+        step = steps[p["steps_sent"]]
+        if (step.get("channel") or "email") == "whatsapp" or not p.get("email"):
+            # WhatsApp message, or an email step for someone with no email
+            # address (WhatsApp-only deal): see auto_followups.
+            return _seq_step_other(conn, cur, p, seq, steps, step, tenant_id)
         sender = _seq_sender(seq, _get_email_sender(tenant_id))
         if not sender:
             return _put_back("No sending address is set up for this business.")
-        step = steps[p["steps_sent"]]
         camp = _seq_prepare_step(cur, seq, step, sender["from_name"])
         if not camp:
             conn.commit()
@@ -26608,6 +26680,7 @@ def _email_sequence_tick():
                 due.append(p)
             conn.commit()
         no_sender = set()  # businesses with no sending address: skip them, never block the others
+        fu_settings = {}   # each business's automatic follow-up settings (approve-first or automatic)
         for p in due:
             if not p["n_steps"] or p["tenant_id"] in no_sender:
                 continue
@@ -26616,7 +26689,12 @@ def _email_sequence_tick():
                             "WHERE id=%s AND status='active'", (p["id"],))
                 conn.commit()
                 continue
-            if p["send_mode"] == "manual":
+            approve = False
+            if p.get("origin") in ("rule", "deal"):
+                if p["tenant_id"] not in fu_settings:
+                    fu_settings[p["tenant_id"]] = _af.get_settings(int(p["tenant_id"]), cur)
+                approve = fu_settings[p["tenant_id"]]["send_mode"] == "approve"
+            if p["send_mode"] == "manual" or approve:
                 reason = _seq_stop_reason(cur, p)
                 if reason:
                     cur.execute("""UPDATE email_sequence_people SET status='stopped', stop_reason=%s, next_due_at=NULL,
@@ -26637,7 +26715,16 @@ def _email_sequence_tick():
 
 
 def _email_sequence_scheduler_loop():
+    _af.ensure_tables()
+    n = 0
     while True:
+        if n % 5 == 0:
+            # Automatic follow-up rules (each business's own, Pipeline Settings).
+            try:
+                _af.run_rules(stage_labels_for=pipeline_effective_stage_labels)
+            except Exception as e:
+                print("⚠️ follow-up rules error:", e)
+        n += 1
         try:
             _email_sequence_tick()
         except Exception as e:
@@ -26705,6 +26792,125 @@ def _seq_page_guard(key: str, allowed: bool, json_reply: bool = False):
     if gate:
         return None, (jsonify({"error": "upgrade required"}), 403) if json_reply else gate
     return customer, None
+
+
+def _fu_wa_templates(tenant_id: int) -> list:
+    """Approved WhatsApp templates on every connected account of this
+    business (Meta approves per account), one entry per name + language."""
+    out, seen = [], set()
+    for acc in _tpl_accounts(tenant_id):
+        conn_row = _get_wa_connection_scoped(tenant_id, wa_id=acc["wa_id"])
+        if not conn_row:
+            continue
+        for t in _send_one_templates(conn_row):
+            k = (t["name"], t["language"])
+            if k in seen:
+                continue
+            seen.add(k)
+            why = t["unsupported"]
+            if not why and t["header_format"] in ("IMAGE", "VIDEO", "DOCUMENT"):
+                why = "needs an attachment"
+            if not why and t["header_blank"]:
+                why = "has a blank in the title"
+            out.append(dict(t, unsupported=why))
+    return sorted(out, key=lambda t: (t["name"], t["language"]))
+
+
+def _fu_clean_wa(raw: str, tpl_list) -> tuple:
+    """One WhatsApp step from the form → (wa dict, problem). The template's
+    words, buttons and number of blanks always come from Meta, never the page."""
+    try:
+        d = _json.loads(raw or "{}") or {}
+    except ValueError:
+        d = {}
+    name, lang = (d.get("template") or "").strip(), (d.get("language") or "").strip()
+    if not name:
+        return None, "Choose a WhatsApp message for every WhatsApp step."
+    t = next((x for x in tpl_list if x["name"] == name and x["language"] == lang), None)
+    if not t:
+        return None, f"The WhatsApp message \"{name}\" is not approved on your number."
+    if t["unsupported"]:
+        return None, f"The WhatsApp message \"{name}\" can't be used for follow-ups ({t['unsupported']})."
+    blanks = []
+    raw_b = d.get("blanks") or []
+    for i in range(t["blanks"]):
+        b = raw_b[i] if i < len(raw_b) and isinstance(raw_b[i], dict) else {}
+        kind = b.get("kind") if b.get("kind") in _af.BLANK_KEYS else ("first_name" if i == 0 else "business")
+        text = " ".join(str(b.get("text") or "").split())[:200]
+        if kind == "text" and not text:
+            return None, f"Type the words for every blank in \"{name}\"."
+        blanks.append({"kind": kind, "text": text if kind == "text" else ""})
+    return {"template": name, "language": lang, "category": t["category"], "body": t["body"],
+            "footer": t["footer"], "buttons": t["buttons"], "blanks": blanks}, ""
+
+
+def _fu_steps_from_form(form, own_templates: set, tenant_id: int, first_wait_zero: bool) -> tuple:
+    """The follow-up's messages from the form (parallel lists template_id,
+    wait_days, send_mode, channel, wa). Returns (rows, problem) where each row
+    is (template_id or None, wait, mode, channel, wa or None)."""
+    tpl_ids, waits, modes = form.getlist("template_id"), form.getlist("wait_days"), form.getlist("send_mode")
+    chans, was = form.getlist("channel"), form.getlist("wa")
+    n = max(len(tpl_ids), len(chans))
+    rows, wa_list = [], None
+    for i in range(n):
+        ch = "whatsapp" if (chans[i] if i < len(chans) else "") == "whatsapp" else "email"
+        try:
+            w = max(0, min(365, int((waits[i] if i < len(waits) else "0") or 0)))
+        except ValueError:
+            w = 0
+        if first_wait_zero and not rows:
+            w = 0
+        m = "manual" if (modes[i] if i < len(modes) else "") == "manual" else "auto"
+        if ch == "whatsapp":
+            if wa_list is None:
+                try:
+                    wa_list = _fu_wa_templates(tenant_id)
+                except Exception as e:
+                    print("⚠️ follow-up template list error:", e)
+                    return None, "Could not check your WhatsApp messages with Meta. Try again."
+            wa, problem = _fu_clean_wa(was[i] if i < len(was) else "", wa_list)
+            if problem:
+                return None, problem
+            rows.append((None, w, m, "whatsapp", wa))
+        else:
+            t = tpl_ids[i] if i < len(tpl_ids) else ""
+            if not t.isdigit() or int(t) not in own_templates:
+                continue
+            rows.append((int(t), w, m, "email", None))
+    return rows, ""
+
+
+def _fu_write_steps(cur, seq_id: int, rows: list):
+    """Save the messages in order; each position keeps its own row (and so
+    its campaign row and report numbers)."""
+    old = _seq_steps(cur, seq_id)
+    for pos, (t, w, m, ch, wa) in enumerate(rows, start=1):
+        waj = psycopg2.extras.Json(wa) if wa else None
+        if pos <= len(old):
+            cur.execute("""UPDATE email_sequence_steps SET template_id=%s, wait_days=%s, send_mode=%s, channel=%s, wa=%s
+                           WHERE id=%s""", (t, w, m, ch, waj, old[pos - 1]["id"]))
+        else:
+            cur.execute("""INSERT INTO email_sequence_steps (sequence_id, position, template_id, wait_days, send_mode, channel, wa)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s)""", (seq_id, pos, t, w, m, ch, waj))
+    cur.execute("DELETE FROM email_sequence_steps WHERE sequence_id=%s AND position > %s", (seq_id, len(rows)))
+
+
+@portal_bp.route("/followups/wa-templates")
+@team_feature("campaigns_email.sequences_view")
+def followup_wa_templates():
+    """Approved WhatsApp messages a follow-up step can use (JSON)."""
+    customer, resp = _seq_page_guard("campaigns_email.sequences_view",
+                                     _team_member_has_permission("campaigns_email.sequences_create")
+                                     or _team_member_has_permission("campaigns_email.sequences_edit"), json_reply=True)
+    if resp: return resp
+    tenant_id = int(customer["tenant_id"])
+    if not _tpl_accounts(tenant_id):
+        return jsonify({"templates": [], "error": "No WhatsApp number is connected yet. Connect one in WhatsApp › Connect first."})
+    try:
+        return jsonify({"templates": _fu_wa_templates(tenant_id)})
+    except Exception as e:
+        print("⚠️ follow-up WhatsApp templates error:", e)
+        return jsonify({"templates": [], "error": "Could not load your approved WhatsApp messages from Meta. Try again."})
 
 
 @portal_bp.route("/email/sequences")
@@ -26801,6 +27007,7 @@ def email_sequence_wizard(seq_id: int = None):
     sch = _seq_schedule(seq) if seq else None
     return render_template(
         "portal/email_sequence_wizard.html", seq=seq, steps=steps, n_people=n_people, templates=templates,
+        fu_blank_fields=_af.BLANK_FIELDS, fu_business_name=customer.get("company_name") or "",
         categories=categories, segments=segments, labels=labels, sender=sender,
         send_as_choices=_send_as_choices(tenant_id, sender), default_reply_to=_default_reply_to(customer),
         stages=[(s, stage_labels.get(s, s)) for s in PIPELINE_STAGE_ORDER if s != "won"],
@@ -26819,29 +27026,22 @@ def email_sequence_wizard_emails():
     name = (f.get("name") or "").strip()[:255]
     if not name:
         return jsonify({"error": "Give the sequence a name."}), 400
-    tpl_ids, waits, modes = f.getlist("template_id"), f.getlist("wait_days"), f.getlist("send_mode")
     conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         seq_id = int(f["seq_id"]) if (f.get("seq_id") or "").isdigit() else None
         if seq_id and not _seq_get(cur, tenant_id, seq_id):
-            return jsonify({"error": "Sequence not found."}), 404
+            return jsonify({"error": "Follow-up not found."}), 404
         vis, vp = _tpl_vis("t")
         cur.execute("SELECT t.id FROM email_templates t WHERE t.tenant_id=%s" + vis, [tenant_id] + vp)
         own = {r["id"] for r in cur.fetchall()}
         if seq_id:
             cur.execute("SELECT template_id FROM email_sequence_steps WHERE sequence_id=%s", (seq_id,))
             own |= {r["template_id"] for r in cur.fetchall() if r["template_id"]}
-        rows = []
-        for i, t in enumerate(tpl_ids):
-            if not t.isdigit() or int(t) not in own:
-                continue
-            try:
-                w = max(0, min(365, int((waits[i] if i < len(waits) else "0") or 0)))
-            except ValueError:
-                w = 0
-            rows.append((int(t), 0 if not rows else w, "manual" if (modes[i] if i < len(modes) else "") == "manual" else "auto"))
+        rows, problem = _fu_steps_from_form(f, own, tenant_id, first_wait_zero=True)
+        if problem:
+            return jsonify({"error": problem}), 400
         if not rows:
-            return jsonify({"error": "Choose at least one saved email."}), 400
+            return jsonify({"error": "Choose at least one message."}), 400
         if not seq_id:
             cur.execute("""INSERT INTO email_sequences (tenant_id, name, status, reply_to, created_by)
                            VALUES (%s,%s,'paused',NULL,%s) RETURNING id""",
@@ -26849,15 +27049,7 @@ def email_sequence_wizard_emails():
             seq_id = cur.fetchone()["id"]
         else:
             cur.execute("UPDATE email_sequences SET name=%s, updated_at=NOW() WHERE id=%s", (name, seq_id))
-        old = _seq_steps(cur, seq_id)
-        for pos, (t, w, m) in enumerate(rows, start=1):
-            if pos <= len(old):
-                cur.execute("UPDATE email_sequence_steps SET template_id=%s, wait_days=%s, send_mode=%s WHERE id=%s",
-                            (t, w, m, old[pos - 1]["id"]))
-            else:
-                cur.execute("INSERT INTO email_sequence_steps (sequence_id, position, template_id, wait_days, send_mode) "
-                            "VALUES (%s,%s,%s,%s,%s)", (seq_id, pos, t, w, m))
-        cur.execute("DELETE FROM email_sequence_steps WHERE sequence_id=%s AND position > %s", (seq_id, len(rows)))
+        _fu_write_steps(cur, seq_id, rows)
         conn.commit()
     except Exception as e:
         conn.rollback()
@@ -27072,6 +27264,7 @@ def email_sequence_detail(seq_id: int):
     stage_labels["new_lead"] = "New Lead"
     return render_template(
         "portal/email_sequence.html", seq=seq, reply_unwatched=reply_unwatched, steps=steps, people=people, counts=counts,
+        fu_blank_fields=_af.BLANK_FIELDS, fu_business_name=customer.get("company_name") or "",
         total_people=sum(counts.values()), show=show, q=q, templates=templates, categories=categories,
         tracking_on=_plan_grants_feature(_get_tenant_plan(tenant_id), "campaigns_email.tracking"),
         track_counts=track_counts, page=page, page_count=page_count, shown_count=shown_count,
@@ -27163,9 +27356,6 @@ def email_sequence_save(seq_id: int):
                                                   _send_as_choices(tenant_id, _get_email_sender(tenant_id))}:
         flash("That 'Send as' address can't be used. Pick one from the list.", "warning")
         return back
-    tpl_ids = request.form.getlist("template_id")
-    waits = request.form.getlist("wait_days")
-    modes = request.form.getlist("send_mode")
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
@@ -27178,31 +27368,17 @@ def email_sequence_save(seq_id: int):
                     "(t.id IN (SELECT template_id FROM email_sequence_steps WHERE sequence_id=%s AND template_id IS NOT NULL)"
                     + (" OR TRUE" if not vis else " OR (TRUE" + vis + ")") + ")", [tenant_id, seq_id] + vp)
         own = {r["id"] for r in cur.fetchall()}
-        rows = []
-        for i, t in enumerate(tpl_ids):
-            if not t.isdigit() or int(t) not in own:
-                continue
-            try:
-                w = max(0, min(365, int((waits[i] if i < len(waits) else "0") or 0)))
-            except ValueError:
-                w = 0
-            m = "manual" if (modes[i] if i < len(modes) else "") == "manual" else "auto"
-            rows.append((int(t), w, m))
-        old = _seq_steps(cur, seq_id)
+        rows, problem = _fu_steps_from_form(request.form, own, tenant_id, first_wait_zero=False)
+        if problem:
+            flash(problem, "warning")
+            return back
         cur.execute("""UPDATE email_sequences SET name=%s, reply_to=%s, from_email=%s, from_name=%s,
                            updated_at=NOW() WHERE id=%s""",
                     (name or seq["name"], reply_to or None, from_email or None,
                      (from_name or None) if from_email else None, seq_id))
         # Keep each position's own campaign row (its sends/opens/clicks stay
         # with "Email N"); drop rows past the new end.
-        for pos, (t, w, m) in enumerate(rows, start=1):
-            if pos <= len(old):
-                cur.execute("UPDATE email_sequence_steps SET template_id=%s, wait_days=%s, send_mode=%s WHERE id=%s",
-                            (t, w, m, old[pos - 1]["id"]))
-            else:
-                cur.execute("""INSERT INTO email_sequence_steps (sequence_id, position, template_id, wait_days, send_mode)
-                               VALUES (%s,%s,%s,%s,%s)""", (seq_id, pos, t, w, m))
-        cur.execute("DELETE FROM email_sequence_steps WHERE sequence_id=%s AND position > %s", (seq_id, len(rows)))
+        _fu_write_steps(cur, seq_id, rows)
         # Anyone who has now had every email is finished.
         cur.execute("""UPDATE email_sequence_people SET status='finished', next_due_at=NULL, updated_at=NOW()
                        WHERE sequence_id=%s AND status IN ('active','ready') AND steps_sent >= %s AND %s > 0""",
@@ -27239,11 +27415,13 @@ def email_sequence_status(seq_id: int):
         if want == "active":
             steps = _seq_steps(cur, seq_id)
             if not steps:
-                flash("Choose at least one email before starting.", "warning")
+                flash("Choose at least one message before starting.", "warning")
                 return redirect(url_for("portal.email_sequence_detail", seq_id=seq_id))
-            missing = [s["position"] for s in steps if not (s.get("template_fields") or {}).get("subject")]
+            missing = [s["position"] for s in steps
+                       if ((s.get("channel") or "email") == "whatsapp" and not (s.get("wa") or {}).get("template"))
+                       or ((s.get("channel") or "email") != "whatsapp" and not (s.get("template_fields") or {}).get("subject"))]
             if missing:
-                flash(f"Email {missing[0]} has no saved email (or its subject is empty).", "warning")
+                flash(f"Message {missing[0]} has no saved email or WhatsApp message chosen (or the email's subject is empty).", "warning")
                 return redirect(url_for("portal.email_sequence_detail", seq_id=seq_id))
         cur.execute("UPDATE email_sequences SET status=%s, updated_at=NOW() WHERE id=%s", (want, seq_id))
         conn.commit()
@@ -39949,6 +40127,33 @@ def sales_pipeline_settings():
                         (psycopg2.extras.Json(overrides), tenant_id))
             conn.commit()
             flash("Lead Score labels saved.", "success")
+        elif form_type in ("fu_rule", "fu_rule_delete", "fu_rule_toggle", "fu_settings"):
+            actor = _current_actor(customer)["label"]
+            rid = request.form.get("rule_id", type=int)
+            if form_type == "fu_rule":
+                ok, msg = _af.save_rule(tenant_id, rid, {
+                    "trigger": request.form.get("trigger"), "stage": request.form.get("stage"),
+                    "days": request.form.get("days"), "sequence_id": request.form.get("sequence_id"),
+                    "notify": request.form.get("notify"), "enabled": request.form.get("enabled") == "1",
+                    "do_what": request.form.get("do_what"), "remind_who": request.form.get("remind_who"),
+                    "remind_action": request.form.get("remind_action"), "remind_note": request.form.get("remind_note")}, actor)
+                flash(msg, "success" if ok else "warning")
+            elif form_type == "fu_rule_delete" and rid:
+                flash("Rule deleted." if _af.delete_rule(tenant_id, rid) else "Rule not found.", "success")
+            elif form_type == "fu_rule_toggle" and rid:
+                ok, msg = _af.set_rule_enabled(tenant_id, rid, request.form.get("on") == "1")
+                flash(msg, "success" if ok else "warning")
+            elif form_type == "fu_settings":
+                fm = request.form
+                _af.save_settings(tenant_id, {
+                    "wa_number_id": fm.get("wa_number_id") or None, "reassign_to": fm.get("reassign_to"),
+                    "no_wa_mode": fm.get("no_wa_mode"), "hours_from": fm.get("hours_from"),
+                    "hours_to": fm.get("hours_to"), "days": fm.getlist("days"), "tz_mode": fm.get("tz_mode"),
+                    "business_tz": fm.get("business_tz"), "max_wa": fm.get("max_wa"),
+                    "send_mode": fm.get("send_mode")}, actor)
+                flash("Follow-up settings saved.", "success")
+            cur.close(); conn.close()
+            return redirect(url_for("portal.sales_pipeline_settings") + "#followups")
         cur.close(); conn.close()
         return redirect(url_for("portal.sales_pipeline_settings"))
 
@@ -39962,7 +40167,142 @@ def sales_pipeline_settings():
         current_stage_labels=pipeline_effective_stage_labels(tenant_id),
         score_defaults=PIPELINE_SCORE_TIER_DEFAULTS,
         current_score_labels=pipeline_effective_score_labels(tenant_id),
+        **_fu_settings_context(customer, tenant_id),
     )
+
+
+def _fu_settings_context(customer, tenant_id: int) -> dict:
+    """Everything the Automatic Follow-up Rules card needs."""
+    _af.ensure_tables()
+    _af.seed_rules(tenant_id)
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("SELECT id, name, status FROM email_sequences WHERE tenant_id=%s ORDER BY lower(name)", (tenant_id,))
+        seqs = cur.fetchall()
+        cur.execute("SELECT id, name FROM team_members WHERE tenant_id=%s AND is_active ORDER BY lower(name)", (tenant_id,))
+        team = cur.fetchall()
+    finally:
+        cur.close(); conn.close()
+    labels = dict(pipeline_effective_stage_labels(tenant_id))
+    numbers = [{"id": c["id"], "label": (c.get("display_phone_number") or "") + (f" · {c['label']}" if c.get("label") else "")}
+               for c in _get_wa_connections_all(tenant_id) if c.get("active")]
+    return {"fu_rules": _af.list_rules(tenant_id), "fu_settings": _af.get_settings(tenant_id),
+            "fu_seqs": seqs, "fu_team": team, "fu_numbers": numbers, "fu_triggers": _af.TRIGGERS,
+            "fu_stages": [(k, labels.get(k, k)) for k in PIPELINE_STAGE_ORDER if k not in ("won",)],
+            "fu_days": _af.DAY_NAMES, "fu_tz_choices": _SEQ_TZ_CHOICES, "fu_remind_actions": _af.REMIND_ACTIONS,
+            "fu_can_edit": _team_member_has_permission("crm.pipeline_settings_edit"),
+            "fu_owner_name": " ".join(x for x in (customer.get("first_name"), customer.get("last_name")) if x) or "Account owner"}
+
+
+def _fu_deal_view(cur, tenant_id: int, lead) -> dict:
+    """The deal page's Automatic follow-up box: the follow-up running (or
+    waiting for approval / paused) with each message, or a way to start one."""
+    _af.ensure_tables()
+    lead_id = lead["id"]
+    cur.execute("""SELECT p.*, s.name AS seq_name, s.status AS seq_status FROM email_sequence_people p
+                   JOIN email_sequences s ON s.id = p.sequence_id
+                   WHERE p.tenant_id=%s AND p.lead_id=%s
+                   ORDER BY (p.status IN ('active','ready','sending','paused')) DESC, p.updated_at DESC LIMIT 1""",
+                (tenant_id, lead_id))
+    p = cur.fetchone()
+    phone = _af.person_whatsapp(cur, tenant_id, lead_id, lead.get("wa_contact_id"))
+    s = _af.get_settings(tenant_id, cur)
+    tzname = _af.customer_tz(phone, s["business_tz"]) if s["tz_mode"] == "customer" else s["business_tz"]
+    view = {"person": None, "steps": [], "phone": phone, "has_email": bool((lead.get("email") or "").strip()),
+            "running": False, "recent_stop": None, "seqs": [], "tz_label": tzname.split("/")[-1].replace("_", " ")}
+    if p and p["status"] in ("active", "ready", "sending", "paused"):
+        from zoneinfo import ZoneInfo
+        steps = _seq_steps(cur, p["sequence_id"])
+        out = []
+        for st in steps:
+            i = st["position"] - 1
+            wa = st.get("wa") or {}
+            nm = wa.get("template") if st.get("channel") == "whatsapp" else st.get("template_name")
+            st_view = {"n": st["position"], "channel": st.get("channel") or "email",
+                       "name": nm or "Not chosen",
+                       "state": "done" if i < p["steps_sent"] else ("next" if i == p["steps_sent"] else "todo"),
+                       "when": None}
+            if st_view["state"] == "next" and p["next_due_at"]:
+                try:
+                    st_view["when"] = p["next_due_at"].astimezone(ZoneInfo(tzname))
+                except Exception:
+                    st_view["when"] = p["next_due_at"]
+            out.append(st_view)
+        view.update(person=p, steps=out, running=True,
+                    needs_wa=any(x["channel"] == "whatsapp" and x["state"] != "done" for x in out) and not phone)
+    elif p and p["status"] in ("stopped", "finished") and p["updated_at"] and \
+            p["updated_at"] > datetime.now(timezone.utc) - timedelta(days=14):
+        view["recent_stop"] = p
+    if not view["running"]:
+        cur.execute("""SELECT id, name FROM email_sequences WHERE tenant_id=%s AND status='active'
+                       AND EXISTS (SELECT 1 FROM email_sequence_steps x WHERE x.sequence_id = email_sequences.id)
+                       ORDER BY lower(name)""", (tenant_id,))
+        view["seqs"] = cur.fetchall()
+    return view
+
+
+@portal_bp.route("/sales-pipeline/<int:lead_id>/auto-followup", methods=["POST"])
+@team_feature("leads.page")
+def deal_auto_followup(lead_id: int):
+    """Start / Pause / Resume / Stop / Send now for a deal's automatic follow-up."""
+    r = _require_login()
+    if r: return r
+    rp = _require_team_permission("leads.page")
+    if rp: return rp
+    customer = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    back = redirect(url_for("portal.opportunity_detail", lead_id=lead_id) + "#auto-followup")
+    if not _lead_visible(tenant_id, lead_id):
+        flash("You can't open this deal.", "warning")
+        return redirect(url_for("portal.sales_pipeline"))
+    action = request.form.get("action")
+    actor = _current_actor(customer)["label"]
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        if action == "start":
+            seq_id = request.form.get("sequence_id", type=int)
+            cur.execute("SELECT id, status FROM email_sequences WHERE id=%s AND tenant_id=%s", (seq_id, tenant_id))
+            sq = cur.fetchone()
+            if not sq:
+                flash("Choose a follow-up.", "warning")
+                return back
+            pid, problem = _af.start_followup(cur, tenant_id, sq["id"], lead_id=lead_id, origin="deal", actor=actor)
+            if problem:
+                conn.rollback()
+                flash(problem, "warning")
+                return back
+            conn.commit()
+            flash("Automatic follow-up started. It stops by itself when they reply.", "success")
+            return back
+        pid = request.form.get("person_id", type=int)
+        cur.execute("SELECT * FROM email_sequence_people WHERE id=%s AND tenant_id=%s AND lead_id=%s",
+                    (pid, tenant_id, lead_id))
+        p = cur.fetchone()
+        if not p:
+            flash("That follow-up was not found.", "warning")
+            return back
+        if action == "pause" and p["status"] in ("active", "ready"):
+            cur.execute("UPDATE email_sequence_people SET status='paused', updated_at=NOW() WHERE id=%s", (pid,))
+            flash("Follow-up paused for this deal.", "success")
+        elif action == "resume" and p["status"] == "paused":
+            cur.execute("""UPDATE email_sequence_people SET status='active', next_due_at=GREATEST(COALESCE(next_due_at, NOW()), NOW()),
+                               updated_at=NOW() WHERE id=%s""", (pid,))
+            flash("Follow-up running again.", "success")
+        elif action == "stop" and p["status"] in ("active", "ready", "paused"):
+            cur.execute("""UPDATE email_sequence_people SET status='stopped', stop_reason=%s, next_due_at=NULL,
+                               updated_at=NOW() WHERE id=%s""", (f"Stopped by {actor}"[:200], pid))
+            flash("Follow-up stopped for this deal.", "success")
+        elif action == "send" and p["status"] in ("active", "ready", "paused"):
+            if p["status"] == "paused":
+                cur.execute("UPDATE email_sequence_people SET status='active' WHERE id=%s", (pid,))
+            conn.commit()
+            ok, msg = _seq_send_next(pid)
+            flash(msg, "success" if ok else "warning")
+            return back
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    return back
 
 
 @portal_bp.route("/leads/<int:lead_id>")
@@ -40076,11 +40416,18 @@ def lead_detail(lead_id: int, opp_view: bool = False):
     for _c in lead_cols:
         _c["can_fill"] = _cols.can_fill(_c, _team_member_has_permission)
     demo = bookings_crm.lead_view(cur, tenant_id, lead_id)
+    try:
+        auto_fu = _fu_deal_view(cur, tenant_id, lead)
+    except Exception as e:
+        print("⚠️ deal automatic follow-up view error:", e)
+        conn.rollback()
+        auto_fu = None
 
     cur.close(); conn.close()
 
     return render_template(
         "portal/lead_detail.html",
+        auto_fu=auto_fu,
         demo=demo, demo_seq_stopped=any(e["kind"] == "sequence_stopped" for e in demo["events"]),
         lead=lead,
         lead_labels=lead_labels,

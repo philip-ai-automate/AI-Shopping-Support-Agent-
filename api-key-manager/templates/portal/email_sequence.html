@@ -197,10 +197,10 @@
 <div class="sq-warn" style="background:#f8fafc;border-color:#e2e8f0;color:#475569">This sequence is paused: nothing goes out automatically. You can still send anyone's next email yourself from the People tab. Press <strong>Start sequence</strong> when you're ready.</div>
 {% endif %}
 
-{% set steps_ok = steps and (steps|selectattr('template_name')|list|length == steps|length) %}
+{% set _ns = namespace(ok=(steps|length > 0)) %}{% for st in steps %}{% if not ((st.channel == 'whatsapp' and st.wa) or (st.channel != 'whatsapp' and st.template_name)) %}{% set _ns.ok = false %}{% endif %}{% endfor %}{% set steps_ok = _ns.ok %}
 {% set sent_total = steps|sum(attribute='stats.sent') %}
 <div class="rdy" role="list" aria-label="Ready to start">
-  <button type="button" class="rdy-i" data-go="emails" role="listitem"><span class="rdy-d {{ 'ok' if steps_ok else 'no' }}">{{ '✓' if steps_ok else '!' }}</span><span><b>Emails</b><small>{% if steps_ok %}{{ steps|length }} email{{ 's' if steps|length != 1 }}{% if steps|length > 1 %}, then {{ steps[1:]|map(attribute='wait_days')|join(', ') }} {{ wait_word }}s apart{% endif %}{% else %}Choose the emails{% endif %}</small></span></button>
+  <button type="button" class="rdy-i" data-go="emails" role="listitem"><span class="rdy-d {{ 'ok' if steps_ok else 'no' }}">{{ '✓' if steps_ok else '!' }}</span><span><b>Messages</b><small>{% if steps_ok %}{{ steps|length }} message{{ 's' if steps|length != 1 }}{% if steps|length > 1 %}, then {{ steps[1:]|map(attribute='wait_days')|join(', ') }} {{ wait_word }}s apart{% endif %}{% else %}Choose the messages{% endif %}</small></span></button>
   <button type="button" class="rdy-i" data-go="settings" role="listitem"><span class="rdy-d {{ 'ok' if sender else 'no' }}">{{ '✓' if sender else '!' }}</span><span><b>Sender</b><small>{% if seq.from_email %}{{ seq.from_name or seq.from_email }} · own address{% elif sender %}Business address{% else %}No sending address{% endif %}</small></span></button>
   <button type="button" class="rdy-i" data-go="settings" role="listitem"><span class="rdy-d {{ 'ok' if schedule.on else 'warn' }}">{{ '✓' if schedule.on else '–' }}</span><span><b>Schedule</b><small>{% if schedule.on %}{{ schedule.start.strftime('%-d %b') if schedule.start else 'Now' }}{% if schedule.end %} – {{ schedule.end.strftime('%-d %b') }}{% endif %} · {{ schedule.days|length }} days a week{% else %}None: sends all at once{% endif %}</small></span></button>
   <button type="button" class="rdy-i" data-go="people" role="listitem"><span class="rdy-d {{ 'ok' if total_people else 'no' }}">{{ '✓' if total_people else '!' }}</span><span><b>People</b><small>{% if total_people %}{{ '{:,}'.format(total_people) }}{% if waiting_first %} · {{ '{:,}'.format(waiting_first) }} waiting for Email 1{% endif %}{% else %}Nobody added yet{% endif %}</small></span></button>
@@ -231,9 +231,10 @@
         {% if not loop.first %}<div class="tl-wait"><span class="tl-rail"></span><span class="tl-chip">⏱ Wait {{ st.wait_days }} {{ wait_word }}{{ 's' if st.wait_days != 1 }} · only if they haven't replied</span></div>{% endif %}
         <div class="tl-step"><span class="tl-num">{{ loop.index }}</span>
           <div class="tl-mail">
-            <div class="tl-t">{% if st.template_id and st.template_name %}<button type="button" class="tl-open" title="Preview this email" onclick="emPreview({{ st.template_id }}, {seq: {{ seq.id }}, back: location.pathname + '#overview'})">{{ st.template_name }} <span>👁 Preview</span></button>{% else %}<b>No saved email chosen</b>{% endif %}<span class="tl-mode {{ 'man' if st.send_mode == 'manual' }}">{{ "I'll send it myself" if st.send_mode == 'manual' else 'Sends automatically' }}</span></div>
-            {% if st.template_fields and st.template_fields.subject %}<div class="tl-subj">Subject: {{ st.template_fields.subject|replace("{{", "[")|replace("}}", "]") }}</div>{% endif %}
-            <div class="tl-mini"><span>Sent <b>{{ st.stats.sent or 0 }}</b></span><span>Opened <b>{{ st.stats.opened or 0 }}</b></span><span>Clicked <b>{{ st.stats.clicked or 0 }}</b></span><span>Replied <b>{{ st.stats.replied or 0 }}</b></span></div>
+            <div class="tl-t">{% if st.channel == 'whatsapp' %}<b>● WhatsApp · {{ st.wa.template if st.wa else 'No WhatsApp message chosen' }}</b>{% elif st.template_id and st.template_name %}<button type="button" class="tl-open" title="Preview this email" onclick="emPreview({{ st.template_id }}, {seq: {{ seq.id }}, back: location.pathname + '#overview'})">{{ st.template_name }} <span>👁 Preview</span></button>{% else %}<b>No saved email chosen</b>{% endif %}<span class="tl-mode {{ 'man' if st.send_mode == 'manual' }}">{{ "I'll send it myself" if st.send_mode == 'manual' else 'Sends automatically' }}</span></div>
+            {% if st.channel == 'whatsapp' and st.wa %}<div class="tl-subj">{{ st.wa.body|truncate(140) }}</div>{% endif %}
+            {% if st.channel != 'whatsapp' and st.template_fields and st.template_fields.subject %}<div class="tl-subj">Subject: {{ st.template_fields.subject|replace("{{", "[")|replace("}}", "]") }}</div>{% endif %}
+            {% if st.channel != 'whatsapp' %}<div class="tl-mini"><span>Sent <b>{{ st.stats.sent or 0 }}</b></span><span>Opened <b>{{ st.stats.opened or 0 }}</b></span><span>Clicked <b>{{ st.stats.clicked or 0 }}</b></span><span>Replied <b>{{ st.stats.replied or 0 }}</b></span></div>{% endif %}
           </div></div>
       {% else %}
         <div class="muted">No emails chosen yet.{% if can_edit %} <a href="#emails" data-go="emails">Choose them →</a>{% endif %}</div>
@@ -277,9 +278,29 @@
       {% endif %}
       <div id="steps">
         {% for st in steps %}
+        {% if st.channel == 'whatsapp' %}
+        <div class="step" data-ch="whatsapp">
+          <div class="step-top">
+            <div class="step-n">WhatsApp <span class="n">{{ loop.index }}</span></div>
+            <input type="hidden" name="template_id" value=""><input type="hidden" name="channel" value="whatsapp"><input type="hidden" name="wa" value="" class="wa-json">
+            <label class="fld"><span class="wait-label">{{ 'Send it' if loop.first else 'Wait' }}</span>
+              <span class="step-wait"><input type="number" name="wait_days" min="0" max="365" value="{{ st.wait_days }}"> <span class="wait-after">{{ 'days after being added' if loop.first else wait_word ~ 's after the message before' }}</span></span>
+            </label>
+            <label class="fld">How it's sent
+              <select name="send_mode">
+                <option value="auto" {% if st.send_mode != 'manual' %}selected{% endif %}>Send automatically</option>
+                <option value="manual" {% if st.send_mode == 'manual' %}selected{% endif %}>I'll send it myself</option>
+              </select>
+            </label>
+            <button type="button" class="step-x" title="Remove this message" onclick="sqRemoveStep(this)">✕</button>
+          </div>
+          <div class="wa-box" data-wa="{{ (st.wa or {})|tojson|forceescape }}"></div>
+        </div>
+        {% else %}
         <div class="step">
           <div class="step-top">
             <div class="step-n">Email <span class="n">{{ loop.index }}</span></div>
+            <input type="hidden" name="channel" value="email"><input type="hidden" name="wa" value="">
             <label class="fld">Saved email
               <select name="template_id" required>
                 {% if not st.template_name %}<option value="">— choose a saved email —</option>{% endif %}
@@ -305,18 +326,40 @@
             · <a href="{{ url_for('portal.email_campaign_report', campaign_id=st.campaign_id) }}">See who</a></div>
           {% endif %}
         </div>
+        {% endif %}
         {% endfor %}
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
         <button type="button" class="sq-btn light" onclick="sqAddStep()" {% if not templates %}disabled{% endif %}>+ Add an email</button>
+        <button type="button" class="sq-btn light" onclick="sqAddStep('whatsapp')">+ Add a WhatsApp message</button>
         <button type="submit" class="sq-btn">Save</button>
       </div>
       <p class="muted" style="font-size:12px;margin:12px 0 0">Changing an email here changes it for everyone who hasn't had it yet. People part-way through carry on from where they are.</p>
     </form>
+    <template id="stepTplWa">
+      <div class="step" data-ch="whatsapp">
+        <div class="step-top">
+          <div class="step-n">WhatsApp <span class="n"></span></div>
+          <input type="hidden" name="template_id" value=""><input type="hidden" name="channel" value="whatsapp"><input type="hidden" name="wa" value="" class="wa-json">
+          <label class="fld"><span class="wait-label">Wait</span>
+            <span class="step-wait"><input type="number" name="wait_days" min="0" max="365" value="3"> <span class="wait-after">{{ wait_word }}s after the message before</span></span>
+          </label>
+          <label class="fld">How it's sent
+            <select name="send_mode">
+              <option value="auto">Send automatically</option>
+              <option value="manual">I'll send it myself</option>
+            </select>
+          </label>
+          <button type="button" class="step-x" title="Remove this message" onclick="sqRemoveStep(this)">✕</button>
+        </div>
+        <div class="wa-box" data-wa="{}"></div>
+      </div>
+    </template>
     <template id="stepTpl">
       <div class="step">
         <div class="step-top">
           <div class="step-n">Email <span class="n"></span></div>
+          <input type="hidden" name="channel" value="email"><input type="hidden" name="wa" value="">
           <label class="fld">Saved email
             <select name="template_id" required>
               <option value="">— choose a saved email —</option>
@@ -342,7 +385,7 @@
     {% else %}
       {% for st in steps %}
       <div class="step">
-        <strong>Email {{ loop.index }}</strong> · {{ st.template_name or 'No saved email chosen' }}
+        <strong>{{ 'WhatsApp' if st.channel == 'whatsapp' else 'Email' }} {{ loop.index }}</strong> · {{ (st.wa.template if st.wa else 'No WhatsApp message chosen') if st.channel == 'whatsapp' else (st.template_name or 'No saved email chosen') }}
         {% if st.template_id and st.template_name %}<button type="button" class="sq-btn small light" style="margin-left:6px" onclick="emPreview({{ st.template_id }}, {seq: {{ seq.id }}, back: location.pathname + '#emails'})">👁 Preview</button>{% endif %}
         <span class="muted"> · {{ st.wait_days }} {{ 'days after being added' if loop.first else wait_word ~ 's after the email before' }} · {{ "I'll send it myself" if st.send_mode == 'manual' else 'Sent automatically' }}</span>
         {% if st.campaign_id and st.stats.sent %}<div class="step-stats">Sent {{ st.stats.sent }} · Opened {{ st.stats.opened }} · Clicked {{ st.stats.clicked }} · Replied {{ st.stats.replied }}</div>{% endif %}
@@ -671,6 +714,7 @@
 </form>
 
 {% include "portal/_email_preview_drawer.html" %}
+{% include "portal/_followup_wa.html" %}
 <script>
 function sqConfirm(el) {
   const btn = el.tagName === 'FORM' ? el.querySelector('[data-confirm]') : el;
@@ -714,14 +758,16 @@ function sqRenumber() {
   document.querySelectorAll('#steps .step').forEach((s, i) => {
     s.querySelector('.n').textContent = i + 1;
     s.querySelector('.wait-label').textContent = i === 0 ? 'Send it' : 'Wait';
-    s.querySelector('.wait-after').textContent = i === 0 ? 'days after being added' : '{{ wait_word }}s after the email before';
+    s.querySelector('.wait-after').textContent = i === 0 ? 'days after being added' : '{{ wait_word }}s after the message before';
   });
 }
-function sqAddStep() {
+function sqAddStep(ch) {
   const box = document.getElementById('steps');
-  const node = document.getElementById('stepTpl').content.firstElementChild.cloneNode(true);
+  const node = document.getElementById(ch === 'whatsapp' ? 'stepTplWa' : 'stepTpl').content.firstElementChild.cloneNode(true);
   if (!box.children.length) node.querySelector('[name=wait_days]').value = 0;
   box.appendChild(node); sqRenumber(); sqStepView(node);
+  const wb = node.querySelector('.wa-box'); if (wb) FUWA.mount(wb, {});
+  sqDirty = true;
 }
 function sqRemoveStep(btn) { btn.closest('.step').remove(); sqRenumber(); sqDirty = true; }
 // See / change the saved email chosen on each line.
@@ -749,8 +795,18 @@ function sqEdit(btn) {
   const f = document.getElementById('stepsForm');
   if (!f) return;
   f.addEventListener('change', e => { sqDirty = true; const st = e.target.closest('.step'); if (st) sqStepView(st); });
-  f.addEventListener('submit', () => { sqDirty = false; });
+  f.addEventListener('submit', e => {
+    let problem = '';
+    document.querySelectorAll('#steps .step').forEach((st, i) => {
+      const wb = st.querySelector('.wa-box'); if (!wb) return;
+      if (!problem) problem = FUWA.check(wb, i + 1);
+      st.querySelector('.wa-json').value = JSON.stringify(FUWA.read(wb) || {});
+    });
+    if (problem) { e.preventDefault(); alert(problem); return; }
+    sqDirty = false;
+  });
   document.querySelectorAll('#steps .step').forEach(sqStepView);
+  document.querySelectorAll('#steps .wa-box').forEach(wb => { let w = {}; try { w = JSON.parse(wb.dataset.wa || '{}') } catch (x) {} FUWA.mount(wb, w); });
 })();
 document.querySelectorAll('.add-tab').forEach(t => t.addEventListener('click', () => {
   document.querySelectorAll('.add-tab').forEach(x => x.classList.toggle('on', x === t));

@@ -1,0 +1,87 @@
+{# Automatic follow-up on a deal (2026-10-29, approved mock-up
+   https://claude.ai/artifact/1XzJNWytsnK4BMzMrsbXYg). #}
+{% if auto_fu %}
+{% set A = auto_fu %}
+<div class="afd" id="auto-followup">
+  <div class="afd-main">
+    <div class="afd-top"><span class="afd-eye">Automatic follow-up</span>
+      {% if A.running %}
+        {% if A.person.status == 'paused' %}<span class="afd-pill grey">Paused</span>
+        {% elif A.person.status == 'ready' %}<span class="afd-pill amber">Waiting for someone to send</span>
+        {% elif A.person.seq_status != 'active' %}<span class="afd-pill amber">Follow-up paused</span>
+        {% else %}<span class="afd-pill">● Running</span>{% endif %}
+      {% endif %}
+    </div>
+    {% if A.running %}
+      {% set P = A.person %}
+      <div class="afd-name">{{ P.seq_name }} · message {{ [P.steps_sent + 1, A.steps|length]|min }} of {{ A.steps|length }}</div>
+      <div class="afd-steps">
+        {% for st in A.steps %}
+        <div class="afd-st">
+          <span class="afd-dot {{ st.state }}">{{ '✓' if st.state == 'done' else st.n }}</span>
+          <div><b>{{ '● WhatsApp' if st.channel == 'whatsapp' else '✉ Email' }} · {{ st.name }}</b>
+            <p>{% if st.state == 'done' %}Sent{% elif st.state == 'next' %}{{ 'Next' }}{% else %}Only if there's still no reply{% endif %}</p></div>
+          <span class="afd-when {{ 'next' if st.state == 'next' }}">{% if st.state == 'next' and st.when %}{{ st.when.strftime('%a %-d %b, %-I:%M%p')|replace('AM','am')|replace('PM','pm') }}<br><span>{{ A.tz_label }} time</span>{% elif st.state == 'next' %}Soon{% endif %}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% if A.needs_wa %}<div class="afd-warn">This deal has no WhatsApp number, so WhatsApp messages are skipped. Add it with Edit at the top.</div>{% endif %}
+      {% if P.seq_status != 'active' %}<div class="afd-warn">"{{ P.seq_name }}" is paused, so nothing goes out until it's started on its page.</div>{% endif %}
+    {% else %}
+      <div class="afd-name muted">Not running</div>
+      {% if A.recent_stop %}<p class="afd-help" style="margin:0 0 8px">"{{ A.recent_stop.seq_name }}" {{ 'finished' if A.recent_stop.status == 'finished' else 'stopped' }}{% if A.recent_stop.stop_reason %}: {{ A.recent_stop.stop_reason|lower }}{% endif %} ({{ A.recent_stop.updated_at.strftime('%-d %b') }}).</p>{% endif %}
+      <p class="afd-help" style="margin:0">Start a follow-up and PhiXtra sends its emails and WhatsApp messages for you, stopping by itself as soon as they reply.</p>
+    {% endif %}
+  </div>
+  <div class="afd-side">
+    {% if A.running %}
+      {% set P = A.person %}
+      <div class="afd-btns">
+        <form method="POST" action="{{ url_for('portal.deal_auto_followup', lead_id=lead.id) }}"><input type="hidden" name="person_id" value="{{ P.id }}"><input type="hidden" name="action" value="{{ 'resume' if P.status == 'paused' else 'pause' }}"><button type="submit" class="afd-btn">{{ 'Resume' if P.status == 'paused' else 'Pause' }}</button></form>
+        <form method="POST" action="{{ url_for('portal.deal_auto_followup', lead_id=lead.id) }}" onsubmit="return confirm('Stop the automatic follow-up for this deal?')"><input type="hidden" name="person_id" value="{{ P.id }}"><input type="hidden" name="action" value="stop"><button type="submit" class="afd-btn">Stop</button></form>
+      </div>
+      {% set nx = A.steps|selectattr('state', 'equalto', 'next')|first %}
+      {% if nx %}<form method="POST" action="{{ url_for('portal.deal_auto_followup', lead_id=lead.id) }}"><input type="hidden" name="person_id" value="{{ P.id }}"><input type="hidden" name="action" value="send"><button type="submit" class="afd-btn pri">Send {{ 'WhatsApp' if nx.channel == 'whatsapp' else 'email' }} now</button></form>{% endif %}
+      <div class="afd-stop"><b>Stops by itself</b> when they reply, or the deal is moved to Won, Lost or Not a Fit.</div>
+      <div class="afd-help">{% if P.added_by and P.added_by.startswith('Rule: ') %}Started automatically: {{ P.added_by[6:] }}.{% else %}Started by {{ P.added_by or 'the team' }} on {{ P.added_at.strftime('%-d %b') }}.{% endif %}</div>
+    {% elif A.seqs %}
+      <form method="POST" action="{{ url_for('portal.deal_auto_followup', lead_id=lead.id) }}" class="afd-start">
+        <input type="hidden" name="action" value="start">
+        <label class="afd-help" for="afdSeq">Follow-up</label>
+        <select name="sequence_id" id="afdSeq" required>{% for q in A.seqs %}<option value="{{ q.id }}">{{ q.name }}</option>{% endfor %}</select>
+        <button type="submit" class="afd-btn pri">Start follow-up</button>
+      </form>
+      {% if not A.phone %}<div class="afd-help">No WhatsApp number on this deal, so only emails will go.</div>{% endif %}
+      {% if not A.has_email %}<div class="afd-help">No email address on this deal, so only WhatsApp messages will go.</div>{% endif %}
+    {% else %}
+      <div class="afd-help">No follow-up is running yet. Write one in <a href="{{ url_for('portal.email_sequences') }}">Outreach › Email › Sequences</a> and start it, then it can be used here and in your <a href="{{ url_for('portal.sales_pipeline_settings') }}#followups">follow-up rules</a>.</div>
+    {% endif %}
+  </div>
+</div>
+<style>
+  .afd { margin:4px 24px 18px; border:1.5px solid #0B1D40; border-radius:14px; padding:16px 18px; background:#fff;
+         display:grid; grid-template-columns:minmax(0,1fr) minmax(0,300px); gap:16px 24px }
+  .afd-top { display:flex; align-items:center; gap:10px; flex-wrap:wrap }
+  .afd-eye { font-size:11.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--muted) }
+  .afd-pill { font-size:11.5px; font-weight:800; border-radius:999px; padding:3px 10px; background:#DCFCE7; color:#166534 }
+  .afd-pill.amber { background:#FFF4E5; color:#92400E } .afd-pill.grey { background:#F1F5F9; color:#475569 }
+  .afd-name { font-size:18px; font-weight:800; color:#0B1D40; margin:6px 0 10px } .afd-name.muted { color:var(--muted) }
+  .afd-st { display:grid; grid-template-columns:24px minmax(0,1fr) auto; gap:10px; align-items:start; padding:9px 0; border-top:1px solid #EEF2F7 }
+  .afd-st:first-child { border-top:0 }
+  .afd-dot { width:22px; height:22px; border-radius:50%; display:grid; place-items:center; font-size:12px; font-weight:800 }
+  .afd-dot.done { background:#0B1D40; color:#fff } .afd-dot.next { border:2px solid #16A34A; color:#16A34A } .afd-dot.todo { background:#F1F5F9; color:#94A3B8 }
+  .afd-st b { font-size:14px; color:var(--ink) } .afd-st p { margin:2px 0 0; font-size:12.5px; color:var(--muted) }
+  .afd-when { font-size:12.5px; font-weight:700; color:#334155; text-align:right; white-space:nowrap } .afd-when.next { color:#16A34A }
+  .afd-when span { font-weight:600; color:var(--muted) }
+  .afd-side { display:flex; flex-direction:column; gap:10px; border-left:1px solid #EEF2F7; padding-left:20px }
+  .afd-btns { display:flex; gap:8px } .afd-btns form { flex:1 }
+  .afd-btn { width:100%; padding:9px 10px; border-radius:10px; border:1px solid #CBD5E1; background:#fff; font:inherit; font-weight:700; font-size:13.5px; color:var(--ink); cursor:pointer }
+  .afd-btn.pri { background:#0B1D40; border-color:#0B1D40; color:#fff }
+  .afd-stop { font-size:12.5px; color:var(--ink); line-height:1.5; background:#F8FAFC; border-radius:10px; padding:9px 11px }
+  .afd-help { font-size:12.5px; color:var(--muted); line-height:1.5 }
+  .afd-warn { margin-top:8px; font-size:12.5px; color:#92400E; background:#FFF4E5; border-radius:10px; padding:8px 11px }
+  .afd-start { display:flex; flex-direction:column; gap:8px } .afd-start select { padding:9px 10px; border:1px solid #CBD5E1; border-radius:10px; font:inherit }
+  @media (max-width:760px) { .afd { grid-template-columns:1fr; margin:4px 12px 16px } .afd-side { border-left:0; padding-left:0 }
+    .afd-st { grid-template-columns:24px minmax(0,1fr) } .afd-when { grid-column:2; text-align:left } }
+</style>
+{% endif %}

@@ -1,0 +1,172 @@
+{# Automatic Follow-up Rules (2026-10-29, approved mock-up
+   https://claude.ai/artifact/1XzJNWytsnK4BMzMrsbXYg). Every blue word is the
+   business's own choice; PhiXtra only suggests rules, switched off. #}
+<style>
+#followups .ar-rule{display:grid;grid-template-columns:44px 1fr auto;gap:14px;align-items:start;padding:16px 0;border-top:1px solid var(--line)}
+#followups .ar-rule:first-of-type{border-top:0}
+#followups .ar-tog{width:40px;height:22px;border-radius:999px;background:#CBD5E1;position:relative;margin-top:6px;border:0;padding:0;cursor:pointer}
+#followups .ar-tog::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
+#followups .ar-tog.on{background:#16A34A}#followups .ar-tog.on::after{left:21px}
+#followups .ar-tog:disabled{cursor:not-allowed;opacity:.6}
+#followups .ar-sent{font-size:14.5px;line-height:2.4;color:var(--ink);font-weight:600}
+#followups .ar-sent.off{color:#64748B}
+#followups .ar-pick{display:inline-block;width:auto!important;min-width:0!important;max-width:100%;padding:3px 26px 3px 10px;margin:0 2px;border:1px solid #CBD5E1;border-radius:8px;background:#fff;color:#1D4ED8;font:inherit;font-weight:700;line-height:1.6;vertical-align:baseline}
+#followups input.ar-pick.ar-note{width:22em!important;max-width:100%;text-align:left!important;color:var(--ink);font-weight:600}
+#followups input.ar-pick{width:4.2em!important;padding-right:6px;text-align:center}
+#followups .ar-meta{font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.5}
+#followups .ar-meta.warn{color:#B45309;font-weight:600}
+#followups .ar-act{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap}
+#followups .ar-btn{font:inherit;font-size:13px;font-weight:700;color:#334155;border:1px solid #E2E8F0;border-radius:8px;padding:6px 10px;background:#fff;cursor:pointer}
+#followups .ar-btn.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+#followups .ar-sec{font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:22px 0 4px}
+#followups .ar-tip{margin-top:16px;background:#F1F5F9;border-radius:10px;padding:12px 14px;font-size:13px;color:#334155;line-height:1.55}
+#followups .ar-days label{display:inline-flex;align-items:center;gap:4px;margin-right:8px;font-weight:600}
+#followups details.ar-new summary{list-style:none;cursor:pointer;display:inline-block;margin-top:10px;font-weight:700;font-size:13.5px;border:1px dashed #94A3B8;border-radius:10px;padding:9px 14px;color:var(--ink)}
+#followups details.ar-new summary::-webkit-details-marker{display:none}
+@media(max-width:700px){ #followups .ar-rule{grid-template-columns:44px 1fr}#followups .ar-act{grid-column:2}}
+</style>
+{% set S = fu_settings %}
+{% macro rule_sentence(r, fid) %}
+  When
+  <select class="ar-pick" name="trigger" form="{{ fid }}" data-trig aria-label="What starts it">
+    {% for k, l in fu_triggers %}<option value="{{ k }}" {% if r.trigger == k %}selected{% endif %}>{{ {'stage_no_reply':'a deal moves into','booking_click':'the customer clicks my booking link','wa_price_quiet':'the customer asks for a price on WhatsApp'}[k] }}</option>{% endfor %}
+  </select>
+  <span data-show="stage_no_reply"><select class="ar-pick" name="stage" form="{{ fid }}" aria-label="Stage">
+    {% for k, l in fu_stages %}<option value="{{ k }}" {% if r.stage == k %}selected{% endif %}>{{ l }}</option>{% endfor %}
+  </select> and there's no reply for</span>
+  <span data-show="booking_click">but doesn't book within</span>
+  <span data-show="wa_price_quiet">and goes quiet for</span>
+  <input class="ar-pick" type="number" min="0" max="90" name="days" form="{{ fid }}" value="{{ r.days if r.days is not none else 3 }}" aria-label="Days"> days,
+  <select class="ar-pick" name="do_what" form="{{ fid }}" data-do aria-label="What happens">
+    <option value="remind" {% if r.do_what == 'remind' %}selected{% endif %}>remind</option>
+    <option value="followup" {% if r.do_what != 'remind' %}selected{% endif %}>start a follow-up</option>
+  </select>
+  <span data-do-show="remind">
+  <select class="ar-pick" name="remind_who" form="{{ fid }}" aria-label="Who to remind">
+    <option value="owner" {% if r.notify == 'owner' %}selected{% endif %}>the deal owner</option>
+    <option value="account_owner" {% if r.notify == 'account_owner' %}selected{% endif %}>{{ fu_owner_name }}</option>
+    {% for m in fu_team %}<option value="team:{{ m.id }}" {% if r.notify == 'team:' ~ m.id %}selected{% endif %}>{{ m.name }}</option>{% endfor %}
+  </select>
+  to
+  <select class="ar-pick" name="remind_action" form="{{ fid }}" aria-label="What to do">
+    {% for k, l in fu_remind_actions %}<option value="{{ k }}" {% if (r.remind_action or 'call') == k %}selected{% endif %}>{{ l }}</option>{% endfor %}
+  </select>
+  <input class="ar-pick ar-note" type="text" name="remind_note" form="{{ fid }}" maxlength="300" value="{{ r.remind_note or '' }}" placeholder="Note (optional), e.g. ask if they got the proposal" aria-label="Note">
+  </span>
+  <span data-do-show="followup">
+  <select class="ar-pick" name="sequence_id" form="{{ fid }}" aria-label="Which follow-up">
+    <option value="">choose a follow-up…</option>
+    {% for q in fu_seqs %}<option value="{{ q.id }}" {% if r.sequence_id == q.id %}selected{% endif %}>{{ q.name }}{{ ' (paused)' if q.status != 'active' }}</option>{% endfor %}
+  </select>
+  and tell
+  <select class="ar-pick" name="notify" form="{{ fid }}" aria-label="Who is told">
+    <option value="owner" {% if r.notify == 'owner' %}selected{% endif %}>the deal owner</option>
+    <option value="account_owner" {% if r.notify == 'account_owner' %}selected{% endif %}>{{ fu_owner_name }}</option>
+    {% for m in fu_team %}<option value="team:{{ m.id }}" {% if r.notify == 'team:' ~ m.id %}selected{% endif %}>{{ m.name }}</option>{% endfor %}
+    <option value="none" {% if r.notify == 'none' %}selected{% endif %}>nobody</option>
+  </select>
+  </span>
+{% endmacro %}
+
+<div class="settings-card" id="followups">
+  <h2>Automatic Follow-up Rules</h2>
+  <p class="sub">Decide when PhiXtra steps in. Each rule can simply <b>remind</b> someone on your team (nothing is sent to the customer), or <b>start a follow-up</b> that sends emails or WhatsApp messages for you. Every blue word is your choice, and stage names come from your own pipeline above. Follow-ups are written in <a href="{{ url_for('portal.email_sequences') }}">Outreach › Email › Sequences</a>.</p>
+
+  <div class="grp-label">When to follow up</div>
+  {% for r in fu_rules %}
+  {% set fid = 'arf' ~ r.id %}
+  <div class="ar-rule">
+    <form method="POST" style="margin:0">
+      <input type="hidden" name="form_type" value="fu_rule_toggle"><input type="hidden" name="rule_id" value="{{ r.id }}"><input type="hidden" name="on" value="{{ '0' if r.enabled else '1' }}">
+      <button type="submit" class="ar-tog {{ 'on' if r.enabled }}" title="{{ 'Switch off' if r.enabled else 'Switch on' }}" aria-label="{{ 'Switch off' if r.enabled else 'Switch on' }}" {% if not fu_can_edit %}disabled{% endif %}></button>
+    </form>
+    <div>
+      <div class="ar-sent {{ '' if r.enabled else 'off' }}" data-rule>{{ rule_sentence(r, fid) }}</div>
+      {% if r.do_what == 'remind' %}<div class="ar-meta">{{ 'On' if r.enabled else 'Off' }}. Nothing is sent to the customer: on the day it becomes the deal's Next follow-up and the person gets an email. When switched on, deals from the last 30 days that match are included.</div>
+      {% elif r.enabled and r.sequence_status != 'active' %}<div class="ar-meta warn">"{{ r.sequence_name }}" is paused, so nothing goes out yet. Start it on its page.</div>
+      {% elif not r.sequence_id %}<div class="ar-meta">Off until you choose a follow-up.</div>
+      {% else %}<div class="ar-meta">{{ 'On' if r.enabled else 'Off' }}{{ ' · ' ~ r.created_by if r.created_by == 'Suggested by PhiXtra' }}. When switched on, deals from the last 30 days that match are included.</div>{% endif %}
+    </div>
+    {% if fu_can_edit %}
+    <div class="ar-act">
+      <form method="POST" id="{{ fid }}" style="margin:0"><input type="hidden" name="form_type" value="fu_rule"><input type="hidden" name="rule_id" value="{{ r.id }}"><input type="hidden" name="enabled" value="{{ '1' if r.enabled else '' }}"><button type="submit" class="ar-btn pri">Save</button></form>
+      <form method="POST" style="margin:0" onsubmit="return confirm('Delete this rule?')"><input type="hidden" name="form_type" value="fu_rule_delete"><input type="hidden" name="rule_id" value="{{ r.id }}"><button type="submit" class="ar-btn">Delete</button></form>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% if fu_can_edit %}
+  <details class="ar-new">
+    <summary>+ Add a rule</summary>
+    <div class="ar-rule" style="border-top:0">
+      <span></span>
+      <div class="ar-sent" data-rule>{{ rule_sentence({'trigger':'stage_no_reply','stage':'proposal_sent','days':3,'sequence_id':none,'notify':'owner','do_what':'remind','remind_action':'call'}, 'arfnew') }}</div>
+      <div class="ar-act"><form method="POST" id="arfnew" style="margin:0"><input type="hidden" name="form_type" value="fu_rule"><button type="submit" class="ar-btn pri">Add rule</button></form></div>
+    </div>
+  </details>
+  {% endif %}
+
+  <form method="POST">
+    <input type="hidden" name="form_type" value="fu_settings">
+    <fieldset {% if not fu_can_edit %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
+    <div class="grp-label" style="margin-top:26px">If something is missing</div>
+    <div class="ar-rule"><span></span><div class="ar-sent">When a team member is removed or deactivated, move their open deals to
+      <select class="ar-pick" name="reassign_to" aria-label="Who takes over">
+        <option value="owner" {% if S.reassign_to == 'owner' %}selected{% endif %}>{{ fu_owner_name }}</option>
+        {% for m in fu_team %}<option value="team:{{ m.id }}" {% if S.reassign_to == 'team:' ~ m.id %}selected{% endif %}>{{ m.name }}</option>{% endfor %}
+      </select>
+      <div class="ar-meta">So no deal or follow-up is left without an owner.</div></div><span></span></div>
+    <div class="ar-rule"><span></span><div class="ar-sent">When a deal has no WhatsApp number,
+      <select class="ar-pick" name="no_wa_mode" aria-label="No WhatsApp number">
+        <option value="email_ask" {% if S.no_wa_mode == 'email_ask' %}selected{% endif %}>send emails only and tell the deal owner to add one</option>
+        <option value="skip" {% if S.no_wa_mode == 'skip' %}selected{% endif %}>skip the WhatsApp messages without telling anyone</option>
+      </select></div><span></span></div>
+
+    <div class="grp-label" style="margin-top:22px">How messages go out</div>
+    <div class="ar-rule"><span></span><div class="ar-sent">Send only between
+      <select class="ar-pick" name="hours_from" aria-label="From">{% for h in range(0, 24) %}<option value="{{ h }}" {% if S.hours_from == h %}selected{% endif %}>{{ '%02d' % h }}:00</option>{% endfor %}</select>
+      and
+      <select class="ar-pick" name="hours_to" aria-label="To">{% for h in range(1, 25) %}<option value="{{ h }}" {% if S.hours_to == h %}selected{% endif %}>{{ '%02d' % h }}:00</option>{% endfor %}</select>,
+      in
+      <select class="ar-pick" name="tz_mode" aria-label="Whose time">
+        <option value="customer" {% if S.tz_mode == 'customer' %}selected{% endif %}>the customer's own time zone</option>
+        <option value="business" {% if S.tz_mode == 'business' %}selected{% endif %}>my business's time zone</option>
+      </select>
+      <div class="ar-days">{% for d, l in fu_days %}<label><input type="checkbox" name="days" value="{{ d }}" {% if d in S.days %}checked{% endif %}> {{ l }}</label>{% endfor %}</div>
+      <div class="ar-meta">The customer's time zone comes from their WhatsApp number. My business's time zone:
+        <select class="ar-pick" name="business_tz" aria-label="Business time zone" style="font-size:12.5px">{% for z, l in fu_tz_choices %}<option value="{{ z }}" {% if S.business_tz == z %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+      <div class="ar-meta">Applies to follow-ups started by a rule or from a deal.</div></div><span></span></div>
+    <div class="ar-rule"><span></span><div class="ar-sent">No more than
+      <select class="ar-pick" name="max_wa" aria-label="Most WhatsApp messages">{% for n in range(1, 11) %}<option value="{{ n }}" {% if S.max_wa == n %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+      WhatsApp follow-ups per deal
+      <div class="ar-meta">Too many messages can get a WhatsApp number restricted by Meta. If Meta lowers your number's quality, WhatsApp follow-ups pause by themselves.</div></div><span></span></div>
+    <div class="ar-rule"><span></span><div class="ar-sent">Send WhatsApp follow-ups from
+      <select class="ar-pick" name="wa_number_id" aria-label="Which number">
+        <option value="">the number the customer last chatted with</option>
+        {% for n in fu_numbers %}<option value="{{ n.id }}" {% if S.wa_number_id == n.id %}selected{% endif %}>{{ n.label }}</option>{% endfor %}
+      </select></div><span></span></div>
+    <div class="ar-rule"><span></span><div class="ar-sent">Messages go out
+      <select class="ar-pick" name="send_mode" aria-label="Automatic or approved">
+        <option value="auto" {% if S.send_mode == 'auto' %}selected{% endif %}>automatically</option>
+        <option value="approve" {% if S.send_mode == 'approve' %}selected{% endif %}>after someone approves each one</option>
+      </select>
+      <div class="ar-meta">Approve-first messages wait as "Ready" on the deal and on the follow-up's page until someone presses Send.</div></div><span></span></div>
+    <div class="ar-tip"><b>Your team's own follow-ups always come first.</b> A rule only steps in when nobody has been in touch since the deal entered that stage, neither the customer nor your team. A reminder never replaces a follow-up date someone set by hand. A follow-up stops by itself when the customer replies on WhatsApp or email, the deal is moved to Won, Lost or Not a Fit, they ask to stop, or someone on your team contacts them.</div>
+    {% if fu_can_edit %}<div style="display:flex;justify-content:flex-end;margin-top:18px"><button type="submit" class="btn-save">💾 Save Follow-up Settings</button></div>{% endif %}
+    </fieldset>
+  </form>
+</div>
+<script>
+(function () {
+  document.querySelectorAll('#followups [data-rule]').forEach(function (box) {
+    var t = box.querySelector('[data-trig]')
+    var d = box.querySelector('[data-do]')
+    function show() {
+      box.querySelectorAll('[data-show]').forEach(function (s) { s.hidden = s.dataset.show !== t.value })
+      box.querySelectorAll('[data-do-show]').forEach(function (s) { s.hidden = s.dataset.doShow !== d.value })
+    }
+    t.addEventListener('change', show); d.addEventListener('change', show); show()
+  })
+  {% if not fu_can_edit %}document.querySelectorAll('#followups .ar-pick').forEach(function (x) { x.disabled = true }){% endif %}
+})()
+</script>

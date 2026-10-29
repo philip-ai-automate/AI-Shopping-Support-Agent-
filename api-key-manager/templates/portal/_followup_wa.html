@@ -1,0 +1,97 @@
+{# WhatsApp message picker for automatic follow-ups (2026-10-29). Used by the
+   New follow-up wizard and the follow-up's own page. FUWA.mount(box, cfg)
+   draws: approved template → what fills each blank → what the customer sees.
+   FUWA.read(box) → the step's wa settings (or null when nothing chosen). #}
+<style>
+.fuwa{display:flex;flex-direction:column;gap:10px;flex:1;min-width:0}
+.fuwa-chip{display:inline-flex;align-items:center;gap:6px;width:max-content;font-size:11.5px;font-weight:800;padding:4px 9px;border-radius:999px;background:#DCFCE7;color:#166534}
+.fuwa-chip.em{background:#E8EEF8;color:#0B1D40}
+.fuwa select,.fuwa input[type=text]{width:100%;padding:9px 11px;border:1px solid #CBD5E1;border-radius:9px;font:inherit;background:#fff;color:#0f172a;box-sizing:border-box}
+.fuwa-blanks{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.fuwa-blank{display:flex;flex-direction:column;gap:4px;font-size:12.5px;font-weight:700;color:#475569;min-width:0}
+.fuwa-phone{max-width:380px;background:#EFEAE2;border-radius:14px;padding:12px}
+.fuwa-ph{font-size:11px;font-weight:800;color:#54656f;margin-bottom:6px;letter-spacing:.04em;text-transform:uppercase}
+.fuwa-bub{background:#fff;border-radius:10px;padding:10px 12px;font-size:13.5px;line-height:1.45;color:#111;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 1px rgba(0,0,0,.08)}
+.fuwa-ft{color:#8696a0;font-size:12px;margin-top:6px}
+.fuwa-qr{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}.fuwa-qr span{flex:1;min-width:110px;text-align:center;background:#fff;border-radius:10px;padding:8px;font-size:13px;font-weight:700;color:#027EB5;box-shadow:0 1px 1px rgba(0,0,0,.08)}
+.fuwa-note{padding:10px 12px;border-radius:10px;background:#F0FDF4;border:1px solid #BBF7D0;font-size:12.5px;color:#166534;line-height:1.5}
+.fuwa-warn{padding:10px 12px;border-radius:10px;background:#FFF7ED;border:1px solid #FED7AA;font-size:12.5px;color:#9A3412;line-height:1.5}
+</style>
+<script>
+window.FUWA = (function () {
+  const FIELDS = {{ fu_blank_fields|tojson }}
+  const SAMPLE = { first_name: 'Tunde', contact_name: 'Tunde Bakare', company: 'Lagos Foodmart', business: {{ (fu_business_name or 'your business')|tojson }}, owner: 'Ada' }
+  let list = null, loading = null, problem = ''
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
+  function load() {
+    if (list) return Promise.resolve(list)
+    if (loading) return loading
+    loading = fetch('{{ url_for("portal.followup_wa_templates") }}', { credentials: 'same-origin' })
+      .then(r => r.json()).then(d => { list = d.templates || []; problem = d.error || ''; return list })
+      .catch(() => { list = []; problem = 'Could not load your approved WhatsApp messages. Try again.'; return list })
+    return loading
+  }
+  const key = t => t.name + '|' + t.language
+  function draw(box) {
+    const cfg = box._fuwa || {}
+    const tpls = list || []
+    const cur = tpls.find(t => key(t) === cfg.key)
+    let h = '<span class="fuwa-chip">● WhatsApp</span>'
+    if (problem) h += `<div class="fuwa-warn">${esc(problem)}</div>`
+    else if (!tpls.length) h += '<div class="fuwa-warn">There are no approved WhatsApp messages on your number yet. Create one in Outreach › WhatsApp › Message Templates and wait for Meta to approve it.</div>'
+    h += '<select class="fuwa-tpl" aria-label="WhatsApp message"><option value="">Choose an approved WhatsApp message…</option>'
+      + tpls.map(t => `<option value="${esc(key(t))}" ${key(t) === cfg.key ? 'selected' : ''} ${t.unsupported ? 'disabled' : ''}>${esc(t.name)} · ${esc(t.language)}${t.unsupported ? ' (can\'t be used: ' + esc(t.unsupported) + ')' : ''}</option>`).join('')
+      + '</select>'
+    if (cur) {
+      const blanks = cfg.blanks || []
+      if (cur.blanks) {
+        h += '<div class="fuwa-blanks">'
+        for (let i = 0; i < cur.blanks; i++) {
+          const b = blanks[i] || { kind: i === 0 ? 'first_name' : 'business' }
+          h += `<label class="fuwa-blank">Blank {{ '{{' }}${i + 1}{{ '}}' }} is<select class="fuwa-kind" data-i="${i}">`
+            + FIELDS.map(([k, l]) => `<option value="${k}" ${k === b.kind ? 'selected' : ''}>${esc(l)}</option>`).join('') + '</select>'
+            + `<input type="text" class="fuwa-text" data-i="${i}" maxlength="200" placeholder="Type the words" value="${esc(b.text || '')}" ${b.kind === 'text' ? '' : 'hidden'}></label>`
+        }
+        h += '</div>'
+      }
+      const vals = []
+      for (let i = 0; i < cur.blanks; i++) { const b = blanks[i] || { kind: i === 0 ? 'first_name' : 'business' }; vals.push(b.kind === 'text' ? (b.text || '…') : (SAMPLE[b.kind] || '…')) }
+      const body = (cur.body || '').replace(/\{\{\s*(\d+)\s*\}\}/g, (m, n) => vals[n - 1] || '')
+      h += `<div class="fuwa-phone"><div class="fuwa-ph">What the customer sees (example)</div><div class="fuwa-bub">${esc(body)}${cur.footer ? `<div class="fuwa-ft">${esc(cur.footer)}</div>` : ''}</div>`
+        + (cur.buttons && cur.buttons.length ? `<div class="fuwa-qr">${cur.buttons.map(b => `<span>${esc(b)}</span>`).join('')}</div>` : '') + '</div>'
+      h += '<div class="fuwa-note"><b>WhatsApp\'s 24-hour rule is handled for you.</b> If the customer messaged you in the last 24 hours, these words go as a normal message, free. Otherwise this approved template is sent, and Meta charges a small fee per message.</div>'
+    }
+    box.innerHTML = h
+    box.querySelector('.fuwa-tpl').onchange = e => { cfg.key = e.target.value; cfg.blanks = []; box._fuwa = cfg; draw(box); box.dispatchEvent(new Event('change', { bubbles: true })) }
+    box.querySelectorAll('.fuwa-kind').forEach(s => s.onchange = () => { read(box); draw(box) })
+    box.querySelectorAll('.fuwa-text').forEach(s => s.oninput = () => { read(box) })
+  }
+  function read(box) {
+    const cfg = box._fuwa || {}
+    const sel = box.querySelector('.fuwa-tpl')
+    if (sel) cfg.key = sel.value
+    const kinds = box.querySelectorAll('.fuwa-kind')
+    if (kinds.length) {
+      cfg.blanks = [...kinds].map(k => ({ kind: k.value, text: (box.querySelector(`.fuwa-text[data-i="${k.dataset.i}"]`) || {}).value || '' }))
+    }
+    box._fuwa = cfg
+    if (!cfg.key) return null
+    const [template, language] = cfg.key.split('|')
+    return { template, language, blanks: cfg.blanks || [] }
+  }
+  function mount(box, wa) {
+    box.classList.add('fuwa')
+    box._fuwa = wa && wa.template ? { key: wa.template + '|' + (wa.language || 'en'), blanks: wa.blanks || [] } : {}
+    box.innerHTML = '<span class="fuwa-chip">● WhatsApp</span><span class="muted" style="font-size:13px">Loading your approved WhatsApp messages…</span>'
+    load().then(() => draw(box))
+  }
+  // Problems to fix before saving, in plain words ('' = fine).
+  function check(box, n) {
+    const wa = read(box)
+    if (!wa) return `Choose a WhatsApp message for message ${n}, or remove it.`
+    if ((wa.blanks || []).some(b => b.kind === 'text' && !(b.text || '').trim())) return `Type the words for every blank in message ${n}.`
+    return ''
+  }
+  return { mount, read, check }
+})()
+</script>

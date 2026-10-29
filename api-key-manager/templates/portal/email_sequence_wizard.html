@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}{{ seq.name if seq else 'New sequence' }} — Email Sequence — PhiXtra Portal{% endblock %}
+{% block title %}{{ seq.name if seq else 'New follow-up' }} — Automatic Follow-up — PhiXtra Portal{% endblock %}
 
 {% block head %}
 <style>
@@ -81,14 +81,14 @@
 {% endblock %}
 
 {% block content %}
-<a href="{{ url_for('portal.email_sequences') }}" class="wz-back">← All sequences</a>
+<a href="{{ url_for('portal.email_sequences') }}" class="wz-back">← All follow-ups</a>
 <div class="wz-top">
-  <h1>{{ 'Set up: ' ~ seq.name if seq else 'New sequence' }}</h1>
+  <h1>{{ 'Set up: ' ~ seq.name if seq else 'New follow-up' }}</h1>
   <span class="wz-draft" id="wzDraft" {% if not seq %}hidden{% endif %}>✓ Saved, paused until you start it</span>
 </div>
 
 <ol class="wz-steps" id="wzSteps">
-  <li><button type="button" data-s="0"><span class="sn">1</span>Emails</button></li>
+  <li><button type="button" data-s="0"><span class="sn">1</span>Messages</button></li>
   <li><button type="button" data-s="1"><span class="sn">2</span>Sender</button></li>
   <li><button type="button" data-s="2"><span class="sn">3</span>People</button></li>
   <li><button type="button" data-s="3"><span class="sn">4</span>Schedule</button></li>
@@ -98,12 +98,12 @@
 <div class="wz-card">
   <!-- 1 Emails -->
   <div class="wz-pane" data-s="0">
-    <h2>Which emails, and how far apart?</h2>
-    <p class="wz-sub">Required. Pick from your saved emails. Press Preview to read one before you choose it. Write new ones in Email › New Email.</p>
-    {% if not templates %}<div class="warnline">You don't have any saved emails yet. <a href="{{ url_for('portal.email_new') }}">Write one first</a>, then come back.</div>{% endif %}
-    <label class="wf" for="wzName">Name this sequence<input id="wzName" maxlength="255" value="{{ seq.name if seq else '' }}" placeholder="e.g. Retail outreach"></label>
+    <h2>Which messages, and how far apart?</h2>
+    <p class="wz-sub">Required. Mix emails and WhatsApp messages. Emails come from your saved emails (write new ones in Email › New Email). WhatsApp messages come from your messages approved by Meta.</p>
+    {% if not templates %}<div class="warnline">You don't have any saved emails yet, so only WhatsApp messages can be added. <a href="{{ url_for('portal.email_new') }}">Write an email</a> to add emails too.</div>{% endif %}
+    <label class="wf" for="wzName">Name this follow-up<input id="wzName" maxlength="255" value="{{ seq.name if seq else '' }}" placeholder="e.g. Retail outreach"></label>
     <div id="wzEmails"></div>
-    <button type="button" class="btn2 sm" style="align-self:flex-start" onclick="wzAddEmail()" {% if not templates %}disabled{% endif %}>+ Add another email</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn2 sm" onclick="wzAddEmail()" {% if not templates %}disabled{% endif %}>+ Add email</button><button type="button" class="btn2 sm" onclick="wzAddWa()">+ Add WhatsApp message</button></div>
   </div>
 
   <!-- 2 Sender -->
@@ -196,6 +196,7 @@
 <form method="POST" id="wzStartForm" hidden><input type="hidden" name="status" value="active"></form>
 
 {% include "portal/_email_preview_drawer.html" %}
+{% include "portal/_followup_wa.html" %}
 <script>
 (function () {
   const $ = id => document.getElementById(id)
@@ -206,6 +207,8 @@
     emails: {{ steps|map(attribute='template_id')|list|tojson if steps else '[]' }},
     waits: {{ steps|map(attribute='wait_days')|list|tojson if steps else '[]' }},
     modes: {{ steps|map(attribute='send_mode')|list|tojson if steps else '[]' }},
+    chans: {{ steps|map(attribute='channel')|list|tojson if steps else '[]' }},
+    was: {{ steps|map(attribute='wa')|list|tojson if steps else '[]' }},
     fromEmail: {{ (seq.from_email if seq else none)|tojson }}, fromName: {{ (seq.from_name if seq else none)|tojson }},
     people: {{ n_people|int }},
     sch: {{ {'on': schedule.get('on', False), 'start': schedule.start.isoformat() if schedule.get('start') else None, 'end': schedule.end.isoformat() if schedule.get('end') else None}|tojson }},
@@ -232,38 +235,55 @@
   }
 
   // ── 1 Emails ──
-  function emailRow(i, tid, wait, mode) {
+  function emailRow(i, tid, wait, mode, chan) {
+    const wtxt = i ? `<div class="wz-wait">⏱ then wait <input type="number" class="w-wait" min="1" max="365" value="${wait || 3}" aria-label="Days to wait"> days, only if they haven't replied, and
+        <select class="w-mode" aria-label="How it is sent"><option value="auto" ${mode !== 'manual' ? 'selected' : ''}>send it automatically</option><option value="manual" ${mode === 'manual' ? 'selected' : ''}>I'll send it myself</option></select></div>` : ''
+    if (chan === 'whatsapp') return wtxt + `<div class="wz-row w-row" style="align-items:flex-start"><span class="wz-num">${i + 1}</span><div class="w-wa"></div>${i ? '<button type="button" class="wz-x" title="Remove this message">✕</button>' : ''}</div>`
     const opts = '<option value="">Choose a saved email…</option>' + TNAMES.map(t => `<option value="${t.id}" ${t.id === tid ? 'selected' : ''}>${esc(t.name)}</option>`).join('')
     return (i ? `<div class="wz-wait">⏱ then wait <input type="number" class="w-wait" min="1" max="365" value="${wait || 3}" aria-label="Days to wait"> days, only if they haven't replied, and
         <select class="w-mode" aria-label="How it is sent"><option value="auto" ${mode !== 'manual' ? 'selected' : ''}>send it automatically</option><option value="manual" ${mode === 'manual' ? 'selected' : ''}>I'll send it myself</option></select></div>` : '')
-      + `<div class="wz-row w-row"><span class="wz-num">${i + 1}</span><label class="wf">Email ${i + 1}<select class="w-tpl">${opts}</select></label><button type="button" class="btn2 sm w-pv" style="margin-bottom:3px" ${tid ? '' : 'disabled'}>👁 Preview</button>${i ? '<button type="button" class="wz-x" title="Remove this email">✕</button>' : ''}</div>`
+      + `<div class="wz-row w-row"><span class="wz-num">${i + 1}</span><label class="wf">Message ${i + 1} · Email<select class="w-tpl">${opts}</select></label><button type="button" class="btn2 sm w-pv" style="margin-bottom:3px" ${tid ? '' : 'disabled'}>👁 Preview</button>${i ? '<button type="button" class="wz-x" title="Remove this message">✕</button>' : ''}</div>`
   }
   function drawEmails() {
     const box = $('wzEmails'); box.innerHTML = ''
     const n = Math.max(1, STATE.emails.length)
-    for (let i = 0; i < n; i++) { const w = document.createElement('div'); w.className = 'w-item'; w.style.cssText = 'display:flex;flex-direction:column;gap:10px'; w.innerHTML = emailRow(i, STATE.emails[i], STATE.waits[i], STATE.modes[i]); box.appendChild(w) }
+    for (let i = 0; i < n; i++) { const w = document.createElement('div'); w.className = 'w-item'; w.style.cssText = 'display:flex;flex-direction:column;gap:10px'; w.innerHTML = emailRow(i, STATE.emails[i], STATE.waits[i], STATE.modes[i], STATE.chans[i]); box.appendChild(w); const wb = w.querySelector('.w-wa'); if (wb) FUWA.mount(wb, STATE.was[i]) }
     box.querySelectorAll('.w-item').forEach(it => {
       const sel = it.querySelector('.w-tpl'), pv = it.querySelector('.w-pv')
+      if (!sel) return
       sel.addEventListener('change', () => { pv.disabled = !sel.value })
       pv.onclick = () => emPreview(sel.value, { seq: STATE.seq, newTab: true })
     })
-    box.querySelectorAll('.wz-x').forEach((b, k) => b.onclick = () => { readEmails(); STATE.emails.splice(k + 1, 1); STATE.waits.splice(k + 1, 1); STATE.modes.splice(k + 1, 1); drawEmails() })
+    box.querySelectorAll('.wz-x').forEach((b, k) => b.onclick = () => { readEmails(); STATE.emails.splice(k + 1, 1); STATE.waits.splice(k + 1, 1); STATE.modes.splice(k + 1, 1); STATE.chans.splice(k + 1, 1); STATE.was.splice(k + 1, 1); drawEmails() })
   }
   function readEmails() {
-    STATE.emails = [], STATE.waits = [], STATE.modes = []
+    STATE.emails = [], STATE.waits = [], STATE.modes = [], STATE.chans = [], STATE.was = []
     document.querySelectorAll('#wzEmails .w-item').forEach((it, i) => {
-      STATE.emails.push(+it.querySelector('.w-tpl').value || null)
+      const wb = it.querySelector('.w-wa')
+      STATE.chans.push(wb ? 'whatsapp' : 'email')
+      STATE.was.push(wb ? FUWA.read(wb) : null)
+      STATE.emails.push(wb ? null : (+it.querySelector('.w-tpl').value || null))
       STATE.waits.push(i ? +(it.querySelector('.w-wait').value || 3) : 0)
-      STATE.modes.push(i ? it.querySelector('.w-mode').value : 'auto')
+      STATE.modes.push(i && it.querySelector('.w-mode') ? it.querySelector('.w-mode').value : 'auto')
     })
   }
-  window.wzAddEmail = function () { readEmails(); STATE.emails.push(null); STATE.waits.push(3); STATE.modes.push('auto'); drawEmails() }
+  window.wzAddEmail = function () { readEmails(); STATE.emails.push(null); STATE.waits.push(3); STATE.modes.push('auto'); STATE.chans.push('email'); STATE.was.push(null); drawEmails() }
+  window.wzAddWa = function () {
+    readEmails()
+    if (STATE.chans.length === 1 && STATE.chans[0] === 'email' && !STATE.emails[0]) { STATE.emails = []; STATE.waits = []; STATE.modes = []; STATE.chans = []; STATE.was = [] }
+    STATE.emails.push(null); STATE.waits.push(STATE.chans.length ? 3 : 0); STATE.modes.push('auto'); STATE.chans.push('whatsapp'); STATE.was.push(null); drawEmails()
+  }
   function saveEmails() {
     readEmails()
     const name = $('wzName').value.trim()
-    if (!name) return Promise.resolve({ error: 'Give the sequence a name.' })
-    if (!STATE.emails.length || STATE.emails.some(x => !x)) return Promise.resolve({ error: 'Choose a saved email for every step, or remove the empty one.' })
-    return post(URL.emails, { seq_id: STATE.seq || '', name, template_id: STATE.emails, wait_days: STATE.waits, send_mode: STATE.modes }).then(d => {
+    if (!name) return Promise.resolve({ error: 'Give the follow-up a name.' })
+    if (!STATE.chans.length) return Promise.resolve({ error: 'Add at least one message.' })
+    let problem = ''
+    document.querySelectorAll('#wzEmails .w-item').forEach((it, i) => { const wb = it.querySelector('.w-wa'); if (!problem && wb) problem = FUWA.check(wb, i + 1) })
+    if (problem) return Promise.resolve({ error: problem })
+    if (STATE.chans.some((c, i) => c === 'email' && !STATE.emails[i])) return Promise.resolve({ error: 'Choose a saved email for every email message, or remove the empty one.' })
+    return post(URL.emails, { seq_id: STATE.seq || '', name, template_id: STATE.emails.map(x => x || ''), wait_days: STATE.waits, send_mode: STATE.modes,
+                              channel: STATE.chans, wa: STATE.was.map(w => w ? JSON.stringify(w) : '') }).then(d => {
       if (d.seq_id) { STATE.seq = d.seq_id; $('wzDraft').hidden = false; history.replaceState(null, '', URL.setup(d.seq_id)); $('wzStartForm').action = URL.status(d.seq_id) }
       return d
     })
@@ -378,7 +398,7 @@
   function review() {
     const n = STATE.emails.length
     const rows = [
-      ['Emails', n + ' email' + (n > 1 ? 's' : '') + (n > 1 ? ' · then ' + STATE.waits.slice(1).map(w => w + ' days').join(', then ') + ' between them, if no reply' : ''), false],
+      ['Messages', n + ' message' + (n > 1 ? 's' : '') + ' (' + STATE.chans.map(c => c === 'whatsapp' ? 'WhatsApp' : 'Email').join(', ') + ')' + (n > 1 ? ' · then ' + STATE.waits.slice(1).map(w => w + ' days').join(', then ') + ' between them, if no reply' : ''), false],
       ['Sender', STATE.fromEmail ? esc((STATE.fromName || '') + ' <' + STATE.fromEmail + '>') : 'Skipped: sends from ' + esc(BIZ), !STATE.fromEmail],
       ['People', STATE.people ? fmtN(STATE.people) + ' people' : 'Skipped: add people later', !STATE.people],
       ['Schedule', STATE.sch.on ? esc(planText()) : 'Skipped: everyone due gets their email as soon as you start', !STATE.sch.on]
