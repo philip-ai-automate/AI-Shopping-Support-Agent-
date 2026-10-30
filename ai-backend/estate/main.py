@@ -675,8 +675,9 @@ def _build_listing_text(row: dict) -> str:
 
 
 @estate_router.post("/estate-index-listing")
-def estate_index_listing(req: EstateIndexRequest):
+def estate_index_listing(req: EstateIndexRequest, request: Request):
     """Generate and store embedding for a single listing. Called by portal on save."""
+    _local_only(request)
     conn = get_db_connection()
     if not conn:
         raise HTTPException(status_code=503, detail="DB unavailable")

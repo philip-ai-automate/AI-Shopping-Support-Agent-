@@ -17,12 +17,21 @@
   })();
   if (!script) { return; }
   var SITE = script.getAttribute("data-site") || "";
+  // Chat link (2026-10-29): data-mode="page" fills the page (chat.phixtra.com/c/<name>),
+  // opens straight away and shows data-suggestions as questions to tap.
+  var PAGE = script.getAttribute("data-mode") === "page";
+  var TOPPX = parseInt(script.getAttribute("data-top") || "0", 10) || 0;
+  var GREET = script.getAttribute("data-greeting") || "";
+  var SUGG = []; try { SUGG = JSON.parse(script.getAttribute("data-suggestions") || "[]") || []; } catch (e) { SUGG = []; }
   var BASE = (script.src || "").replace(/\/widget\.js.*$/, "");
   if (!SITE || !BASE) { return; }
 
   function store(k, v) { try { if (v === undefined) { return localStorage.getItem(k); } localStorage.setItem(k, v); } catch (e) { return null; } }
   var SKEY = "phixtra_w_session_" + SITE;
-  var sessionId = store(SKEY);
+  // "Try it yourself" demo: the page names the visitor's own private chat.
+  var FIXSID = script.getAttribute("data-session") || "";
+  if (FIXSID) { SKEY += "_" + FIXSID; store(SKEY, FIXSID); }
+  var sessionId = store(SKEY) || FIXSID;
   if (!sessionId) { sessionId = "w-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); store(SKEY, sessionId); }
 
   fetch(BASE + "/widget/config?site=" + encodeURIComponent(SITE), { method: "GET" })
@@ -34,7 +43,8 @@
     var color = /^#[0-9a-fA-F]{6}$/.test(cfg.color || "") ? cfg.color : "#0B1D40";
     var host = document.createElement("div");
     host.id = "phixtra-chat-root";
-    host.style.cssText = "position:fixed;right:20px;bottom:20px;z-index:2147483000;";
+    host.style.cssText = PAGE ? "position:fixed;left:0;right:0;bottom:0;top:" + TOPPX + "px;z-index:2147483000;"
+                              : "position:fixed;right:20px;bottom:20px;z-index:2147483000;";
     document.body.appendChild(host);
     var root = host.attachShadow ? host.attachShadow({ mode: "open" }) : host;
 
@@ -91,8 +101,14 @@
       ".bar svg{width:20px;height:20px}",
       ".foot{font-size:11px;color:#4A5B78;text-align:center;padding:0 0 8px;background:#fff}",
       "input:focus,button:focus-visible{outline:2px solid " + color + ";outline-offset:1px}",
-      "@media (max-width:480px){.panel{position:fixed;right:8px;left:8px;bottom:86px;width:auto;height:calc(100vh - 110px)}}"
-    ].join("");
+      "@media (max-width:480px){.panel{position:fixed;right:8px;left:8px;bottom:86px;width:auto;height:calc(100vh - 110px)}}",
+      ".sugg{display:flex;flex-direction:column;align-items:flex-start;gap:7px}",
+      ".sugg button{border:1px solid #C3CEDF;background:#fff;color:#0B1D40;border-radius:999px;padding:8px 12px;font-size:13.5px;font-weight:600;cursor:pointer;text-align:left;max-width:100%}",
+      ".sugg button:hover{border-color:" + color + "}"
+    ].join("") + (PAGE ? ":host{display:block;width:100%;height:100%}.btn,.x{display:none!important}" +
+      ".panel{position:absolute;inset:0;width:auto;max-width:none;height:auto;max-height:none;border-radius:0;box-shadow:none}" +
+      "@media (min-width:700px){.panel{left:50%;right:auto;width:520px;transform:translateX(-50%);top:20px;bottom:20px;border-radius:18px;box-shadow:0 20px 60px rgba(11,29,64,.18)}}" +
+      "@media (max-width:480px){.panel{position:absolute;left:0;right:0;bottom:0;top:0;width:auto;height:auto}}" : "");
     var style = document.createElement("style"); style.textContent = css; root.appendChild(style);
 
     var chatIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.4 8.4 0 1 1 21 11.5z"/></svg>';
@@ -117,7 +133,18 @@
     root.appendChild(panel); root.appendChild(btn);
 
     var greeted = false;
-    function open() { panel.hidden = false; badge.hidden = true; if (!greeted) { greeted = true; addMsg(cfg.greeting || "Hello! How can I help you today?", "ai"); } msgs.scrollTop = msgs.scrollHeight; setTimeout(function () { input.focus(); }, 50); }
+    function open() { panel.hidden = false; badge.hidden = true; if (!greeted) { greeted = true; addMsg(GREET || cfg.greeting || "Hello! How can I help you today?", "ai"); showSugg(); } msgs.scrollTop = msgs.scrollHeight; setTimeout(function () { input.focus(); }, 50); }
+    var suggBox = null;
+    function showSugg() {
+      if (!SUGG.length || suggBox) { return; }
+      suggBox = el("div", "sugg");
+      SUGG.slice(0, 6).forEach(function (q) {
+        var b = el("button"); b.type = "button"; b.textContent = String(q);
+        b.addEventListener("click", function () { sendText(String(q).replace(/^\S+\s/, function (m) { return /[\u{1F1E6}-\u{1F1FF}]/u.test(m) ? "" : m; })); });
+        suggBox.appendChild(b);
+      });
+      msgs.appendChild(suggBox);
+    }
     btn.addEventListener("click", function () { if (panel.hidden) { open(); } else { panel.hidden = true; } });
     x.addEventListener("click", function () { panel.hidden = true; btn.focus(); });
 
@@ -272,6 +299,7 @@
               bubble.innerHTML = format(final);
               addCards(data.product_recommendations);
               if (data.handoff_triggered) { contactForm(); startPolling(); }
+              else if (PAGE) { startPolling(); }  // chat link page: the team can step in any time
               return;
             } else if (ev === "error") {
               throw new Error(data.detail || "error");
@@ -287,11 +315,13 @@
       }
     }
 
-    bar.addEventListener("submit", function (e) {
-      e.preventDefault();
-      var t = input.value.trim(); if (!t) { return; }
+    function sendText(t) {
+      t = (t || "").trim(); if (!t || send.disabled) { return; }
+      if (suggBox) { suggBox.remove(); suggBox = null; SUGG = []; }
       input.value = ""; addMsg(t, "me"); send.disabled = true;
       (TEAM ? tell(t) : ask(t)).then(function () { send.disabled = false; input.focus(); });
-    });
+    }
+    bar.addEventListener("submit", function (e) { e.preventDefault(); sendText(input.value); });
+    if (PAGE) { open(); }
   }
 })();

@@ -408,8 +408,9 @@ def _parse_dt(s: str) -> datetime:
     return datetime.fromisoformat(s.replace("Z", "+00:00"))
 
 
-def _record_reply(cur, mb, msg, sender: str, received: datetime, token: str) -> bool:
-    """True if this message was a new reply and is now on the lead."""
+def _record_reply(cur, mb, msg, sender: str, received: datetime, token: str):
+    """A dict (for the after-commit steps) if this message was a new reply
+    and is now on the lead, else False."""
     cur.execute("""SELECT r.*, c.name AS campaign_name FROM email_campaign_recipients r
                    JOIN email_campaigns c ON c.id = r.campaign_id
                    WHERE r.tenant_id=%s AND lower(r.email)=%s AND r.status='sent'
@@ -418,7 +419,7 @@ def _record_reply(cur, mb, msg, sender: str, received: datetime, token: str) -> 
                 (mb["tenant_id"], sender, received, received - MATCH_WINDOW))
     rec = cur.fetchone()
     if not rec:
-        return False   # not someone this business emailed: skipped, never stored
+        return None    # not someone this business emailed: AI Lead Qualification may read it (a new enquiry)
     cur.execute("SELECT 1 FROM email_replies WHERE mailbox_id=%s AND message_id=%s", (mb["id"], msg["id"]))
     if cur.fetchone() or M.is_automatic(token, msg):
         return False
@@ -447,7 +448,9 @@ def _record_reply(cur, mb, msg, sender: str, received: datetime, token: str) -> 
     _seq_stop_matching(cur, mb["tenant_id"], "Replied", email=sender, lead_id=lead_id)
     if lead_id:
         cur.execute("UPDATE merchant_pipeline_leads SET updated_at=NOW() WHERE id=%s", (lead_id,))
-    return True
+    # For email_reply_actions.on_reply, run once this is committed.
+    return {"reply_id": row["id"], "lead_id": lead_id, "subject": rec["campaign_name"],
+            "text": M.reply_lines(msg.get("bodyPreview"))}
 
 
 def _record_sent(cur, mb, msg, sent_at: datetime) -> list:
@@ -573,9 +576,19 @@ def check_mailbox(mb_id: int, force: bool = False) -> dict:
             if not sender:
                 continue
             try:
-                if _record_reply(cur, mb, msg, sender, received, token):
-                    found += 1
+                got = _record_reply(cur, mb, msg, sender, received, token)
                 conn.commit()
+                if got is None:
+                    # A new enquiry? The AI reads it; anything else is skipped and never stored (30 Oct 2026).
+                    import lead_qualify
+                    lead_qualify.on_inbox_email(mb, msg, sender, received, token)
+                elif got:
+                    found += 1
+                    # Owner, number in the reply, follow-up today, alert (30 Oct 2026).
+                    import email_reply_actions
+                    email_reply_actions.on_reply(mb["tenant_id"], got["lead_id"], got["reply_id"],
+                                                 mb["owner_key"], mb["owner_label"] or mb["email"],
+                                                 got["text"], got["subject"])
             except Exception as e:
                 conn.rollback()
                 print(f"⚠️ mailbox {mb_id} reply {msg.get('id', '')[:20]} error:", e)

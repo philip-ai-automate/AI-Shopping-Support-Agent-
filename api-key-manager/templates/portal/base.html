@@ -276,6 +276,19 @@
       body:has(.demo-bar) .site-main{padding-top:0}
     }
 
+    /* "Try it yourself" Seller bar (2026-10-30): keeps its own space so it
+       never covers page titles or messages; on phones it sits fixed under
+       the top bar on one line. */
+    body:has(.dv-bar) .site-main{padding-top:38px; box-sizing:border-box}
+    .dv-bar .dv-short{display:none}
+    @media(max-width:860px){
+      .dv-bar{position:fixed; top:54px; left:0; right:0; margin:0; padding:6px 10px;
+              gap:10px; font-size:12px; flex-wrap:nowrap; white-space:nowrap}
+      .dv-bar .dv-long{display:none}
+      .dv-bar .dv-short{display:inline}
+      body:has(.dv-bar) .site-main{padding-top:88px}
+    }
+
     /* ═══════════════════════════════════════════════════════════
        MAIN CONTENT AREA
     ═══════════════════════════════════════════════════════════ */
@@ -1599,7 +1612,37 @@
 {% endif %}
 
 <!-- ══════════════ DEMO MODE BANNER ══════════════ -->
-{% if _is_training_tenant %}
+{% if _demo_visitor %}
+  <div class="demo-bar dv-bar">
+    <span><span class="dv-long">PhiXtra demo · You are the seller</span><strong class="dv-short">Seller demo</strong></span>
+    <a href="{{ _demo_visitor.buyer_url }}" target="_blank" rel="noopener"><span class="dv-long">Open the </span>Buyer chat</a>
+    <a href="#" onclick="var p=document.getElementById('dvPhone');p.hidden=!p.hidden;return false"><span class="dv-long">Be the buyer on </span>your phone<span class="dv-long"> / WhatsApp</span></a>
+    <a href="{{ _demo_visitor.trial_url }}" style="background:#fff;color:#1d4ed8;text-decoration:none;padding:1px 10px;border-radius:999px;line-height:18px"><span class="dv-long">Start my free B2B trial</span><span class="dv-short">Free B2B trial</span></a>
+  </div>
+  <div id="dvPhone" hidden style="position:fixed;z-index:10050;top:96px;right:12px;width:min(560px,calc(100vw - 24px));background:#fff;color:#111E2D;border-radius:14px;box-shadow:0 12px 40px rgba(11,29,64,.25);padding:16px 18px;font-size:14px;line-height:1.45">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <strong style="font-size:15px">Be the buyer on your phone</strong>
+      <a href="#" onclick="document.getElementById('dvPhone').hidden=true;return false" style="color:#64748b;text-decoration:none;font-size:20px;line-height:1">×</a>
+    </div>
+    <p style="margin:0 0 12px;color:#475569">Scan with your phone camera. Your messages show here in your own Inbox, and only you can see them.</p>
+    <div style="display:flex;gap:18px;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px;text-align:center">
+        <img src="{{ _demo_visitor.buyer_qr }}" alt="QR code for the Buyer chat" style="width:150px;height:150px">
+        <div style="font-weight:700;margin-top:4px">Website chat</div>
+        <a href="{{ _demo_visitor.buyer_url }}" target="_blank" rel="noopener" style="color:#1d4ed8">Open the Buyer chat</a>
+      </div>
+      {% if _demo_visitor.wa_url %}
+      <div style="flex:1;min-width:200px;text-align:center">
+        <img src="{{ _demo_visitor.wa_qr }}" alt="QR code for WhatsApp" style="width:150px;height:150px">
+        <div style="font-weight:700;margin-top:4px">WhatsApp</div>
+        <a href="{{ _demo_visitor.wa_url }}" target="_blank" rel="noopener" style="color:#1d4ed8">Open WhatsApp</a>
+        <div style="color:#64748b;font-size:12.5px;margin-top:4px">Send the first message as it is. It carries your demo code <strong>{{ _demo_visitor.code }}</strong>, so the chat comes to you.</div>
+      </div>
+      {% endif %}
+    </div>
+    <p style="margin:12px 0 0;color:#64748b;font-size:12.5px">Your demo is wiped after 1 hour with no activity.</p>
+  </div>
+{% elif _is_training_tenant %}
   <div class="demo-bar">
     <span>🎓 <strong>Training account</strong>: practise freely. Everything here is made-up data, and nothing is sent to real customers.</span>
   </div>

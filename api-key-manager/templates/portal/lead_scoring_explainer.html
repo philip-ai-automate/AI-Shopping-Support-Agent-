@@ -56,6 +56,15 @@
   .lsx-example-row { display:flex; justify-content:space-between; font-size:13px; padding:5px 0; border-bottom:1px dashed rgba(3,12,24,.08) }
   .lsx-example-row:last-child { border-bottom:none; font-weight:800; padding-top:10px }
 </style>
+{% if aiq %}{# AI Lead Qualification (2026-10-30): the score below is replaced #}
+<div style="background:#f5f7ff;border:1px solid #c7d2fe;border-radius:14px;padding:16px 18px;margin:0 0 18px;font-size:13.5px;line-height:1.65;color:var(--ink)">
+  <strong>Your business uses AI Lead Qualification.</strong> The AI reads each buyer's messages and the Lead Score is out of 100 from these criteria{% if aiq_total != 100 %} (your points add up to {{ aiq_total }}, so each lead's points are worked out as a share of that){% endif %}:
+  {% for label, pts in aiq_lines %}{{ label }} ({{ pts }}){{ ', ' if not loop.last else '.' }}{% endfor %}
+  Hot from {{ aiq.hot_from }}, Warm from {{ aiq.warm_from }}. Change the points in
+  <a href="{{ url_for('portal.sales_pipeline_settings') }}#ai-qualification">Pipeline Settings › AI Lead Qualification</a>.
+  The older scoring explained below no longer applies to your leads.
+</div>
+{% endif %}
 
 <div class="lsx-hero">
   <div class="lsx-hero-icon">🎯</div>

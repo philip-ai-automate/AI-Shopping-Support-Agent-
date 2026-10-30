@@ -1,0 +1,487 @@
+{# AI Lead Qualification settings (redesign 2026-10-30, approved mock-up
+   https://claude.ai/artifact/23wd4TrV1osjSMUcfpCaKu): status, one criteria
+   table (standard + own questions), score bands, buying rules, Hot actions,
+   assignment, channels, duplicates, and a live score preview. One form;
+   the save bar appears when something changes. #}
+{% if aiq_allowed %}
+{% set _boxes_ok = aiq_mailboxes|selectattr('status', 'equalto', 'active')|list %}
+{% set _boxes_bad = aiq_mailboxes|rejectattr('status', 'equalto', 'active')|list %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+<style>
+.aq{--navy:#0B1D40;--ink:#111E2D;--mut:#5A6B85;--ln:#E3E8F1;--tint:#E8EEF8;--tint2:#9DB8E8;--soft:#FAFBFD;
+  --hot:#B42318;--hotbg:#FEF3F2;--warm:#B54708;--warmbg:#FFFAEB;--cold:#1D4ED8;--coldbg:#EFF4FF;--ok:#067647;--okbg:#ECFDF3;
+  --fd:"Poppins",system-ui,sans-serif;--fb:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-family:var(--fb);color:var(--ink);font-size:14px;line-height:1.5}
+.aq *{box-sizing:border-box}
+.aq h2,.aq h3{font-family:var(--fd);color:var(--navy);margin:0;text-wrap:balance}
+.aq button,.aq input,.aq select{font:inherit;color:inherit}
+.aq :focus-visible{outline:2px solid #2E5BDB;outline-offset:2px;border-radius:6px}
+.aq-wrap{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:22px;align-items:start}
+.aq-col{display:flex;flex-direction:column;gap:18px;min-width:0}
+.aq-card{background:#fff;border:1px solid var(--ln);border-radius:14px}
+.aq-status{padding:20px 22px;display:flex;flex-direction:column;gap:14px}
+.aq-row{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.aq-status h2{font-size:18px}
+.aq-status p,.aq-ph p{margin:4px 0 0;color:var(--mut);max-width:62ch;font-size:13px}
+.aq-chips{display:flex;flex-wrap:wrap;gap:8px}
+.aq-chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--ln);border-radius:999px;padding:4px 12px 4px 8px;font-size:12.5px;font-weight:500;background:#fff;color:var(--ink);text-decoration:none}
+.aq-dot{width:8px;height:8px;border-radius:50%;background:var(--ok)} .aq-dot.warn{background:#DC6803} .aq-dot.off{background:#CBD3E1}
+.aq-sw{position:relative;width:40px;height:22px;border-radius:999px;border:0;background:#CBD3E1;cursor:pointer;flex:0 0 auto;transition:background .15s;padding:0}
+.aq-sw::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .15s}
+.aq-sw[aria-checked="true"]{background:var(--navy)} .aq-sw[aria-checked="true"]::after{transform:translateX(18px)}
+.aq-sw:disabled{cursor:not-allowed;opacity:.6}
+.aq-swrow{display:flex;align-items:center;gap:10px;font-weight:600;font-size:13px;white-space:nowrap}
+@media (prefers-reduced-motion:reduce){.aq-sw,.aq-sw::after,.aq-save{transition:none}}
+.aq-ph{padding:18px 22px 14px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;border-bottom:1px solid var(--ln)}
+.aq-ph h3{font-size:15px}
+.aq-pb{padding:18px 22px}
+.aq-pf{padding:12px 22px;border-top:1px solid var(--ln);display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:var(--mut);flex-wrap:wrap}
+.aq-tblw{overflow-x:auto}
+.aq table{width:100%;border-collapse:collapse;font-size:13px}
+.aq th{text-align:left;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);padding:10px 14px;background:var(--soft);border-bottom:1px solid var(--ln);white-space:nowrap}
+.aq td{padding:12px 14px;border-bottom:1px solid var(--ln);vertical-align:middle}
+.aq tr:last-child td{border-bottom:0}
+.aq tr.off td:not(.c-ask){opacity:.5}
+.aq .c-name b{font-weight:600;color:var(--ink)}
+.aq .c-name span.d{display:block;color:var(--mut);font-size:12px}
+.aq-tag{display:inline-block;font-size:10.5px;font-weight:600;border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:1px}
+.aq-tag.std{background:#F1F4F9;color:var(--mut)} .aq-tag.cus{background:var(--tint);color:var(--navy)}
+.aq-pts{display:inline-flex;align-items:center;border:1px solid var(--ln);border-radius:8px;overflow:hidden;background:#fff}
+.aq-pts button{width:26px;height:30px;border:0;background:var(--soft);cursor:pointer;color:var(--mut);font-size:15px;padding:0}
+.aq-pts input{width:44px;height:30px;border:0;border-left:1px solid var(--ln);border-right:1px solid var(--ln);text-align:center;font-variant-numeric:tabular-nums;font-weight:600}
+.aq-share{display:flex;align-items:center;gap:8px;min-width:110px;font-variant-numeric:tabular-nums;color:var(--mut);font-size:12px}
+.aq-bar{flex:1;height:6px;border-radius:3px;background:#EEF1F6;overflow:hidden}
+.aq-bar i{display:block;height:100%;background:var(--navy);border-radius:3px}
+.aq-na{color:var(--mut);font-size:12px}
+.aq-link{border:0;background:none;color:var(--navy);cursor:pointer;padding:6px 8px;border-radius:6px;font-size:13px;font-weight:600}
+.aq-link:hover{background:#F1F4F9}
+.aq-btn{border:1px solid var(--ln);background:#fff;border-radius:9px;padding:8px 14px;font-weight:600;font-size:13px;cursor:pointer;color:var(--navy);text-decoration:none;display:inline-block;white-space:nowrap}
+.aq-btn:hover{border-color:var(--tint2)}
+.aq-btn.primary{background:var(--navy);border-color:var(--navy);color:#fff}
+.aq-btn.ghost{border-style:dashed}
+.aq-btn:disabled{opacity:.5;cursor:not-allowed}
+.aq-bands{height:38px;border-radius:10px;overflow:hidden;display:flex;font-size:12px;font-weight:600}
+.aq-bands div{display:flex;align-items:center;justify-content:center;min-width:0;overflow:hidden}
+.b-cold{background:var(--coldbg);color:var(--cold)} .b-warm{background:var(--warmbg);color:var(--warm)} .b-hot{background:var(--hotbg);color:var(--hot)}
+.aq-scale{display:flex;justify-content:space-between;font-size:11px;color:var(--mut);margin-top:6px;font-variant-numeric:tabular-nums}
+.aq-grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.aq-lbl{display:block;font-size:12.5px;font-weight:600;margin-bottom:6px;color:var(--ink)}
+.aq small{display:block;color:var(--mut);font-size:12px;margin-top:5px}
+.aq-inp{width:100%;border:1px solid var(--ln);border-radius:9px;padding:9px 11px;background:#fff}
+.aq-unit{display:flex;align-items:center;border:1px solid var(--ln);border-radius:9px;overflow:hidden;background:#fff}
+.aq-unit span{padding:0 11px;color:var(--mut);background:var(--soft);align-self:stretch;display:flex;align-items:center;border-right:1px solid var(--ln);font-size:13px}
+.aq-unit span.r{border-right:0;border-left:1px solid var(--ln)}
+.aq-unit input{border:0;padding:9px 11px;width:100%;min-width:0;font-variant-numeric:tabular-nums}
+.aq-seg{display:inline-flex;border:1px solid var(--ln);border-radius:9px;padding:3px;background:var(--soft)}
+.aq-seg button{border:0;background:none;padding:6px 14px;border-radius:7px;font-weight:600;font-size:13px;color:var(--mut);cursor:pointer}
+.aq-seg button[aria-pressed="true"]{background:#fff;color:var(--navy);box-shadow:0 1px 2px rgba(16,24,40,.08)}
+.aq-note{background:var(--soft);border:1px solid var(--ln);border-radius:10px;padding:10px 12px;font-size:12.5px;color:var(--mut)}
+.aq-trow{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid var(--ln)}
+.aq-trow:last-child{border-bottom:0}
+.aq-trow b{display:block;font-weight:600}
+.aq-trow span{color:var(--mut);font-size:12.5px}
+.aq-rcards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.aq-rcard{border:1px solid var(--ln);border-radius:12px;padding:12px 14px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;background:#fff}
+.aq-rcard input{margin-top:3px;accent-color:var(--navy)}
+.aq-rcard b{display:block;font-size:13px}
+.aq-rcard span{font-size:12px;color:var(--mut)}
+.aq-rcard:has(input:checked){border-color:var(--navy);box-shadow:0 0 0 1px var(--navy) inset;background:#FBFCFF}
+.aq-rec{font-size:10.5px;font-weight:600;color:var(--navy);background:var(--tint);border-radius:5px;padding:1px 6px;margin-left:4px}
+.aq-people{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.aq-person{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--ln);border-radius:999px;padding:3px 10px 3px 4px;font-size:12.5px}
+button.aq-person{background:#fff;cursor:pointer;color:var(--ink)}
+button.aq-person[aria-pressed="false"]{border-style:dashed;color:var(--mut);text-decoration:line-through;background:var(--soft)}
+button.aq-person[aria-pressed="false"] i{background:#EEF1F6;color:var(--mut)}
+.aq-person i{width:20px;height:20px;border-radius:50%;background:var(--tint);color:var(--navy);display:grid;place-items:center;font-size:9.5px;font-style:normal;font-weight:700}
+.aq-ch{display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:center;padding:11px 0;border-bottom:1px solid var(--ln);font-size:13px}
+.aq-ch:last-child{border-bottom:0}
+.aq-ch small{margin-top:0}
+.aq-pill{font-size:11.5px;font-weight:600;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.aq-pill.ok{background:var(--okbg);color:var(--ok)} .aq-pill.warn{background:#FFFAEB;color:#B54708} .aq-pill.off{background:#F1F4F9;color:var(--mut)}
+.aq-subh{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);margin:18px 0 4px}
+.aq-subh:first-child{margin-top:0}
+.aq-cchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.aq-cchip{display:inline-flex;align-items:center;gap:4px;background:var(--tint);color:var(--navy);border-radius:7px;padding:4px 6px 4px 10px;font-size:12.5px;font-weight:600}
+.aq-cchip button{border:0;background:none;color:var(--navy);cursor:pointer;font-size:13px;padding:0 3px}
+.aq-rail{position:sticky;top:16px;display:flex;flex-direction:column;gap:16px}
+.aq-ex{font-size:11px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.aq-what{font-size:12.5px;color:var(--mut);margin:2px 0 0}
+.aq-big{display:flex;align-items:baseline;gap:10px;margin:8px 0 2px}
+.aq-big strong{font-family:var(--fd);font-size:40px;color:var(--navy);font-variant-numeric:tabular-nums;line-height:1}
+.aq-badge{font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px}
+.aq-badge.hot{background:var(--hotbg);color:var(--hot)} .aq-badge.warm{background:var(--warmbg);color:var(--warm)} .aq-badge.cold{background:var(--coldbg);color:var(--cold)}
+.aq-marker{position:relative;height:8px;border-radius:4px;margin:12px 0 4px}
+.aq-marker i{position:absolute;top:-4px;width:4px;height:16px;border-radius:2px;background:var(--navy);transform:translateX(-2px)}
+.aq-pscale{position:relative;height:16px;font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
+.aq-pscale span{position:absolute;top:0}
+.aq-pscale .mid{transform:translateX(-50%)}
+.aq-checks{list-style:none;padding:0;margin:12px 0 0;display:flex;flex-direction:column;gap:2px}
+.aq-checks label{display:flex;justify-content:space-between;gap:10px;padding:6px 8px;border-radius:7px;cursor:pointer;font-size:12.5px}
+.aq-checks label:hover{background:var(--soft)}
+.aq-checks label > span{display:flex;align-items:center;gap:8px;margin:0;font-weight:500;color:var(--ink)}
+.aq-checks input{accent-color:var(--navy);margin:0;width:auto;height:auto;flex:0 0 auto}
+.aq-checks label{align-items:center;margin:0}
+.aq-rcard input{width:auto;height:auto;flex:0 0 auto}
+.aq-checks em{font-style:normal;color:var(--mut);font-variant-numeric:tabular-nums}
+.aq-howto{font-size:12.5px;color:var(--mut);padding-left:18px;margin:8px 0 0} .aq-howto li{margin:4px 0}
+.aq-save{position:sticky;bottom:0;margin-top:18px;background:#fff;border:1px solid var(--ln);border-radius:12px;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px;box-shadow:0 -4px 16px rgba(11,29,64,.08);z-index:5}
+.aq-save[hidden]{display:none}
+.aq-save > span{font-weight:600;font-size:13px}
+.aq-save > span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:#DC6803;margin-right:8px}
+.aq-scrim{position:fixed;inset:0;background:rgba(11,29,64,.35);z-index:9000}
+.aq-scrim[hidden]{display:none}
+.aq-drawer{position:fixed;top:0;right:0;bottom:0;width:min(440px,100%);background:#fff;z-index:9001;display:flex;flex-direction:column;box-shadow:-8px 0 24px rgba(11,29,64,.12)}
+.aq-drawer[hidden]{display:none}
+.aq-dh{padding:20px 22px;border-bottom:1px solid var(--ln);display:flex;justify-content:space-between;align-items:center}
+.aq-dh h3{font-size:16px}
+.aq-db{padding:20px 22px;display:flex;flex-direction:column;gap:16px;overflow:auto;flex:1}
+.aq-df{padding:14px 22px;border-top:1px solid var(--ln);display:flex;justify-content:flex-end;gap:8px}
+.aq-err{color:var(--hot);font-size:12px;margin-top:5px}
+@media (max-width:1180px){.aq-wrap{grid-template-columns:1fr}.aq-rail{position:static}}
+@media (max-width:760px){.aq-rcards,.aq-grid2{grid-template-columns:1fr}.aq-ph{flex-direction:column;align-items:flex-start}}
+</style>
+
+<div class="aq" id="ai-qualification">
+<form method="POST" id="aqForm" novalidate>
+<input type="hidden" name="form_type" value="aiq">
+<div id="aqHidden"></div>
+{% if not can_edit_settings %}<div class="aq-note" style="margin-bottom:14px">You can view these settings. Your role doesn't allow changing them.</div>{% endif %}
+<fieldset {% if not can_edit_settings %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
+<div class="aq-wrap">
+  <div class="aq-col">
+
+    <section class="aq-card aq-status" aria-labelledby="aq-st-h">
+      <div class="aq-row">
+        <div>
+          <h2 id="aq-st-h">AI Lead Qualification</h2>
+          <p>The AI reads every new enquiry, asks the buyer what's missing, scores them out of 100 and moves real buyers to your Sales Pipeline. Every decision shows its reason and can be undone.</p>
+        </div>
+        <div class="aq-swrow"><span id="aq-on-l">{{ 'On' if aiq.enabled else 'Off' }}</span><button type="button" class="aq-sw" role="switch" id="aqEnabled" aria-checked="{{ 'true' if aiq.enabled else 'false' }}" aria-labelledby="aq-on-l"></button></div>
+      </div>
+      <div class="aq-chips" aria-label="Where the AI reads enquiries">
+        <span class="aq-chip"><span class="aq-dot{{ '' if _boxes_ok and aiq.read_inbox else ' off' }}"></span>Email · {{ _boxes_ok|length }} mailbox{{ '' if _boxes_ok|length == 1 else 'es' }} {{ 'reading' if aiq.read_inbox else 'not read' }}</span>
+        {% if _boxes_bad %}<a class="aq-chip" href="{{ url_for('mailbox.page') }}"><span class="aq-dot warn"></span>{{ _boxes_bad|length }} mailbox{{ '' if _boxes_bad|length == 1 else 'es' }} need{{ 's' if _boxes_bad|length == 1 }} reconnecting</a>{% endif %}
+        <span class="aq-chip"><span class="aq-dot{{ '' if aiq_numbers else ' off' }}"></span>WhatsApp · {{ aiq_numbers|length }} number{{ '' if aiq_numbers|length == 1 else 's' }}</span>
+        <span class="aq-chip"><span class="aq-dot"></span>Website chat</span>
+      </div>
+    </section>
+
+    <section class="aq-card" aria-labelledby="aq-cr-h">
+      <div class="aq-ph">
+        <div>
+          <h3 id="aq-cr-h">Qualification criteria</h3>
+          <p>What the AI finds out from each buyer and how much each answer counts. Switch off anything that doesn't apply to how you sell.</p>
+        </div>
+        <button class="aq-btn ghost" id="aqAdd" type="button">+ Add criterion</button>
+      </div>
+      <div class="aq-tblw">
+        <table>
+          <thead><tr><th scope="col">Criterion</th><th scope="col">Ask buyers</th><th scope="col">Points</th><th scope="col">Share of score</th><th scope="col"><span style="position:absolute;left:-9999px">Actions</span></th></tr></thead>
+          <tbody id="aqCrit"></tbody>
+        </table>
+      </div>
+      <div class="aq-pf"><span id="aqTotal"></span><span id="aqLeft"></span></div>
+    </section>
+
+    <section class="aq-card" aria-labelledby="aq-bd-h">
+      <div class="aq-ph"><div><h3 id="aq-bd-h">Score bands</h3><p>Where Warm and Hot start. Hot buyers, and anyone asking for a price, a call or a demo, go straight to the Sales Pipeline.</p></div></div>
+      <div class="aq-pb">
+        <div class="aq-bands" aria-hidden="true"><div class="b-cold" id="aqBc">Cold</div><div class="b-warm" id="aqBw">Warm</div><div class="b-hot" id="aqBh">Hot</div></div>
+        <div class="aq-scale" aria-hidden="true"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+        <div class="aq-grid2" style="margin-top:16px">
+          <div><label class="aq-lbl" for="aqWarm">Warm from</label><div class="aq-unit"><input id="aqWarm" name="warm_from" type="number" min="0" max="99" value="{{ aiq.warm_from }}"><span class="r">points</span></div></div>
+          <div><label class="aq-lbl" for="aqHot">Hot from</label><div class="aq-unit"><input id="aqHot" name="hot_from" type="number" min="1" max="100" value="{{ aiq.hot_from }}"><span class="r">points</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="aq-card" aria-labelledby="aq-ru-h">
+      <div class="aq-ph"><div><h3 id="aq-ru-h">Buying rules</h3><p>What counts as a commercial order and where you deliver. The AI uses these when it judges quantity and location.</p></div></div>
+      <div class="aq-pb">
+        <div class="aq-grid2">
+          <div>
+            <span class="aq-lbl">Commercial quantity</span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <div class="aq-unit"><input id="aqMinQty" name="min_qty" type="number" min="0" value="{{ aiq.min_qty }}" aria-label="Minimum units"><span class="r">units</span></div>
+              <span class="aq-na">or</span>
+              <div class="aq-unit"><span>{{ aiq_currency }}</span><input id="aqMinVal" name="min_value" type="number" min="0" value="{{ aiq.min_value }}" aria-label="Minimum order value in {{ aiq_currency }}"></div>
+            </div>
+            <small id="aqQtyNote"></small>
+          </div>
+          <div>
+            <span class="aq-lbl" id="aq-dl-l">Delivery area</span>
+            <div class="aq-seg" role="group" aria-labelledby="aq-dl-l">
+              <button type="button" id="aqAny" aria-pressed="true">Anywhere</button>
+              <button type="button" id="aqSel" aria-pressed="false">Selected countries</button>
+            </div>
+            <div id="aqCtryBox" hidden>
+              <select class="aq-inp" id="aqCtry" style="margin-top:10px" aria-label="Add a country you deliver to">
+                <option value="">Add a country…</option>
+                {% for c in aiq_countries %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+              </select>
+              <div class="aq-cchips" id="aqCchips"></div>
+            </div>
+            <small id="aqDlNote"></small>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="aq-card" aria-labelledby="aq-ho-h">
+      <div class="aq-ph"><div><h3 id="aq-ho-h">When a lead turns Hot</h3><p>What happens automatically. Staff can undo any AI decision from the lead's page.</p></div></div>
+      <div class="aq-pb" style="padding-top:4px;padding-bottom:4px">
+        <div class="aq-trow"><div><b id="aq-h1">Move to the Sales Pipeline</b><span>The lead becomes an Opportunity with a follow-up for today.</span></div><button type="button" class="aq-sw" role="switch" id="aqQualify" aria-checked="{{ 'true' if aiq.on_hot_qualify else 'false' }}" aria-labelledby="aq-h1"></button></div>
+        <div class="aq-trow"><div><b id="aq-h2">Email the lead owner</b><span>One email per lead, with the AI's reason and a link to the deal.</span></div><button type="button" class="aq-sw" role="switch" id="aqAlert" aria-checked="{{ 'true' if aiq.on_hot_alert else 'false' }}" aria-labelledby="aq-h2"></button></div>
+      </div>
+    </section>
+
+    <section class="aq-card" aria-labelledby="aq-as-h">
+      <div class="aq-ph"><div><h3 id="aq-as-h">Lead assignment</h3><p>Who owns a new lead when nobody does yet.</p></div></div>
+      <div class="aq-pb">
+        <div class="aq-rcards" role="radiogroup" aria-labelledby="aq-as-h">
+          <label class="aq-rcard"><input type="radio" name="owner_rule" value="inbox" {{ 'checked' if aiq.owner_rule == 'inbox' }}><div><b>Inbox owner first <span class="aq-rec">Recommended</span></b><span>Whoever's mailbox it arrived in; chats share in turn.</span></div></label>
+          <label class="aq-rcard"><input type="radio" name="owner_rule" value="turns" {{ 'checked' if aiq.owner_rule == 'turns' }}><div><b>Share in turn</b><span>Round-robin across the sales team.</span></div></label>
+          <label class="aq-rcard"><input type="radio" name="owner_rule" value="none" {{ 'checked' if aiq.owner_rule == 'none' }}><div><b>Leave unassigned</b><span>A manager assigns each lead.</span></div></label>
+        </div>
+        <div class="aq-subh" style="margin-top:16px">Sales team in the rotation · roles that can see Leads · click a name to leave them out</div>
+        {% if aiq_team %}
+        <div class="aq-people" id="aqRot">{% for p in aiq_team %}{% set _in = p.id not in (aiq.rotation_skip or []) %}<button type="button" class="aq-person" data-rot="{{ p.id }}" aria-pressed="{{ 'true' if _in else 'false' }}" aria-label="{{ p.name }}: {{ 'in the rotation' if _in else 'left out' }}"><i>{{ (p.name.split()|map('first')|join)[:2]|upper }}</i>{{ p.name }}</button>{% endfor %}</div>
+        <small id="aqRotNote"></small>
+        {% else %}
+        <small>Nobody yet: give a team role the Leads tick in Settings › Team, or new leads go to you.</small>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="aq-card" aria-labelledby="aq-ch-h">
+      <div class="aq-ph">
+        <div><h3 id="aq-ch-h">Channels</h3><p>Where the AI reads enquiries. Invoices, suppliers, newsletters and colleagues are skipped and never stored. Only mail that arrives after AI Lead Qualification was switched on is read.</p></div>
+        <div class="aq-swrow"><span id="aq-rin-l">Read inboxes</span><button type="button" class="aq-sw" role="switch" id="aqInbox" aria-checked="{{ 'true' if aiq.read_inbox else 'false' }}" aria-labelledby="aq-rin-l"></button></div>
+      </div>
+      <div class="aq-pb">
+        <div class="aq-subh">Email inboxes · Microsoft 365</div>
+        {% if aiq_mailboxes %}
+        {% for m in aiq_mailboxes %}
+        <div class="aq-ch"><div>{{ m.email }}<small>{{ m.owner_label or '' }}</small></div>
+          {% if m.status == 'active' %}<span class="aq-pill {{ 'ok' if aiq.read_inbox else 'off' }}">{{ 'Reading' if aiq.read_inbox else 'Not read' }}</span><span></span>
+          {% else %}<span class="aq-pill warn">Needs reconnecting</span><a class="aq-btn" href="{{ url_for('mailbox.page') }}">Reconnect</a>{% endif %}
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="aq-ch"><div>No mailbox connected<small>Connect Outlook so new enquiry emails become leads</small></div><span></span><a class="aq-btn" href="{{ url_for('mailbox.page') }}">Connect</a></div>
+        {% endif %}
+        <div class="aq-subh">WhatsApp numbers · the AI asks the questions above</div>
+        {% for n in aiq_numbers %}
+        <div class="aq-ch"><div>{{ n.number }}<small>{{ n.label or 'No label' }}</small></div><span class="aq-pill ok">On</span><span></span></div>
+        {% else %}
+        <div class="aq-ch"><div>No WhatsApp number connected<small>Connect one so WhatsApp buyers are qualified too</small></div><span></span><span></span></div>
+        {% endfor %}
+        <div class="aq-subh">Website chat</div>
+        <div class="aq-ch"><div>Your website chat<small>A visitor becomes a lead once they leave an email or number</small></div><span></span><span></span></div>
+      </div>
+    </section>
+
+    <section class="aq-card" aria-labelledby="aq-du-h">
+      <div class="aq-ph"><div><h3 id="aq-du-h">Duplicates and review</h3><p>One buyer, one record. The AI matches email, any way of writing a number, and company domain.</p></div><a class="aq-btn" href="{{ url_for('portal.leads_check_these') }}">Open Check these · {{ aiq_check_open }}</a></div>
+      <div class="aq-pb"><div class="aq-note">When the AI isn't sure two records are the same buyer, it never merges them. The pair goes to <b style="color:var(--ink)">Check these</b> for one-click Merge or Keep separate.</div></div>
+    </section>
+
+    {% if can_edit_settings %}
+    <div class="aq-save" id="aqSave" role="region" aria-label="Unsaved changes" hidden>
+      <span>You have unsaved changes</span>
+      <div style="display:flex;gap:8px"><button class="aq-btn" type="button" id="aqDiscard">Discard</button><button class="aq-btn primary" type="submit" id="aqSaveBtn">Save changes</button></div>
+    </div>
+    {% endif %}
+  </div>
+
+  <aside class="aq-rail" aria-label="Score preview">
+    <section class="aq-card"><div class="aq-pb">
+      <div class="aq-ex">Score preview · example buyer</div>
+      <p class="aq-what">Tick what a buyer has told the AI to see the score your settings give.</p>
+      <div class="aq-big"><strong id="aqPv">0</strong><span class="aq-badge cold" id="aqPvB">Cold</span></div>
+      <div class="aq-marker" id="aqPvM"><i id="aqPvPin" style="left:0"></i></div>
+      <div class="aq-pscale"><span style="left:0">0</span><span class="mid" id="aqPvW"></span><span class="mid" id="aqPvH"></span><span style="right:0">100</span></div>
+      <ul class="aq-checks" id="aqPvList"></ul>
+      <p class="aq-what" id="aqPvOut" style="margin-top:12px"></p>
+    </div></section>
+    <section class="aq-card"><div class="aq-pb">
+      <h3 style="font-size:14px">How the score works</h3>
+      <ul class="aq-howto">
+        <li>Each criterion the buyer meets adds its points.</li>
+        <li>The score is those points as a share of all points you set, so it's always out of 100.</li>
+        <li>A person's edit on the lead always beats the AI's reading.</li>
+      </ul>
+    </div></section>
+  </aside>
+</div>
+</fieldset>
+</form>
+
+<div class="aq-scrim" id="aqScrim" hidden></div>
+<div class="aq-drawer" id="aqDrawer" role="dialog" aria-modal="true" aria-labelledby="aq-dr-h" hidden>
+  <div class="aq-dh"><h3 id="aq-dr-h">Edit criterion</h3><button class="aq-link" type="button" id="aqDrX" aria-label="Close">✕</button></div>
+  <div class="aq-db">
+    <div><label class="aq-lbl" for="aqDName">Name</label><input class="aq-inp" id="aqDName" maxlength="40" placeholder="e.g. Team size"><small>Shown on the lead and in the score.</small><div class="aq-err" id="aqDNameErr" hidden>Give it a short name.</div></div>
+    <div><label class="aq-lbl" for="aqDAsk">What the AI finds out</label><input class="aq-inp" id="aqDAsk" maxlength="200" placeholder="e.g. how many salespeople they have"><small>The AI asks this naturally in chat, one question at a time, and reads it from emails.</small><div class="aq-err" id="aqDAskErr" hidden>Say what the AI should find out.</div></div>
+    <div>
+      <span class="aq-lbl" id="aq-dr-l">Counts when</span>
+      <div class="aq-seg" role="group" aria-labelledby="aq-dr-l"><button type="button" id="aqRAny" aria-pressed="true">Any real answer</button><button type="button" id="aqRRule" aria-pressed="false">It meets a rule</button></div>
+      <input class="aq-inp" id="aqDGood" maxlength="200" style="margin-top:10px" placeholder="e.g. 3 or more salespeople" aria-label="Rule a good answer must meet">
+    </div>
+    <div><label class="aq-lbl" for="aqDPts">Points: <span id="aqDPtsV"></span></label><input id="aqDPts" type="range" min="0" max="50" step="5" style="width:100%;accent-color:#0B1D40"></div>
+  </div>
+  <div class="aq-df"><button class="aq-btn" id="aqDDel" type="button" style="margin-right:auto;color:#B42318">Delete</button><button class="aq-btn" id="aqDCancel" type="button">Cancel</button><button class="aq-btn primary" id="aqDOk" type="button">Done</button></div>
+</div>
+
+<script>
+(function(){
+  var CAN = {{ 'true' if can_edit_settings else 'false' }}, MAX = {{ aiq_max_questions }};
+  var S = {{ {'ask': aiq.ask, 'points': aiq.points, 'questions': aiq.questions, 'deliver_to': aiq.deliver_to}|tojson }};
+  var crit = [
+    {k:'verified', ask:'company', name:'Company', d:'A genuine business: named company, business email or website'},
+    {k:null, ask:'business_type', name:'Business type', d:'Wholesaler, distributor, retailer, reseller or end user'},
+    {k:'requirement', ask:'requirement', name:'Product needed', d:'A clear product or service need you can supply'},
+    {k:'commercial', ask:'quantity', name:'Quantity', d:'Meets your commercial quantity'},
+    {k:'location', ask:'delivery_country', name:'Delivery location', d:'Within your delivery area'},
+    {k:'timeline', ask:'timeline', name:'Purchase timeline', d:'When they intend to buy'},
+    {k:'authority', ask:'authority', name:'Buying authority', d:'Decision maker or purchasing'}
+  ].map(function(c){ c.std=true; c.on=S.ask.indexOf(c.ask)>=0; c.pts=c.k?(S.points[c.k]||0):null; return c; });
+  S.questions.forEach(function(q){ crit.push({id:q.id, name:q.label, ask_t:q.ask, good:q.good_if, pts:q.points, on:q.on!==false}); });
+  var met = {}; crit.forEach(function(c, i){ if (i < 4 || !c.std) met[key(c)] = i % 2 === 0; });
+  var $ = function(id){ return document.getElementById(id); };
+  function key(c){ return c.std ? c.ask : c.id; }
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(ch){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]; }); }
+  function total(){ return crit.reduce(function(a, c){ return a + (c.on && c.pts ? c.pts : 0); }, 0); }
+  function bands(){ var w = parseInt($('aqWarm').value, 10), h = parseInt($('aqHot').value, 10);
+    h = isNaN(h) ? 75 : Math.max(1, Math.min(100, h)); w = isNaN(w) ? 45 : Math.max(0, Math.min(h - 1, w)); return {w:w, h:h}; }
+  function render(){
+    var t = total(), tb = $('aqCrit'); tb.innerHTML = '';
+    crit.forEach(function(c, i){
+      var tr = document.createElement('tr'); if (!c.on) tr.className = 'off';
+      var desc = c.std ? esc(c.d) : 'Finds out ' + esc(c.ask_t) + '. Counts ' + (c.good ? 'when ' + esc(c.good) : 'for any real answer') + '.';
+      var share = (c.on && c.pts && t) ? Math.round(c.pts * 100 / t) : 0, dis = CAN ? '' : ' disabled';
+      tr.innerHTML = '<td class="c-name"><b>' + esc(c.name) + '</b><span class="aq-tag ' + (c.std ? 'std' : 'cus') + '">' + (c.std ? 'Standard' : 'Your question') + '</span><span class="d">' + desc + '</span></td>' +
+        '<td class="c-ask"><button type="button" class="aq-sw" role="switch" aria-checked="' + c.on + '" aria-label="Ask buyers: ' + esc(c.name) + '" data-on="' + i + '"' + dis + '></button></td>' +
+        '<td>' + (c.pts === null ? '<span class="aq-na">Info only</span>' :
+          '<span class="aq-pts"><button type="button" aria-label="Fewer points for ' + esc(c.name) + '" data-dn="' + i + '"' + dis + '>−</button><input aria-label="Points for ' + esc(c.name) + '" value="' + c.pts + '" data-p="' + i + '" inputmode="numeric"' + (CAN ? '' : ' readonly') + '><button type="button" aria-label="More points for ' + esc(c.name) + '" data-up="' + i + '"' + dis + '>+</button></span>') + '</td>' +
+        '<td>' + (c.pts === null ? '<span class="aq-na">—</span>' : '<div class="aq-share"><div class="aq-bar"><i style="width:' + share + '%"></i></div>' + share + '%</div>') + '</td>' +
+        '<td style="text-align:right;white-space:nowrap">' + (c.std || !CAN ? '' : '<button type="button" class="aq-link" data-ed="' + i + '" aria-label="Edit ' + esc(c.name) + '">Edit</button>') + '</td>';
+      tb.appendChild(tr);
+    });
+    var n = crit.filter(function(c){ return !c.std; }).length;
+    $('aqTotal').innerHTML = '<b style="color:var(--ink)">' + t + ' points</b> across the criteria you ask about' + (t === 100 ? ' · the score is out of 100' : (t ? ' · scaled to a score out of 100' : ' · switch on at least one criterion with points'));
+    $('aqLeft').textContent = n + ' of ' + MAX + ' own questions used';
+    $('aqAdd').disabled = !CAN || n >= MAX;
+    var b = bands();
+    $('aqBc').style.width = b.w + '%'; $('aqBw').style.width = (b.h - b.w) + '%'; $('aqBh').style.width = (100 - b.h) + '%';
+    var q = crit[3];
+    $('aqQtyNote').textContent = q.on ? 'A buyer below both of these doesn’t meet Quantity.' : 'Not used now: Quantity is switched off above.';
+    preview();
+  }
+  function preview(){
+    var t = total(), got = 0, ul = $('aqPvList'); ul.innerHTML = '';
+    crit.forEach(function(c){ if (!c.on || !c.pts) return;
+      var k = key(c), on = !!met[k]; if (on) got += c.pts;
+      var li = document.createElement('li');
+      li.innerHTML = '<label><span><input type="checkbox" ' + (on ? 'checked' : '') + ' data-pv="' + esc(k) + '">' + esc(c.name) + '</span><em>+' + c.pts + '</em></label>';
+      ul.appendChild(li); });
+    var s = t ? Math.min(100, Math.round(got * 100 / t)) : 0, b = bands(), tier = s >= b.h ? 'hot' : (s >= b.w ? 'warm' : 'cold');
+    $('aqPv').textContent = s;
+    var bd = $('aqPvB'); bd.className = 'aq-badge ' + tier; bd.textContent = {hot:'Hot', warm:'Warm', cold:'Cold'}[tier];
+    $('aqPvPin').style.left = s + '%';
+    $('aqPvM').style.background = 'linear-gradient(90deg,var(--coldbg) 0 ' + b.w + '%,var(--warmbg) ' + b.w + '% ' + b.h + '%,var(--hotbg) ' + b.h + '% 100%)';
+    $('aqPvW').textContent = b.w; $('aqPvW').style.left = b.w + '%'; $('aqPvH').textContent = b.h; $('aqPvH').style.left = b.h + '%';
+    $('aqPvOut').textContent = tier === 'hot' ? 'Moves to the Sales Pipeline now and the owner gets an email.' :
+      tier === 'warm' ? 'Stays in All Leads. The AI keeps asking what’s missing and a follow-up is booked.' :
+      'Stays in All Leads. Re-scored when they write again.';
+  }
+  function dirty(){ var s = $('aqSave'); if (s) s.hidden = false; }
+  // Delivery area: blank = anywhere, else the chosen country names.
+  var picked = (S.deliver_to || '').split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+  function seg(on){ $('aqAny').setAttribute('aria-pressed', !on); $('aqSel').setAttribute('aria-pressed', on); $('aqCtryBox').hidden = !on; }
+  function drawC(){ var box = $('aqCchips'); box.innerHTML = '';
+    picked.forEach(function(c, i){ var s = document.createElement('span'); s.className = 'aq-cchip';
+      s.innerHTML = esc(c) + (CAN ? '<button type="button" aria-label="Remove ' + esc(c) + '">✕</button>' : '');
+      if (CAN) s.querySelector('button').onclick = function(){ picked.splice(i, 1); drawC(); dirty(); };
+      box.appendChild(s); });
+    var sel = $('aqSel').getAttribute('aria-pressed') === 'true';
+    $('aqDlNote').textContent = !sel ? 'Buyers in any country can qualify.' : (picked.length ? 'Only buyers delivering to these ' + picked.length + ' countr' + (picked.length === 1 ? 'y' : 'ies') + ' meet Delivery location.' : 'Add the countries you deliver to.'); }
+  seg(picked.length > 0); drawC();
+  if (CAN) {
+    $('aqAny').onclick = function(){ seg(false); drawC(); dirty(); };
+    $('aqSel').onclick = function(){ seg(true); drawC(); dirty(); };
+    $('aqCtry').onchange = function(){ var v = this.value; if (v && picked.indexOf(v) < 0) picked.push(v); this.value = ''; drawC(); dirty(); };
+  }
+  // Clicks in the tab
+  var root = $('ai-qualification');
+  root.addEventListener('click', function(e){
+    var el = e.target.closest('button,input'); if (!el || !CAN) return;
+    if (el.classList.contains('aq-sw')) {
+      var v = el.getAttribute('aria-checked') !== 'true'; el.setAttribute('aria-checked', v);
+      if (el.dataset.on !== undefined) { crit[+el.dataset.on].on = v; render(); }
+      if (el.id === 'aqEnabled') $('aq-on-l').textContent = v ? 'On' : 'Off';
+      dirty(); return; }
+    if (el.dataset.dn !== undefined) { var c = crit[+el.dataset.dn]; c.pts = Math.max(0, c.pts - 5); render(); dirty(); return; }
+    if (el.dataset.up !== undefined) { var c2 = crit[+el.dataset.up]; c2.pts = Math.min(100, c2.pts + 5); render(); dirty(); return; }
+    if (el.dataset.ed !== undefined) { openD(+el.dataset.ed); return; }
+    if (el.dataset.rot !== undefined) { var inR = el.getAttribute('aria-pressed') !== 'true'; el.setAttribute('aria-pressed', inR);
+      el.setAttribute('aria-label', el.textContent.slice(2) + ': ' + (inR ? 'in the rotation' : 'left out')); rotNote(); dirty(); return; }
+    if (el.matches('input[type=radio]')) dirty();
+  });
+  root.addEventListener('change', function(e){
+    if (e.target.dataset.pv !== undefined) { met[e.target.dataset.pv] = e.target.checked; preview(); return; }
+    if (e.target.dataset.p !== undefined && CAN) { crit[+e.target.dataset.p].pts = Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)); render(); dirty(); }
+  });
+  ['aqWarm', 'aqHot', 'aqMinQty', 'aqMinVal'].forEach(function(id){ $(id).addEventListener('input', function(){ render(); if (CAN) dirty(); }); });
+  // Drawer for your own questions
+  var editing = null, lastFocus = null;
+  function setRule(r){ $('aqRRule').setAttribute('aria-pressed', r); $('aqRAny').setAttribute('aria-pressed', !r); $('aqDGood').hidden = !r; }
+  function openD(i){ editing = i; lastFocus = document.activeElement;
+    var c = i === null ? {name:'', ask_t:'', good:'', pts:10} : crit[i];
+    $('aq-dr-h').textContent = i === null ? 'Add your own criterion' : 'Edit criterion';
+    $('aqDName').value = c.name; $('aqDAsk').value = c.ask_t; $('aqDGood').value = c.good || ''; setRule(!!c.good);
+    $('aqDPts').value = c.pts; $('aqDPtsV').textContent = c.pts; $('aqDDel').hidden = i === null;
+    $('aqDNameErr').hidden = true; $('aqDAskErr').hidden = true;
+    $('aqScrim').hidden = false; $('aqDrawer').hidden = false; document.body.classList.add('sh-hide'); $('aqDName').focus(); }
+  function closeD(){ $('aqScrim').hidden = true; $('aqDrawer').hidden = true; document.body.classList.remove('sh-hide'); if (lastFocus) lastFocus.focus(); }
+  $('aqRAny').onclick = function(){ setRule(false); }; $('aqRRule').onclick = function(){ setRule(true); $('aqDGood').focus(); };
+  $('aqDPts').oninput = function(){ $('aqDPtsV').textContent = this.value; };
+  $('aqDrX').onclick = closeD; $('aqDCancel').onclick = closeD; $('aqScrim').onclick = closeD;
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !$('aqDrawer').hidden) closeD(); });
+  $('aqAdd').onclick = function(){ openD(null); };
+  $('aqDDel').onclick = function(){ crit.splice(editing, 1); closeD(); render(); dirty(); };
+  $('aqDOk').onclick = function(){
+    var name = $('aqDName').value.trim(), ask = $('aqDAsk').value.trim();
+    $('aqDNameErr').hidden = !!name; $('aqDAskErr').hidden = !!ask;
+    if (!name) { $('aqDName').focus(); return; } if (!ask) { $('aqDAsk').focus(); return; }
+    var good = $('aqRRule').getAttribute('aria-pressed') === 'true' ? $('aqDGood').value.trim() : '', pts = +$('aqDPts').value;
+    if (editing === null) { var c = {id:'', name:name, ask_t:ask, good:good, pts:pts, on:true}; crit.push(c); met[key(c)] = false; }
+    else { var c3 = crit[editing]; c3.name = name; c3.ask_t = ask; c3.good = good; c3.pts = pts; }
+    closeD(); render(); dirty(); };
+  // Save: everything in the tab goes as one form.
+  var d = $('aqDiscard'); if (d) d.onclick = function(){ location.reload(); };
+  $('aqForm').addEventListener('submit', function(){
+    var h = $('aqHidden'), add = function(n, v){ var i = document.createElement('input'); i.type = 'hidden'; i.name = n; i.value = v; h.appendChild(i); };
+    h.innerHTML = '';
+    if ($('aqEnabled').getAttribute('aria-checked') === 'true') add('enabled', '1');
+    if ($('aqQualify').getAttribute('aria-checked') === 'true') add('on_hot_qualify', '1');
+    if ($('aqAlert').getAttribute('aria-checked') === 'true') add('on_hot_alert', '1');
+    if ($('aqInbox').getAttribute('aria-checked') === 'true') add('read_inbox', '1');
+    add('deliver_to', $('aqSel').getAttribute('aria-pressed') === 'true' ? picked.join(', ') : '');
+    [].slice.call(document.querySelectorAll('#aqRot [aria-pressed="false"]')).forEach(function(b){ add('rot_skip', b.dataset.rot); });
+    crit.forEach(function(c){
+      if (c.std) { if (c.on) add('ask', c.ask); if (c.k) add('pts_' + c.k, c.pts); }
+      else { add('q_id', c.id || ''); add('q_label', c.name); add('q_ask', c.ask_t); add('q_good', c.good || ''); add('q_points', c.pts); add('q_on', c.on ? '1' : '0'); }
+    });
+  });
+  function rotNote(){ var n = $('aqRotNote'); if (!n) return;
+    var out = [].slice.call(document.querySelectorAll('#aqRot [aria-pressed="false"]')).length;
+    n.textContent = out ? out + ' left out of the rotation. They keep their account and can still be given leads by hand.' : ''; }
+  rotNote();
+  render();
+})();
+</script>
+</div>
+{% endif %}

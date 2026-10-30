@@ -4879,3 +4879,139 @@ def ensure_portal_tables():
     finally:
         cur.close()
         conn.close()
+
+
+# ── AI Sales Agent for B2B (2026-10-29) ────────────────────────────────────
+# company_profiles: the company details a B2B business gives at sign-up
+# (shown on its quotes and invoices). is_b2b marks the business as on the
+# AI Sales Agent for B2B, so its 2-week trial starts on the 'b2b' plan.
+# The 'b2b' plan is seeded once from Enterprise — Dual Agent (same limits,
+# same feature ticks) and starts hidden (is_active FALSE) until its price is
+# set in the Plan Editor.
+B2B_PLAN_SLUG = "b2b"
+
+
+def ensure_b2b_tables():
+    from db import get_db_connection
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        if not _table_exists(cur, "company_profiles"):
+            cur.execute("""
+                CREATE TABLE company_profiles (
+                    tenant_id        INTEGER PRIMARY KEY,
+                    is_b2b           BOOLEAN NOT NULL DEFAULT FALSE,
+                    registered_name  VARCHAR(200),
+                    trading_name     VARCHAR(200),
+                    reg_country      VARCHAR(2),
+                    reg_number       VARCHAR(60),
+                    vat_number       VARCHAR(60),
+                    address_line1    VARCHAR(255),
+                    city             VARCHAR(120),
+                    postcode         VARCHAR(30),
+                    sells            VARCHAR(60),
+                    job_title        VARCHAR(120),
+                    wa_number        VARCHAR(30),
+                    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )""")
+        # Chat links (2026-10-29): chat.phixtra.com/c/<slug> opens a business's
+        # chat full screen (ai-backend chat_link_page). is_demo = the
+        # "Try as a Buyer" demo, with a link to the seller side.
+        if not _table_exists(cur, "chat_links"):
+            cur.execute("""
+                CREATE TABLE chat_links (
+                    slug        VARCHAR(60) PRIMARY KEY,
+                    tenant_id   INTEGER NOT NULL,
+                    enabled     BOOLEAN NOT NULL DEFAULT TRUE,
+                    is_demo     BOOLEAN NOT NULL DEFAULT FALSE,
+                    suggestions JSONB,
+                    seller_url  VARCHAR(255),
+                    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )""")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_links_tenant ON chat_links (tenant_id)")
+        # Chat Translation (2026-10-29), B2B only — see chat_translate.py.
+        if not _table_exists(cur, "chat_translation_settings"):
+            cur.execute("""
+                CREATE TABLE chat_translation_settings (
+                    tenant_id   INTEGER PRIMARY KEY,
+                    enabled     BOOLEAN NOT NULL DEFAULT TRUE,
+                    team_lang   VARCHAR(10) NOT NULL DEFAULT 'en',
+                    reply_mode  VARCHAR(12) NOT NULL DEFAULT 'translate',
+                    updated_by  VARCHAR(120),
+                    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )""")
+        if not _table_exists(cur, "message_translations"):
+            cur.execute("""
+                CREATE TABLE message_translations (
+                    tenant_id   INTEGER NOT NULL,
+                    src_hash    CHAR(64) NOT NULL,
+                    target_lang VARCHAR(10) NOT NULL,
+                    src_lang    VARCHAR(10),
+                    translated  TEXT,
+                    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    PRIMARY KEY (tenant_id, src_hash, target_lang)
+                )""")
+        if not _table_exists(cur, "sent_translations"):
+            cur.execute("""
+                CREATE TABLE sent_translations (
+                    tenant_id     INTEGER NOT NULL,
+                    sent_hash     CHAR(64) NOT NULL,
+                    original      TEXT NOT NULL,
+                    original_lang VARCHAR(10),
+                    sent_lang     VARCHAR(10),
+                    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    PRIMARY KEY (tenant_id, sent_hash)
+                )""")
+        _seed_plans_once(cur, [B2B_PLAN_SLUG], f"""
+            INSERT INTO plans (slug, name, price_ngn, price_usd, price_dollars, ai_messages_limit, ai_agents_limit,
+                               broadcasts_limit, products_limit, data_sources_limit, feat_crm, feat_advanced_ai,
+                               feat_integrations, feat_broadcasts, feat_full_reports, feat_multi_agents,
+                               overage_per_msg_ngn, overage_per_msg_usd, is_active, sort_order, annual_discount_pct,
+                               feat_visual_match, feat_fw_checkout, feat_email_campaigns, staff_limit, channel_mode,
+                               parent_plan_id, is_custom, ai_designs_limit, allow_own_ai_key, support_line,
+                               is_recommended, photos_per_product)
+            SELECT '{B2B_PLAN_SLUG}', 'AI Sales Agent for B2B', price_ngn, price_usd, price_dollars, ai_messages_limit,
+                   ai_agents_limit, broadcasts_limit, products_limit, data_sources_limit, feat_crm, feat_advanced_ai,
+                   feat_integrations, feat_broadcasts, feat_full_reports, feat_multi_agents,
+                   overage_per_msg_ngn, overage_per_msg_usd, FALSE, sort_order + 1, annual_discount_pct,
+                   feat_visual_match, feat_fw_checkout, feat_email_campaigns, staff_limit, channel_mode,
+                   parent_plan_id, FALSE, ai_designs_limit, allow_own_ai_key, support_line,
+                   FALSE, photos_per_product
+              FROM plans WHERE slug = 'enterprise_dual'
+            ON CONFLICT DO NOTHING;
+            INSERT INTO plan_feature_grants (plan_id, feature_key)
+            SELECT b.id, g.feature_key FROM plan_feature_grants g
+              JOIN plans d ON d.id = g.plan_id AND d.slug = 'enterprise_dual'
+              JOIN plans b ON b.slug = '{B2B_PLAN_SLUG}'
+            ON CONFLICT DO NOTHING;""")
+        # The "Chat translation" tick goes on the B2B plan only. Marked as
+        # seen first, so the start-up rule "a brand-new tick goes on every
+        # plan" (feature_access.sync_new_feature_keys_to_plans) skips it.
+        cur.execute("SELECT 1 FROM feature_catalog_seen WHERE feature_key='inbox.translate'")
+        if not cur.fetchone():
+            cur.execute("""INSERT INTO plan_feature_grants (plan_id, feature_key)
+                           SELECT id, 'inbox.translate' FROM plans WHERE slug = %s
+                           ON CONFLICT DO NOTHING""", (B2B_PLAN_SLUG,))
+            cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('inbox.translate') ON CONFLICT DO NOTHING")
+        # AI Lead Qualification (30 Oct 2026): the same — a B2B plan tick only.
+        cur.execute("SELECT 1 FROM feature_catalog_seen WHERE feature_key='crm.ai_qualification'")
+        if not cur.fetchone():
+            cur.execute("""INSERT INTO plan_feature_grants (plan_id, feature_key)
+                           SELECT id, 'crm.ai_qualification' FROM plans WHERE slug = %s
+                           ON CONFLICT DO NOTHING""", (B2B_PLAN_SLUG,))
+            cur.execute("INSERT INTO feature_catalog_seen (feature_key) VALUES ('crm.ai_qualification') ON CONFLICT DO NOTHING")
+        # The buying details the AI collects on a lead, and its decision.
+        for _col, _type in (("business_type", "VARCHAR(40)"), ("quantity", "TEXT"), ("delivery_country", "VARCHAR(80)"),
+                            ("purchase_timeline", "TEXT"), ("qual_checks", "JSONB"), ("qual_by", "VARCHAR(10)"),
+                            ("qual_reason", "TEXT"), ("qual_at", "TIMESTAMPTZ"), ("qual_answers", "JSONB")):
+            if not _column_exists(cur, "merchant_pipeline_leads", _col):
+                cur.execute("SET LOCAL lock_timeout = '5s'")
+                cur.execute(f"ALTER TABLE merchant_pipeline_leads ADD COLUMN {_col} {_type}")
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print("⚠️  B2B migration error:", e)
+    finally:
+        cur.close()
+        conn.close()

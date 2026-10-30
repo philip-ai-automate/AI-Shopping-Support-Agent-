@@ -1,0 +1,81 @@
+{# AI Lead Qualification on the lead / deal page (2026-10-30): the AI's latest decision with its reason, Undo, and the buying details. #}
+{% if aiq %}
+{% set _last = (aiq_decisions|selectattr('undone_at', 'none')|list or [None])[0] %}
+<style>
+.aiq-box{margin:0 24px 18px;border:1px solid #c7d2fe;background:#f5f7ff;border-radius:14px;padding:16px 18px}
+.aiq-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.aiq-badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;border-radius:999px;padding:4px 11px}
+.aiq-why{font-size:13px;color:var(--ink);line-height:1.6;margin:10px 0 0}
+.aiq-acts{display:flex;gap:8px;flex-wrap:wrap}
+.aiq-btn{border:1.5px solid #0B1D40;background:#fff;color:#0B1D40;border-radius:9px;padding:6px 12px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.aiq-btn.dark{background:#0B1D40;color:#fff}
+.aiq-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px 16px;margin-top:14px;padding-top:12px;border-top:1px solid #dbe2fb}
+.aiq-facts .k{font-size:10.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.aiq-facts .v{font-size:13px;font-weight:600;color:var(--ink);margin-top:2px;word-break:break-word}
+.aiq-hist{margin-top:10px;font-size:12px;color:var(--muted)}
+.aiq-hist summary{cursor:pointer;font-weight:700}
+.aiq-hist li{margin:4px 0;line-height:1.5}
+@media(max-width:760px){.aiq-facts{grid-template-columns:repeat(2,minmax(0,1fr))}.aiq-box{margin:0 14px 16px}}
+</style>
+<div class="aiq-box">
+  <div class="aiq-top">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      {% set _sb = {'hot': ('🔥','#fef2f2','#b91c1c','Hot'), 'warm': ('🌤️','#fffbeb','#b45309','Warm'), 'cold': ('❄️','#eff6ff','#1d4ed8','Cold')} %}
+      {% set icon, bg, fg, word = _sb.get(lead_tier, _sb['cold']) %}
+      <span class="aiq-badge" style="background:{{ bg }};color:{{ fg }}">{{ icon }} {{ score_labels.get(lead_tier, word) }} · {{ lead_score }}</span>
+      {% if lead.is_opportunity and aiq_decisions|selectattr('qualified')|selectattr('undone_at', 'none')|list %}
+      <span class="aiq-badge" style="background:#0B1D40;color:#fff">Qualified by AI</span>
+      {% elif lead.qual_by == 'staff' %}
+      <span class="aiq-badge" style="background:#e2e8f0;color:#334155">Details changed by staff</span>
+      {% endif %}
+      {% if _last %}<span style="font-size:11.5px;color:var(--muted)">from {{ aiq_channel_words.get(_last.channel, _last.channel) }} · {{ _last.created_at.strftime('%d %b, %H:%M') if _last.created_at else '' }}</span>{% endif %}
+    </div>
+    <div class="aiq-acts">
+      {% set _u = aiq_undo %}
+      {% if _u and staff_can_open('portal.lead_ai_undo') %}
+      {% set _uq = _u.qualified and lead.is_opportunity %}
+      {% set _un = _u.intent == 'not_interested' and lead.outcome == 'not_a_fit' %}
+      {% set _uc = _u.created_lead and not lead.outcome and not _uq %}
+      <form method="POST" action="{{ url_for('portal.lead_ai_undo', lead_id=lead.id, decision_id=_u.id) }}" style="margin:0"
+            onsubmit="return confirm({{ ('Undo the AI\'s decision? ' ~ ('This deal goes back to All Leads.' if _uq else ('This lead opens again.' if _un else ('This lead is closed as not a real enquiry.' if _uc else 'The details the AI saved go back to how they were.'))))|tojson|forceescape }})">
+        <button type="submit" class="aiq-btn">↩️ Undo{% if _uq %}: back to All Leads{% elif _un %}: reopen{% elif _uc %}: not a real enquiry{% endif %}</button>
+      </form>
+      {% endif %}
+      {% if staff_can_open('portal.sales_pipeline_edit') %}
+      <button type="button" class="aiq-btn dark" onclick="document.getElementById('editLeadModal').classList.add('open')">Change details</button>
+      {% endif %}
+    </div>
+  </div>
+  {% if lead.qual_reason or _last %}
+  <p class="aiq-why"><strong>Why:</strong> {{ lead.qual_reason or _last.reason or '—' }}</p>
+  {% else %}
+  <p class="aiq-why" style="color:var(--muted)">The AI hasn't read a message from this buyer yet. The score comes from the details below.</p>
+  {% endif %}
+  <div class="aiq-facts">
+    <div><div class="k">Business type</div><div class="v">{{ lead.business_type or '—' }}</div></div>
+    <div><div class="k">Requirement</div><div class="v">{{ lead.product_interest or '—' }}</div></div>
+    <div><div class="k">Quantity</div><div class="v">{{ lead.quantity or '—' }}</div></div>
+    <div><div class="k">Delivery to</div><div class="v">{{ lead.delivery_country or '—' }}</div></div>
+    <div><div class="k">Timeline</div><div class="v">{{ lead.purchase_timeline or (lead.deadline_date.strftime('%d %b %Y') if lead.deadline_date else '—') }}</div></div>
+    <div><div class="k">Buying authority</div><div class="v">{{ 'Decision maker / purchasing' if lead.decision_maker_engaged else 'Not confirmed yet' }}</div></div>
+    {% for q in aiq.questions %}{% set _a = (lead.qual_answers or {}).get(q.id) or {} %}
+    <div><div class="k">{{ q.label }}</div><div class="v">{{ _a.answer or '—' }}{% if _a.met %} <span style="color:#15803d" title="Counts as a good answer">✓</span>{% elif _a.answer and _a.met == false %} <span style="color:#9ca3af" title="Doesn't meet your rule">○</span>{% endif %}</div></div>
+    {% endfor %}
+    <div style="grid-column:span 2"><div class="k">Score</div>
+      <div class="v" style="font-weight:500;font-size:12px;line-height:1.7">
+        {% for sb in score_breakdown %}<span style="color:{{ '#15803d' if sb.active else '#9ca3af' }};margin-right:10px;white-space:nowrap">{{ '✓' if sb.active else '○' }} {{ sb.label }}{% if sb.active %} +{{ sb.points }}{% endif %}</span>{% endfor %}
+      </div>
+    </div>
+  </div>
+  {% if aiq_decisions|length > 1 or (aiq_decisions and aiq_decisions[0].undone_at) %}
+  <details class="aiq-hist">
+    <summary>Everything the AI decided on this lead ({{ aiq_decisions|length }})</summary>
+    <ul style="margin:6px 0 0;padding-left:18px">
+      {% for d in aiq_decisions %}
+      <li><strong style="color:var(--ink)">{{ d.created_at.strftime('%d %b, %H:%M') if d.created_at else '' }}</strong> · {{ aiq_channel_words.get(d.channel, d.channel) }} · {{ d.summary }}{% if d.undone_at %} · <em>undone by {{ d.undone_by }}</em>{% endif %}<br>{{ d.reason }}</li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</div>
+{% endif %}

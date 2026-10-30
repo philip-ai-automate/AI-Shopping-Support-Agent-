@@ -8,6 +8,7 @@ import contact_status as _contact_status
 import lead_linkedin as _li
 import lead_followups as _fu
 import auto_followups as _af
+import lead_qualify as _lq
 import psycopg2.extras
 import psycopg2.errors
 import os, secrets, string, json as _json
@@ -350,6 +351,7 @@ PLAN_FEATURE_CATALOG = {
         ("inbox.manage_contact", "Edit contact details from Inbox"),
         ("inbox.send_new",       "Send a new WhatsApp message to a saved contact (Meta-approved message, from Inbox or Sales Pipeline)"),
         ("inbox.see_all",        "See all chats, not just their own customers' (off = only chats with their own contacts, and new people nobody has claimed)"),
+        ("inbox.translate",      "Chat Translation — read and reply in the team's language, buyers get theirs (plan unlock, AI Sales Agent for B2B)"),
     ],
     "WhatsApp Campaigns": [
         ("legacy:feat_broadcasts",           "Broadcast Messaging & Reports (plan unlock)"),
@@ -403,6 +405,7 @@ PLAN_FEATURE_CATALOG = {
         ("crm.merge_review_reject",    "Reject a merge suggestion"),
         ("crm.pipeline_settings_view", "Pipeline Settings — view"),
         ("crm.pipeline_settings_edit", "Edit Pipeline Settings"),
+        ("crm.ai_qualification",       "AI Lead Qualification — the AI reads every enquiry, scores it and qualifies real buyers (plan unlock, AI Sales Agent for B2B)"),
     ],
     "Leads": [
         ("leads.page",   "Leads — view"),
@@ -638,6 +641,7 @@ ROLE_FORM_GRID = {
     "Inbox": [
         {"label": "Inbox", "view": "inbox.page", "edit": "inbox.manage_contact",
          "other": ["inbox.reply", "inbox.send_new", "inbox.claim_release", "inbox.resolve", "inbox.takeover", "inbox.see_all"]},
+        {"label": "Chat Translation (plan unlock)", "other": ["inbox.translate"]},
     ],
     "WhatsApp Campaigns": [
         {"label": "Broadcast Messaging & Reports (plan unlock)", "other": ["legacy:feat_broadcasts"]},
@@ -662,6 +666,7 @@ ROLE_FORM_GRID = {
          "other": ["crm.tags_assign"]},
         {"label": "Duplicate Merge Review", "view": "crm.merge_review_view", "other": ["crm.merge_review_confirm", "crm.merge_review_reject"]},
         {"label": "Pipeline Settings", "view": "crm.pipeline_settings_view", "edit": "crm.pipeline_settings_edit"},
+        {"label": "AI Lead Qualification (plan unlock)", "other": ["crm.ai_qualification"]},
         {"label": "Microsoft Bookings (demos)", "other": ["crm.bookings_connect"]},
         {"label": "Demos", "view": "crm.demos_view", "other": ["crm.demos_all"]},
         {"label": "Daily Targets", "view": "crm.targets_own", "other": ["crm.targets_team", "crm.targets_set"]},
@@ -802,6 +807,8 @@ ROLE_FORM_GRID = {
 # so the Features-vs-Roles check mustn't flag them as "controls nothing".
 # legacy:* keys are treated this way automatically.
 PLAN_ONLY_FEATURE_KEYS = {
+    "inbox.translate",   # Chat Translation (2026-10-29): a plan tick, not a team role
+    "crm.ai_qualification",  # AI Lead Qualification (2026-10-30): a plan tick, not a team role
     "woo.product_recommendation", "woo.cross_selling", "woo.cart_recovery",
     "woo.chat_archive_30days", "woo.chat_archive_unlimited",
     "help.tutorials", "help.videos",
@@ -1989,6 +1996,9 @@ def _team_can_access_phone(tenant_id: int, actor: dict, phone: str) -> bool:
     Facebook Messenger and Web Chat aren't tied to a WhatsApp number, so
     each has its own explicit team_members switch (messenger_access,
     webchat_access)."""
+    if session.get("demo_visitor"):
+        from demo_visitor import can_see as _demo_can_see
+        return _demo_can_see(phone)
     if not actor["is_team"]:
         return True
     if phone.startswith("fb:"):
@@ -2549,7 +2559,66 @@ WA_AI_TRIAL_DAYS = 14
 AI_OFF_FREE_PLAN_SLUGS = ("connect", "web_free")
 NEW_WEBSITE_SIGNUP = os.getenv("NEW_WEBSITE_SIGNUP", "0") == "1"
 TRIAL_PLAN_NAMES = {"pro": "Enterprise", "web_enterprise": "Enterprise — Website",
-                    "enterprise_dual": "Enterprise — Dual Agent"}
+                    "enterprise_dual": "Enterprise — Dual Agent", "b2b": "AI Sales Agent for B2B"}
+
+# AI Sales Agent for B2B (2026-10-29): a business that signed up from the B2B
+# sign-up has company_profiles.is_b2b; its 2-week trial runs on the 'b2b'
+# plan (see portal_migrations.ensure_b2b_tables). Everyone else is untouched.
+B2B_SELLS_OPTIONS = [
+    ("food_drink", "Food and drink supplies"), ("packaging", "Packaging and disposables"),
+    ("building", "Building and trade supplies"), ("industrial", "Industrial parts and machinery"),
+    ("electronics", "Electronics and technology"), ("health_beauty", "Health and beauty"),
+    ("clothing", "Clothing and textiles"), ("agriculture", "Agriculture"),
+    ("chemicals", "Chemicals and cleaning"), ("office", "Office and stationery"),
+    ("other", "Something else"),
+]
+
+
+def _is_b2b_tenant(tenant_id, cur=None) -> bool:
+    own = cur is None
+    try:
+        if own:
+            conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("SELECT is_b2b FROM company_profiles WHERE tenant_id=%s", (int(tenant_id),))
+        r = cur.fetchone()
+        return bool(r and (r[0] if not isinstance(r, dict) else r.get("is_b2b")))
+    except Exception:
+        return False
+    finally:
+        if own:
+            cur.close(); conn.close()
+
+
+def _save_company_profile(tenant_id: int, company: dict) -> None:
+    """Company details from the B2B sign-up: kept in company_profiles, and
+    copied to the owner's Business Info (name, VAT, address, country)."""
+    c = company or {}
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO company_profiles (tenant_id, is_b2b, registered_name, trading_name, reg_country,
+                                          reg_number, vat_number, address_line1, city, postcode, sells,
+                                          job_title, wa_number)
+            VALUES (%s, TRUE, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (tenant_id) DO UPDATE SET is_b2b = TRUE, updated_at = NOW()""",
+            (int(tenant_id), c.get("registered_name"), c.get("trading_name") or None, c.get("reg_country"),
+             c.get("reg_number") or None, c.get("vat_number") or None, c.get("address_line1"),
+             c.get("city"), c.get("postcode") or None, c.get("sells"), c.get("job_title") or None,
+             c.get("wa_number") or None))
+        cur.execute("""UPDATE customers SET company_name = COALESCE(NULLIF(company_name, ''), %s),
+                              vat_number = COALESCE(NULLIF(vat_number, ''), %s),
+                              billing_address_line1 = COALESCE(NULLIF(billing_address_line1, ''), %s),
+                              billing_city = COALESCE(NULLIF(billing_city, ''), %s),
+                              billing_country = COALESCE(NULLIF(billing_country, ''), %s)
+                        WHERE tenant_id = %s""",
+                    (c.get("registered_name"), c.get("vat_number") or None, c.get("address_line1"),
+                     c.get("city"), c.get("reg_country"), int(tenant_id)))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ _save_company_profile:", e)
+    finally:
+        cur.close(); conn.close()
 
 
 def _free_plan_slug(source_type, signup_channel) -> str:
@@ -2600,6 +2669,8 @@ def _start_wa_ai_trial(tenant_id: int) -> bool:
         cur.close(); conn.close()
         return False
     trial_slug = _trial_plan_slug(t[0], t[1])
+    if _is_b2b_tenant(tenant_id, cur):
+        trial_slug = "b2b"
     cur.execute(f"""
         UPDATE tenants
            SET plan_id              = (SELECT id FROM plans WHERE slug=%s LIMIT 1),
@@ -2807,6 +2878,9 @@ def _send_account_ready_email(
     trial_link = f"{_PORTAL_BASE_URL}/login?next=/dashboard"
     plans_link = f"{_PORTAL_BASE_URL}/login?next=/billing/plans"
     login_link = f"{_PORTAL_BASE_URL}/login"
+    b2b = kind == "b2b"          # AI Sales Agent for B2B (2026-10-29): set up like "both"
+    if b2b:
+        kind = "both"
 
     if kind == "both":
         account_for = biz
@@ -2835,6 +2909,11 @@ def _send_account_ready_email(
         product, who, trial_plan = ("PhiXtra AI Sales Agent for WhatsApp",
                                     "your WhatsApp customers", "Enterprise plan")
 
+    if b2b:
+        product, who, trial_plan = ("PhiXtra AI Sales Agent for B2B",
+                                    "your trade buyers in their own language, on your website and WhatsApp,",
+                                    "AI Sales Agent for B2B plan")
+
     steps = [("Log in to the PhiXtra portal.", "")]
     if kind in ("whatsapp", "both"):
         steps.append(("Connect your WhatsApp number.",
@@ -2852,6 +2931,9 @@ def _send_account_ready_email(
             steps.append(("Add your products (optional).", "Read them from your website's pages, or upload an Excel or CSV list."))
     else:
         steps.append(("Upload your product list.", "Excel or CSV."))
+    if b2b:
+        steps = [st for st in steps if "optional" not in st[0]]
+        steps.append(("Upload your price list.", "Excel or CSV, or connect your WooCommerce shop. Your cost prices are never shown to buyers."))
     steps.append(("Start your 2-week AI trial when you're ready.", ""))
 
     trial_head = "Increase your revenue and customer satisfaction"
@@ -3864,8 +3946,59 @@ def _account_created_redirect(email, email_sent):
 
 def _build_register_ctx(form_data=None):
     """Build template context for register.html — used by GET and POST re-renders on error."""
+    # ?type=b2b (from the B2B page) opens the AI Sales Agent for B2B sign-up.
+    preset = (request.args.get("type") or "").strip().lower() if request.method == "GET" else ""
     return dict(offer="", founder_spots_left=None, hear_about_us_options=HEAR_ABOUT_US_OPTIONS,
-                selling_currencies=_selling_currency.currencies())
+                selling_currencies=_selling_currency.currencies(), b2b_sells_options=B2B_SELLS_OPTIONS,
+                preset_type="b2b" if preset == "b2b" else "")
+
+
+def _register_b2b(first_name, last_name, email, password, hear_about_us, ref_code,
+                  selling_currency, business_name):
+    """AI Sales Agent for B2B sign-up (2026-10-29): company details, website,
+    a mobile on WhatsApp for the sign-in code, WhatsApp number optional.
+    Created like a "WhatsApp and website" business (PhiXtra Connect, the
+    business starts its own 2-week trial — on the B2B plan)."""
+    f = request.form
+    back = lambda: _register_page(f, form_data=f)
+    g = lambda k, n=200: (f.get(k) or "").strip()[:n]
+    company = dict(registered_name=business_name[:200], trading_name=g("trading_name"),
+                   reg_country=g("business_based", 2).upper(), reg_number=g("reg_number", 60),
+                   vat_number=g("vat_number", 60), address_line1=g("address_line1", 255),
+                   city=g("city", 120), postcode=g("postcode", 30), sells=g("sells", 60),
+                   job_title=g("job_title", 120))
+    if not business_name:
+        flash("Registered company name is required.", "danger"); return back()
+    if company["reg_country"] not in _pn.SUPPORTED_REGIONS:
+        flash("Please choose your country of registration.", "danger"); return back()
+    if not company["address_line1"] or not company["city"]:
+        flash("Please enter your business address and town or city.", "danger"); return back()
+    if company["sells"] not in dict(B2B_SELLS_OPTIONS):
+        flash("Please choose what you sell.", "danger"); return back()
+    website_platform = g("website_platform", 20).lower()
+    if website_platform not in WEBSITE_PLATFORMS:
+        flash("Please choose what your website is built on.", "danger"); return back()
+    site = _clean_domain(f.get("tenant_domain"))
+    if not site:
+        flash("Please enter your website address, for example example.com.", "danger"); return back()
+    mobile, _perr = _phone_from_form(f.get("phone_number"), g("phone_country", 2).upper())
+    if _perr:
+        flash(_perr, "danger"); return back()
+    _taken = _phone_account_msg(mobile)
+    if _taken:
+        flash(_taken, "warning"); return back()
+    if g("wa_phone_number"):
+        wa, _werr = _phone_from_form(f.get("wa_phone_number"), g("wa_phone_country", 2).upper())
+        if _werr:
+            flash(_werr, "danger"); return back()
+        company["wa_number"] = wa
+    return _hold_signup("web", "register", dict(
+        first_name=first_name, last_name=last_name, email=email,
+        phone_number=mobile, tenant_domain=site, hear_about_us=hear_about_us,
+        ref_code=ref_code, business_country=company["reg_country"], signup_channel="both",
+        business_name=business_name, website_platform=website_platform,
+        selling_currency=selling_currency, company=company,
+    ), password, back)
 
 
 @portal_bp.route("/register", methods=["GET", "POST"])
@@ -3942,6 +4075,10 @@ def register():
         if not site:
             flash("Please enter your website address, for example example.com.", "danger")
             return _register_page(request.form, form_data=request.form)
+
+    if merchant_type == "b2b":
+        return _register_b2b(first_name, last_name, email, password, hear_about_us, ref_code,
+                             selling_currency, business_name)
 
     if merchant_type == "web":
         based = (request.form.get("business_based") or "").strip().upper()
@@ -4294,8 +4431,11 @@ def _confirm_finish(row):
         return redirect(_safe_next(row.get("next_url")) or url_for("portal.dashboard"))
 
     args = dict(row["args"] or {})
+    company = args.pop("company", None)   # B2B sign-up (2026-10-29)
     make = _register_whatsapp_merchant if row["creator"] == "whatsapp" else _register_web_merchant
     res  = make(**args, password="", pw_hash=row["pw_hash"], confirmed=True)
+    if company and isinstance(res, dict) and res.get("ok"):
+        _save_company_profile(int(res["tenant_id"]), company)
     if not isinstance(res, dict) or not res.get("ok"):
         # Someone took the email or website while the codes were on their way.
         signup_confirm.drop(row["id"])
@@ -4498,7 +4638,7 @@ def _send_welcome_after_confirm(customer_id: int):
         conn2 = get_db_connection()
         cur_wa = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur_wa.execute("""
-            SELECT c.first_name, c.email, c.phone_number,
+            SELECT c.first_name, c.email, c.phone_number, c.tenant_id,
                    t.name AS business_name, t.domain, t.source_type,
                    t.signup_channel, t.website_platform,
                    k.trial_expires_at
@@ -4517,6 +4657,8 @@ def _send_welcome_after_confirm(customer_id: int):
         if wa_row and (wa_row.get("source_type") == "whatsapp" or wa_row.get("signup_channel")):
             _kind = ("both" if wa_row.get("signup_channel") == "both"
                      else "whatsapp" if wa_row.get("source_type") == "whatsapp" else "website")
+            if _kind == "both" and _is_b2b_tenant(wa_row["tenant_id"]):
+                _kind = "b2b"
             _send_account_ready_email(
                 email=wa_row["email"],
                 first_name=wa_row["first_name"] or "",
@@ -6398,6 +6540,7 @@ def _setup_checklist(tenant_id: int):
                        ORDER BY created_at DESC LIMIT 1""", (tenant_id,))
         last = cur.fetchone()
         prod = _product_sources(tenant_id, cur)
+        b2b = _is_b2b_tenant(tenant_id, cur)
         cur.close(); conn.close()
     except Exception as e:
         print("⚠️ _setup_checklist:", e)
@@ -6448,8 +6591,10 @@ def _setup_checklist(tenant_id: int):
 
     # 4. Trial.
     paid = t["plan_slug"] not in AI_OFF_FREE_PLAN_SLUGS
-    steps.append(dict(key="trial", title="Start your free trial", done=bool(t["trial_granted_at"]) or paid,
-                      text="Full features for 14 days, no card needed. Until then your team answers website chats from the Inbox.",
+    steps.append(dict(key="trial", title="Start your free B2B trial" if b2b else "Start your free trial",
+                      done=bool(t["trial_granted_at"]) or paid,
+                      text=("The AI Sales Agent for B2B for 14 days, no card needed. Until then your team answers chats from the Inbox."
+                            if b2b else "Full features for 14 days, no card needed. Until then your team answers website chats from the Inbox."),
                       trial=not t["trial_granted_at"] and not paid))
 
     # "How to" links into the Website Set-up guide (2026-10-18).
@@ -6481,7 +6626,10 @@ def _setup_checklist(tenant_id: int):
     else:
         p_text = ("Optional. Choose which shop products the AI can recommend, inside the plugin, or upload a list instead (Excel or CSV). Use one or the other."
                   if wp else "Optional. Let your AI read your products from your website's own pages, or upload a list (Excel or CSV). Use one or the other.")
-    extras = [dict(key="products", title="Products", done=prod["source"] is not None, text=p_text,
+    if b2b and prod["source"] is None:
+        p_text = ("Upload your price list (Excel or CSV), or connect your WooCommerce shop, so the AI can answer "
+                  "trade buyers with your own prices. Your cost prices are never shown to buyers.")
+    extras = [dict(key="products", title="Your price list" if b2b else "Products", done=prod["source"] is not None, text=p_text,
                    shop_url=shop_tab, list_url=url_for("portal.data_sources"), source=prod["source"],
                    site_ok=(not wp) and bool(src), read_url=url_for("portal.store_info_website_read_products"))]
     wa_ok = t["channel_mode"] in ("dual", "both")
@@ -13338,7 +13486,130 @@ def settings():
                            daily_report_enabled=daily_report_enabled,
                            report_phone=report_phone,
                            active_sub=_get_active_subscription(int(customer["id"])),
-                           saved_methods=_get_saved_payment_methods(int(customer["id"])))
+                           saved_methods=_get_saved_payment_methods(int(customer["id"])),
+                           chat_tr=_chat_tr_settings_ctx(tenant_id))
+
+
+# ── Chat Translation, AI Sales Agent for B2B (2026-10-29) ─────────────────────
+# The team reads every Inbox chat in its own language and replies in it;
+# buyers get their own language. See chat_translate.py. Only for businesses
+# whose plan has the "inbox.translate" tick, and PhiXtra's own account.
+def _chat_tr_settings_ctx(tenant_id):
+    try:
+        import chat_translate as _ct
+        if not _ct.allowed(tenant_id):
+            return None
+        return {"s": _ct.settings(tenant_id),
+                "langs": [(c, _ct.lang_name(c)) for c in _ct.PICK_LANGS]}
+    except Exception as e:
+        print("⚠️ chat translation settings:", e)
+        return None
+
+
+def _chat_tr_inbox_ctx(tenant_id):
+    """What the Inbox page needs, or None when translation is off for this business."""
+    try:
+        import chat_translate as _ct
+        st = _ct.active_for(tenant_id)
+        if not st:
+            return None
+        return {"team_lang": st["team_lang"], "team_lang_name": _ct.lang_name(st["team_lang"]),
+                "reply_mode": st["reply_mode"],
+                "langs": [(c, _ct.lang_name(c)) for c in _ct.PICK_LANGS]}
+    except Exception as e:
+        print("⚠️ chat translation inbox:", e)
+        return None
+
+
+@portal_bp.route("/settings/chat-translation", methods=["POST"])
+@team_feature("settings.business_edit")
+def settings_chat_translation():
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("settings.business_edit")
+    if _rperm: return _rperm
+    if session.get("team_member_id"):   # company setting — owner only
+        flash("Only the account owner can change this.", "danger")
+        return redirect(url_for("portal.settings"))
+    import chat_translate as _ct
+    tenant_id = int(_get_customer(_customer_id())["tenant_id"])
+    if not _ct.allowed(tenant_id):
+        flash("Chat Translation is part of the AI Sales Agent for B2B.", "info")
+        return redirect(url_for("portal.settings"))
+    _ct.save_settings(tenant_id, request.form.get("enabled") == "on",
+                      (request.form.get("team_lang") or "en").strip().lower(),
+                      (request.form.get("reply_mode") or "translate").strip().lower(),
+                      by_label="owner")
+    flash("Chat Translation saved.", "success")
+    return redirect(url_for("portal.settings") + "#translation")
+
+
+def _chat_tr_request():
+    """(tenant_id, settings) for an Inbox translation call, or (None, response)."""
+    r = _require_login()
+    if r: return None, (jsonify({"error": "login"}), 401)
+    _rperm = _require_team_permission("inbox.page")
+    if _rperm: return None, (jsonify({"error": "permission"}), 403)
+    import chat_translate as _ct
+    tenant_id = int(_get_customer(_customer_id())["tenant_id"])
+    st = _ct.active_for(tenant_id)
+    if not st:
+        return None, (jsonify({"error": "off"}), 403)
+    return (tenant_id, st), None
+
+
+@portal_bp.route("/inbox/translate", methods=["POST"])
+@team_feature("inbox.page")
+def inbox_translate():
+    _rperm = _require_team_permission("inbox.page")
+    if _rperm: return jsonify({"error": "permission"}), 403
+    ok, err = _chat_tr_request()
+    if err: return err
+    tenant_id, st = ok
+    import chat_translate as _ct
+    texts = (request.get_json(silent=True) or {}).get("texts") or []
+    if not isinstance(texts, list):
+        return jsonify({"error": "bad"}), 400
+    try:
+        res = _ct.translate_for_team(tenant_id, [str(t) for t in texts], st["team_lang"])
+    except Exception as e:
+        print("⚠️ inbox_translate:", e)
+        return jsonify({"error": "Translation is not available right now."}), 502
+    return jsonify({"team_lang": st["team_lang"], "results": res})
+
+
+@portal_bp.route("/inbox/translate-out", methods=["POST"])
+@team_feature("inbox.reply")
+def inbox_translate_out():
+    _rperm = _require_team_permission("inbox.reply")
+    if _rperm: return jsonify({"error": "permission"}), 403
+    ok, err = _chat_tr_request()
+    if err: return err
+    import chat_translate as _ct
+    d = request.get_json(silent=True) or {}
+    to = str(d.get("to") or "").lower()[:10]
+    if to not in _ct.LANG_NAMES:
+        return jsonify({"error": "language"}), 400
+    try:
+        return jsonify({"text": _ct.translate_out(str(d.get("text") or ""), to)})
+    except Exception as e:
+        print("⚠️ inbox_translate_out:", e)
+        return jsonify({"error": "Translation is not available right now."}), 502
+
+
+@portal_bp.route("/inbox/translate-remember", methods=["POST"])
+@team_feature("inbox.reply")
+def inbox_translate_remember():
+    _rperm = _require_team_permission("inbox.reply")
+    if _rperm: return jsonify({"error": "permission"}), 403
+    ok, err = _chat_tr_request()
+    if err: return err
+    tenant_id, st = ok
+    import chat_translate as _ct
+    d = request.get_json(silent=True) or {}
+    _ct.remember_sent(tenant_id, str(d.get("sent") or ""), str(d.get("original") or ""),
+                      st["team_lang"], str(d.get("to") or "")[:10])
+    return jsonify({"ok": True})
 
 
 @portal_bp.route("/settings/profile", methods=["POST"])
@@ -17930,7 +18201,12 @@ def whatsapp_contacts():
 
         clauses = ["c.tenant_id = %s"]
         where_params = [tenant_id]
-        if search:
+        _nk = _search_number_key(search) if search else None
+        if _nk:   # a phone number, however it is written (2026-10-30)
+            _nsql, _nparams = _number_match_sql(("c.phone", "c.whatsapp_number", "c.notes"), _nk)
+            clauses.append(_nsql)
+            where_params += _nparams
+        elif search:
             clauses.append("(c.phone ILIKE %s OR c.whatsapp_number ILIKE %s OR c.display_name ILIKE %s OR c.email ILIKE %s "
                            "OR c.other_emails ILIKE %s)")
             where_params += [f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"]
@@ -18633,7 +18909,12 @@ def whatsapp_contacts_export():
 
         clauses = ["c.tenant_id = %s"]
         where_params = [tenant_id]
-        if search:
+        _nk = _search_number_key(search) if search else None
+        if _nk:   # a phone number, however it is written (2026-10-30)
+            _nsql, _nparams = _number_match_sql(("c.phone", "c.whatsapp_number", "c.notes"), _nk)
+            clauses.append(_nsql)
+            where_params += _nparams
+        elif search:
             clauses.append("(c.phone ILIKE %s OR c.whatsapp_number ILIKE %s OR c.display_name ILIKE %s OR c.email ILIKE %s "
                            "OR c.other_emails ILIKE %s)")
             where_params += [f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"]
@@ -34235,6 +34516,11 @@ def _get_webchat_messages(tenant_id: int, key: str, limit: int = 200) -> list:
         """, (tenant_id, session_id, tenant_id, session_id, limit))
         rows = cur.fetchall() or []
         cur.close(); conn.close()
+        # The AI's hidden product tag (turned into product cards in the
+        # chat box) is kept in chat_messages — never show it in the Inbox.
+        for r in rows:
+            if "<<<PHIXTRA_PRODUCTS" in (r.get("content") or ""):
+                r["content"] = _re.sub(r"\s*<<<PHIXTRA_PRODUCTS:.*?>>>", "", r["content"], flags=_re.S).strip()
         return rows
     except Exception as e:
         print("⚠️ _get_webchat_messages error:", e)
@@ -34498,6 +34784,7 @@ def my_inbox():
         # team has already corrected ({source_ref: who fixed it}).
         corrections_map=_corrections_for_conv(tenant_id, active_phone) if active_phone else {},
         is_webchat_active=is_webchat_active,
+        chat_tr=_chat_tr_inbox_ctx(tenant_id),   # Chat Translation, B2B (2026-10-29)
     )
 
 
@@ -36799,33 +37086,26 @@ _LEADS_NOT_REMEMBERED = {"page", "per_page", "_count", "reset", "open_add", "q"}
 
 
 def _leads_remember_filters(tenant_id: int, actor_key: str):
-    """All Leads remembers each person's last filters (user, 2026-10-17).
+    """All Leads remembers each person's last filters (user, 2026-10-17) —
+    only while they are logged in (user, 2026-10-30: a forgotten filter hid
+    a lead; logging out must clear them). Kept in the login session, so
+    logout (session.clear) and a new login start with no filters.
     Filters in the address → saved. A plain visit → back to the saved ones.
     ?reset=1 (Clear all) → forgotten. Search text is not remembered."""
     try:
         keep = [(k, v) for k in request.args.keys() if k not in _LEADS_NOT_REMEMBERED for v in request.args.getlist(k)]
-        conn = get_db_connection(); cur = conn.cursor()
-        try:
-            if request.args.get("reset") or keep:
-                from urllib.parse import urlencode
-                cur.execute("""INSERT INTO user_list_prefs (tenant_id, actor_key, page_key, per_page, filters)
-                               VALUES (%s,%s,'leads_filters','',%s)
-                               ON CONFLICT (tenant_id, actor_key, page_key)
-                               DO UPDATE SET filters=EXCLUDED.filters, updated_at=NOW()""",
-                            (tenant_id, actor_key, "" if request.args.get("reset") else urlencode(keep)))
-                conn.commit()
-                if request.args.get("reset"):
-                    return redirect(url_for("portal.leads_page", view=request.args.get("view") or None))
-                return None
-            if any(k not in ("page", "per_page") for k in request.args.keys()):
-                return None
-            cur.execute("SELECT filters FROM user_list_prefs WHERE tenant_id=%s AND actor_key=%s AND page_key='leads_filters'",
-                        (tenant_id, actor_key))
-            row = cur.fetchone()
-            if row and row[0]:
-                return redirect(url_for("portal.leads_page") + "?" + row[0])
-        finally:
-            cur.close(); conn.close()
+        if request.args.get("reset") or keep:
+            from urllib.parse import urlencode
+            if request.args.get("reset"):
+                session.pop("leads_filters", None)
+                return redirect(url_for("portal.leads_page", view=request.args.get("view") or None))
+            session["leads_filters"] = urlencode(keep)
+            return None
+        if any(k not in ("page", "per_page") for k in request.args.keys()):
+            return None
+        saved = session.get("leads_filters")
+        if saved:
+            return redirect(url_for("portal.leads_page") + "?" + saved)
     except Exception as e:
         print("⚠️ _leads_remember_filters:", e)
     return None
@@ -36839,8 +37119,15 @@ def _leads_found_elsewhere(cur, tenant_id: int, search: str):
     None when there is nothing elsewhere."""
     like = f"%{search}%"
     _ssql, _sparams = _lead_scope("mpl")
-    base = ("mpl.tenant_id=%s AND (mpl.customer_name ILIKE %s OR mpl.contact_person ILIKE %s "
-            "OR mpl.email ILIKE %s OR mpl.other_emails ILIKE %s)" + _ssql)
+    _nk = _search_number_key(search)
+    if _nk:
+        _nsql, _nparams = _number_match_sql(("mpl.phone", "mpl.whatsapp_number", "mpl.notes"), _nk, "mpl.id")
+        base = "mpl.tenant_id=%s AND " + _nsql + _ssql
+        _first = [tenant_id] + _nparams
+    else:
+        base = ("mpl.tenant_id=%s AND (mpl.customer_name ILIKE %s OR mpl.contact_person ILIKE %s "
+                "OR mpl.email ILIKE %s OR mpl.other_emails ILIKE %s)" + _ssql)
+        _first = [tenant_id, like, like, like, like]
     groups = (("pipeline", "mpl.is_opportunity AND mpl.dropped_at IS NULL"),
               ("closed", "(mpl.dropped_at IS NOT NULL OR (NOT mpl.is_opportunity AND mpl.outcome IS NOT NULL))"))
     out = {}
@@ -36850,7 +37137,7 @@ def _leads_found_elsewhere(cur, tenant_id: int, search: str):
                                COALESCE(mpl.dropped_at, mpl.updated_at) AS closed_at
                           FROM merchant_pipeline_leads mpl WHERE {base} AND {cond}
                          ORDER BY mpl.updated_at DESC NULLS LAST, mpl.id DESC LIMIT 5""",
-                    [tenant_id, like, like, like, like] + _sparams)
+                    _first + _sparams)
         rows = [dict(r) for r in cur.fetchall()]
         out[key] = {"total": int(rows[0]["total"]) if rows else 0, "rows": rows}
     return out if (out["pipeline"]["total"] or out["closed"]["total"]) else None
@@ -37119,6 +37406,7 @@ def leads_page():
 
     return render_template(
         "portal/leads.html", addr_opts=addr_opts, linkedin_filter_options=_li.FILTER_OPTIONS,
+        aiq_check_count=(_lq.open_check_count(tenant_id) if _aiq_settings() else None),
         opt_counts=opt_counts, all_labels=all_labels, assignee_options=assignee_options,
         can_filter_assigned=_leads_see_all(), filter_chips=filter_chips, lead_imports=lead_imports,
         biz_state=lf["biz"], addr_state=lf["addr"],
@@ -37754,7 +38042,11 @@ def _inbox_can_see(tenant_id: int, key: str, numbers=(), emails=()) -> bool:
     """Inbox rule (user 2026-10-08) for staff without "See all leads and
     contacts": chats with their own contacts always; a claimed chat only by
     whoever claimed it; a colleague's contact never; anyone who belongs to
-    nobody yet is open to all until claimed."""
+    nobody yet is open to all until claimed.
+    "Try it yourself" demo visitors: their own chats only (demo_visitor)."""
+    if session.get("demo_visitor"):
+        from demo_visitor import can_see as _demo_can_see
+        return _demo_can_see(key)
     if not _inbox_limited():
         return True
     own = _inbox_ownership(tenant_id)
@@ -37785,6 +38077,9 @@ def _inbox_chat_identity(tenant_id: int, key: str):
 
 
 def _inbox_key_visible(tenant_id: int, key: str) -> bool:
+    if session.get("demo_visitor"):
+        from demo_visitor import can_see as _demo_can_see
+        return _demo_can_see(key)
     if not _inbox_limited():
         return True
     numbers, emails, _ = _inbox_chat_identity(tenant_id, key)
@@ -38528,6 +38823,27 @@ _PIPELINE_STAGE_POINTS_SQL = """
     CASE WHEN mpl.stage IN ('proposal_sent', 'negotiating', 'won') THEN 25 ELSE 0 END
 """
 
+def _aiq_settings():
+    """AI Lead Qualification settings for the logged-in business (worked out
+    once per request), or None when it doesn't have it / switched it off.
+    With it, the Lead Score is the AI qualification score (2026-10-30)."""
+    if "aiq_s" not in g:
+        try:
+            _c = _get_customer(_customer_id())
+            g.aiq_s = _lq.active(int(_c["tenant_id"])) if _c else None
+        except Exception as e:
+            print("⚠️ _aiq_settings:", e)
+            g.aiq_s = None
+    return g.aiq_s
+
+
+def _score_tier(total: int) -> str:
+    _aiq = _aiq_settings()
+    if _aiq:
+        return _lq.tier_for(total, _aiq)
+    return "hot" if total >= 60 else ("warm" if total >= 30 else "cold")
+
+
 def _pipeline_scored_from_sql() -> str:
     """FROM-clause replacement for the bare 'merchant_pipeline_leads mpl' —
     adds lead_score and lead_tier ('hot'/'warm'/'cold') columns to every row,
@@ -38540,6 +38856,22 @@ def _pipeline_scored_from_sql() -> str:
     written inline (an int id) so the one-placeholder contract above holds."""
     _own = "" if _leads_see_all() else \
         f" AND mpl.assigned_key = 'team:{int(session['team_member_id'])}'"
+    _aiq = _aiq_settings()
+    if _aiq:
+        # AI Lead Qualification: six criteria, the business's own points and bands.
+        return f"""
+        (
+            SELECT scored.*,
+                   CASE WHEN scored.lead_score >= {int(_aiq['hot_from'])} THEN 'hot'
+                        WHEN scored.lead_score >= {int(_aiq['warm_from'])} THEN 'warm'
+                        ELSE 'cold' END AS lead_tier
+            FROM (
+                SELECT mpl.*, ({_lq.score_sql(_aiq, "mpl")})::int AS lead_score
+                FROM merchant_pipeline_leads mpl
+                WHERE mpl.tenant_id = %s AND mpl.dropped_at IS NULL{_own}
+            ) scored
+        )
+    """
     return f"""
         (
             SELECT scored.*,
@@ -38568,6 +38900,10 @@ def _pipeline_score_breakdown(lead: dict) -> list:
     scores in SQL, for the Lead Command Centre's 'why this score' display —
     every signal shown even at 0/negative, so a salesperson can see exactly
     what to do next to move the number, not just the final total."""
+    _aiq = _aiq_settings()
+    if _aiq:
+        return [{"label": l["label"], "points": l["points"], "active": l["active"]}
+                for l in _lq.score(lead, _aiq)[2]]
     now = datetime.now(timezone.utc)
     updated_at = lead.get("updated_at")
     touched_48h = bool(updated_at and updated_at >= now - timedelta(hours=48))
@@ -38587,6 +38923,30 @@ def _contact_pick(v) -> str:
     """Contact details filter (2026-10-28): '1' = Has, '0' = Missing, '' = either."""
     v = (v or "").strip()
     return v if v in ("1", "0") else ""
+
+
+def _search_number_key(search: str):
+    """A search that is a phone number (any way of writing it: 0803…,
+    +234 803…, 234803…) → its last 9 digits, which every stored form of the
+    number contains. None for a normal text search. (User 2026-10-30: a
+    number from an email reply could not be found.)"""
+    if not search or not _re.fullmatch(r"[\d\s+()\-./]{7,}", search.strip()):
+        return None
+    d = _re.sub(r"\D", "", search)
+    return d[-9:] if len(d) >= 7 else None
+
+
+def _number_match_sql(cols, key: str, reply_lead_col: str = None):
+    """(sql, params): any of the columns (phone fields, Notes with "Other
+    numbers") — and, for a lead, its email replies — holds the number."""
+    like = f"%{key}%"
+    parts = [f"regexp_replace(COALESCE({c}, ''), '\D', '', 'g') LIKE %s" for c in cols]
+    params = [like] * len(cols)
+    if reply_lead_col:
+        parts.append(f"EXISTS (SELECT 1 FROM email_replies er WHERE er.lead_id = {reply_lead_col} "
+                     f"AND regexp_replace(COALESCE(er.snippet, ''), '\D', '', 'g') LIKE %s)")
+        params.append(like)
+    return "(" + " OR ".join(parts) + ")", params
 
 
 def _contact_clause(col: str, want):
@@ -38624,10 +38984,16 @@ def _pipeline_filter_clauses(tenant_id, search, stage_filter, has_phone, has_wha
         clauses.append("mpl.lead_tier=%s")
         params.append(tier_filter)
     if search:
-        clauses.append("(mpl.customer_name ILIKE %s OR mpl.contact_person ILIKE %s "
-                       "OR mpl.email ILIKE %s OR mpl.other_emails ILIKE %s)")
-        like = f"%{search}%"
-        params += [like, like, like, like]
+        _nk = _search_number_key(search)
+        if _nk:
+            _nsql, _nparams = _number_match_sql(("mpl.phone", "mpl.whatsapp_number", "mpl.notes"), _nk, "mpl.id")
+            clauses.append(_nsql)
+            params += _nparams
+        else:
+            clauses.append("(mpl.customer_name ILIKE %s OR mpl.contact_person ILIKE %s "
+                           "OR mpl.email ILIKE %s OR mpl.other_emails ILIKE %s)")
+            like = f"%{search}%"
+            params += [like, like, like, like]
     if stage_filter != "all":
         clauses.append("mpl.stage=%s")
         params.append(stage_filter)
@@ -39747,12 +40113,124 @@ def sales_pipeline_edit(lead_id: int):
         if _oe_sent:
             _addr.save_other_emails(cur, tenant_id, other_emails, lead_id=lead_id)
         conn.commit(); cur.close(); conn.close()
+    if "aiq_fields" in f:
+        _aiq_save_fields(tenant_id, lead, f)
 
     staff_activity.log("lead_edited", tenant_id, lead_id=lead_id)
     flash(f"{customer_name} updated.", "success")
     # Editing can happen from the Lead's own page or from Sales Pipeline —
     # go back to wherever the edit was submitted from, not always Pipeline.
     return redirect(request.referrer or url_for("portal.sales_pipeline"))
+
+
+def _aiq_save_fields(tenant_id: int, lead: dict, f) -> None:
+    """AI Lead Qualification (2026-10-30): the buying details on the Edit
+    window. A detail a person changes is theirs: the AI's own judgement of
+    that criterion is dropped so the score follows what they typed."""
+    new = {"business_type": (f.get("business_type") or "").strip()[:40] or None,
+           "quantity": (f.get("quantity") or "").strip()[:200] or None,
+           "delivery_country": (f.get("delivery_country") or "").strip()[:80] or None,
+           "purchase_timeline": (f.get("purchase_timeline") or "").strip()[:200] or None}
+    if new["business_type"] and new["business_type"] not in _lq.BUSINESS_TYPES:
+        new["business_type"] = None
+    changed = [k for k, v in new.items() if (lead.get(k) or None) != v]
+    # Criteria whose detail the person changed in this save (fields saved above).
+    crit = {"quantity": "commercial", "delivery_country": "location", "purchase_timeline": "timeline"}
+    drop = {crit[k] for k in changed if k in crit}
+    if ((f.get("product_interest") or "").strip() or None) != (lead.get("product_interest") or None):
+        drop.add("requirement")
+    if ("decision_maker_engaged" in f) != bool(lead.get("decision_maker_engaged")):
+        drop.add("authority")
+    if "website" in f and (_normalize_website_url(f.get("website") or "") or None) != (lead.get("website") or None):
+        drop.add("verified")
+    if (f.get("deadline_date") or "") != (lead["deadline_date"].strftime("%Y-%m-%d") if lead.get("deadline_date") else ""):
+        drop.add("timeline")
+    # The business's own questions: what a person types or ticks is theirs.
+    _qs = (_aiq_settings() or {}).get("questions") or []
+    _old_ans = _lq.answers_for(lead)
+    _new_ans = _json.loads(_json.dumps(_old_ans))
+    for _q in _qs:
+        if f"ans_{_q['id']}" not in f:
+            continue
+        _a = (f.get(f"ans_{_q['id']}") or "").strip()[:300] or None
+        _m = f.get(f"met_{_q['id']}") == "1"
+        _o = _old_ans.get(_q["id"]) or {}
+        if _a != _o.get("answer") or _m != bool(_o.get("met")):
+            _new_ans[_q["id"]] = {"answer": _a, "met": _m, "by": "staff"}
+    if not changed and not drop and _new_ans == _old_ans:
+        return
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("UPDATE merchant_pipeline_leads SET qual_answers=%s WHERE id=%s AND tenant_id=%s",
+                    (psycopg2.extras.Json(_new_ans) if _new_ans else None, lead["id"], tenant_id))
+        cur.execute("""UPDATE merchant_pipeline_leads
+                          SET business_type=%s, quantity=%s, delivery_country=%s, purchase_timeline=%s,
+                              qual_checks = CASE WHEN qual_checks IS NULL THEN NULL ELSE qual_checks - %s::text[] END,
+                              qual_by='staff', updated_at=NOW()
+                        WHERE id=%s AND tenant_id=%s""",
+                    (new["business_type"], new["quantity"], new["delivery_country"], new["purchase_timeline"],
+                     sorted(drop), lead["id"], tenant_id))
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+
+
+@portal_bp.route("/leads/<int:lead_id>/ai-undo/<int:decision_id>", methods=["POST"])
+@team_feature("leads.qualify")
+def lead_ai_undo(lead_id: int, decision_id: int):
+    """Undo one AI Lead Qualification decision (2026-10-30)."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("leads.qualify")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if not _pipeline_lead_owned_by_tenant(lead_id, tenant_id):
+        flash("Lead not found.", "danger")
+        return redirect(url_for("portal.leads_page"))
+    ok, msg, _ = _lq.undo(tenant_id, decision_id, _current_actor(customer)["label"], lead_id=lead_id)
+    flash(msg, "success" if ok else "warning")
+    return redirect(url_for("portal.lead_detail", lead_id=lead_id))
+
+
+@portal_bp.route("/leads/check-these")
+@team_feature("leads.page")
+def leads_check_these():
+    """Check these (2026-10-30): what the AI wasn't sure about — a possible
+    duplicate buyer, or an enquiry it couldn't judge."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "leads.page", "Leads")
+    if r2: return r2
+    if not _lq.allowed(tenant_id):
+        flash("Check these is part of AI Lead Qualification, on the AI Sales Agent for B2B plan.", "warning")
+        return redirect(url_for("portal.leads_page"))
+    scope_sql, scope_params = "", ()
+    if not _leads_see_all():
+        scope_sql, scope_params = " AND l.assigned_key = %s", (f"team:{int(session['team_member_id'])}",)
+    items = _lq.check_items(tenant_id, scope_sql, scope_params)
+    return render_template("portal/leads_check_these.html", items=items,
+                           can_act=_team_member_has_permission("leads.qualify"))
+
+
+@portal_bp.route("/leads/check-these/<int:item_id>/<action>", methods=["POST"])
+@team_feature("leads.qualify")
+def leads_check_these_resolve(item_id: int, action: str):
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("leads.qualify")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if action not in ("merge", "separate", "done"):
+        return redirect(url_for("portal.leads_check_these"))
+    ok, msg = _lq.resolve_check(tenant_id, item_id, action, _current_actor(customer)["label"])
+    flash(msg, "success" if ok else "warning")
+    return redirect(url_for("portal.leads_check_these"))
 
 
 @portal_bp.route("/sales-pipeline/<int:lead_id>/advance", methods=["POST"])
@@ -40083,7 +40561,11 @@ def lead_scoring_explainer():
     tenant_id = int(customer["tenant_id"])
     r2 = _require_plan_sub_feature(customer, "crm.pipeline_board_view", "Pipeline Board")
     if r2: return r2
-    return render_template("portal/lead_scoring_explainer.html", customer=customer)
+    _aiq = _aiq_settings()
+    return render_template("portal/lead_scoring_explainer.html", customer=customer, aiq=_aiq,
+                           aiq_lines=([(l, _lq.scored_points(_aiq)[k]) for k, l, _ in _lq.CRITERIA if _lq.scored_points(_aiq)[k]]
+                                      + [(q["label"], q["points"]) for q in _lq.own_questions(_aiq)]) if _aiq else [],
+                           aiq_total=_lq.total_points(_aiq) if _aiq else 0)
 
 
 @portal_bp.route("/sales-pipeline/settings", methods=["GET", "POST"])
@@ -40117,6 +40599,8 @@ def sales_pipeline_settings():
                         (psycopg2.extras.Json(overrides), tenant_id))
             conn.commit()
             flash("Stage names saved.", "success")
+            cur.close(); conn.close()
+            return redirect(url_for("portal.sales_pipeline_settings") + "#stages")
         elif form_type == "score_labels":
             overrides = {}
             for key in PIPELINE_SCORE_TIER_DEFAULTS.keys():
@@ -40127,6 +40611,27 @@ def sales_pipeline_settings():
                         (psycopg2.extras.Json(overrides), tenant_id))
             conn.commit()
             flash("Lead Score labels saved.", "success")
+            cur.close(); conn.close()
+            return redirect(url_for("portal.sales_pipeline_settings") + "#score-labels")
+        elif form_type == "aiq" and _lq.allowed(tenant_id):
+            fm = request.form
+            _lq.save_settings(tenant_id, {
+                "enabled": fm.get("enabled") == "1", "ask": fm.getlist("ask"),
+                "min_qty": fm.get("min_qty"), "min_value": fm.get("min_value"), "deliver_to": fm.get("deliver_to"),
+                "hot_from": fm.get("hot_from"), "warm_from": fm.get("warm_from"),
+                "points": {k: fm.get(f"pts_{k}") for k, _, _ in _lq.CRITERIA},
+                "on_hot_qualify": fm.get("on_hot_qualify") == "1", "on_hot_alert": fm.get("on_hot_alert") == "1",
+                "read_inbox": fm.get("read_inbox") == "1", "owner_rule": fm.get("owner_rule"),
+                "rotation_skip": fm.getlist("rot_skip"),
+                "questions": [{"id": i, "label": l, "ask": a, "good_if": g, "points": p, "on": o == "1"}
+                              for i, l, a, g, p, o in
+                              zip(fm.getlist("q_id"), fm.getlist("q_label"), fm.getlist("q_ask"),
+                                  fm.getlist("q_good"), fm.getlist("q_points"),
+                                  fm.getlist("q_on") + ["1"] * len(fm.getlist("q_id")))]},
+                _current_actor(customer)["label"])
+            cur.close(); conn.close()
+            flash("AI Lead Qualification settings saved.", "success")
+            return redirect(url_for("portal.sales_pipeline_settings") + "#ai-qualification")
         elif form_type in ("fu_rule", "fu_rule_delete", "fu_rule_toggle", "fu_settings"):
             actor = _current_actor(customer)["label"]
             rid = request.form.get("rule_id", type=int)
@@ -40167,8 +40672,39 @@ def sales_pipeline_settings():
         current_stage_labels=pipeline_effective_stage_labels(tenant_id),
         score_defaults=PIPELINE_SCORE_TIER_DEFAULTS,
         current_score_labels=pipeline_effective_score_labels(tenant_id),
+        **_aiq_settings_context(tenant_id),
         **_fu_settings_context(customer, tenant_id),
     )
+
+
+def _aiq_settings_context(tenant_id: int) -> dict:
+    """The AI Lead Qualification card on Pipeline Settings (2026-10-30)."""
+    if not _lq.allowed(tenant_id):
+        return {"aiq_allowed": False}
+    import mailbox_routes
+    try:
+        boxes = mailbox_routes.team_mailboxes(tenant_id)   # active and needs-reconnecting
+    except Exception as e:
+        print("⚠️ AI qualification mailboxes:", e)
+        boxes = []
+    # The sales team in the rotation (same rule as lead_qualify._pick_owner),
+    # WhatsApp numbers the AI answers on, and what is waiting in Check these.
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""SELECT tm.id, tm.name FROM team_members tm
+                         LEFT JOIN tenant_roles r ON r.id = tm.role_id AND r.tenant_id = tm.tenant_id
+                        WHERE tm.tenant_id=%s AND tm.is_active AND (r.permissions->>'leads.page') IN ('true', '1')
+                        ORDER BY tm.id""", (tenant_id,))
+        team = [{"id": r["id"], "name": r["name"]} for r in cur.fetchall()]
+    finally:
+        cur.close(); conn.close()
+    numbers = [{"number": c.get("display_phone_number") or "", "label": c.get("label") or ""}
+               for c in _get_wa_connections_all(tenant_id) if c.get("active")]
+    return {"aiq_allowed": True, "aiq": _lq.settings(tenant_id), "aiq_ask_fields": _lq.ASK_FIELDS,
+            "aiq_max_questions": _lq.MAX_QUESTIONS, "aiq_team": team, "aiq_numbers": numbers,
+            "aiq_check_open": _lq.open_check_count(tenant_id), "aiq_countries": [n for _i, n in _addr.ADDRESS_COUNTRIES if len(n) > 2],
+            "aiq_criteria": _lq.CRITERIA, "aiq_mailboxes": boxes,
+            "aiq_currency": _selling_currency.currency_label(_selling_currency.tenant_currency(tenant_id))["prefix"].strip()}
 
 
 def _fu_settings_context(customer, tenant_id: int) -> dict:
@@ -40345,8 +40881,7 @@ def lead_detail(lead_id: int, opp_view: bool = False):
         # Closed leads (Not a Fit / Lost / Dropped) are outside the scored
         # list — add up the same breakdown shown under it so the two agree.
         _total = sum(s["points"] for s in score_breakdown)
-        score_row = {"lead_score": _total,
-                     "lead_tier": "hot" if _total >= 60 else ("warm" if _total >= 30 else "cold")}
+        score_row = {"lead_score": _total, "lead_tier": _score_tier(_total)}
 
     # Campaign, if a WhatsApp campaign reply is what created this Lead
     # (Campaign Intelligence link) — checked by the link itself, not by
@@ -40416,6 +40951,18 @@ def lead_detail(lead_id: int, opp_view: bool = False):
     for _c in lead_cols:
         _c["can_fill"] = _cols.can_fill(_c, _team_member_has_permission)
     demo = bookings_crm.lead_view(cur, tenant_id, lead_id)
+    aiq = _aiq_settings()
+    aiq_decisions = []
+    if aiq:
+        try:
+            aiq_decisions = _lq.lead_decisions(tenant_id, lead_id)
+            from team_performance import tz_for as _tzf
+            _tz = _tzf(tenant_id)
+            for _d in aiq_decisions:
+                if _d.get("created_at"):
+                    _d["created_at"] = _d["created_at"].astimezone(_tz)
+        except Exception as e:
+            print("⚠️ lead AI decisions:", e)
     try:
         auto_fu = _fu_deal_view(cur, tenant_id, lead)
     except Exception as e:
@@ -40428,6 +40975,9 @@ def lead_detail(lead_id: int, opp_view: bool = False):
     return render_template(
         "portal/lead_detail.html",
         auto_fu=auto_fu,
+        aiq=aiq, aiq_decisions=aiq_decisions, aiq_business_types=_lq.BUSINESS_TYPES,
+        aiq_undo=_lq.undo_target(aiq_decisions, lead) if aiq else None,
+        aiq_channel_words=_lq.CHANNEL_WORDS,
         demo=demo, demo_seq_stopped=any(e["kind"] == "sequence_stopped" for e in demo["events"]),
         lead=lead,
         lead_labels=lead_labels,

@@ -154,6 +154,8 @@
     </div>
   </div>
 
+  {% include "portal/_aiq_lead_card.html" %}
+
   {% if lead.is_opportunity %}
   {# Opportunity page (2026-10-28): stage bar and the deal's key facts at the top #}
   {% set _cur = stage_order.index(lead.stage) if lead.stage in stage_order else -1 %}
@@ -562,7 +564,7 @@
         {% endif %}
       </div>
       {% endif %}
-      {% set _email_words = {'sent': 'Email sent', 'opened': 'Opened the email', 'clicked': 'Clicked a link', 'replied': 'Replied', 'unsubscribed': 'Unsubscribed from emails', 'bounced': 'Email bounced — this address doesn\'t exist', 'soft_bounced': 'Email delayed (temporary problem at their end)', 'outlook_sent': 'Email sent'} %}
+      {% set _email_words = {'sent': 'Email sent', 'opened': 'Opened the email', 'clicked': 'Clicked a link', 'replied': 'Replied', 'unsubscribed': 'Unsubscribed from emails', 'bounced': 'Email bounced — this address doesn\'t exist', 'soft_bounced': 'Email delayed (temporary problem at their end)', 'outlook_sent': 'Email sent', 'enquiry': 'New enquiry email'} %}
       {% for e in email_history %}
       <div style="font-size:12.5px;color:var(--ink);background:#f8fafc;border-radius:10px;padding:10px 14px;margin-bottom:8px">
         <strong>{{ _email_words.get(e.kind, e.kind) }}</strong>
@@ -615,7 +617,8 @@
       <div class="lc-field-label">Source</div>
       {% set src_meta = {'whatsapp': ('#dcfce7','#15803d','WhatsApp'), 'facebook': ('#dbeafe','#1d4ed8','Facebook'),
                           'instagram': ('#fce7f3','#be185d','Instagram'), 'manual': ('#f1f5f9','#64748b','Manual'),
-                          'import': ('#eef2ff','#3730a3','Import'), 'demo_booking': ('#E8EEF8','#0B1D40','Demo booking'), 'lead_finder': ('#E8EEF8','#0B1D40','Lead Finder')} %}
+                          'import': ('#eef2ff','#3730a3','Import'), 'demo_booking': ('#E8EEF8','#0B1D40','Demo booking'), 'lead_finder': ('#E8EEF8','#0B1D40','Lead Finder'),
+                          'email': ('#eff6ff','#1d4ed8','Email enquiry'), 'website': ('#f0fdf4','#15803d','Website chat')} %}
       {% if lead.source and lead.source in src_meta %}
       {% set s_bg, s_fg, s_label = src_meta[lead.source] %}
       <span class="stage-pill" style="background:{{ s_bg }};color:{{ s_fg }}">{{ s_label }}</span>
@@ -661,6 +664,7 @@
     <div><div class="lc-field-label">Product / Service</div><div class="lc-field-value">{{ lead.product_interest or '—' }}</div></div>
     {% if not lead.is_opportunity %}
     <div><div class="lc-field-label">Assigned Salesperson</div><div class="lc-field-value">{{ (lead.assigned_to|who(lead.assigned_key)) if lead.assigned_to else '—' }}</div></div>
+    {% if not aiq %}{# with AI Lead Qualification the score is in the AI box at the top #}
     <div><div class="lc-field-label">Lead Score</div>
       {% set _sb = {'hot': ('🔥','#fef2f2','#b91c1c'), 'warm': ('🌤️','#fffbeb','#b45309'), 'cold': ('❄️','#eff6ff','#1d4ed8')} %}
       {% set icon, bg, fg = _sb.get(lead_tier, _sb['cold']) %}
@@ -673,6 +677,7 @@
         {% endfor %}
       </div>
     </div>
+    {% endif %}
 
     <div style="grid-column: span 4">
       <div class="lc-field-label">Deal Value</div>
@@ -846,8 +851,30 @@
       <div class="frow single">
         <div><label class="flbl">Notes</label><textarea name="notes" class="finp">{{ lead.notes or '' }}</textarea></div>
       </div>
+      {% if aiq %}
+      <input type="hidden" name="aiq_fields" value="1">
+      <div class="flbl" style="margin:4px 0 8px;font-size:13px">Buying details <span style="font-weight:400;color:#9ca3af">(the AI fills these from the buyer's messages; what you type here counts in the score)</span></div>
+      <div class="frow">
+        <div><label class="flbl">Business type</label>
+          <select name="business_type" class="finp"><option value="">— Not known —</option>
+            {% for bt in aiq_business_types %}<option value="{{ bt }}" {{ 'selected' if lead.business_type == bt }}>{{ bt }}</option>{% endfor %}
+          </select></div>
+        <div><label class="flbl">Quantity</label><input type="text" name="quantity" class="finp" maxlength="200" value="{{ lead.quantity or '' }}" placeholder="e.g. 200 units, 5,000 boxes a month"></div>
+      </div>
+      <div class="frow">
+        <div><label class="flbl">Delivery country</label><input type="text" name="delivery_country" class="finp" maxlength="80" value="{{ lead.delivery_country or '' }}" placeholder="e.g. Germany"></div>
+        <div><label class="flbl">Purchase timeline</label><input type="text" name="purchase_timeline" class="finp" maxlength="200" value="{{ lead.purchase_timeline or '' }}" placeholder="e.g. within 3 weeks"></div>
+      </div>
+      {% for q in aiq.questions %}{% set _a = (lead.qual_answers or {}).get(q.id) or {} %}
+      <div class="frow">
+        <div><label class="flbl">{{ q.label }}</label><input type="text" name="ans_{{ q.id }}" class="finp" maxlength="300" value="{{ _a.answer or '' }}" placeholder="{{ q.ask }}"></div>
+        <div style="display:flex;align-items:flex-end;padding-bottom:10px"><label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer">
+          <input type="checkbox" name="met_{{ q.id }}" value="1" style="width:16px;height:16px;margin:0" {{ 'checked' if _a.met }}> Good answer{% if q.good_if %} <span style="font-weight:400;color:#9ca3af">({{ q.good_if }})</span>{% endif %}</label></div>
+      </div>
+      {% endfor %}
+      {% endif %}
       <div class="frow single">
-        <div class="flbl" style="margin-bottom:6px">Sales Signals <span style="font-weight:400;color:#9ca3af">(feed the Lead Score — see "How Lead Scoring Works")</span></div>
+        <div class="flbl" style="margin-bottom:6px">Sales Signals <span style="font-weight:400;color:#9ca3af">(feed the Lead Score{% if not aiq %} — see "How Lead Scoring Works"{% endif %})</span></div>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:8px;cursor:pointer">
           <input type="checkbox" name="budget_confirmed" style="width:16px;height:16px;flex:0 0 auto;margin:0" value="1" {{ 'checked' if lead.budget_confirmed }}> Budget confirmed
         </label>

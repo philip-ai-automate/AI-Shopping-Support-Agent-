@@ -134,6 +134,11 @@
     <a class="s-tab" href="#preferences"   onclick="return switchTab('preferences',this)">
       <span class="tab-icon">⚙️</span> Preferences
     </a>
+    {% if chat_tr %}
+    <a class="s-tab" href="#translation"   onclick="return switchTab('translation',this)">
+      <span class="tab-icon">🌐</span> Chat Translation
+    </a>
+    {% endif %}
   </nav>
 
   <div>
@@ -685,6 +690,54 @@
         <button type="submit" class="btn btn-primary">Save Preferences</button>
       </form>
     </div>
+
+    {% if chat_tr %}
+    {# Chat Translation, AI Sales Agent for B2B (2026-10-29) #}
+    <div class="s-panel card" id="panel-translation">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <h2 class="section-heading" style="margin:0">Chat Translation</h2>
+        <span style="font-size:11.5px;font-weight:800;background:#E8EEF8;color:#0B1D40;border-radius:999px;padding:4px 10px">AI Sales Agent for B2B</span>
+      </div>
+      <p class="section-sub">Read every chat in your team's language, and reply in it. PhiXtra translates for the buyer.</p>
+      <form method="POST" action="{{ url_for('portal.settings_chat_translation') }}">
+        <div class="ctr-row">
+          <div><b>Translate chats in the Inbox</b><span>Buyers' messages show your team's language underneath. WhatsApp, Web Chat and Messenger.</span></div>
+          <label class="ctr-sw"><input type="checkbox" name="enabled" {% if chat_tr.s.enabled %}checked{% endif %}><i></i></label>
+        </div>
+        <div class="ctr-row">
+          <div><b>Your team's language</b><span>Chats are shown in this language, and your team writes in it.</span></div>
+          <select name="team_lang" class="ctr-sel">
+            {% for code, name in chat_tr.langs %}<option value="{{ code }}" {% if chat_tr.s.team_lang == code %}selected{% endif %}>{{ name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="ctr-row" style="align-items:flex-start">
+          <div><b>When your team replies</b><span>They always see what the buyer will receive before it is sent, and can change it on each message.</span></div>
+          <div class="ctr-radios">
+            <label><input type="radio" name="reply_mode" value="translate" {% if chat_tr.s.reply_mode != 'as_written' %}checked{% endif %}> Translate into the buyer's language</label>
+            <label><input type="radio" name="reply_mode" value="as_written" {% if chat_tr.s.reply_mode == 'as_written' %}checked{% endif %}> Send as written</label>
+          </div>
+        </div>
+        <div class="info-note" style="margin-top:14px">ℹ️ Messages already in your team's language are not translated. The buyer's original words are always kept. Translations are done by AI: check contracts and legal wording with a person.</div>
+        <button type="submit" class="btn btn-primary" style="margin-top:16px">Save</button>
+      </form>
+    </div>
+    <style>
+      .ctr-row{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:16px 0;border-top:1px solid var(--line,#E5E7EB)}
+      .ctr-row b{display:block;font-size:14.5px;margin-bottom:3px}
+      .ctr-row span{font-size:13px;color:var(--muted,#6B7280);line-height:1.5}
+      .ctr-sw{position:relative;flex:0 0 auto;width:46px;height:26px;margin:0!important}
+      .ctr-sw input{position:absolute;opacity:0;width:100%!important;height:100%!important;margin:0!important;cursor:pointer;z-index:1}
+      .ctr-sw i{position:absolute;inset:0;border-radius:999px;background:#CBD5E1;transition:.15s}
+      .ctr-sw i::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.15s}
+      .ctr-sw input:checked+i{background:#0B1D40}
+      .ctr-sw input:checked+i::after{left:23px}
+      .ctr-sel{width:200px!important;flex:0 0 auto}
+      .ctr-radios{display:flex;flex-direction:column;gap:8px;font-size:14px}
+      .ctr-radios label{display:flex!important;align-items:center;gap:8px;margin:0!important;font-weight:500;white-space:nowrap}
+      .ctr-radios input{width:auto!important;height:auto!important;margin:0!important;accent-color:#0B1D40}
+      @media(max-width:640px){.ctr-row{flex-direction:column;align-items:flex-start}.ctr-radios label{white-space:normal}}
+    </style>
+    {% endif %}
 
   </div><!-- end panels -->
 </div><!-- end layout -->

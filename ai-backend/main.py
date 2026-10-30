@@ -58,7 +58,7 @@ from web_spec_lookup import is_spec_question, lookup_spec_verified
 import image_search
 
 
-app = FastAPI(title="ProfitBuyz AI Support API")
+app = FastAPI(title="ProfitBuyz AI Support API", docs_url=None, redoc_url=None, openapi_url=None)
 
 from chatwoot_webhook import router as _chatwoot_router
 app.include_router(_chatwoot_router)
@@ -685,6 +685,13 @@ def _chat(req: ChatRequest):
 
     session_id = req.session_id or uuid.uuid4().hex
 
+    # AI Lead Qualification (30 Oct 2026): on WhatsApp and website chat the
+    # agent finds out the buying details the business asks for that are still
+    # missing — one question at a time. Businesses that have it only.
+    if not str(session_id).startswith("cw-"):
+        from lead_qualify_ai import addon as _lq_addon
+        system_prompt += _lq_addon(int(tenant_id), str(session_id))
+
     print(f"✅ /chat tenant_id={tenant_id} session_id={session_id}")
 
     # ── Product Recommendation Feature Check ─────────────────────────────────
@@ -1280,7 +1287,25 @@ def _chat(req: ChatRequest):
         "website": tenant.get("website"),
         "handoff_triggered": handoff_triggered,
     }
+    _all_recs = list(product_recommendations)
     product_recommendations = _validate_products(product_recommendations)
+    # Products with no web page (an uploaded price list, or added by hand)
+    # can't be cards, so the reply named "the option below" and nothing
+    # followed (2026-10-29). Name them with their price in the reply instead.
+    _kept = {id(p) for p in product_recommendations}
+    _no_card = [p for p in _all_recs if id(p) not in _kept and p.get("name") and p.get("price")]
+    if _no_card:
+        _lines = "\n".join(f"• **{p['name']}**: {p['price']}" for p in _no_card[:6])
+        response["reply"] = (str(response.get("reply") or "").rstrip() + "\n\n" + _lines).strip()
+        try:   # the Inbox copy of this answer gets the same lines
+            _c = get_db_connection(); _k = _c.cursor()
+            _k.execute("""UPDATE chat_messages SET content = content || %s
+                           WHERE id = (SELECT id FROM chat_messages WHERE tenant_id=%s AND session_id=%s
+                                         AND role='assistant' ORDER BY id DESC LIMIT 1)""",
+                       ("\n\n" + _lines, tenant_id, session_id))
+            _c.commit(); _k.close(); _c.close()
+        except Exception as _e:
+            print("⚠️ no-card product lines:", _e)
     if product_recommendations:
         # Every photo of each product, with its label (2026-10-25) — added
         # after the answer, so no AI tokens; website gallery + WhatsApp MORE.
@@ -2259,6 +2284,7 @@ from urllib.parse import urlparse as _w_urlparse
 from fastapi import Request as _WRequest
 from fastapi.responses import FileResponse as _WFileResponse, JSONResponse as _WJSON
 
+_CHAT_LINK_HOST = os.getenv("CHAT_LINK_HOST", "chat.phixtra.com")
 _WIDGET_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "phixtra-widget.js")
 _W_AI_OFF_PLANS = ("connect", "web_free")
 _W_RATE = _w_dd(_w_deque)          # (ip, site) -> recent message times
@@ -2297,7 +2323,13 @@ def _w_site(site_key: str, request) -> tuple:
         if not row or row["status"] not in ("active", "pending"):
             return None, (403, "Unknown website key")
         origin = request.headers.get("origin") or request.headers.get("referer") or ""
-        if not row["domain"] or _w_host(origin) != _w_host(row["domain"]):
+        via_link = False
+        if _w_host(origin) == _w_host(_CHAT_LINK_HOST):
+            # Chat link (2026-10-29): the business's own chat page on
+            # chat.phixtra.com/c/<name> — only for businesses that have one.
+            cur.execute("SELECT 1 FROM chat_links WHERE tenant_id=%s AND enabled LIMIT 1", (row["tenant_id"],))
+            via_link = cur.fetchone() is not None
+        if not via_link and (not row["domain"] or _w_host(origin) != _w_host(row["domain"])):
             return None, (403, "This chat box only works on its own website")
         cur.execute("""
             SELECT api_key_plain FROM api_keys
@@ -2306,6 +2338,7 @@ def _w_site(site_key: str, request) -> tuple:
         """, (row["tenant_id"], "%" + _w_host(row["domain"]) + "%"))
         k = cur.fetchone()
         row = dict(row)
+        row["via_link"] = via_link
         row["api_key"] = k["api_key_plain"] if k else None
         row["ai_on"] = bool(row["api_key"]) and row["plan_slug"] not in _W_AI_OFF_PLANS and row["ai_enabled"] is not False
         return row, None
@@ -2322,6 +2355,79 @@ def _w_rate_ok(request, site_key: str) -> bool:
         return False
     q.append(now)
     return True
+
+
+# ── Chat link (2026-10-29): chat.phixtra.com/c/<name> opens a business's chat
+# full screen, with no website needed. chat_links (portal migration) says which
+# businesses have one; is_demo adds the "PhiXtra demo · You are the buyer" strip
+# with a link to the seller side (Try as a Buyer on phixtra.com).
+from fastapi.responses import HTMLResponse as _WHTML
+import html as _w_html, json as _w_json
+
+
+from fastapi.responses import RedirectResponse as _WRedirect
+import importlib.util as _w_ilu
+# "Try it yourself" private space per visitor (2026-10-30) — shared with the
+# portal, which owns the file.
+_w_spec = _w_ilu.spec_from_file_location(
+    "demo_codes", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "api-key-manager", "demo_codes.py"))
+_demo_codes = _w_ilu.module_from_spec(_w_spec)
+_w_spec.loader.exec_module(_demo_codes)
+
+
+@app.get("/c/{slug}")
+def chat_link_page(slug: str, v: str = ""):
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""SELECT l.slug, l.tenant_id, l.is_demo, l.suggestions, l.seller_url, l.greeting, t.name, k.site_key
+                         FROM chat_links l JOIN tenants t ON t.id = l.tenant_id
+                         JOIN site_widget_keys k ON k.tenant_id = l.tenant_id
+                        WHERE l.slug = %s AND l.enabled AND t.status IN ('active', 'pending')""",
+                    ((slug or "").lower()[:60],))
+        r = cur.fetchone()
+    finally:
+        cur.close(); conn.close()
+    if not r:
+        return _WHTML("<!doctype html><meta charset=utf-8><title>Chat not found</title>"
+                      "<p style='font-family:system-ui;padding:40px'>This chat link doesn't exist.</p>", status_code=404)
+    e = _w_html.escape
+    top = 0
+    strip = ""
+    session_attr = ""
+    if r["is_demo"]:
+        # Each visitor has their own private demo: no (or a wiped) ?v= → a
+        # new one, then the same address again with it, so a reload keeps it.
+        conn = get_db_connection()
+        try:
+            dv = _demo_codes.get(conn, v, r["tenant_id"])
+            if not dv:
+                dv = _demo_codes.create(conn, r["tenant_id"], r["slug"])
+                return _WRedirect(f"/c/{r['slug']}?v={_demo_codes.token(dv)}", status_code=302,
+                                  headers={"Cache-Control": "no-store"})
+            _demo_codes.touch(conn, dv["code"])
+        finally:
+            conn.close()
+        tok = _demo_codes.token(dv)
+        session_attr = f' data-session="{e(_demo_codes.buyer_session(dv["code"], dv["secret"]))}"'
+        top = 40
+        seller = e((r["seller_url"] + "?v=" + tok) if r["seller_url"] else "")
+        strip = (f'<div class="strip"><span>PhiXtra demo · You are the buyer</span>'
+                 + (f'<a href="{seller}" target="_blank" rel="noopener">Open the Seller side<span class="lg"> →</span></a>' if seller else "")
+                 + '</div>')
+    sugg = e(_w_json.dumps(r["suggestions"] or [], ensure_ascii=False))
+    page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>Chat with {e(r["name"] or "us")}</title>
+<style>html,body{{margin:0;height:100%;background:#EEF2F8;font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif}}
+.strip{{position:fixed;top:0;left:0;right:0;height:40px;display:flex;justify-content:space-between;align-items:center;gap:10px;
+padding:0 14px;background:#FFF4E5;color:#7C2D12;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;box-sizing:border-box}}
+.strip a{{color:#0B1D40;font-weight:800;text-decoration:none;background:#fff;border-radius:999px;padding:5px 10px}}
+@media(max-width:420px){{.strip{{font-size:12px;padding:0 8px;gap:6px}}.strip a{{padding:4px 8px}}.strip .lg{{display:none}}}}</style></head>
+<body>{strip}
+<script src="/widget.js?v={int(os.path.getmtime(_WIDGET_FILE))}" data-site="{e(r["site_key"])}" data-mode="page" data-top="{top}" data-suggestions="{sugg}" data-greeting="{e(r["greeting"] or "")}"{session_attr} async></script>
+</body></html>"""
+    return _WHTML(page, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/widget.js")
@@ -2358,7 +2464,8 @@ def widget_config(site: str, request: _WRequest):
     row, err = _w_site(site, request)
     if err:
         return _WJSON({"enabled": False, "detail": err[1]}, status_code=err[0])
-    _w_mark_seen(int(row["tenant_id"]))
+    if not row.get("via_link"):   # the chat link page is not the business's website
+        _w_mark_seen(int(row["tenant_id"]))
     # The box always shows (2026-10-06). AI off (PhiXtra Connect) = "team"
     # mode: the business's staff answer from the Inbox.
     if row["ai_on"]:
@@ -2390,7 +2497,32 @@ def widget_chat_stream(req: WidgetChatRequest, request: _WRequest):
     if not _w_rate_ok(request, req.site):
         raise HTTPException(status_code=429, detail="Too many messages. Please wait a few minutes.")
     sid = (req.session_id or "").strip()[:80] or None
+    if row.get("via_link") and sid:
+        _w_list_demo_chat(int(row["tenant_id"]), sid, msg)
     return chat_stream(ChatRequest(api_key=row["api_key"], message=msg, session_id=sid, channel="website"))
+
+
+def _w_list_demo_chat(tenant_id: int, sid: str, msg: str) -> None:
+    """"Try it yourself" demo (2026-10-30): the Inbox lists website chats from
+    handoff_requests, so a buyer the AI fully answered would never reach the
+    seller side. For a DEMO chat link only, list every chat there once, as
+    already handled — nothing is marked as needing a person, no alerts."""
+    conn = get_db_connection()
+    if not conn:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO handoff_requests (tenant_id, session_id, status, handled_at, visitor_message)
+            SELECT %s, %s, 'handled', NOW(), %s
+             WHERE EXISTS (SELECT 1 FROM chat_links WHERE tenant_id=%s AND enabled AND is_demo)
+               AND NOT EXISTS (SELECT 1 FROM handoff_requests WHERE tenant_id=%s AND session_id=%s)
+        """, (tenant_id, sid[:64], msg[:1000], tenant_id, tenant_id, sid[:64]))
+        conn.commit()
+    except Exception as e:
+        print("⚠️ _w_list_demo_chat:", e)
+    finally:
+        conn.close()
 
 
 @app.post("/widget/message")

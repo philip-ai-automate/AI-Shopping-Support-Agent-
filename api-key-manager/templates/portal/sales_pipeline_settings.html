@@ -20,6 +20,14 @@
 .score-row{display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid var(--line)}
 .score-row:last-child{border-bottom:none}
 .score-icon{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.ps-tabs{display:flex;gap:4px;border-bottom:1.5px solid var(--line);margin:0 0 20px;overflow-x:auto;scrollbar-width:none}
+.ps-tabs::-webkit-scrollbar{display:none}
+.ps-tab{background:none;border:0;border-bottom:3px solid transparent;margin-bottom:-1.5px;padding:11px 16px;font:inherit;font-size:13.5px;
+  font-weight:700;color:var(--muted);cursor:pointer;white-space:nowrap}
+.ps-tab:hover{color:var(--ink)}
+.ps-tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink)}
+.ps-tab:focus-visible{outline:2px solid #2563eb;outline-offset:-2px;border-radius:6px 6px 0 0}
+.ps-panel[hidden]{display:none}
 </style>
 {% endblock %}
 
@@ -29,7 +37,18 @@
 <div class="crumb"><a href="{{ url_for('portal.sales_pipeline') }}">Sales Pipeline</a> / <b>Pipeline Settings</b></div>
 {% if not can_edit_settings %}<div class="settings-card" style="padding:12px 16px;font-size:13px;color:var(--muted)">You can view these settings. Your role doesn't allow changing them.</div>{% endif %}
 
-<div class="settings-card">
+{# Tabs (2026-10-30): one section at a time instead of one long page. The
+   address keeps the open tab (#stages, #ai-qualification, #followups, #score-labels). #}
+<div class="ps-tabs" role="tablist" aria-label="Pipeline Settings">
+  <button type="button" class="ps-tab" role="tab" id="pst-stages" aria-controls="psp-stages" data-tab="stages">Stage names</button>
+  {% if aiq_allowed %}<button type="button" class="ps-tab" role="tab" id="pst-ai-qualification" aria-controls="psp-ai-qualification" data-tab="ai-qualification">AI Lead Qualification</button>{% endif %}
+  <button type="button" class="ps-tab" role="tab" id="pst-followups" aria-controls="psp-followups" data-tab="followups">Automatic follow-ups</button>
+  <button type="button" class="ps-tab" role="tab" id="pst-score-labels" aria-controls="psp-score-labels" data-tab="score-labels">Lead score labels</button>
+</div>
+
+<section class="ps-panel" role="tabpanel" id="psp-stages" aria-labelledby="pst-stages" data-tab="stages">
+
+<div class="settings-card" id="stages">
   <h2>Pipeline Stage Names</h2>
   <p class="sub">One Sales Pipeline, your own wording. Every deal still moves through these steps in this order — only the names are yours to set. Leave a field blank to keep the default.</p>
   <form method="POST">
@@ -65,16 +84,31 @@
   </form>
 </div>
 
-{% include "portal/_followup_rules_card.html" %}
+</section>
 
-<div class="settings-card">
+{% if aiq_allowed %}
+<section class="ps-panel" role="tabpanel" id="psp-ai-qualification" aria-labelledby="pst-ai-qualification" data-tab="ai-qualification" hidden>
+{% include "portal/_aiq_settings_card.html" %}
+</section>
+{% endif %}
+
+<section class="ps-panel" role="tabpanel" id="psp-followups" aria-labelledby="pst-followups" data-tab="followups" hidden>
+{% include "portal/_followup_rules_card.html" %}
+</section>
+
+<section class="ps-panel" role="tabpanel" id="psp-score-labels" aria-labelledby="pst-score-labels" data-tab="score-labels" hidden>
+<div class="settings-card" id="score-labels">
   <h2>Lead Score Labels</h2>
-  <p class="sub">Same scoring underneath — the colors and the 0–100 thresholds don't change. Only these three words are yours to set. Leave blank to keep the default.</p>
+  <p class="sub">{% if aiq_allowed and aiq.enabled %}The score comes from AI Lead Qualification above, with your own points and bands. Only these three words are set here. Leave blank to keep the default.{% else %}Same scoring underneath — the colors and the 0–100 thresholds don't change. Only these three words are yours to set. Leave blank to keep the default.{% endif %}</p>
   <form method="POST">
     <fieldset {% if not can_edit_settings %}disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0">
     <input type="hidden" name="form_type" value="score_labels">
 
+    {% if aiq_allowed and aiq.enabled %}
+    {% set score_meta = {'hot': ('🔥', '#fef2f2', 'Score ' ~ aiq.hot_from ~ '–100'), 'warm': ('🌤️', '#fffbeb', 'Score ' ~ aiq.warm_from ~ '–' ~ (aiq.hot_from - 1)), 'cold': ('❄️', '#eff6ff', 'Score 0–' ~ (aiq.warm_from - 1))} %}
+    {% else %}
     {% set score_meta = {'hot': ('🔥', '#fef2f2', 'Score 60–100'), 'warm': ('🌤️', '#fffbeb', 'Score 30–59'), 'cold': ('❄️', '#eff6ff', 'Score 0–29')} %}
+    {% endif %}
     {% for tier in ['hot', 'warm', 'cold'] %}
     {% set icon, bg, range_label = score_meta[tier] %}
     <div class="score-row">
@@ -96,4 +130,36 @@
     </fieldset>
   </form>
 </div>
+</section>
+
+<script>
+(function(){
+  var tabs=[].slice.call(document.querySelectorAll('.ps-tab')), panels=[].slice.call(document.querySelectorAll('.ps-panel'));
+  function show(name, focus){
+    var t=tabs.filter(function(x){return x.dataset.tab===name})[0] || tabs[0];
+    tabs.forEach(function(x){var on=x===t; x.setAttribute('aria-selected', on); x.tabIndex = on ? 0 : -1;});
+    panels.forEach(function(p){p.hidden = p.dataset.tab !== t.dataset.tab;});
+    if(focus) t.focus();
+    if(history.replaceState) history.replaceState(null, '', '#' + t.dataset.tab);
+    window.scrollTo(0, 0);
+  }
+  tabs.forEach(function(t, i){
+    t.addEventListener('click', function(){show(t.dataset.tab)});
+    t.addEventListener('keydown', function(e){
+      var j = e.key==='ArrowRight' ? i+1 : e.key==='ArrowLeft' ? i-1 : e.key==='Home' ? 0 : e.key==='End' ? tabs.length-1 : null;
+      if(j===null) return; e.preventDefault(); show(tabs[(j+tabs.length)%tabs.length].dataset.tab, true);
+    });
+  });
+  // #followups, #ai-qualification … open their tab (also any id inside a tab).
+  var h=(location.hash||'').slice(1), el=h && document.getElementById(h), p=el && el.closest('.ps-panel');
+  show(p ? p.dataset.tab : (h || 'stages'));
+  // A link to another tab while already on this page (#followups …) opens that tab.
+  window.addEventListener('hashchange', function(){
+    var h2=(location.hash||'').slice(1), el2=h2 && document.getElementById(h2), p2=el2 && el2.closest('.ps-panel');
+    if (p2 || tabs.some(function(x){return x.dataset.tab===h2})) show(p2 ? p2.dataset.tab : h2);
+  });
+  // The browser jumps to #ai-qualification etc. after loading: keep the tabs in view.
+  window.addEventListener('load', function(){ setTimeout(function(){ window.scrollTo(0, 0); }, 0); });
+})();
+</script>
 {% endblock %}

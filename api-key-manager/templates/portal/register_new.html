@@ -30,6 +30,16 @@
   .rg-main{flex:999 1 520px;min-width:0;padding:44px 44px 40px;box-sizing:border-box}
   .rg-main h1{margin:0 0 6px;font-weight:700;font-size:26px;color:var(--navy)}
   .rg-sub{margin:0 0 22px;font-size:15px;color:var(--muted)}
+  .b2-sec{display:flex;flex-direction:column;gap:2px;padding-top:16px;margin-top:4px;border-top:1px solid #D9E1EE}
+  .b2-sec[hidden]{display:none}
+  #secAbout{border-top:0;padding-top:0;margin-top:0}
+  .b2-sec b{font-family:Poppins,system-ui,sans-serif;font-weight:600;font-size:17px;color:var(--navy)}
+  .b2-sec span{font-size:13.5px;color:var(--muted)}
+  .b2-opt{font-weight:500;color:var(--muted)}
+  #blkCompany{display:flex;flex-direction:column;gap:inherit}
+  #blkCompany[hidden]{display:none}
+  .b2-help{margin:14px 0 0;padding:12px 14px;border-radius:12px;background:var(--tint);color:var(--navy);font-size:14px;line-height:1.5}
+  .b2-help a{color:var(--navy);font-weight:700}
   .rg-chosen{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 16px;
              background:var(--tint);border:1px solid #C9D6EC;border-radius:12px;margin-bottom:22px}
   .rg-chosen small{display:block;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
@@ -113,8 +123,8 @@
   </aside>
 
   <main class="rg-main">
-    <h1>Create your free account</h1>
-    <p class="rg-sub">Free to start. No credit card needed.</p>
+    <h1 id="mainTitle">Create your free account</h1>
+    <p class="rg-sub" id="mainSub">Free to start. No credit card needed.</p>
 
     <div class="rg-chosen" id="chosenBar" hidden>
       <div><small>You are signing up for</small><b id="chosenLabel"></b></div>
@@ -124,9 +134,10 @@
     <form method="POST" action="{{ url_for('portal.register') }}" novalidate id="regForm">
       <input type="hidden" name="ref_code" value="{{ ref_code or '' }}"/>
       {% if preview %}<input type="hidden" name="preview" value="1"/>{% endif %}
-      <input type="hidden" name="merchant_type" id="fType" value="{{ fd.get('merchant_type', '') }}"/>
+      <input type="hidden" name="merchant_type" id="fType" value="{{ fd.get('merchant_type', preset_type or '') }}"/>
       <input type="hidden" name="website_platform" id="fPlatform" value="{{ fd.get('website_platform', '') }}"/>
 
+      <div class="b2-sec" id="secAbout" hidden><b>About you</b></div>
       <div class="rg-row">
         <div class="rg-f">
           <label for="fFirstName">First name</label>
@@ -140,11 +151,62 @@
         </div>
       </div>
 
+      {# AI Sales Agent for B2B (2026-10-29): B2B-only fields, shown by render(). #}
+      <div class="rg-f b2-only" id="blkJob" hidden>
+        <label for="fJob">Job title</label>
+        <input type="text" name="job_title" id="fJob" maxlength="120" placeholder="e.g. Sales Director" value="{{ fd.get('job_title', '') }}"/>
+      </div>
+      <div class="b2-sec" id="secCompany" hidden><b>Your company</b><span>Shown on your quotes and invoices.</span></div>
+
       <div class="rg-f">
-        <label for="fBusinessName">Business name</label>
+        <label for="fBusinessName" id="lblBusinessName">Business name</label>
         <input type="text" name="business_name" id="fBusinessName" required placeholder="e.g. Unity Foods Distribution" autocomplete="organization" value="{{ fd.get('business_name', '') }}"/>
         <p class="rg-err" id="hBusinessName" hidden>Business name is required.</p>
       </div>
+
+      <div class="b2-only" id="blkCompany" hidden>
+        <div class="rg-f">
+          <label for="fTrading">Trading name <span class="b2-opt">(optional)</span></label>
+          <input type="text" name="trading_name" id="fTrading" maxlength="200" placeholder="If buyers know you by another name" value="{{ fd.get('trading_name', '') }}"/>
+        </div>
+        <div id="basedSlot"></div>
+        <div class="rg-row">
+          <div class="rg-f">
+            <label for="fRegNo">Company registration number <span class="b2-opt">(optional)</span></label>
+            <input type="text" name="reg_number" id="fRegNo" maxlength="60" placeholder="e.g. 12345678" value="{{ fd.get('reg_number', '') }}"/>
+          </div>
+          <div class="rg-f">
+            <label for="fVat">VAT or tax number <span class="b2-opt">(optional)</span></label>
+            <input type="text" name="vat_number" id="fVat" maxlength="60" placeholder="e.g. GB123456789" value="{{ fd.get('vat_number', '') }}"/>
+          </div>
+        </div>
+        <div class="rg-f">
+          <label for="fAddr">Business address</label>
+          <input type="text" name="address_line1" id="fAddr" maxlength="255" placeholder="Street address" autocomplete="address-line1" value="{{ fd.get('address_line1', '') }}"/>
+          <p class="rg-err" id="hAddr" hidden>Please enter your business address.</p>
+        </div>
+        <div class="rg-row">
+          <div class="rg-f">
+            <label for="fCity">Town or city</label>
+            <input type="text" name="city" id="fCity" maxlength="120" autocomplete="address-level2" value="{{ fd.get('city', '') }}"/>
+            <p class="rg-err" id="hCity" hidden>Please enter your town or city.</p>
+          </div>
+          <div class="rg-f">
+            <label for="fPostcode">Postcode <span class="b2-opt">(if you have one)</span></label>
+            <input type="text" name="postcode" id="fPostcode" maxlength="30" autocomplete="postal-code" value="{{ fd.get('postcode', '') }}"/>
+          </div>
+        </div>
+        {% set sel_sells = fd.get('sells', '') %}
+        <div class="rg-f">
+          <label for="fSells">What do you sell?</label>
+          <select name="sells" id="fSells">
+            <option value="">Choose your main products…</option>
+            {% for v, l in b2b_sells_options %}<option value="{{ v }}" {% if sel_sells == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+          </select>
+          <p class="rg-err" id="hSells" hidden>Please choose what you sell.</p>
+        </div>
+      </div>
+      <div class="b2-sec" id="secReach" hidden><b>How buyers reach you</b></div>
 
       <div class="rg-f" id="blkWeb" hidden>
         <label for="fDomain">Website address</label>
@@ -154,19 +216,19 @@
       </div>
 
       <div class="rg-f" id="blkWa" hidden>
-        <label for="fPhoneWa">WhatsApp number for your business</label>
+        <label for="fPhoneWa">WhatsApp number for your business <span class="b2-opt" id="waOpt" hidden>(optional)</span></label>
         <div class="rg-phone">
           {% set pc_name = 'wa_phone_country' %}{% set pc_id = 'fPhoneWaCountry' %}{% set pc_required = false %}
           {% set pc_selected = fd.get('wa_phone_country', '') %}{% set pc_style = '' %}{% set pc_placeholder = 'Country…' %}
           {% include "portal/_phone_country_select.html" %}
           <input type="tel" name="wa_phone_number" id="fPhoneWa" placeholder="801 234 5678" autocomplete="tel-national" value="{{ fd.get('wa_phone_number', '') }}"/>
         </div>
-        <p class="rg-hint">Use the number your customers already message, or a new one. Once connected, it works through PhiXtra, not in the WhatsApp app on your phone. Choose your country, then type your number. We add the country code for you.</p>
+        <p class="rg-hint" id="waHint">Use the number your customers already message, or a new one. Once connected, it works through PhiXtra, not in the WhatsApp app on your phone. Choose your country, then type your number. We add the country code for you.</p>
         <p class="rg-err" id="hPhoneWa" hidden>Please choose the country and enter your WhatsApp number.</p>
       </div>
 
       <div class="rg-f" id="blkBased" hidden>
-        <label for="fBased">Where is your business based?</label>
+        <label for="fBased" id="lblBased">Where is your business based?</label>
         {% set based = fd.get('business_based', '') %}
         <select name="business_based" id="fBased">
           <option value="">Country…</option>
@@ -184,6 +246,7 @@
       {% set sc_country_ids = ['fPhoneWaCountry', 'fBased'] %}
       {% include "portal/_selling_currency_field.html" %}
 
+      <div class="b2-sec" id="secLogin" hidden><b>Sign-in details</b></div>
       <div class="rg-f" id="blkMobile" hidden>
         <label for="fPhone">Mobile phone (on WhatsApp)</label>
         <div class="rg-phone">
@@ -240,6 +303,7 @@
       <section class="rg-next" aria-label="What happens next">
         <h3>What happens next</h3>
         <ol id="nextSteps"></ol>
+        <p class="b2-help" id="b2Help" hidden><b>Prefer us to set it up with you?</b> <a href="https://outlook.office.com/book/TalktoUs1@phixtra.com/?ismsaljsauthenabled" target="_blank" rel="noopener">See PhiXtra in Action →</a> Book a free session and we load your price list together.</p>
       </section>
     </form>
 
@@ -276,6 +340,11 @@
           <span class="tx"><b>WhatsApp and website</b><span>One AI on both, one shared inbox. Dual Agent plans.</span></span>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5B78" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
         </button>
+        <button type="button" class="rg-choice" onclick="pickType('b2b')">
+          <span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0B1D40" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg></span>
+          <span class="tx"><b>I sell to other businesses (B2B)</b><span>Website chat and WhatsApp in your buyer's language, with follow-ups. AI Sales Agent for B2B.</span></span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5B78" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
       </div>
     </div>
 
@@ -301,7 +370,7 @@ var TYPE = document.getElementById('fType').value || '';
 var PLAT = document.getElementById('fPlatform').value || '';
 var PLAT_NAMES = {wordpress:'WordPress / WooCommerce', shopify:'Shopify', wix:'Wix', squarespace:'Squarespace', other:'Other or custom-built'};
 var PLAT_SHORT = {shopify:'Shopify', wix:'Wix', squarespace:'Squarespace', other:'your website'};
-var TYPE_NAMES = {whatsapp:'WhatsApp only', web:'Website only', both:'WhatsApp and website'};
+var TYPE_NAMES = {whatsapp:'WhatsApp only', web:'Website only', both:'WhatsApp and website', b2b:'AI Sales Agent for B2B'};
 var ASIDE = {
   '':      ['PhiXtra AI', 'Your WhatsApp, website and CRM on one platform.', 'AI answers your customers, and your team sees every conversation in one place.',
             ['Official WhatsApp Business API, approved by Meta', 'AI chat for WordPress, Shopify, Wix, Squarespace or any site', 'A free CRM with a sales pipeline', 'Try the AI free for 2 weeks, whenever you are ready']],
@@ -310,7 +379,9 @@ var ASIDE = {
   web:     ['Website AI', 'Let AI answer every visitor on your website.', 'Works on WordPress, Shopify, Wix, Squarespace or a site built for you.',
             ['Answers from your own website pages and product list', 'Recommends products and passes serious buyers to your team', 'Every visitor conversation in one inbox, with a free CRM', 'Try the AI free for 2 weeks, whenever you are ready']],
   both:    ['WhatsApp + Website AI', 'One AI on WhatsApp and your website.', 'The same AI answers on both, and your team sees every conversation in one inbox.',
-            ['Use the number your customers already message, or a new one', 'Chat on WordPress, Shopify, Wix, Squarespace or any site', 'One shared inbox and a free CRM for both channels', 'Try the AI free for 2 weeks, whenever you are ready']]
+            ['Use the number your customers already message, or a new one', 'Chat on WordPress, Shopify, Wix, Squarespace or any site', 'One shared inbox and a free CRM for both channels', 'Try the AI free for 2 weeks, whenever you are ready']],
+  b2b:     ['AI Sales Agent for B2B', 'Every Enquiry. Every Language. Every Sales Opportunity.', 'For wholesalers, distributors, exporters and manufacturers.',
+            ["Website chat and WhatsApp answered in your buyer's language, day and night", 'Automatic follow-up by email and WhatsApp until they order', 'Every buyer and deal in a free CRM with a sales pipeline', 'Try it free for 2 weeks, whenever you are ready. No card needed']]
 };
 var CHECK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9DB8E8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M7.5 12.5l3 3 6-6.5"/></svg>';
 function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
@@ -326,23 +397,43 @@ function steps() {
   var free = ['Your team replies free', 'on PhiXtra Connect, with the shared inbox and CRM.'];
   var trial = ['Start your 2-week AI trial', 'from your dashboard when you are ready. No card needed.'];
   var webFree = ['Your team replies free', 'on PhiXtra Connect: website chats come to your shared inbox, and replies show in the visitor\'s chat box.'];
-  return {'': [verify, trial], whatsapp: [verify, wa, free, trial], web: [verify, site, box, prod, webFree, trial], both: [verify, wa, site, box, prod, webFree, trial]}[TYPE];
+  var b2bVerify = ['Confirm your mobile and email.', 'We send a code to each: the mobile code comes on WhatsApp.'];
+  var price = ['Upload your price list.', 'Excel or CSV, or connect your WooCommerce shop. Your cost prices are never shown to buyers.'];
+  var b2bWa = ['Connect WhatsApp', "whenever you are ready, through Meta's official window."];
+  var b2bTrial = ['Start your 2-week B2B trial', 'from your dashboard when you are ready. No card needed.'];
+  return {'': [verify, trial], whatsapp: [verify, wa, free, trial], web: [verify, site, box, prod, webFree, trial], both: [verify, wa, site, box, prod, webFree, trial],
+          b2b: [b2bVerify, site, box, price, b2bWa, b2bTrial]}[TYPE];
 }
+
+var BASED_HOME = document.createComment('blkBased');
 
 function render() {
   var a = ASIDE[TYPE];
   el('asKicker').textContent = a[0]; el('asTitle').textContent = a[1]; el('asSub').textContent = a[2];
   el('asList').innerHTML = a[3].map(function(t){ return '<li>' + CHECK + '<span>' + esc(t) + '</span></li>'; }).join('');
-  var isWeb = TYPE === 'web' || TYPE === 'both';
+  var isWeb = TYPE === 'web' || TYPE === 'both' || TYPE === 'b2b';
+  var b2b = TYPE === 'b2b';
   // Close button on step 1 (2026-10-29): closing before choosing shows the
   // form with "Nothing chosen yet"; Create free account asks again.
   el('chosenBar').hidden = false;
   el('chosenLabel').textContent = TYPE ? (TYPE_NAMES[TYPE] || '') + (isWeb && PLAT ? ' · ' + PLAT_NAMES[PLAT] : '') : 'Nothing chosen yet';
   el('chosenBtn').textContent = TYPE ? 'Change' : 'Choose';
-  el('blkWa').hidden = !(TYPE === 'whatsapp' || TYPE === 'both');
+  el('blkWa').hidden = !(TYPE === 'whatsapp' || TYPE === 'both' || b2b);
   el('blkWeb').hidden = !isWeb;
-  el('blkBased').hidden = TYPE !== 'web';
-  el('blkMobile').hidden = TYPE !== 'web';
+  el('blkBased').hidden = !(TYPE === 'web' || b2b);
+  el('blkMobile').hidden = !(TYPE === 'web' || b2b);
+  // B2B (2026-10-29): sections, company details, optional WhatsApp.
+  ['secAbout', 'secCompany', 'secReach', 'secLogin', 'blkJob', 'blkCompany', 'b2Help', 'waOpt'].forEach(function(id){ el(id).hidden = !b2b; });
+  if (b2b) el('basedSlot').appendChild(el('blkBased')); else BASED_HOME.parentNode.insertBefore(el('blkBased'), BASED_HOME);
+  el('lblBusinessName').textContent = b2b ? 'Registered company name' : 'Business name';
+  el('fBusinessName').placeholder = b2b ? 'e.g. Harbour Supplies Ltd' : 'e.g. Unity Foods Distribution';
+  el('lblBased').textContent = b2b ? 'Country of registration' : 'Where is your business based?';
+  el('waHint').textContent = b2b ? 'Optional. Use a new number, or one not on the WhatsApp Business app. You can add it later.'
+    : 'Use the number your customers already message, or a new one. Once connected, it works through PhiXtra, not in the WhatsApp app on your phone. Choose your country, then type your number. We add the country code for you.';
+  el('lblSellCur').textContent = b2b ? 'What currency do you quote in?' : 'What currency do you sell in?';
+  el('mainTitle').textContent = b2b ? 'Start your free B2B trial' : 'Create your free account';
+  el('mainSub').textContent = b2b ? 'Free to start. Try the B2B agent free for 2 weeks. No credit card needed.' : 'Free to start. No credit card needed.';
+  el('submitBtn').textContent = b2b ? 'Create my B2B account' : 'Create free account';
   el('platformNote').textContent = PLAT === 'wordpress'
     ? 'Built on WordPress / WooCommerce. You will install one free PhiXtra plugin. It adds the chat box and, on WooCommerce shops, syncs your products and adds cart recovery.'
     : (PLAT ? 'Built on ' + PLAT_NAMES[PLAT] + '. You will paste one short line of code into ' + (PLAT_SHORT[PLAT] || 'your website') + '. It only works on this website address.' : '');
@@ -376,7 +467,10 @@ var RULES = [
   ['fLastName', 'hLastName', function(v){ return v.trim().length > 0; }],
   ['fBusinessName', 'hBusinessName', function(v){ return v.trim().length > 0; }],
   ['fDomain', 'hDomain', function(v){ return /^[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}$/.test(v.trim().replace(/^https?:\/\//i,'').replace(/\/.*$/,'')); }],
-  ['fPhoneWa', 'hPhoneWa', function(v){ return v.trim().length > 0 && el('fPhoneWaCountry').value !== ''; }],
+  ['fPhoneWa', 'hPhoneWa', function(v){ return TYPE === 'b2b' ? (v.trim() === '' || el('fPhoneWaCountry').value !== '') : (v.trim().length > 0 && el('fPhoneWaCountry').value !== ''); }],
+  ['fAddr', 'hAddr', function(v){ return v.trim().length > 0; }],
+  ['fCity', 'hCity', function(v){ return v.trim().length > 0; }],
+  ['fSells', 'hSells', function(v){ return v !== ''; }],
   ['fBased', 'hBased', function(v){ return v !== ''; }],
   ['fSellCur', 'hSellCur', function(v){ return v !== ''; }],
   ['fPhone', 'hPhone', function(v){ return v.trim().length > 0 && el('fPhoneCountry').value !== ''; }],
@@ -406,8 +500,10 @@ el('regForm').addEventListener('submit', function(e){
   var b = el('submitBtn'); b.disabled = true; b.textContent = 'Creating account…';
 });
 
+el('blkBased').parentNode.insertBefore(BASED_HOME, el('blkBased'));
 render();
 if (!TYPE) openPicker();
+else if (TYPE === 'b2b' && !PLAT) { openPicker(); showStep('platform'); }
 })();
 </script>
 {% endblock %}

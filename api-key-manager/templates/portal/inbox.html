@@ -20,6 +20,9 @@ html, body { overflow: hidden; height: 100%; }
 @media(max-width:860px) {
   html body:has(.demo-bar) .demo-bar { display: none }
   html body:has(.demo-bar) .site-main { padding-top: 54px }
+  /* "Try it yourself" Seller bar stays: it holds the Buyer chat + trial links */
+  html body:has(.dv-bar) .dv-bar { display: flex }
+  html body:has(.dv-bar) .site-main { padding-top: 88px }
 }
 .inbox-fullpage {
   flex: 1; min-height: 0;
@@ -2047,6 +2050,7 @@ RT.timer=setTimeout(rtTick,RT.FAST);
 })();
 </script>
 {% include "portal/_fix_answer_modal.html" %}
+{% if chat_tr %}{% include "portal/_inbox_translate.html" %}{% endif %}
 {% if staff_can('inbox.send_new') %}{% include 'portal/_send_one_wa.html' %}{% endif %}
 <script>
 // Full "number · messages · PhiXtra number" text on hover, since laptops cut it with "…" (2026-10-25)

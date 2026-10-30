@@ -1,0 +1,196 @@
+{# Chat Translation, AI Sales Agent for B2B (2026-10-29; mock-up
+   https://claude.ai/artifact/HpytSDunev4dp4gWRcMKh6). Only included when
+   the business has it and it is on (chat_tr). Reading: the team's language
+   under every message that isn't in it. Replying: the team types in its
+   language, sees what the buyer will get, and it is sent in the buyer's. #}
+<style>
+.ctr-tx{margin-top:8px;padding:7px 10px;border-radius:10px;background:rgba(232,238,248,.9);color:#0B1D40;
+        font-size:13px;line-height:1.4;border-left:3px solid #9DB8E8;white-space:pre-wrap;word-break:break-word}
+.bubble-agent .ctr-tx{background:rgba(255,255,255,.65)}
+.bubble-out .ctr-tx{background:rgba(255,255,255,.12);color:#fff;border-left-color:#9DB8E8}
+.ctr-l{display:block;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#5A6B85;margin-bottom:2px}
+.bubble-out .ctr-l{color:#C7D4EE}
+.ctr-tx.wrote{border-left-color:#16A34A}
+.ctr-tag{font-size:10.5px;font-weight:800;background:#E8EEF8;color:#0B1D40;border-radius:6px;padding:1px 6px;margin-left:5px;vertical-align:1px}
+.ctr-prev-en{display:block;color:#0B1D40;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctr-head{display:inline-block;margin-left:6px;font-weight:700;color:#0B1D40}
+.ctr-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:6px 12px 0;font-size:12.5px;color:#5A6B85}
+.ctr-bar label{display:inline-flex!important;align-items:center;gap:6px;margin:0!important;font-weight:600;white-space:nowrap}
+.ctr-bar select{width:auto!important;min-width:0!important;margin:0!important;font:inherit;font-size:12.5px;border:1px solid #D9E1EE;border-radius:999px;padding:3px 8px;background:#fff;color:#0B1D40;font-weight:700}
+.ctr-prev{margin:6px 12px 4px;padding:8px 11px;border-radius:10px;background:#E8EEF8;color:#0B1D40;font-size:13px;line-height:1.4;
+          border-left:3px solid #0B1D40;white-space:pre-wrap;word-break:break-word}
+.ctr-prev.wait{opacity:.6}
+.ctr-err{margin:6px 12px 0;font-size:12.5px;color:#B42318}
+</style>
+<script>
+(function(){
+  var CFG = {{ chat_tr|tojson }};
+  var TEAM = CFG.team_lang, TEAMN = CFG.team_lang_name;
+  var NAMES = {}; (CFG.langs || []).forEach(function(l){ NAMES[l[0]] = l[1]; });
+  var H = {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'};
+  var convLang = null, convLangName = null;
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function post(url, body){ return fetch(url, {method:'POST', headers:H, credentials:'same-origin', body:JSON.stringify(body)})
+      .then(function(r){ return r.json().then(function(d){ if (!r.ok) throw new Error(d.error || 'error'); return d; }); }); }
+
+  // The words of a bubble, without its time, media or earlier translations.
+  function bubbleText(b){
+    var c = b.cloneNode(true);
+    c.querySelectorAll('.bubble-time,.ctr-tx,img,video,audio,.bubble-media-doc,.bubble-media-img,.bubble-media-video,.bubble-media-audio,button,form').forEach(function(x){ x.remove(); });
+    return (c.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+
+  // ── Reading ──────────────────────────────────────────────────────────────
+  var queue = [], busy = false;
+  function translateBubbles(){
+    var list = [].slice.call(document.querySelectorAll('.chat-bubble:not([data-ctr])'));
+    list.forEach(function(b){ b.setAttribute('data-ctr', '1'); var t = bubbleText(b); if (t) queue.push([b, t]); });
+    pump();
+  }
+  function pump(){
+    if (busy || !queue.length) return;
+    busy = true;
+    var batch = queue.splice(0, 30);
+    post('/inbox/translate', {texts: batch.map(function(x){ return x[1]; })}).then(function(d){
+      (d.results || []).forEach(function(r, i){
+        var b = batch[i] && batch[i][0]; if (!b || !r) return;
+        var box = null;
+        if (r.wrote) {
+          box = '<div class="ctr-tx wrote"><span class="ctr-l">✓ Your team wrote (' + esc(TEAMN) + ') · sent in ' + esc(r.lang_name) + '</span>' + esc(r.wrote) + '</div>';
+        } else if (r.text) {
+          box = '<div class="ctr-tx"><span class="ctr-l">🌐 ' + esc(TEAMN) + ' · from ' + esc(r.lang_name) + '</span>' + esc(r.text) + '</div>';
+        }
+        if (box) {
+          var t = b.querySelector('.bubble-time');
+          if (t) t.insertAdjacentHTML('beforebegin', box); else b.insertAdjacentHTML('beforeend', box);
+        }
+        if (b.classList.contains('bubble-in') && r.lang && r.lang !== TEAM && r.lang !== 'und') {
+          convLang = r.lang; convLangName = r.lang_name; showConvLang();
+        }
+      });
+    }).catch(function(){}).finally(function(){ busy = false; pump(); });
+  }
+  function showConvLang(){
+    document.querySelectorAll('.chat-header .chat-sub').forEach(function(s){
+      if (s.querySelector('.ctr-head')) return;
+      s.insertAdjacentHTML('beforeend', '<span class="ctr-head">· 🌐 Writes in ' + esc(convLangName) + ' · shown in ' + esc(TEAMN) + '</span>');
+    });
+    document.querySelectorAll('.ctr-lang').forEach(function(sel){
+      if (!sel.dataset.picked) { ensureOpt(sel, convLang, convLangName); sel.value = convLang; refreshPrev(sel.closest('form')); }
+    });
+  }
+
+  // Conversation list: language tag + the team-language line under the preview.
+  function translateList(){
+    var items = [].slice.call(document.querySelectorAll('.inbox-item .conv-preview')).slice(0, 30);
+    var texts = items.map(function(p){ return (p.textContent || '').replace(/^[\s←→]+/, '').replace(/\s+/g, ' ').trim(); });
+    if (!items.length) return;
+    post('/inbox/translate', {texts: texts}).then(function(d){
+      (d.results || []).forEach(function(r, i){
+        if (!r || !r.text) return;
+        var p = items[i], item = p.closest('.inbox-item'), nm = item && item.querySelector('.conv-name');
+        p.insertAdjacentHTML('beforeend', '<span class="ctr-prev-en">🌐 ' + esc(r.text) + '</span>');
+        p.style.whiteSpace = 'normal';
+        if (nm && !nm.querySelector('.ctr-tag')) nm.insertAdjacentHTML('beforeend', '<span class="ctr-tag">' + esc((r.lang || '').toUpperCase()) + '</span>');
+      });
+    }).catch(function(){});
+  }
+
+  // ── Replying ─────────────────────────────────────────────────────────────
+  function ensureOpt(sel, code, name){
+    if (!code || [].some.call(sel.options, function(o){ return o.value === code; })) return;
+    var o = document.createElement('option'); o.value = code; o.textContent = name || code; sel.insertBefore(o, sel.options[1] || null);
+  }
+  function wantsTranslate(form){
+    var sel = form.querySelector('.ctr-lang');
+    return sel && sel.value !== '' && sel.value !== TEAM;
+  }
+  var timers = new WeakMap();
+  function refreshPrev(form){
+    if (!form) return;
+    var ta = form.querySelector('textarea[name=reply]'), prev = form.querySelector('.ctr-prev'), err = form.querySelector('.ctr-err');
+    var btn = form.querySelector('.send-btn');
+    err.hidden = true;
+    if (!wantsTranslate(form) || !ta.value.trim()) {
+      prev.hidden = true; form._ctr = null;
+      if (btn) btn.innerHTML = 'Send&nbsp;➤';
+      return;
+    }
+    var sel = form.querySelector('.ctr-lang'), to = sel.value, name = sel.options[sel.selectedIndex].textContent;
+    if (btn) btn.innerHTML = 'Send in ' + esc(name) + '&nbsp;➤';
+    prev.hidden = false; prev.classList.add('wait');
+    prev.innerHTML = '<span class="ctr-l">🌐 The buyer will receive (' + esc(name) + ')</span>Translating…';
+    clearTimeout(timers.get(form));
+    timers.set(form, setTimeout(function(){ doTranslate(form); }, 600));
+  }
+  function doTranslate(form){
+    var ta = form.querySelector('textarea[name=reply]'), sel = form.querySelector('.ctr-lang'), prev = form.querySelector('.ctr-prev');
+    var src = ta.value, to = sel.value, name = sel.options[sel.selectedIndex].textContent;
+    var p = post('/inbox/translate-out', {text: src, to: to}).then(function(d){
+      if (ta.value !== src || sel.value !== to) return null;
+      form._ctr = {src: src, to: to, out: d.text};
+      prev.classList.remove('wait');
+      prev.innerHTML = '<span class="ctr-l">🌐 The buyer will receive (' + esc(name) + ')</span>' + esc(d.text);
+      return form._ctr;
+    }).catch(function(){
+      prev.hidden = true; var err = form.querySelector('.ctr-err');
+      err.textContent = "Couldn't translate just now. Try again, or choose \"Send as written\"."; err.hidden = false;
+      return null;
+    });
+    form._ctrP = p; return p;
+  }
+  function send(form){
+    var ta = form.querySelector('textarea[name=reply]');
+    if (!wantsTranslate(form)) { form.submit(); return; }
+    if (!ta.value.trim()) return;
+    var ready = form._ctr && form._ctr.src === ta.value && form._ctr.to === form.querySelector('.ctr-lang').value;
+    (ready ? Promise.resolve(form._ctr) : doTranslate(form)).then(function(t){
+      if (!t || !t.out) return;
+      fetch('/inbox/translate-remember', {method:'POST', headers:H, credentials:'same-origin', keepalive:true,
+             body: JSON.stringify({sent: t.out, original: t.src, to: t.to})}).catch(function(){});
+      ta.value = t.out;
+      var btn = form.querySelector('.send-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+      form.submit();
+    });
+  }
+  function setupForms(){
+    document.querySelectorAll('textarea[name=reply]').forEach(function(ta){
+      var form = ta.form; if (!form || form.dataset.ctr) return;
+      form.dataset.ctr = '1';
+      var opts = '<option value="' + esc(TEAM) + '">Send as written (' + esc(TEAMN) + ')</option>';
+      (CFG.langs || []).forEach(function(l){ if (l[0] !== TEAM) opts += '<option value="' + esc(l[0]) + '">' + esc(l[1]) + '</option>'; });
+      var bar = document.createElement('div'); bar.className = 'ctr-bar';
+      bar.innerHTML = '<span>Type in ' + esc(TEAMN) + '. PhiXtra translates before sending.</span>' +
+                      '<label>Send in <select class="ctr-lang" aria-label="Language the buyer gets">' + opts + '</select></label>';
+      var wrap = ta.closest('.reply-textarea-wrap') || ta;
+      wrap.parentNode.insertBefore(bar, wrap);
+      wrap.insertAdjacentHTML('afterend', '<div class="ctr-prev" hidden></div><p class="ctr-err" hidden></p>');
+      var sel = bar.querySelector('.ctr-lang');
+      if (CFG.reply_mode === 'as_written') sel.value = TEAM;
+      else if (convLang) { ensureOpt(sel, convLang, convLangName); sel.value = convLang; }
+      else sel.value = TEAM;
+      sel.addEventListener('change', function(){ sel.dataset.picked = '1'; refreshPrev(form); });
+      if (CFG.reply_mode === 'as_written') sel.dataset.picked = '1';
+      ta.addEventListener('input', function(){ refreshPrev(form); });
+      form.addEventListener('submit', function(e){
+        if (!wantsTranslate(form)) return;
+        e.preventDefault(); e.stopImmediatePropagation(); send(form);
+      }, true);
+    });
+  }
+  // Ctrl+Enter submits the form directly; route it through the translation.
+  document.addEventListener('keydown', function(e){
+    var ta = e.target;
+    if (!(e.ctrlKey && e.key === 'Enter' && ta && ta.name === 'reply' && ta.form && ta.form.dataset.ctr)) return;
+    if (!wantsTranslate(ta.form)) return;
+    e.preventDefault(); e.stopImmediatePropagation(); send(ta.form);
+  }, true);
+
+  setupForms();
+  translateBubbles();
+  translateList();
+  // New messages added while the chat is open (web chat updates live).
+  var mo = new MutationObserver(function(){ translateBubbles(); setupForms(); });
+  document.querySelectorAll('.chat-messages').forEach(function(m){ mo.observe(m, {childList: true, subtree: true}); });
+})();
+</script>

@@ -70,7 +70,7 @@
 <div class="crmg" id="crm-top">
 <div class="g-head">
   <p class="g-lede">Everything under <b>CRM</b> in the side menu, screen by screen and button by button: contacts, companies, your sales pipeline, segments, labels and settings. It also covers the WhatsApp and Email Segments that campaigns use. Every picture is from the live portal.</p>
-  <div class="g-meta">Last checked against the live portal: 28 September 2026 · Daily Targets added 24 October 2026</div>
+  <div class="g-meta">Last checked against the live portal: 28 September 2026 · Daily Targets added 24 October 2026 · Pipeline Settings tabs and AI Lead Qualification added 30 October 2026</div>
 </div>
 <nav class="toc" aria-label="Contents"><details open><summary>Contents</summary>
   <p class="h">Contents</p>
@@ -776,14 +776,32 @@
 <section class="part" id="crm-settings">
 <h2><span class="num">11</span>Pipeline Settings</h2>
 <p class="where">CRM › Pipeline Settings</p>
-<p>Use your own words for the pipeline. Only the <b>names</b> change. The order, meaning and maths stay the same.</p>
-<figure><img src="/static/portal/tutorial/crm/c37_settings.jpg" width="1100" height="1590" alt="Pipeline Settings." loading="lazy"><figcaption>Pipeline Settings.</figcaption></figure>
-<h3>Pipeline Stage Names</h3>
-<p>There's a box for each of the six active stages and the three outcomes (Won, Lost, Dropped). The grey text in each box is the default name, and the meaning is written underneath. Type a new name only where you want one, leave the rest blank, and press <span class="ui">💾 Save Stage Names</span>. Example: a property business might rename "Proposal Sent" to "Inspection Booked".</p>
-<p>To go back to a default, clear the box and save.</p>
-<h3>Lead Score Labels</h3>
-<p>Rename the words <b>Hot</b>, <b>Warm</b> and <b>Cold</b> (for example "Ready", "Thinking", "Not yet"), then press <span class="ui">💾 Save Score Labels</span>. The colours and the score ranges don't change: Hot is 60 and up, Warm 30 to 59, Cold under 30.</p>
-<p>Staff who can view but not edit see "Your role doesn't allow changing them" and greyed-out boxes.</p>
+<p>Pipeline Settings has tabs, one section at a time: <span class="ui">Stage names</span>, <span class="ui">AI Lead Qualification</span> (AI Sales Agent for B2B plan only), <span class="ui">Automatic follow-ups</span> and <span class="ui">Lead score labels</span>. Saving brings you back to the same tab, and a link to a tab opens it.</p>
+<figure><img src="/static/portal/tutorial/crm/c37_settings.jpg" width="1100" height="1052" alt="Pipeline Settings, Stage names tab." loading="lazy"><figcaption>Pipeline Settings, Stage names tab.</figcaption></figure>
+<h3>Stage names</h3>
+<p>Use your own words for the pipeline. Only the <b>names</b> change: the order, meaning and maths stay the same. There's a box for each of the six active stages and the three outcomes (Won, Lost, Dropped). The grey text in each box is the default name, and the meaning is written underneath. Type a new name only where you want one, leave the rest blank, and press <span class="ui">💾 Save Stage Names</span>. Example: a property business might rename "Proposal Sent" to "Inspection Booked". To go back to a default, clear the box and save.</p>
+<h3>AI Lead Qualification</h3>
+<p>On the AI Sales Agent for B2B plan, the AI reads every new enquiry, asks the buyer what's missing, scores them out of 100 and moves real buyers to the Sales Pipeline. How it works for your leads is in the Leads guide, section 18. This tab is where you set it up:</p>
+<figure><img src="/static/portal/tutorial/crm/c43_aiq_settings.jpg" width="1100" height="2867" alt="The AI Lead Qualification tab with its score preview on the right." loading="lazy"><figcaption>The AI Lead Qualification tab with its score preview on the right.</figcaption></figure>
+<div class="tbl"><table>
+<thead><tr><th>Part</th><th>What you set</th></tr></thead>
+<tbody>
+<tr><td>At the top</td><td class="wrapok">The On/Off switch, and where the AI is reading: mailboxes (and any that need reconnecting), WhatsApp numbers and website chat.</td></tr>
+<tr><td>Qualification criteria</td><td class="wrapok">One table of everything the AI finds out. <b>Ask buyers</b> switches a criterion on or off (off = not asked and not scored). − and + change its points; the bar shows its share of the score. <span class="ui">+ Add criterion</span> opens a panel for your own question: name, what the AI finds out, and when it counts (any real answer, or a rule such as "5 or more outlets"). Up to 8. Press <span class="ui">Edit</span> on one of yours to change or delete it.</td></tr>
+<tr><td>Score bands</td><td class="wrapok">Where Warm and Hot start (45 and 75 to begin with). Warm always stays below Hot.</td></tr>
+<tr><td>Buying rules</td><td class="wrapok">Your commercial quantity (units or order value in your currency), and where you deliver: <b>Anywhere</b> or <b>Selected countries</b>.</td></tr>
+<tr><td>When a lead turns Hot</td><td class="wrapok">Move it to the Sales Pipeline, and email the lead owner.</td></tr>
+<tr><td>Lead assignment</td><td class="wrapok">Who owns a new lead nobody owns: the person whose inbox it arrived in (chats share in turn), share in turn, or leave unassigned. Underneath is everyone in the rotation (team roles that can see Leads). Click a name to leave them out, for example a training account. They keep their account and can still be given leads by hand.</td></tr>
+<tr><td>Channels</td><td class="wrapok"><b>Read inboxes</b> switches enquiry-email reading on or off. Each mailbox shows Reading or Needs reconnecting, with a button to reconnect.</td></tr>
+<tr><td>Duplicates and review</td><td class="wrapok">How the AI keeps one record per buyer, with a button to Check these and how many are waiting.</td></tr>
+<tr><td>Score preview</td><td class="wrapok">On the right: tick what an example buyer has said and see the score and band your settings give. Nothing is saved from here.</td></tr>
+</tbody></table></div>
+<p>When you change anything, a bar appears at the bottom: <span class="ui">Save changes</span> or <span class="ui">Discard</span>.</p>
+<h3>Automatic follow-ups</h3>
+<p>Your rules for automatic follow-up emails and WhatsApp messages, and the reminders for your team. See Follow-ups in the Leads guide.</p>
+<h3>Lead score labels</h3>
+<p>Rename the words <b>Hot</b>, <b>Warm</b> and <b>Cold</b> (for example "Ready", "Thinking", "Not yet"), then press <span class="ui">💾 Save Score Labels</span>. The colours and the score ranges don't change here: Hot is 60 and up, Warm 30 to 59, Cold under 30, or, with AI Lead Qualification, the bands you set on that tab.</p>
+<p>Staff who can view but not edit see "Your role doesn't allow changing them" and can't change anything.</p>
 </section>
 
 <!-- 12 -->

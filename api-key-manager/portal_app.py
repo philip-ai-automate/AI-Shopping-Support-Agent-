@@ -18,7 +18,7 @@ def create_app():
     flask_app = Flask(__name__, template_folder="templates", static_folder="static")
     flask_app.secret_key = os.getenv("PORTAL_SECRET_KEY", "change-this-secret-in-env")
 
-    from portal_migrations import ensure_portal_tables
+    from portal_migrations import ensure_portal_tables, ensure_b2b_tables
     from portal_routes import portal_bp
     from portal_admin_routes import portal_admin_bp
     from portal_facebook_routes import facebook_bp
@@ -35,6 +35,7 @@ def create_app():
 
     # Run DB migrations on startup (all idempotent — safe)
     ensure_portal_tables()
+    ensure_b2b_tables()
     ensure_school_tables()
 
     flask_app.register_blueprint(portal_bp)
@@ -47,6 +48,9 @@ def create_app():
     flask_app.register_blueprint(upload_bp)
     flask_app.register_blueprint(socialcal_bp)
     flask_app.register_blueprint(mailbox_bp)
+    # AI Lead Qualification (2026-10-30): reads WhatsApp / website chats once the buyer pauses.
+    import lead_qualify
+    lead_qualify.start()
     flask_app.register_blueprint(bookings_bp)
     from accounts_routes import accounts_bp
     flask_app.register_blueprint(accounts_bp)
@@ -54,6 +58,11 @@ def create_app():
     flask_app.register_blueprint(leadfinder_bp)
     flask_app.register_blueprint(school_bp, url_prefix="/school")
     flask_app.register_blueprint(estate_bp)
+    # "Try it yourself" Seller side: /demo/<slug> login + demo-visitor lock
+    from demo_visitor import demo_bp, enforce_demo_lock, demo_bar_context
+    flask_app.register_blueprint(demo_bp)
+    flask_app.before_request(enforce_demo_lock)
+    flask_app.context_processor(demo_bar_context)
 
     # Feature -> Roles/Modules update policy (feature_access.py): grant any
     # brand-new catalog key to every plan once, then log anything that

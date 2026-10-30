@@ -70,7 +70,7 @@
 <div class="leadg" id="lead-top">
 <div class="g-head">
   <p class="g-lede">Everything under <b>Leads</b> in the side menu, screen by screen and button by button: where leads come from, adding them, finding them, scoring them, deciding which ones are worth chasing (Qualify or Not a Fit), following up on every lead (Log/Follow-up and the Follow-ups page), sharing them out to your team, seeing how each salesperson is doing (Team performance, call logging, targets and the 6 pm email), fixing phone numbers to check, and reading the Leads Overview and Leads Report. Every picture is from the live portal.</p>
-  <div class="g-meta">Last checked against the live portal: 23 October 2026</div>
+  <div class="g-meta">Last checked against the live portal: 23 October 2026 · AI Lead Qualification added 30 October 2026</div>
 </div>
 <nav class="toc" aria-label="Contents"><details open><summary>Contents</summary>
   <p class="h">Contents</p>
@@ -126,8 +126,17 @@
     <li><a href="#lead-assign">15. Giving leads to your team</a></li>
     <li><a href="#lead-after">16. After Qualify: the Sales Pipeline</a></li>
     <li><a href="#lead-score">17. Lead score (Hot, Warm, Cold)</a></li>
-    <li><a href="#lead-overview">18. Leads Overview</a></li>
-    <li><a href="#lead-team">19. Team performance</a>
+    <li><a href="#lead-ai">18. AI Lead Qualification (B2B plan)</a>
+      <ol>
+        <li><a href="#lead-ai-reads">What the AI reads</a></li>
+        <li><a href="#lead-ai-next">What happens next</a></li>
+        <li><a href="#lead-ai-score">The score</a></li>
+        <li><a href="#lead-ai-box">On the lead's page: Why and Undo</a></li>
+        <li><a href="#lead-ai-check">One buyer, one record: Check these</a></li>
+        <li><a href="#lead-ai-setup">Setting it up</a></li>
+      </ol></li>
+    <li><a href="#lead-overview">19. Leads Overview</a></li>
+    <li><a href="#lead-team">20. Team performance</a>
       <ol>
         <li><a href="#lead-t-who">Who sees what</a></li>
         <li><a href="#lead-t-page">Reading the page</a></li>
@@ -137,13 +146,13 @@
         <li><a href="#lead-t-email">The 6 pm email</a></li>
         <li><a href="#lead-t-count">How each number is counted</a></li>
       </ol></li>
-    <li><a href="#lead-report">20. Leads Report and Not a Fit Report</a>
+    <li><a href="#lead-report">21. Leads Report and Not a Fit Report</a>
       <ul>
         <li><a href="#lead-r-naf">Not a Fit Report</a></li>
       </ul></li>
-    <li><a href="#lead-roles">21. Who can do what</a></li>
-    <li><a href="#lead-recipes">22. Everyday tasks</a></li>
-    <li><a href="#lead-faq">23. Questions and problems</a></li>
+    <li><a href="#lead-roles">22. Who can do what</a></li>
+    <li><a href="#lead-recipes">23. Everyday tasks</a></li>
+    <li><a href="#lead-faq">24. Questions and problems</a></li>
   </ol>
 </details></nav>
 
@@ -187,6 +196,7 @@
 <tr><td><span class="ui">+ Create Lead</span> on a Hot Conversation (section 4)</td><td class="wrapok">A new lead for the person who chatted on WhatsApp, linked to their contact.</td><td>WhatsApp</td></tr>
 <tr><td><span class="ui">Create Sales Lead</span> on a contact in CRM › All Contacts</td><td class="wrapok">A new lead copied from the contact's details. Works even if they already have a lead.</td><td>WhatsApp if they have a WhatsApp number, otherwise Manual</td></tr>
 <tr><td>Someone replies "interested" to a WhatsApp campaign</td><td class="wrapok">A lead is made automatically, with their reply saved in its notes. If your campaign is set to check replies first, it's made when someone approves the reply under <span class="ui">Needs Review</span>. If that person already has an open lead, the reply is linked to it instead of making a second one.</td><td>WhatsApp, and the campaign's name under Campaign Source</td></tr>
+<tr><td>A buyer's enquiry email, WhatsApp chat or website chat (AI Sales Agent for B2B plan)</td><td class="wrapok">The AI makes the lead for you, with the details the buyer gave, and scores it (section 18). A buyer already on your list gets the details added to their lead instead.</td><td>Email enquiry, WhatsApp or Website chat</td></tr>
 <tr><td><span class="ui">Move back to Leads</span> on the Sales Pipeline (section 16)</td><td class="wrapok">An opportunity goes back to being a lead, for example if it was qualified by mistake.</td><td>Unchanged</td></tr>
 <tr><td><span class="ui">+ Add Lead</span> / <span class="ui">+ Add deal</span> on the Sales Pipeline</td><td class="wrapok">Opens the same Add Lead form on the Leads page.</td><td>Whatever you choose</td></tr>
 </tbody></table></div>
@@ -724,6 +734,8 @@
 <h2><span class="num">17</span>Lead score (Hot, Warm, Cold)</h2>
 <p class="where">Side menu › Leads › How Lead Scoring Works</p>
 
+<div class="box know"><b class="t">On the AI Sales Agent for B2B plan</b>
+<p>With AI Lead Qualification switched on, the score comes from what the buyer tells the AI, with your own points and bands (section 18). This section is for every other plan.</p></div>
 <p>Every lead gets a score from six signals. The score decides its colour:</p>
 <ul>
   <li><b>🔥 Hot</b>: 60 and up. Act now.</li>
@@ -752,8 +764,83 @@
 </section>
 
 <!-- 18 -->
+<section class="part" id="lead-ai">
+<h2><span class="num">18</span>AI Lead Qualification (B2B plan)</h2>
+<p class="where">CRM › Pipeline Settings › AI Lead Qualification · on the AI Sales Agent for B2B plan</p>
+
+<p>With AI Lead Qualification the AI decides who is a real buyer. It reads every new enquiry, asks the buyer what's missing, gives the lead a score out of 100 and moves real buyers to your Sales Pipeline. Nobody has to press Qualify. Every decision shows its reason, and staff can undo it with one click.</p>
+
+<div class="box know"><b class="t">Which plan</b>
+<p>AI Lead Qualification is part of the AI Sales Agent for B2B plan. On other plans leads are scored as in section 17 and qualified by hand.</p></div>
+
+<h3 id="lead-ai-reads">What the AI reads</h3>
+<div class="tbl"><table>
+<thead><tr><th>Where</th><th>What the AI does</th><th>Source shown</th></tr></thead>
+<tbody>
+<tr><td>A new email in a connected Outlook mailbox</td><td class="wrapok">If it's a buyer's enquiry, the AI makes a lead (or adds it to that buyer's lead) with the company, contact, product, quantity, country, timeline and buyer's role taken from the email. The email shows on the lead's Emails tab as <b>New enquiry email</b>. Invoices, suppliers, newsletters, platform notices and colleagues are skipped and nothing about them is kept. Only mail that arrives after AI Lead Qualification was switched on is read.</td><td>Email enquiry</td></tr>
+<tr><td>A reply to one of your emails</td><td class="wrapok">"Let's talk", "Call me" or "What's your price?": the lead is qualified with a follow-up for today. "Not now, try in January": the follow-up is set for then. "We're not interested": the lead is closed as Not a Fit with their reason and its follow-ups stop. Out-of-office replies are ignored.</td><td>Unchanged</td></tr>
+<tr><td>A WhatsApp chat with your AI Sales Agent</td><td class="wrapok">While it helps the buyer, the AI asks the details that are still missing, one short question at a time and never something they already said. About a minute after the buyer stops typing, what they said is saved on their lead. A buyer already on your list is found by their number.</td><td>WhatsApp</td></tr>
+<tr><td>Your website chat</td><td class="wrapok">The same, but the visitor only becomes a lead once they leave an email address or a phone number, so every lead can be contacted.</td><td>Website chat</td></tr>
+</tbody></table></div>
+
+<h3 id="lead-ai-next">What happens next</h3>
+<ul>
+  <li><b>🔥 Hot</b> (or the buyer asks for a price, a call or a demo): the lead is qualified and moves to the Sales Pipeline, gets an owner if it had none, a follow-up for today, and the owner gets one email with the AI's reason.</li>
+  <li><b>🌤️ Warm</b>: it stays in All Leads. The AI keeps asking what's missing. A new Warm lead gets a follow-up in 2 working days.</li>
+  <li><b>❄️ Cold</b>: it stays in All Leads and is scored again when the buyer writes again.</li>
+</ul>
+<p>A chat on its own never closes a lead, even if the buyer says "just looking". Only an email reply that says no closes one.</p>
+
+<h3 id="lead-ai-score">The score</h3>
+<p>The AI checks each criterion you ask about. Each one the buyer meets adds its points:</p>
+<div class="tbl"><table>
+<thead><tr><th>Criterion</th><th>Starting points</th><th>Met when</th></tr></thead>
+<tbody>
+<tr><td>Company</td><td>15</td><td class="wrapok">A genuine business: named company, business email or website.</td></tr>
+<tr><td>Product needed</td><td>20</td><td class="wrapok">A clear need for something you supply.</td></tr>
+<tr><td>Quantity</td><td>20</td><td class="wrapok">At least your commercial quantity (units or order value).</td></tr>
+<tr><td>Purchase timeline</td><td>20</td><td class="wrapok">They say when they intend to buy.</td></tr>
+<tr><td>Buying authority</td><td>15</td><td class="wrapok">They decide or buy for the company.</td></tr>
+<tr><td>Delivery location</td><td>10</td><td class="wrapok">Delivery is to a place you deliver to.</td></tr>
+<tr><td>Your own questions</td><td>you choose</td><td class="wrapok">The answer meets your rule (for example "3 or more salespeople"), or any real answer if you set no rule.</td></tr>
+</tbody></table></div>
+<p>Business type is asked and saved but scores nothing. A criterion you switch off is neither asked nor scored. The score is always out of 100: it's the points the buyer got as a share of all the points you set. Hot starts at 75 and Warm at 45 unless you change them.</p>
+
+<h3 id="lead-ai-box">On the lead's page: Why and Undo</h3>
+<figure><img src="/static/portal/tutorial/leads/l27_aiq_box.jpg" width="1100" height="378" alt="The AI box at the top of a deal: the score, Qualified by AI, the reason, Undo, Change details and the buying details." loading="lazy"><figcaption>The AI box at the top of a deal: the score, Qualified by AI, the reason, Undo, Change details and the buying details.</figcaption></figure>
+<ul>
+  <li><b>Why</b>: the AI's reason in one sentence.</li>
+  <li><span class="ui">↩️ Undo</span>: on a deal the AI qualified, it goes back to All Leads and keeps everything the buyer said. On a lead the AI closed, it opens again. On a lead the AI made from something that wasn't a real enquiry, the lead is closed as Invalid lead.</li>
+  <li><span class="ui">Change details</span>: opens Edit with the <b>Buying details</b> (business type, quantity, delivery country, timeline) and your own questions, each with a <b>Good answer</b> tick. What a person types always wins: the AI never overwrites it.</li>
+  <li><b>Everything the AI decided on this lead</b>: open it to see each decision, when, from which channel, and who undid it.</li>
+</ul>
+
+<h3 id="lead-ai-check">One buyer, one record: Check these</h3>
+<p>Before making a lead, the AI checks whether it already knows the buyer: the same email (including their other emails), the same number however it's written (0803 123 4567, +234 803 123 4567 and 2348031234567 are one number), or the same company email domain. A new person from a known company gets their own lead under that company. A buyer who already has a won or closed deal gets a new lead for the new order.</p>
+<p>When the AI isn't sure, it doesn't guess. The lead goes to <span class="ui">🔎 Check these</span> at the top of All Leads (the number shows how many are waiting):</p>
+<figure><img src="/static/portal/tutorial/leads/l28_check_these.jpg" width="1100" height="340" alt="Check these: a possible duplicate with Merge or Keep separate." loading="lazy"><figcaption>Check these: a possible duplicate with Merge or Keep separate.</figcaption></figure>
+<ul>
+  <li><span class="ui">Merge — same buyer</span>: the new enquiry's details, emails and notes go onto the lead already on your list, and the new one is closed as Duplicate.</li>
+  <li><span class="ui">Keep separate</span>: they're two different buyers.</li>
+  <li><span class="ui">Checked</span>: for an enquiry the AI couldn't judge. Open the lead, Qualify or mark it Not a Fit, then press Checked.</li>
+</ul>
+
+<h3 id="lead-ai-setup">Setting it up</h3>
+<ol>
+  <li>Go to CRM › Pipeline Settings › <span class="ui">AI Lead Qualification</span>. It's switched on for you.</li>
+  <li>Under <b>Qualification criteria</b>, switch off anything that doesn't fit how you sell (a software company might switch off Quantity and Delivery location) and set the points with − and +.</li>
+  <li>Press <span class="ui">+ Add criterion</span> for your own questions: a short name, what the AI finds out, and when it counts (any real answer, or a rule). Up to 8.</li>
+  <li>Set where Warm and Hot start, your commercial quantity and where you deliver.</li>
+  <li>Choose who gets new leads. Click a name in the rotation to leave someone out (for example a training account).</li>
+  <li>Each salesperson connects their mailbox in Settings › Integration › Microsoft 365 (Outlook) so enquiry emails are read.</li>
+  <li>Press <span class="ui">Save changes</span> in the bar at the bottom.</li>
+</ol>
+<p>The score preview on the right shows what score your settings give: tick what a buyer has said and watch the number and band change.</p>
+</section>
+
+<!-- 19 -->
 <section class="part" id="lead-overview">
-<h2><span class="num">18</span>Leads Overview</h2>
+<h2><span class="num">19</span>Leads Overview</h2>
 <p class="where">Side menu › Leads › Leads Overview</p>
 
 <p>A one-page summary for managers. Pick the period at the top right: the same choices as the Dashboard (Today, This week, This month and so on, or <b>Custom…</b> with your own dates and <span class="ui">Apply</span>). Arrows compare with the period before (▲ up, ▼ down).</p>
@@ -772,9 +859,9 @@
 <p>When there aren't at least 3 records to work from, a tile says "Not enough data yet" instead of showing a misleading number. Filling in Source, Deal Value and Assigned Salesperson on your leads is what makes these tiles come alive.</p></div>
 </section>
 
-<!-- 19 -->
+<!-- 20 -->
 <section class="part" id="lead-team">
-<h2><span class="num">19</span>Team performance</h2>
+<h2><span class="num">20</span>Team performance</h2>
 <p class="where">Side menu › Leads › Team performance</p>
 <p class="need">Needs the tick: "Team performance" (Leads part of Roles). The owner always has it.</p>
 
@@ -869,9 +956,9 @@
 <p>Calls made outside the portal and not logged, emails sent from Outlook or Gmail directly, AI replies, and bulk imports. If your team works a lead outside the portal, ask them to log it on the lead (a call, or a note) so it counts.</p></div>
 </section>
 
-<!-- 20 -->
+<!-- 21 -->
 <section class="part" id="lead-report">
-<h2><span class="num">20</span>Leads Report and Not a Fit Report</h2>
+<h2><span class="num">21</span>Leads Report and Not a Fit Report</h2>
 <p class="where">Side menu › Reports › Leads Report</p>
 <p class="need">Needs the tick: "Leads Sources" (in the Reports part of Roles)</p>
 
@@ -903,9 +990,9 @@
 <p>"Doesn't need us" was added on 15 October 2026. Calls logged before then as "Answered" aren't counted as wasted, even if the note says the business didn't need you.</p></div>
 </section>
 
-<!-- 21 -->
+<!-- 22 -->
 <section class="part" id="lead-roles">
-<h2><span class="num">21</span>Who can do what</h2>
+<h2><span class="num">22</span>Who can do what</h2>
 <p class="where">Side menu › Settings › Team › Roles</p>
 
 <p>The account owner can do everything. For staff, it depends on the ticks in their role. Leads has its own row in the Roles grid, and a few related ticks live under CRM and Reports.</p>
@@ -925,6 +1012,8 @@
 <tr><td>Pipeline Board — Edit</td><td>CRM › Pipeline Board › Edit</td><td class="wrapok">Edit Lead (details and sales signals), Remove number on a number to check, Move back to Leads, and on the Sales Pipeline: Not a Fit, Mark as Lost and Reopen.</td></tr>
 <tr><td>Team performance</td><td>Leads › Team performance › View</td><td class="wrapok">Open Team performance and set targets for the people who report to them (their Line manager in Team is set to this person). Line managers with this tick also get the 6 pm email. Logging a call needs only "Leads — view".</td></tr>
 <tr><td>Follow-ups</td><td>Leads › View</td><td class="wrapok">Log/Follow-up, Change date and the Follow-ups page (under CRM). Staff see their own leads' follow-ups; people who see all leads can pick a person and see the team table.</td></tr>
+<tr><td>Qualify a Lead / mark it Not a Fit</td><td>Leads › other</td><td class="wrapok">Also: <span class="ui">↩️ Undo</span> on an AI decision, and Merge, Keep separate or Checked on Check these. Anyone with "Leads — view" can open Check these.</td></tr>
+<tr><td>Edit Pipeline Settings</td><td>CRM › Pipeline Settings › Edit</td><td class="wrapok">Change the AI Lead Qualification settings (B2B plan). "Pipeline Settings — view" can look but not change them.</td></tr>
 <tr><td>Leads Sources</td><td>Reports</td><td class="wrapok">Open the Leads Report and the Not a Fit Report, and download them.</td></tr>
 </tbody></table></div>
 
@@ -934,9 +1023,9 @@
 <p>"Assign Leads and Opportunities to team members" was added on 2 October 2026. No existing role has it ticked. Tick it on your sales manager's role (and IT Admin's, if they should share out leads).</p></div>
 </section>
 
-<!-- 22 -->
+<!-- 23 -->
 <section class="part" id="lead-recipes">
-<h2><span class="num">22</span>Everyday tasks</h2>
+<h2><span class="num">23</span>Everyday tasks</h2>
 
 <div class="recipe"><h4>Morning: share out yesterday's new leads</h4>
 <ol class="steps">
@@ -1038,15 +1127,24 @@
 </ol></div>
 </section>
 
-<!-- 23 -->
+<!-- 24 -->
 <section class="part" id="lead-faq">
-<h2><span class="num">23</span>Questions and problems</h2>
+<h2><span class="num">24</span>Questions and problems</h2>
 
 <h4>I qualified a lead and now I can't find it.</h4>
 <p>That's expected: qualified leads move to CRM › Pipeline Board. Search for them there. If it was a mistake, use <span class="ui">Move back to Leads</span> (section 16).</p>
 
 <h4>I searched All Leads and it says "Found in Sales Pipeline".</h4>
 <p>The business has already been qualified, so it lives on the Sales Pipeline. Press <span class="ui">Open</span> on the row to go to it, or <span class="ui">See all in Sales Pipeline →</span> to see every match there. If it was closed (Not a Fit, Lost or Dropped), it's listed underneath with the reason; open it and press <span class="ui">↩️ Reopen</span> if it was a mistake.</p>
+
+<h4>The AI qualified a lead that isn't a real buyer.</h4>
+<p>Open the deal and press <span class="ui">↩️ Undo: back to All Leads</span> in the AI box. Everything the buyer said stays on the lead. If the buyer later gives more details, the AI won't overwrite anything you typed (section 18).</p>
+
+<h4>A visitor chatted on our website but no lead was made.</h4>
+<p>With AI Lead Qualification, a website visitor becomes a lead only once they leave an email address or a phone number. As soon as they do, the AI reads the whole chat and makes the lead.</p>
+
+<h4>Why is a lead in Check these?</h4>
+<p>The AI found a lead that might be the same buyer (for example the same company name but a different email and number), or it couldn't judge the enquiry. It never merges by guessing, so a person decides: Merge, Keep separate or Checked (section 18).</p>
 
 <h4>Why are almost all my leads Cold?</h4>
 <p>Any lead nobody has saved a change to in 7 days loses 25 points. Work the lead and record it (Edit Lead) and it goes up again. See section 17.</p>

@@ -289,6 +289,9 @@
     </div>
   </div>
   <div style="display:flex;gap:10px">
+    {% if aiq_check_count is not none %}{# AI Lead Qualification: what the AI wasn't sure about #}
+    <a href="{{ url_for('portal.leads_check_these') }}" class="btn btn-sm" style="text-decoration:none{{ ';background:#fffbeb;border-color:#f59e0b;color:#b45309' if aiq_check_count }}">🔎 Check these{% if aiq_check_count %} ({{ aiq_check_count }}){% endif %}</a>
+    {% endif %}
     {% if staff_can_open('portal.sales_pipeline_settings') %}
     <a href="{{ url_for('portal.sales_pipeline_settings') }}" class="btn btn-sm" style="text-decoration:none">⚙️ Settings</a>
     {% endif %}
@@ -794,7 +797,8 @@
       <tbody>
         {% set src_meta = {'whatsapp': ('#dcfce7','#15803d','WhatsApp'), 'facebook': ('#dbeafe','#1d4ed8','Facebook'),
                             'instagram': ('#fce7f3','#be185d','Instagram'), 'manual': ('#f1f5f9','#64748b','Manual'),
-                            'import': ('#eef2ff','#3730a3','Import'), 'demo_booking': ('#E8EEF8','#0B1D40','Demo booking'), 'lead_finder': ('#E8EEF8','#0B1D40','Lead Finder')} %}
+                            'import': ('#eef2ff','#3730a3','Import'), 'demo_booking': ('#E8EEF8','#0B1D40','Demo booking'), 'lead_finder': ('#E8EEF8','#0B1D40','Lead Finder'),
+                          'email': ('#eff6ff','#1d4ed8','Email enquiry'), 'website': ('#f0fdf4','#15803d','Website chat')} %}
         {% set _sb = {'hot': ('🔥','#fef2f2','#b91c1c'), 'warm': ('🌤️','#fffbeb','#b45309'), 'cold': ('❄️','#eff6ff','#1d4ed8')} %}
         {% for l in real_leads %}
         <tr class="lb-row m-row" data-lead-id="{{ l.id }}">

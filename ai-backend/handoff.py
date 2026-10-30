@@ -518,6 +518,7 @@ def update_handoff_contact(
         return updated
     contact_email = _get_tenant_contact_email(tenant_id)
     if contact_email:
+        original_message = _with_team_translation(tenant_id, original_message)
         chat_summary = _get_chat_summary(tenant_id, session_id)
         _send_handoff_email_full(
             to_email=contact_email,
@@ -533,6 +534,49 @@ def update_handoff_contact(
         print(f"⚠️ [HANDOFF] No contact email found for tenant_id={tenant_id} — email skipped")
 
     return updated
+
+
+def _with_team_translation(tenant_id: int, message: str) -> str:
+    """Chat Translation, AI Sales Agent for B2B (2026-10-29): the alert shows
+    the buyer's words and, when they aren't in the team's language, the team's
+    language too. Only for businesses whose plan has the "inbox.translate"
+    tick (and PhiXtra's own account) with Chat Translation switched on.
+    Kept in step with api-key-manager/chat_translate.py."""
+    msg = (message or "").strip()
+    if not msg:
+        return message
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        try:
+            pid = (os.getenv("PLATFORM_TENANT_ID") or "").strip()
+            cur.execute("""SELECT 1 FROM tenants t JOIN plan_feature_grants g ON g.plan_id = t.plan_id
+                            WHERE t.id = %s AND g.feature_key = 'inbox.translate' LIMIT 1""", (int(tenant_id),))
+            ok = cur.fetchone() is not None or (pid.isdigit() and int(pid) == int(tenant_id))
+            if not ok:
+                return message
+            cur.execute("SELECT enabled, team_lang FROM chat_translation_settings WHERE tenant_id=%s", (int(tenant_id),))
+            row = cur.fetchone()
+            if row and not row[0]:
+                return message
+            team = (row[1] if row else None) or "en"
+        finally:
+            cur.close(); conn.close()
+        import json as _json
+        from llm import _get_client
+        resp = _get_client().chat.completions.create(
+            model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
+            messages=[{"role": "user", "content":
+                       f"Detect the language of this customer message (ISO 639-1). If it is not '{team}', translate it "
+                       f"into that language, keeping numbers, prices and names exactly. Reply as JSON "
+                       f'{{"lang": "..", "translation": "..." or null}}.\n\nMessage:\n{msg[:1000]}'}],
+            response_format={"type": "json_object"})
+        d = _json.loads(resp.choices[0].message.content or "{}")
+        tr = (d.get("translation") or "").strip()
+        if tr and (d.get("lang") or "").lower() != team and tr != msg:
+            return f"{msg} — Translated: {tr}"
+    except Exception as e:
+        print(f"⚠️ [HANDOFF] team translation skipped: {e}")
+    return message
 
 
 def _send_handoff_email_full(

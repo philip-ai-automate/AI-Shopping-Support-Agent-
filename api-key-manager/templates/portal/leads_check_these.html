@@ -1,0 +1,80 @@
+{% extends "portal/base.html" %}
+{% block title %}Check these — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+.crumb{font-size:12px;color:var(--muted);margin-bottom:14px}
+.crumb a{color:var(--muted);text-decoration:none;font-weight:600}
+.crumb b{color:var(--ink)}
+.ct-head h1{font-size:22px;font-weight:800;color:var(--ink);margin:0 0 4px}
+.ct-head p{font-size:13px;color:var(--muted);margin:0 0 18px;max-width:680px;line-height:1.6}
+.ct-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:14px}
+.ct-kind{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#b45309}
+.ct-why{font-size:13.5px;color:var(--ink);margin:6px 0 12px;line-height:1.55}
+.ct-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ct-who{border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:12.5px;line-height:1.7;color:var(--ink)}
+.ct-who .t{font-size:10.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.ct-who a.n{font-size:14px;font-weight:800;color:#0B1D40;text-decoration:none}
+.ct-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.ct-btn{border:1.5px solid #0B1D40;background:#fff;color:#0B1D40;border-radius:9px;padding:7px 14px;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;text-decoration:none}
+.ct-btn.dark{background:#0B1D40;color:#fff}
+.ct-empty{background:#fff;border:1px dashed var(--line);border-radius:16px;padding:40px;text-align:center;color:var(--muted);font-size:14px}
+@media(max-width:760px){.ct-pair{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+
+{% block content %}
+{% macro who(id, name, person, email, phone, wa, product, is_opp, label) %}
+<div class="ct-who">
+  <div class="t">{{ label }}</div>
+  <a class="n" href="{{ url_for('portal.opportunity_detail' if is_opp else 'portal.lead_detail', lead_id=id) }}">{{ name or '—' }}</a>
+  {% if person %}<div>{{ person }}</div>{% endif %}
+  {% if email %}<div style="word-break:break-all">{{ email }}</div>{% endif %}
+  {% if phone %}<div>📞 {{ phone|phone_display }}</div>{% endif %}
+  {% if wa %}<div>WhatsApp {{ wa|phone_display }}</div>{% endif %}
+  {% if product %}<div style="color:var(--muted)">Wants: {{ product }}</div>{% endif %}
+  <div style="color:var(--muted)">{{ 'On the Sales Pipeline' if is_opp else 'In All Leads' }}</div>
+</div>
+{% endmacro %}
+<div class="crumb"><a href="{{ url_for('portal.leads_page') }}">Leads</a> / <b>Check these</b></div>
+<div class="ct-head">
+  <h1>Check these</h1>
+  <p>When the AI isn't sure, it asks a person instead of guessing: a buyer who may already be on your list, or an enquiry it couldn't judge. Sort each one with a click.</p>
+</div>
+
+{% for it in items %}
+<div class="ct-card">
+  <div class="ct-kind">{{ 'Possible duplicate' if it.kind == 'duplicate' else 'The AI wasn\'t sure' }}</div>
+  <div class="ct-why">{{ it.reason }}</div>
+  {% if it.kind == 'duplicate' and it.other_lead_id %}
+  <div class="ct-pair">
+    {{ who(it.lead_id, it.customer_name, it.contact_person, it.email, it.phone, it.whatsapp_number, it.product_interest, it.is_opportunity, 'New enquiry') }}
+    {{ who(it.other_lead_id, it.o_name, it.o_person, it.o_email, it.o_phone, it.o_wa, it.o_product, it.o_is_opp, 'Already on your list') }}
+  </div>
+  {% if can_act %}
+  <div class="ct-acts">
+    <form method="POST" action="{{ url_for('portal.leads_check_these_resolve', item_id=it.id, action='merge') }}" style="margin:0"
+          onsubmit="return confirm({{ ('Merge them? The new enquiry\'s details are added to ' ~ (it.o_name or 'the lead already on your list') ~ ' and the new lead is closed as a duplicate.')|tojson|forceescape }})">
+      <button class="ct-btn dark" type="submit">Merge — same buyer</button></form>
+    <form method="POST" action="{{ url_for('portal.leads_check_these_resolve', item_id=it.id, action='separate') }}" style="margin:0">
+      <button class="ct-btn" type="submit">Keep separate</button></form>
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="ct-pair" style="grid-template-columns:1fr">
+    {{ who(it.lead_id, it.customer_name, it.contact_person, it.email, it.phone, it.whatsapp_number, it.product_interest, it.is_opportunity, 'The lead') }}
+  </div>
+  {% if can_act %}
+  <div class="ct-acts">
+    <a class="ct-btn dark" href="{{ url_for('portal.opportunity_detail' if it.is_opportunity else 'portal.lead_detail', lead_id=it.lead_id) }}">Open the lead</a>
+    <form method="POST" action="{{ url_for('portal.leads_check_these_resolve', item_id=it.id, action='done') }}" style="margin:0">
+      <button class="ct-btn" type="submit">Checked</button></form>
+  </div>
+  {% endif %}
+  {% endif %}
+  <div style="font-size:11px;color:var(--muted);margin-top:10px">{{ it.created_at.strftime('%d %b %Y') if it.created_at else '' }}</div>
+</div>
+{% else %}
+<div class="ct-empty">Nothing to check. The AI was sure about every enquiry.</div>
+{% endfor %}
+{% endblock %}
