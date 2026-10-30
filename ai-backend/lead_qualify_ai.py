@@ -35,6 +35,28 @@ LEAD_COLS = {"company": "customer_name", "business_type": "business_type", "requ
 
 _cache = {}   # tenant_id -> (expires, settings or None)
 
+# Quotations (Intelligent RFQ Phase 2, 30 Oct 2026): how soon the business
+# promises a quotation (Quotations › Quotation settings), in the buyer's words.
+QUOTE_WHEN = {"30m": "within about 30 minutes in working hours", "1h": "within about an hour in working hours",
+              "2h": "within about 2 hours in working hours", "4h": "within about 4 hours in working hours",
+              "same_day": "by the end of the working day", "next_day": "by the end of the next working day"}
+
+
+def _quote_when(tenant_id: int) -> str:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT settings->>'target' FROM quote_settings WHERE tenant_id=%s", (tenant_id,))
+            r = cur.fetchone()
+        except Exception:
+            conn.rollback()
+            r = None
+        cur.close()
+    finally:
+        conn.close()
+    return QUOTE_WHEN.get((r or [None])[0] or "1h", QUOTE_WHEN["1h"])
+
 
 def _settings(tenant_id: int):
     hit = _cache.get(tenant_id)
@@ -66,6 +88,15 @@ def _settings(tenant_id: int):
                 conn.rollback()
             if not s["enabled"]:
                 s = None
+            else:
+                s["quote_when"] = _quote_when(tenant_id)
+                # Quote requests only for a business with a product list (PhiXtra's own plans: none).
+                try:
+                    cur.execute("SELECT 1 FROM products WHERE tenant_id=%s AND is_active LIMIT 1", (tenant_id,))
+                    s["quotes"] = cur.fetchone() is not None
+                except Exception:
+                    conn.rollback()
+                    s["quotes"] = False
         cur.close()
     finally:
         conn.close()
@@ -114,8 +145,20 @@ def addon(tenant_id: int, session_id: str) -> str:
     """Extra instruction for this chat, or ''. Never raises."""
     try:
         s = _settings(int(tenant_id))
-        if not s or not (s["ask"] or s.get("questions")):
+        if not s:
             return ""
+        quote = "" if not s.get("quotes") else (
+            "\n\nQUOTE REQUESTS: when the customer asks for prices or a quotation for specific products, make sure "
+            "you know, for each product, how many they need; then where it must be delivered and by when; and, on "
+            "website chat, the email address to send the quotation to (on WhatsApp it can come here). Ask only for "
+            "what is missing, one short question per reply, in the customer's language. Once you have it, tell them "
+            "their request has gone to the sales team and the quotation will be sent to them "
+            + s.get("quote_when", QUOTE_WHEN["1h"]) + ". You may give list prices exactly as listed, but never "
+            "offer a discount, a final price, a delivery cost or a delivery date of your own: those come in the "
+            "quotation from the sales team."
+        )
+        if not (s["ask"] or s.get("questions")):
+            return quote
         known = _known(int(tenant_id), session_id or "") if session_id else {}
         missing = []
         for f in s["ask"]:
@@ -129,8 +172,8 @@ def addon(tenant_id: int, session_id: str) -> str:
             if not (answered.get(q["id"]) or {}).get("answer"):
                 missing.append(str(q["ask"])[:200])
         if not missing:
-            return ""
-        return (
+            return quote
+        return quote + (
             "\n\nQUALIFYING THE BUYER: when the customer shows interest in buying (asks about products, prices, "
             "stock, quantities or delivery), also find out — naturally, while you help them — the buying details "
             "below that they have not told you yet in this conversation. Rules: first answer what they asked; then "

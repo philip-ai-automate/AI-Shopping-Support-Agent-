@@ -143,6 +143,10 @@
       {% if staff_can_open('portal.sales_pipeline_edit') %}
       <button type="button" class="lc-edit-btn" onclick="document.getElementById('editLeadModal').classList.add('open')">✏️ {{ 'Edit' if lead.is_opportunity else 'Edit Lead' }}</button>
       {% endif %}
+      {# Quotations (2026-10-30): start a quote request for this buyer #}
+      {% if not outc and quotes_on() and staff_can_open('portal.quotes_request_new') %}
+      <a class="lc-edit-btn" style="text-decoration:none" href="{{ url_for('portal.quotes_request_new', lead_id=lead.id) }}">🧾 New quote request</a>
+      {% endif %}
       {% if lead.is_opportunity and not outc %}
       {% if staff_can_open('portal.sales_pipeline_drop') %}
       <button type="button" class="lc-edit-btn" style="color:#b91c1c;border-color:#b91c1c" onclick="document.getElementById('oppLostModal').classList.add('open')">Lost</button>

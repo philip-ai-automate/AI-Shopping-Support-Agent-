@@ -42521,3 +42521,399 @@ def crm_import_template(fmt: str):
                         headers={"Content-Disposition": f"attachment; filename={base}.csv"})
     flash("Choose the Excel or CSV template.", "warning")
     return redirect(url_for("portal.crm_import_start", target=target))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# QUOTATIONS › REQUESTS (2026-10-30, Intelligent RFQ Step 1 Phase 1). Approved
+# design v5 1cF1TzQiVMfM3wNCv43mZJ: the AI / team hands a request to the
+# salesperson, who quotes in their own software and clicks "Quote sent".
+# Logic: quote_requests.py. Same plan rule as AI Lead Qualification.
+# ══════════════════════════════════════════════════════════════════════════════
+import quote_requests as _qr
+
+
+@portal_bp.app_context_processor
+def _inject_quotes_menu():
+    def quotes_on():
+        # Same plan rule as the Lead Qualification dashboard: share its answer.
+        if "_aiq_dash_on" not in g:
+            cid = _customer_id()
+            cust = _get_customer(cid) if cid else None
+            try:
+                g._aiq_dash_on = bool(cust) and _qr.allowed(int(cust["tenant_id"]))
+            except Exception:
+                g._aiq_dash_on = False
+        return g._aiq_dash_on
+    return {"quotes_on": quotes_on}
+
+
+def _quotes_guard():
+    """(customer, tenant_id, None) or (None, None, response)."""
+    r = _require_login()
+    if r: return None, None, r
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return None, None, _rperm
+    customer = _get_customer(_customer_id())
+    if not customer:
+        return None, None, redirect(url_for("portal.login"))
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "leads.page", "Leads")
+    if r2: return None, None, r2
+    if not _qr.allowed(tenant_id):
+        flash("Quotations is part of the AI Sales Agent for B2B plan.", "warning")
+        return None, None, redirect(url_for("portal.leads_page"))
+    return customer, tenant_id, None
+
+
+def _quote_dt(tz):
+    """'30 Oct, 14:05' in the business's time zone ('' for none)."""
+    def f(d):
+        if not d:
+            return ""
+        d = d.astimezone(tz)
+        return d.strftime("%d %b, %H:%M").lstrip("0")
+    return f
+
+
+def _quotes_scope(customer):
+    """Staff without "See all leads" see only the requests handed to them."""
+    return None if _leads_see_all() else _current_actor(customer)["key"]
+
+
+def _quote_form(tenant_id: int, customer, f, products: dict) -> tuple:
+    """(data, error) from the New request / Edit form."""
+    try:
+        raw_lines = _json.loads(f.get("lines_json") or "[]")
+    except (TypeError, ValueError):
+        raw_lines = []
+    lines = _qr.clean_lines(raw_lines, products)
+    clean = lambda k, n: (" ".join((f.get(k) or "").split())[:n] or None)
+    d = {"buyer_company": clean("buyer_company", 300), "buyer_name": clean("buyer_name", 200),
+         "buyer_email": (clean("buyer_email", 255) or "").lower() or None, "buyer_phone": clean("buyer_phone", 40),
+         "deliver_to": clean("deliver_to", 300), "notes": (f.get("notes") or "").strip()[:4000] or None,
+         "buyer_words": (f.get("buyer_words") or "").strip()[:8000] or None, "lines": lines}
+    country = (f.get("buyer_country") or "").upper()
+    d["buyer_country"] = country if country in {iso for iso, _ in _addr.ADDRESS_COUNTRIES} else None
+    d["needed_by"] = None
+    if (f.get("needed_by") or "").strip():
+        try:
+            d["needed_by"] = datetime.strptime(f["needed_by"].strip(), "%Y-%m-%d").date()
+        except ValueError:
+            return d, "The 'Needed by' date isn't a real date."
+    if d["buyer_email"] and not _re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", d["buyer_email"]):
+        return d, "That email address doesn't look right."
+    ch = f.get("channel") or "manual"
+    d["channel"] = ch if ch in _qr.CHANNEL_WORDS and ch in ("manual", "email", "whatsapp", "phone") else "manual"
+    people = {p["key"]: p["label"] for p in _lead_assignees(tenant_id, customer)}
+    key = f.get("assigned_key") or ""
+    if not _leads_see_all():
+        key = _current_actor(customer)["key"]
+    d["assigned_key"], d["assigned_to"] = (key, people[key]) if key in people else (None, None)
+    if not lines:
+        return d, "Add at least one product the buyer asked for."
+    if not (d["buyer_company"] or d["buyer_name"]):
+        return d, "Add the buyer's company or name."
+    if not (d["buyer_email"] or d["buyer_phone"]):
+        return d, "Add the buyer's email or phone number, so the quotation can reach them."
+    return d, None
+
+
+def _quote_products_json(products: dict) -> list:
+    return [{"id": p["id"], "name": p["name"],
+             "price": (float(p["price"]) if p.get("price") is not None and not p.get("price_on_request") else None),
+             "stock": (None if p.get("is_service") else int((p.get("stock_quantity") or 0) - (p.get("reserved_quantity") or 0)))}
+            for p in products.values()]
+
+
+@portal_bp.route("/quotations/requests")
+@team_feature("leads.page")
+def quotes_requests():
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    scope = _quotes_scope(customer)
+    status = request.args.get("status") or "to_quote"
+    if status not in _qr.STATUS_WORDS:
+        status = "to_quote"
+    q = (request.args.get("q") or "").strip()[:100]
+    _qr.sync_from_deals(tenant_id)
+    tz = _tp.tz_for(tenant_id)
+    now = _tp.now_local(tz)
+    rows = _qr.list_requests(tenant_id, status, scope, q)
+    for r in rows:
+        r["clock"] = _qr.time_left(r, now)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return render_template("portal/quotes_requests.html", rows=rows, status=status, q=q,
+                           counts=_qr.counts(tenant_id, scope), k=_qr.kpis(tenant_id, month_start, scope),
+                           s=_qr.settings(tenant_id), qr=_qr, see_all=scope is None,
+                           target_words=dict(_qr.TARGETS), dt=_quote_dt(tz))
+
+
+@portal_bp.route("/quotations/requests/new", methods=["GET", "POST"])
+@team_feature("leads.page")
+def quotes_request_new():
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    products = _qr.products_for(tenant_id)
+    me = _current_actor(customer)
+    form = {}
+    if request.method == "POST":
+        d, problem = _quote_form(tenant_id, customer, request.form, products)
+        lead_id = request.form.get("lead_id")
+        if lead_id and lead_id.isdigit() and _pipeline_lead_owned_by_tenant(int(lead_id), tenant_id):
+            d["lead_id"] = int(lead_id)
+        if not problem:
+            d["currency"] = _biz_currency(tenant_id)
+            s = _qr.settings(tenant_id)
+            r = _qr.create(tenant_id, d, me, s, _tp.tz_for(tenant_id))
+            flash(f"Request R-{r['ref_no']} saved" + (f" and handed to {r['assigned_to']}." if r.get("assigned_to") else "."),
+                  "success")
+            return redirect(url_for("portal.quotes_request_detail", request_id=r["id"]))
+        flash(problem, "danger")
+        form = dict(request.form)
+        form["lines"] = d["lines"]
+    else:
+        lead_id = request.args.get("lead_id")
+        if lead_id and lead_id.isdigit():
+            lead = _pipeline_lead_owned_by_tenant(int(lead_id), tenant_id)
+            if lead:
+                form = {"lead_id": lead["id"], "buyer_company": lead.get("customer_name") or "",
+                        "buyer_name": lead.get("contact_person") or "", "buyer_email": lead.get("email") or "",
+                        "buyer_phone": lead.get("whatsapp_number") and ("+" + lead["whatsapp_number"].lstrip("+"))
+                                       or lead.get("phone") or "",
+                        "buyer_country": lead.get("addr_country") or "", "assigned_key": lead.get("assigned_key") or ""}
+        form.setdefault("assigned_key", me["key"])
+    return render_template("portal/quotes_request_form.html", form=form, editing=None,
+                           products_json=_quote_products_json(products), people=_lead_assignees(tenant_id, customer),
+                           see_all=_leads_see_all(), countries=_addr.ADDRESS_COUNTRIES,
+                           cur=_biz_currency(tenant_id), qr=_qr)
+
+
+@portal_bp.route("/quotations/requests/<int:request_id>")
+@team_feature("leads.page")
+def quotes_request_detail(request_id: int):
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    _qr.sync_from_deals(tenant_id)
+    r = _qr.get(tenant_id, request_id, _quotes_scope(customer))
+    if not r:
+        flash("Request not found.", "danger")
+        return redirect(url_for("portal.quotes_requests"))
+    tz = _tp.tz_for(tenant_id)
+    now = _tp.now_local(tz)
+    products = _qr.products_for(tenant_id, [ln.get("product_id") for ln in r["lines"]])
+    for ln in r["lines"]:
+        p = products.get(ln.get("product_id"))
+        ln["stock"] = None if not p or p.get("is_service") else int((p.get("stock_quantity") or 0) - (p.get("reserved_quantity") or 0))
+        ln["on_list"] = bool(p)
+    lead = _pipeline_lead_owned_by_tenant(r["lead_id"], tenant_id) if r.get("lead_id") else None
+    return render_template("portal/quotes_request_detail.html", r=r, lead=lead, clock=_qr.time_left(r, now),
+                           events=_qr.events(r["id"]), qr=_qr, tz=tz, lines_text=_qr.lines_text(r),
+                           sent_by=_qr.SENT_BY, lost_reasons=_qr.LOST_REASONS,
+                           not_quoted_reasons=_qr.NOT_QUOTED_REASONS, cur=r.get("currency") or _biz_currency(tenant_id),
+                           country_name=dict(_addr.ADDRESS_COUNTRIES), today=now.date(), dt=_quote_dt(tz))
+
+
+@portal_bp.route("/quotations/requests/<int:request_id>/edit", methods=["GET", "POST"])
+@team_feature("leads.page")
+def quotes_request_edit(request_id: int):
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    r = _qr.get(tenant_id, request_id, _quotes_scope(customer))
+    if not r:
+        flash("Request not found.", "danger")
+        return redirect(url_for("portal.quotes_requests"))
+    products = _qr.products_for(tenant_id)
+    if request.method == "POST":
+        d, problem = _quote_form(tenant_id, customer, request.form, products)
+        if not problem:
+            if not _leads_see_all():
+                d["assigned_key"], d["assigned_to"] = r["assigned_key"], r["assigned_to"]
+            _qr.update_details(tenant_id, request_id, d, _current_actor(customer))
+            flash("Request saved.", "success")
+            return redirect(url_for("portal.quotes_request_detail", request_id=request_id))
+        flash(problem, "danger")
+        form = dict(request.form)
+        form["lines"] = d["lines"]
+    else:
+        form = {k: (r.get(k) or "") for k in ("buyer_company", "buyer_name", "buyer_email", "buyer_phone",
+                                             "buyer_country", "deliver_to", "notes", "assigned_key", "channel")}
+        form["needed_by"] = r["needed_by"].isoformat() if r.get("needed_by") else ""
+        form["lines"] = r["lines"]
+    return render_template("portal/quotes_request_form.html", form=form, editing=r,
+                           products_json=_quote_products_json(products), people=_lead_assignees(tenant_id, customer),
+                           see_all=_leads_see_all(), countries=_addr.ADDRESS_COUNTRIES,
+                           cur=r.get("currency") or _biz_currency(tenant_id), qr=_qr)
+
+
+@portal_bp.route("/quotations/requests/<int:request_id>/sent", methods=["POST"])
+@team_feature("leads.page")
+def quotes_request_sent(request_id: int):
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    back = redirect(url_for("portal.quotes_request_detail", request_id=request_id))
+    if not _qr.get(tenant_id, request_id, _quotes_scope(customer)):
+        flash("Request not found.", "danger")
+        return redirect(url_for("portal.quotes_requests"))
+    f = request.form
+    value = _qr._num(f.get("value"), 0.01, 1e12)
+    if value is None:
+        flash("Type the quotation's total value.", "danger")
+        return back
+    valid = None
+    if (f.get("valid_until") or "").strip():
+        try:
+            valid = datetime.strptime(f["valid_until"].strip(), "%Y-%m-%d").date()
+        except ValueError:
+            flash("The 'Valid until' date isn't a real date.", "danger")
+            return back
+        if valid < _tp.now_local(_tp.tz_for(tenant_id)).date():
+            flash("'Valid until' is in the past.", "danger")
+            return back
+    via = f.get("via") if f.get("via") in _qr.SENT_BY_WORDS else None
+    pdf_bytes, pdf_name = None, None
+    up = request.files.get("pdf")
+    if up and up.filename:
+        pdf_bytes = up.read(_qr.MAX_PDF + 1)
+        if len(pdf_bytes) > _qr.MAX_PDF:
+            flash("That PDF is bigger than 10 MB.", "danger")
+            return back
+        if not pdf_bytes.startswith(b"%PDF"):
+            flash("That file isn't a PDF.", "danger")
+            return back
+        pdf_name = _re.sub(r"[^A-Za-z0-9._ -]+", "_", up.filename)[:200]
+    ok, msg = _qr.mark_sent(tenant_id, request_id, {
+        "value": value, "currency": _biz_currency(tenant_id), "valid_until": valid,
+        "number": " ".join((f.get("number") or "").split())[:60] or None, "via": via,
+        "pdf": pdf_bytes, "pdf_name": pdf_name}, _current_actor(customer))
+    flash(msg, "success" if ok else "warning")
+    return back
+
+
+@portal_bp.route("/quotations/requests/<int:request_id>/won", methods=["POST"])
+@team_feature("leads.page")
+def quotes_request_won(request_id: int):
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    if not _qr.get(tenant_id, request_id, _quotes_scope(customer)):
+        flash("Request not found.", "danger")
+        return redirect(url_for("portal.quotes_requests"))
+    raw_value = (request.form.get("value") or "").strip()
+    value = _qr._num(raw_value, 0.01, 1e12) if raw_value else None
+    if raw_value and value is None:
+        flash("The order value isn't a number.", "danger")
+        return redirect(url_for("portal.quotes_request_detail", request_id=request_id))
+    note = " ".join((request.form.get("note") or "").split())[:300]
+    ok, msg, lead_id = _qr.mark_won(tenant_id, request_id, value, _current_actor(customer), note)
+    if ok and lead_id:
+        _stamp_campaign_converted(lead_id)
+        _on_lead_won(tenant_id, lead_id)
+    flash(msg, "success" if ok else "warning")
+    return redirect(url_for("portal.quotes_request_detail", request_id=request_id))
+
+
+@portal_bp.route("/quotations/requests/<int:request_id>/close", methods=["POST"])
+@team_feature("leads.page")
+def quotes_request_close(request_id: int):
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    if not _qr.get(tenant_id, request_id, _quotes_scope(customer)):
+        flash("Request not found.", "danger")
+        return redirect(url_for("portal.quotes_requests"))
+    reason = (request.form.get("reason") or "").strip()
+    if reason == "Other":
+        reason = "Other: " + " ".join((request.form.get("reason_other") or "").split())[:200]
+    if not reason or reason == "Other: " or (reason not in _qr.LOST_REASONS + _qr.NOT_QUOTED_REASONS
+                                              and not reason.startswith("Other: ")):
+        flash("Choose a reason.", "danger")
+        return redirect(url_for("portal.quotes_request_detail", request_id=request_id))
+    ok, msg = _qr.close(tenant_id, request_id, reason, _current_actor(customer))
+    flash(msg, "success" if ok else "warning")
+    return redirect(url_for("portal.quotes_request_detail", request_id=request_id))
+
+
+@portal_bp.route("/quotations/requests/<int:request_id>/reopen", methods=["POST"])
+@team_feature("leads.page")
+def quotes_request_reopen(request_id: int):
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    if not _qr.get(tenant_id, request_id, _quotes_scope(customer)):
+        flash("Request not found.", "danger")
+        return redirect(url_for("portal.quotes_requests"))
+    ok, msg = _qr.reopen(tenant_id, request_id, _current_actor(customer), _tp.tz_for(tenant_id), _qr.settings(tenant_id))
+    flash(msg, "success" if ok else "warning")
+    return redirect(url_for("portal.quotes_request_detail", request_id=request_id))
+
+
+@portal_bp.route("/quotations/requests/<int:request_id>/lines.xlsx")
+@team_feature("leads.page")
+def quotes_request_xlsx(request_id: int):
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    r = _qr.get(tenant_id, request_id, _quotes_scope(customer))
+    if not r:
+        flash("Request not found.", "danger")
+        return redirect(url_for("portal.quotes_requests"))
+    return Response(_qr.lines_xlsx(r, customer.get("tenant_name") or ""),
+                    mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f"attachment; filename=R-{r['ref_no']}.xlsx"})
+
+
+@portal_bp.route("/quotations/requests/<int:request_id>/quotation.pdf")
+@team_feature("leads.page")
+def quotes_request_pdf(request_id: int):
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    data, name = _qr.pdf(tenant_id, request_id, _quotes_scope(customer))
+    if not data:
+        flash("No quotation PDF was attached.", "warning")
+        return redirect(url_for("portal.quotes_request_detail", request_id=request_id))
+    return Response(data, mimetype="application/pdf",
+                    headers={"Content-Disposition": f"inline; filename=\"{name or 'quotation.pdf'}\""})
+
+
+@portal_bp.route("/quotations/settings", methods=["GET", "POST"])
+@team_feature("leads.page")
+def quotes_settings():
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    can_edit = _role_sees_all("leads.see_all")
+    if request.method == "POST":
+        if not can_edit:
+            flash("Only people who can see all leads can change Quotation settings.", "warning")
+            return redirect(url_for("portal.quotes_settings"))
+        f = request.form
+        ws, we = (f.get("work_start") or "").strip(), (f.get("work_end") or "").strip()
+        if ws and we and we <= ws:
+            flash("Working hours must end after they start.", "danger")
+            return redirect(url_for("portal.quotes_settings"))
+        _qr.save_settings(tenant_id, {"target": f.get("target"), "work_start": f.get("work_start"),
+                                      "work_end": f.get("work_end"), "software": f.get("software") or "",
+                                      "alert_new": f.get("alert_new") == "1", "alert_due": f.get("alert_due") == "1",
+                                      "alert_manager": f.get("alert_manager") == "1"},
+                          _current_actor(customer)["label"])
+        flash("Quotation settings saved. New requests use them; requests already waiting keep their time.", "success")
+        return redirect(url_for("portal.quotes_settings"))
+    return render_template("portal/quotes_settings.html", s=_qr.settings(tenant_id), qr=_qr, can_edit=can_edit,
+                           tzname=str(_tp.tz_for(tenant_id)))

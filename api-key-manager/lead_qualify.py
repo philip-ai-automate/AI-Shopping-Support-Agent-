@@ -426,7 +426,7 @@ def _business_context(tenant_id: int) -> dict:
                     (tenant_id,))
         t = cur.fetchone() or {}
         cur.execute("""SELECT name FROM products WHERE tenant_id=%s AND COALESCE(is_active, TRUE)
-                        ORDER BY updated_at DESC NULLS LAST LIMIT 60""", (tenant_id,))
+                        ORDER BY updated_at DESC NULLS LAST LIMIT 200""", (tenant_id,))
         products = [r["name"] for r in cur.fetchall() if r["name"]]
     finally:
         cur.close(); conn.close()
@@ -464,7 +464,7 @@ def read(tenant_id: int, kind: str, text: str, s: dict, known: dict = None, toda
         rules.append(f"The business delivers to: {s['deliver_to']}.")
     prompt = f"""You qualify sales leads for {biz['name']}, a business that sells to other businesses.
 What they sell: {biz['sells'] or 'see the product list'}.
-Products / services (sample): {', '.join(biz['products'][:60]) or 'not listed'}.
+Products / services{' (sample)' if len(biz['products']) >= 200 else ''}: {' | '.join(biz['products'][:200]) or 'not listed'}.
 {' '.join(rules)}
 Today is {today.isoformat()}.{own_txt}
 
@@ -507,6 +507,14 @@ Reply with JSON only:
  "not_fit_reason": string|null,        // for not_interested: their reason in a few words
  "new_requirement": true/false,        // known buyer asking for something different from what the business already has on them
  "answers": {{ "<question id>": {{"answer": "their answer in a few words" | null, "met": true/false/null}} }},  // the business's own questions only
+ "items": [ {{"product": string, "qty": number|null, "unit": string|null, "note": string|null}} ],
+   // ONLY when they ask for prices / a quotation for specific products: one entry per product they named.
+   // product = the exact name from the business's product list when it is clearly that product, else what they asked for
+   //   TRANSLATED INTO ENGLISH (e.g. "kompostierbare Strohhalme" → "compostable straws").
+   // qty = the number they gave for it; unit = the unit in English ("cases", "boxes", "packs", "kg"); note = size/colour/spec they added, in English.
+   // In a chat, list everything they asked a price for in the WHOLE conversation (latest quantities win). Otherwise [].
+ "deliver_to": string|null,      // the delivery place they gave (city, country or address) for this order
+ "needed_by": "YYYY-MM-DD"|null, // the date they need it by, only if it can be worked out
  "reason": "one short plain sentence: why you decided this (what they want, how much, where, when, what is missing)",
  "confidence": number 0-1
 }}
@@ -546,6 +554,26 @@ TEXT:
             if a or m is not None:
                 ans[qid] = {"answer": a, "met": m}
     out["answers"] = ans
+    items = []
+    for it in (out.get("items") if isinstance(out.get("items"), list) else [])[:200]:
+        if not isinstance(it, dict):
+            continue
+        name = it.get("product")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        q = it.get("qty")
+        try:
+            q = float(str(q).replace(",", "")) if q not in (None, "") and not isinstance(q, bool) else None
+            q = q if q is not None and 0 <= q <= 1e9 else None
+        except (TypeError, ValueError):
+            q = None
+        items.append({"product": re.sub(r"\s+", " ", name).strip()[:300], "qty": q,
+                      "unit": str(it.get("unit")).strip()[:40] if isinstance(it.get("unit"), str) else None,
+                      "note": str(it.get("note")).strip()[:300] if isinstance(it.get("note"), str) else None})
+    out["items"] = items
+    for k in ("deliver_to", "needed_by"):
+        v = out.get(k)
+        out[k] = v.strip()[:300] if isinstance(v, str) and v.strip() else None
     out["is_enquiry"] = out.get("is_enquiry") is True
     out["new_requirement"] = out.get("new_requirement") is True
     out["intent"] = out.get("intent") if out.get("intent") in INTENT_WORDS else (
@@ -1300,6 +1328,7 @@ def on_inbox_email(mb: dict, msg: dict, sender: str, received: datetime, token: 
         done = act(tenant_id, "email", r, ctx, s)
         if done.get("lead_id"):
             _record_email_on_lead(mb, msg, sender, received, done["lead_id"], body)
+            _quote_hook(tenant_id, "email", r, done, key, body)
         _mark(tenant_id, key, r.get("intent") or "enquiry", done.get("lead_id"))
         print(f"   [AI-QUALIFY] email tenant={tenant_id} from={sender} → {done}")
         return done
@@ -1385,11 +1414,26 @@ def on_reply(tenant_id: int, lead_id: int, reply_id: int, text: str, owner: tupl
             return {"skipped": True}
         r["is_enquiry"] = True
         done = act(tenant_id, "reply", r, {"lead_id": lead_id, "inbox_owner": owner}, s)
+        _quote_hook(tenant_id, "reply", r, done, f"reply:{reply_id}", text)
         print(f"   [AI-QUALIFY] reply tenant={tenant_id} lead={lead_id} → {done}")
         return done
     except Exception as e:
         print(f"⚠️ lead_qualify.on_reply tenant={tenant_id}:", e)
         return {}
+
+
+def _quote_hook(tenant_id, channel, r, done, source_key, buyer_words):
+    """A price request / full RFQ naming products becomes a quote request
+    in Quotations › Requests (Intelligent RFQ Phase 2). Never raises."""
+    try:
+        if not done.get("lead_id") or done.get("error"):
+            return
+        import quote_requests
+        res = quote_requests.from_ai(tenant_id, done["lead_id"], channel, r, source_key, buyer_words)
+        if res:
+            done["quote_request"] = res
+    except Exception as e:
+        print(f"⚠️ lead_qualify quote hook tenant={tenant_id}:", e)
 
 
 # ── channel 3: WhatsApp and website chats ───────────────────────────────────
@@ -1480,6 +1524,8 @@ def qualify_chat(tenant_id: int, session_id: str, last_id: int, lead_id: int = N
     if lead_id:
         r["is_enquiry"] = True
     done = act(tenant_id, channel, r, ctx, s)
+    _quote_hook(tenant_id, channel, r, done, key,
+                "\n".join(l[7:] for l in lines if l.startswith("BUYER: ")))
     _mark(tenant_id, key, "no_contact" if done.get("no_contact") else (r.get("intent") or "enquiry"),
           done.get("lead_id"), last_id)
     print(f"   [AI-QUALIFY] chat tenant={tenant_id} session={session_id} → {done}")

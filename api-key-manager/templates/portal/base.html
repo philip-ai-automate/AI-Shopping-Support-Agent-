@@ -1027,6 +1027,30 @@
       </div>
     </div>
 
+    <!-- Quotations (2026-10-30, Intelligent RFQ): its own menu after Leads —
+         where a sale goes next. B2B plan + PhiXtra only, like AI Lead Qualification. -->
+    {% if quotes_on() and staff_can_open('portal.quotes_requests') %}
+    {% set _quotes_group = request.endpoint in ('portal.quotes_requests', 'portal.quotes_request_new', 'portal.quotes_request_detail', 'portal.quotes_request_edit', 'portal.quotes_settings') %}
+    <div class="sb-group">
+      <div class="sb-group-toggle {% if _quotes_group %}open{% endif %}" onclick="sbToggle(this)">
+        <span class="sb-gtitle">
+          <span class="sb-icon">🧾</span> Quotations
+        </span>
+        <span class="sb-arrow">▾</span>
+      </div>
+      <div class="sb-sub {% if _quotes_group %}open{% endif %}">
+        <a href="{{ url_for('portal.quotes_requests') }}"
+           class="{% if request.endpoint in ('portal.quotes_requests', 'portal.quotes_request_new', 'portal.quotes_request_detail', 'portal.quotes_request_edit') %}active{% endif %}">
+          Requests
+        </a>
+        <a href="{{ url_for('portal.quotes_settings') }}"
+           class="{% if request.endpoint == 'portal.quotes_settings' %}active{% endif %}">
+          Quotation settings
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Accounts (2026-10-10) — platform business only: signed-up businesses an
          admin assigned to this staff member to help finish setting up.
          accounts_menu_count is None for every other business / without the tick. -->

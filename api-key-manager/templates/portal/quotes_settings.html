@@ -1,0 +1,42 @@
+{% extends "portal/base.html" %}
+{% block title %}Quotation settings — PhiXtra Portal{% endblock %}
+{% block head %}{% include "portal/_quotes_css.html" %}{% endblock %}
+{% block content %}
+<div class="qt" style="max-width:820px">
+  <div>
+    <h1>Quotation settings</h1>
+    <div class="qt-sub">PhiXtra doesn't make your quotations: your own software does. These settings decide how fast requests should be answered and who is told.</div>
+  </div>
+  <form method="post" class="qt" style="gap:14px">
+    <fieldset {% if not can_edit %}disabled{% endif %} style="border:0;padding:0;margin:0;display:grid;gap:14px">
+    <div class="qt-card">
+      <h2>How fast you send quotations</h2>
+      <div class="qt-f">
+        <label class="wide">Send each quotation within
+          <select name="target">{% for k, w in qr.TARGETS %}<option value="{{ k }}" {% if s.target == k %}selected{% endif %}>{{ w }}</option>{% endfor %}</select></label>
+        <label>Working hours start <input type="time" name="work_start" value="{{ s.work_start }}"></label>
+        <label>Working hours end <input type="time" name="work_end" value="{{ s.work_end }}"></label>
+      </div>
+      <div class="qt-small">The clock only runs Monday to Friday in these hours ({{ tzname }}). A request that arrives at night starts counting next morning.</div>
+    </div>
+    <div class="qt-card">
+      <h2>Who is told</h2>
+      {% for k, w in [('alert_new', 'Email the salesperson when a request is handed to them'),
+                      ('alert_due', 'When the time is up, ask the salesperson: "Did you send it?"'),
+                      ('alert_manager', 'One hour after that, tell the account owner it is overdue')] %}
+      <label style="display:flex;gap:10px;align-items:center;font-size:13.5px">
+        <input type="checkbox" name="{{ k }}" value="1" {% if s[k] %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:0"> {{ w }}</label>
+      {% endfor %}
+    </div>
+    <div class="qt-card">
+      <h2>Your quoting software</h2>
+      <div class="qt-f"><label class="wide">We make quotations in
+        <select name="software"><option value="">—</option>{% for k, w in qr.SOFTWARE %}<option value="{{ k }}" {% if s.software == k %}selected{% endif %}>{{ w }}</option>{% endfor %}</select></label></div>
+      <div class="qt-small">For now this is a note for your team. Copy lines and Download Excel work with any software.</div>
+    </div>
+    </fieldset>
+    {% if can_edit %}<div><button class="qt-btn dark">Save settings</button></div>
+    {% else %}<div class="qt-small">Only people who can see all leads can change these settings.</div>{% endif %}
+  </form>
+</div>
+{% endblock %}

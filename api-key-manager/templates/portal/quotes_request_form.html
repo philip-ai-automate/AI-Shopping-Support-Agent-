@@ -1,0 +1,120 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ 'Edit R-%s'|format(editing.ref_no) if editing else 'New quote request' }} — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-wide{% endblock %}
+{% block head %}{% include "portal/_quotes_css.html" %}{% endblock %}
+{% block content %}
+<div class="qt">
+  <div class="qt-top">
+    <div>
+      <h1>{% if editing %}Edit request R-{{ editing.ref_no }}{% else %}New quote request{% endif %}</h1>
+      <div class="qt-sub">What the buyer asked for, so the salesperson can make the quotation without asking again.</div>
+    </div>
+    <a class="qt-btn" href="{{ url_for('portal.quotes_request_detail', request_id=editing.id) if editing else url_for('portal.quotes_requests') }}">Cancel</a>
+  </div>
+
+  <form method="post" id="qtForm" class="qt-grid" autocomplete="off">
+    {% if form.lead_id %}<input type="hidden" name="lead_id" value="{{ form.lead_id }}">{% endif %}
+    <input type="hidden" name="lines_json" id="linesJson">
+    <div class="qt-card">
+      <h2>What the buyer asked for</h2>
+      <div class="qt-scroll"><table class="qt-lines">
+        <thead><tr><th style="min-width:260px">Product</th><th style="width:110px">Quantity</th><th style="width:120px">Unit</th>
+          <th class="r" style="width:110px">List price</th><th style="min-width:160px">Note</th><th></th></tr></thead>
+        <tbody id="lineRows"></tbody>
+      </table></div>
+      <div class="qt-btns"><button type="button" class="qt-btn sm" id="addLine">+ Add a line</button></div>
+      <datalist id="prodList">{% for p in products_json %}<option value="{{ p.name }}">{% endfor %}</datalist>
+      <div class="qt-small">Start typing to pick from your product list; the list price fills in. Something you don't list? Type it anyway: it's kept as the buyer wrote it, with no price.
+        {% if not products_json %}<b>You have no products yet</b>, so every line is typed in. Add them in Products &amp; Orders to see prices and stock here.{% endif %}</div>
+      <div class="qt-row"><span class="qt-small">Estimate at list prices</span><b id="estimate" style="font-variant-numeric:tabular-nums">—</b></div>
+      <label class="qt-fl">Notes for the salesperson (delivery in parts, packaging, anything the buyer asked)
+        <textarea name="notes" rows="3" maxlength="4000">{{ form.notes or '' }}</textarea></label>
+      {% if not editing %}
+      <label class="qt-fl">The buyer's own words (optional: paste their email or message)
+        <textarea name="buyer_words" rows="3" maxlength="8000">{{ form.buyer_words or '' }}</textarea></label>
+      {% endif %}
+    </div>
+
+    <div class="qt-card">
+      <h2>The buyer</h2>
+      <div class="qt-f">
+        <label class="wide">Company <input name="buyer_company" maxlength="300" value="{{ form.buyer_company or '' }}"></label>
+        <label class="wide">Contact name <input name="buyer_name" maxlength="200" value="{{ form.buyer_name or '' }}"></label>
+        <label class="wide">Email <input type="email" name="buyer_email" maxlength="255" value="{{ form.buyer_email or '' }}"></label>
+        <label class="wide">Phone or WhatsApp <input name="buyer_phone" maxlength="40" value="{{ form.buyer_phone or '' }}" placeholder="+44 161 000 0000"></label>
+        <label class="wide">Country
+          <select name="buyer_country"><option value="">—</option>
+            {% for iso, name in countries %}<option value="{{ iso }}" {% if form.buyer_country == iso %}selected{% endif %}>{{ name }}</option>{% endfor %}
+          </select></label>
+        <label class="wide">Deliver to <input name="deliver_to" maxlength="300" value="{{ form.deliver_to or '' }}" placeholder="City, country or address"></label>
+        <label class="wide">Needed by <input type="date" name="needed_by" value="{{ form.needed_by or '' }}"></label>
+        {% if not editing %}
+        <label class="wide">Came in by
+          <select name="channel">{% for k, w in [('manual','Typed in'),('email','Email'),('whatsapp','WhatsApp'),('phone','Phone call')] %}
+            <option value="{{ k }}" {% if form.channel == k %}selected{% endif %}>{{ w }}</option>{% endfor %}</select></label>
+        {% endif %}
+        <label class="wide">Salesperson who makes the quotation
+          <select name="assigned_key" {% if not see_all %}disabled{% endif %}>
+            <option value="">Nobody yet</option>
+            {% for p in people %}<option value="{{ p.key }}" {% if form.assigned_key == p.key %}selected{% endif %}>{{ p.display }}</option>{% endfor %}
+          </select></label>
+      </div>
+      {% if not see_all %}<div class="qt-small">Requests you add are handed to you.</div>{% endif %}
+      <button type="submit" class="qt-btn dark">{{ 'Save changes' if editing else 'Save and hand over' }}</button>
+      <div class="qt-small">The buyer gets nothing from PhiXtra when you save. The salesperson is told by email{% if not editing %} and the clock starts{% endif %}.</div>
+    </div>
+  </form>
+</div>
+
+<script>
+(function(){
+  var PRODUCTS = {{ products_json|tojson }};
+  var CUR = {{ (cur_sign(cur))|tojson }};
+  var START = {{ (form.lines or [])|tojson }};
+  var byName = {}; PRODUCTS.forEach(function(p){ byName[p.name.toLowerCase()] = p; });
+  var rows = document.getElementById('lineRows');
+  function fmt(v){ return CUR + Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function el(tag, attrs){ var e = document.createElement(tag); for (var k in attrs) e.setAttribute(k, attrs[k]); return e; }
+  function addRow(ln){
+    ln = ln || {};
+    var tr = document.createElement('tr');
+    var name = el('input', {list:'prodList', maxlength:'300', 'aria-label':'Product'}); name.value = ln.name || '';
+    var qty = el('input', {type:'number', min:'0', step:'any', 'aria-label':'Quantity'}); qty.value = (ln.qty === null || ln.qty === undefined) ? '' : ln.qty;
+    var unit = el('input', {maxlength:'40', placeholder:'cases, packs…', 'aria-label':'Unit'}); unit.value = ln.unit || '';
+    var price = el('span', {}); var note = el('input', {maxlength:'300', 'aria-label':'Note'}); note.value = ln.note || '';
+    var del = el('button', {type:'button', 'class':'qt-btn sm bad', 'aria-label':'Remove line'}); del.textContent = '✕';
+    var tds = [name, qty, unit, price, note, del].map(function(x, i){ var td = document.createElement('td'); if (i === 3) td.className = 'r'; td.appendChild(x); return td; });
+    tds.forEach(function(td){ tr.appendChild(td); });
+    function sync(){
+      var p = byName[name.value.trim().toLowerCase()];
+      tr._pid = p ? p.id : null;
+      price.innerHTML = '';
+      if (p && p.price !== null) { price.textContent = fmt(p.price); }
+      else if (p) { price.textContent = 'On request'; }
+      else if (name.value.trim()) { var s = el('span', {'class':'s'}); s.textContent = 'Not on your list'; price.appendChild(s); }
+      if (p && p.stock !== null) { var st = el('span', {'class':'s'}); st.textContent = p.stock + ' in stock'; price.appendChild(st); }
+      tr._price = p ? p.price : null; total();
+    }
+    name.addEventListener('input', sync); qty.addEventListener('input', total);
+    del.addEventListener('click', function(){ tr.remove(); if (!rows.children.length) addRow(); total(); });
+    tr._get = function(){ return {product_id: tr._pid, name: name.value, qty: qty.value, unit: unit.value, note: note.value}; };
+    tr._qty = qty; rows.appendChild(tr); sync(); return tr;
+  }
+  function total(){
+    var t = 0, any = false;
+    Array.prototype.forEach.call(rows.children, function(tr){
+      var q = parseFloat(tr._qty.value);
+      if (tr._price !== null && tr._price !== undefined && !isNaN(q)) { t += tr._price * q; any = true; }
+    });
+    document.getElementById('estimate').textContent = any ? fmt(t) : '—';
+  }
+  if (START.length) START.forEach(addRow); else addRow();
+  document.getElementById('addLine').addEventListener('click', function(){ addRow().querySelector('input').focus(); });
+  document.getElementById('qtForm').addEventListener('submit', function(){
+    var out = [];
+    Array.prototype.forEach.call(rows.children, function(tr){ var l = tr._get(); if (l.name.trim()) out.push(l); });
+    document.getElementById('linesJson').value = JSON.stringify(out);
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,180 @@
+{% extends "portal/base.html" %}
+{% block title %}R-{{ r.ref_no }} · {{ r.buyer_company or r.buyer_name }} — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-wide{% endblock %}
+{% block head %}{% include "portal/_quotes_css.html" %}{% endblock %}
+{% block content %}
+{% set buyer = r.buyer_company or r.buyer_name or 'the buyer' %}
+<div class="qt">
+  <div class="qt-top">
+    <div>
+      <div class="qt-sub"><a href="{{ url_for('portal.quotes_requests', status=r.status) }}">← Quotation requests</a></div>
+      <h1>R-{{ r.ref_no }} · {{ buyer }}</h1>
+      <div class="qt-sub">{{ qr.CHANNEL_WORDS.get(r.channel, r.channel) }} · {{ dt(r.created_at) }}
+        · Salesperson: <b>{{ r.assigned_to|who(r.assigned_key) if r.assigned_to else 'nobody yet' }}</b></div>
+    </div>
+    <div class="qt-btns">
+      {% if r.status == 'to_quote' %}
+        {% if clock.text %}<span class="qt-pill {{ 'p-bad' if clock.tone == 'late' else ('p-warn' if clock.tone == 'soon' else 'p-ok') }}" style="align-self:center">{{ ('Quote due ' + clock.text if clock.text.startswith('by') else 'Quote due in ' + clock.text) if clock.tone != 'late' else clock.text }}</span>{% endif %}
+      {% elif r.status == 'quote_sent' %}<span class="qt-pill p-info" style="align-self:center">Quote sent · with the buyer</span>
+      {% elif r.status == 'won' %}<span class="qt-pill p-ok" style="align-self:center">Won</span>
+      {% else %}<span class="qt-pill p-bad" style="align-self:center">{{ r.close_reason or 'Lost' }}</span>{% endif %}
+      <a class="qt-btn sm" href="{{ url_for('portal.quotes_request_edit', request_id=r.id) }}">Edit</a>
+    </div>
+  </div>
+
+  <div class="qt-grid">
+    <div class="qt-card">
+      <div class="qt-row"><span class="qt-lbl">What the buyer asked</span>
+        <span class="qt-btns">
+          <button type="button" class="qt-btn sm" id="copyLines">Copy lines</button>
+          <a class="qt-btn sm" href="{{ url_for('portal.quotes_request_xlsx', request_id=r.id) }}">Download Excel</a>
+        </span></div>
+      <div class="qt-scroll"><table>
+        <thead><tr><th>Product</th><th class="r">Qty</th><th class="r">List price</th><th class="r">Line</th><th>Stock</th><th>Check</th></tr></thead>
+        <tbody>
+        {% for ln in r.lines %}
+          {% set short = ln.stock is not none and ln.qty is not none and ln.qty > ln.stock %}
+          <tr class="{{ 'flag' if short or not ln.on_list }}">
+            <td><b>{{ ln.name }}</b>{% if ln.note %}<span class="s">{{ ln.note }}</span>{% endif %}</td>
+            <td class="r">{{ '%g'|format(ln.qty) if ln.qty is not none else '—' }}{% if ln.unit %} {{ ln.unit }}{% endif %}</td>
+            <td class="r">{{ qr.money(ln.price, r.currency) if ln.price is not none else '—' }}</td>
+            <td class="r">{{ qr.money(ln.price * ln.qty, r.currency) if ln.price is not none and ln.qty is not none else '—' }}</td>
+            <td>{{ ln.stock if ln.stock is not none else '—' }}</td>
+            <td>{% if not ln.on_list %}<span class="qt-pill p-warn">Not on your list</span>
+                {% elif short %}<span class="qt-pill p-warn">{{ '%g'|format(ln.qty - ln.stock) }} short</span>
+                {% elif ln.price is none %}<span class="qt-pill p-grey">Price on request</span>
+                {% else %}<span class="qt-pill p-ok">OK</span>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody></table></div>
+      <div class="qt-small">
+        {% if r.deliver_to %}Deliver to <b>{{ r.deliver_to }}</b>{% endif %}{% if r.needed_by %}{{ ' · ' if r.deliver_to }}needed by <b>{{ r.needed_by.strftime('%d %b %Y') }}</b>{% endif %}
+        {% if r.estimate is not none %}{{ ' · ' if r.deliver_to or r.needed_by }}estimate at list prices <b>{{ qr.money(r.estimate, r.currency) }}</b>, before delivery and tax{% endif %}
+      </div>
+      {% if r.notes %}<div class="qt-ai"><b>Notes</b><span style="white-space:pre-line">{{ r.notes }}</span></div>{% endif %}
+      {% if r.buyer_words %}<details><summary class="qt-small" style="cursor:pointer">The buyer's own words</summary>
+        <div style="white-space:pre-line;font-size:13px;padding-top:6px">{{ r.buyer_words }}</div></details>{% endif %}
+      <div id="copyMsg" class="qt-small" role="status" aria-live="polite"></div>
+    </div>
+
+    <div class="qt-card">
+      <span class="qt-lbl">The buyer</span>
+      <div style="font-size:13px;line-height:1.7">{% if r.buyer_company %}<b>{{ r.buyer_company }}</b>{% endif %}{% if r.buyer_country %}{{ ' · ' if r.buyer_company }}{{ country_name.get(r.buyer_country, r.buyer_country) }}{% endif %}{% if r.buyer_company or r.buyer_country %}<br>{% endif %}
+        {% if r.buyer_name %}{{ r.buyer_name }}<br>{% endif %}
+        {% if r.buyer_email %}{{ r.buyer_email }}<br>{% endif %}
+        {% if r.buyer_phone %}{{ r.buyer_phone }}{% endif %}</div>
+      {% if lead %}<a class="qt-small" href="{{ url_for('portal.opportunity_detail', lead_id=lead.id) if lead.is_opportunity else url_for('portal.lead_detail', lead_id=lead.id) }}">Open the {{ 'deal' if lead.is_opportunity else 'lead' }} →</a>{% endif %}
+
+      {% if r.status == 'to_quote' %}
+        <span class="qt-lbl" style="margin-top:6px">Next</span>
+        <ol class="qt-steps">
+          <li>Make the quotation in your own software (Copy lines or Download Excel saves retyping).</li>
+          <li>Send it to the buyer, the way you always do.</li>
+          <li>Come back and click <b>Quote sent</b>.</li>
+        </ol>
+        <button type="button" class="qt-btn dark" data-open="mSent">Quote sent</button>
+        <button type="button" class="qt-btn sm bad" data-open="mNotQuoted">Not quoting</button>
+      {% elif r.status == 'quote_sent' %}
+        <span class="qt-lbl" style="margin-top:6px">The quotation</span>
+        <div style="font-size:13px;line-height:1.7"><b style="font-size:16px;color:var(--navy)">{{ qr.money(r.quote_value, r.quote_currency) }}</b>
+          {% if r.quote_number %}· {{ r.quote_number }}{% endif %}<br>
+          Sent {{ dt(r.quote_sent_at) }}{% if r.quote_sent_via %} · {{ qr.SENT_BY_WORDS.get(r.quote_sent_via) }}{% endif %}<br>
+          {% if r.quote_valid_until %}Valid until {{ r.quote_valid_until.strftime('%d %b %Y') }}{% if r.quote_valid_until < today %} <span class="qt-pill p-warn">Expired</span>{% endif %}{% endif %}</div>
+        {% if r.has_pdf %}<a class="qt-small" href="{{ url_for('portal.quotes_request_pdf', request_id=r.id) }}" target="_blank" rel="noopener">📄 {{ r.quote_pdf_name or 'quotation.pdf' }}</a>{% endif %}
+        <div class="qt-small">What did the buyer say?</div>
+        <div class="qt-btns">
+          <button type="button" class="qt-btn ok" data-open="mWon">Won: they accepted</button>
+          <button type="button" class="qt-btn bad" data-open="mLost">Lost</button>
+        </div>
+        <button type="button" class="qt-btn sm" data-open="mSent">They asked for a change: record a new quote</button>
+      {% elif r.status == 'won' %}
+        <div style="font-size:13px;line-height:1.7"><b style="font-size:16px;color:var(--ok)">Won · {{ qr.money(r.quote_value, r.quote_currency) }}</b><br>
+          {{ dt(r.closed_at) }}{% if r.close_reason %} · {{ r.close_reason }}{% endif %}</div>
+        <div class="qt-small">Raise the order in your own software as usual. To undo, use the deal on the Sales Pipeline.</div>
+      {% else %}
+        <div style="font-size:13px;line-height:1.7"><b style="color:var(--hot)">{{ r.close_reason }}</b><br>{{ dt(r.closed_at) }}</div>
+        <form method="post" action="{{ url_for('portal.quotes_request_reopen', request_id=r.id) }}">
+          <button class="qt-btn sm">Reopen</button></form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="qt-card">
+    <span class="qt-lbl">History</span>
+    <div class="qt-tl">
+      {% for e in events %}<div><span class="d">{{ dt(e.created_at) }}</span><span>{{ e.what }}{% if e.by_label %} · <span class="qt-small">{{ e.by_label|who }}</span>{% endif %}</span></div>{% endfor %}
+    </div>
+  </div>
+</div>
+
+{# ── Quote sent ── #}
+<div class="qt-modal" id="mSent" role="dialog" aria-modal="true" aria-labelledby="mSentT">
+  <form class="qt-card" method="post" enctype="multipart/form-data" action="{{ url_for('portal.quotes_request_sent', request_id=r.id) }}">
+    <h2 id="mSentT">{{ 'New quote for' if r.status == 'quote_sent' else 'Quote sent ·' }} R-{{ r.ref_no }} · {{ buyer }}</h2>
+    <div class="qt-f">
+      <label class="wide">Quotation total ({{ cur_sign(cur) }}) <input name="value" inputmode="decimal" required placeholder="6430.00"
+             value="{{ '%.2f'|format(r.quote_value) if r.quote_value else '' }}"></label>
+      <label>Valid until <input type="date" name="valid_until" min="{{ today.isoformat() }}"></label>
+      <label>Your quotation number <input name="number" maxlength="60" placeholder="Optional" value="{{ r.quote_number or '' }}"></label>
+      <label class="wide">Sent by
+        <select name="via">{% for k, w in sent_by %}<option value="{{ k }}" {% if (r.quote_sent_via or ('whatsapp' if r.channel == 'whatsapp' else 'email')) == k %}selected{% endif %}>{{ w }}</option>{% endfor %}</select></label>
+      <label class="wide">Attach the PDF (optional, so the team can see what was quoted)
+        <input type="file" name="pdf" accept="application/pdf,.pdf"></label>
+    </div>
+    <div class="qt-small">The deal moves to Proposal sent on the Sales Pipeline with this value. Your automatic follow-ups for that stage start, if you have them.</div>
+    <div class="qt-btns"><button class="qt-btn ok">Save</button><button type="button" class="qt-btn" data-close>Cancel</button></div>
+  </form>
+</div>
+
+{# ── Won ── #}
+<div class="qt-modal" id="mWon" role="dialog" aria-modal="true" aria-labelledby="mWonT">
+  <form class="qt-card" method="post" action="{{ url_for('portal.quotes_request_won', request_id=r.id) }}">
+    <h2 id="mWonT">Won · R-{{ r.ref_no }} · {{ buyer }}</h2>
+    <div class="qt-f">
+      <label class="wide">Order value ({{ cur_sign(cur) }}) <input name="value" inputmode="decimal" value="{{ '%.2f'|format(r.quote_value) if r.quote_value else '' }}"></label>
+      <label class="wide">Their order number or a note <input name="note" maxlength="300" placeholder="Optional"></label>
+    </div>
+    <div class="qt-btns"><button class="qt-btn ok">Mark Won</button><button type="button" class="qt-btn" data-close>Cancel</button></div>
+  </form>
+</div>
+
+{# ── Lost / Not quoting ── #}
+{% for mid, title, reasons, btn in [('mLost', 'Lost', lost_reasons, 'Mark Lost'), ('mNotQuoted', 'Not quoting', not_quoted_reasons, 'Close request')] %}
+<div class="qt-modal" id="{{ mid }}" role="dialog" aria-modal="true" aria-labelledby="{{ mid }}T">
+  <form class="qt-card" method="post" action="{{ url_for('portal.quotes_request_close', request_id=r.id) }}">
+    <h2 id="{{ mid }}T">{{ title }} · R-{{ r.ref_no }} · {{ buyer }}</h2>
+    <label class="qt-fl">Why?
+      <select name="reason" required onchange="this.form.querySelector('.oth').style.display = this.value === 'Other' ? '' : 'none'">
+        <option value="">Choose a reason</option>
+        {% for x in reasons %}<option>{{ x }}</option>{% endfor %}<option>Other</option></select></label>
+    <label class="qt-fl oth" style="display:none">Other reason <input name="reason_other" maxlength="200"></label>
+    {% if mid == 'mLost' %}<div class="qt-small">The deal is marked Lost on the Sales Pipeline and its follow-ups stop.</div>
+    {% else %}<div class="qt-small">Only this request is closed. The lead stays as it is.</div>{% endif %}
+    <div class="qt-btns"><button class="qt-btn bad">{{ btn }}</button><button type="button" class="qt-btn" data-close>Cancel</button></div>
+  </form>
+</div>
+{% endfor %}
+
+<script>
+(function(){
+  document.querySelectorAll('[data-open]').forEach(function(b){
+    b.addEventListener('click', function(){ var m = document.getElementById(b.dataset.open); m.classList.add('open'); var f = m.querySelector('input,select'); if (f) f.focus(); });
+  });
+  document.querySelectorAll('.qt-modal').forEach(function(m){
+    m.addEventListener('click', function(e){ if (e.target === m || e.target.hasAttribute('data-close')) m.classList.remove('open'); });
+  });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') document.querySelectorAll('.qt-modal.open').forEach(function(m){ m.classList.remove('open'); }); });
+  var txt = {{ lines_text|tojson }};
+  document.getElementById('copyLines').addEventListener('click', function(){
+    var msg = document.getElementById('copyMsg');
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(function(){
+      msg.textContent = 'Copied. Paste into a spreadsheet, an email or your quoting software.';
+    }, function(){
+      var t = document.createElement('textarea'); t.value = txt; document.body.appendChild(t); t.select();
+      try { document.execCommand('copy'); msg.textContent = 'Copied.'; } catch (e) { msg.textContent = 'Copy didn\'t work in this browser: use Download Excel.'; }
+      t.remove();
+    });
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,85 @@
+{% extends "portal/base.html" %}
+{% block title %}Quotation requests — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-wide{% endblock %}
+{% block head %}{% include "portal/_quotes_css.html" %}{% endblock %}
+{% block content %}
+<div class="qt">
+  <div class="qt-top">
+    <div>
+      <h1>Quotation requests</h1>
+      <div class="qt-sub">Every buyer who asked for prices. Make the quotation in your own software, send it, then click <b>Quote sent</b> here.
+        Target: {{ target_words[s.target]|lower }} (working hours).</div>
+    </div>
+    <a class="qt-btn dark" href="{{ url_for('portal.quotes_request_new') }}">+ New request</a>
+  </div>
+
+  <div class="qt-kpis">
+    <div class="qt-kpi"><span class="qt-kl">Requests this month</span><span class="qt-kv">{{ k.requests or 0 }}</span>
+      <span class="qt-small">{% for c, n in k.by_channel %}{{ n }} {{ c|lower }}{% if not loop.last %} · {% endif %}{% else %}None yet{% endfor %}</span></div>
+    <div class="qt-kpi"><span class="qt-kl">Request to quote sent</span>
+      <span class="qt-kv">{% if k.median_secs is not none %}{% set m = (k.median_secs / 60)|round|int %}{% if m < 60 %}{{ m }} min{% elif m < 2880 %}{{ (m / 60)|round(1) }} h{% else %}{{ (m / 1440)|round|int }} days{% endif %}{% else %}—{% endif %}</span>
+      <span class="qt-small">median{% if k.quoted %} · {{ k.on_time }} of {{ k.quoted }} on time{% endif %}</span></div>
+    <div class="qt-kpi"><span class="qt-kl">Quotes with buyers</span><span class="qt-kv">{{ k.with_buyers_v|money_total }}</span>
+      <span class="qt-small">{{ k.with_buyers_n }} waiting for an answer</span></div>
+    <div class="qt-kpi"><span class="qt-kl">Request to order</span>
+      <span class="qt-kv">{% if k.requests %}{{ ((k.won / k.requests) * 100)|round|int }}%{% else %}—{% endif %}</span>
+      <span class="qt-small">{{ k.won or 0 }} won this month</span></div>
+  </div>
+
+  <div class="qt-card">
+    <div class="qt-row">
+      <div class="qt-tabs" role="tablist">
+        {% for key, word in qr.STATUSES %}
+        <a class="qt-tab {% if status == key %}on{% endif %}" role="tab" aria-selected="{{ 'true' if status == key else 'false' }}"
+           href="{{ url_for('portal.quotes_requests', status=key, q=q or None) }}">{{ word }} · {{ counts[key] }}</a>
+        {% endfor %}
+      </div>
+      <form method="get" class="qt-btns" style="margin:0">
+        <input type="hidden" name="status" value="{{ status }}">
+        <input type="search" name="q" value="{{ q }}" placeholder="Buyer, email, R-1001 or quote no." aria-label="Search requests"
+               style="font:inherit;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-height:38px;width:250px;max-width:100%;margin:0">
+      </form>
+    </div>
+
+    {% if rows %}
+    <div class="qt-scroll"><table>
+      <thead><tr><th>Request</th><th>Buyer</th><th>Came in by</th>
+        {% if status == 'to_quote' %}<th class="r">Estimate</th><th>Time left</th>
+        {% elif status == 'quote_sent' %}<th class="r">Quote</th><th>Sent</th><th>Valid until</th>
+        {% else %}<th class="r">Value</th><th>Result</th>{% endif %}
+        <th>Salesperson</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr class="link" onclick="location.href='{{ url_for('portal.quotes_request_detail', request_id=r.id) }}'">
+          <td><a class="rowlink" href="{{ url_for('portal.quotes_request_detail', request_id=r.id) }}">R-{{ r.ref_no }}</a>
+            <span class="s">{{ r.lines|length }} line{{ 's' if r.lines|length != 1 }}</span></td>
+          <td><b>{{ r.buyer_company or r.buyer_name or '—' }}</b>
+            <span class="s">{% if r.buyer_company and r.buyer_name %}{{ r.buyer_name }}{% endif %}{% if r.buyer_country %}{{ ' · ' if r.buyer_company and r.buyer_name }}{{ address_country_name(r.buyer_country) }}{% endif %}</span></td>
+          <td>{{ qr.CHANNEL_WORDS.get(r.channel, r.channel) }}<span class="s">{{ dt(r.created_at) }}</span></td>
+          {% if status == 'to_quote' %}
+          <td class="r">{{ qr.money(r.estimate, r.currency) if r.estimate is not none else '—' }}</td>
+          <td>{% if r.clock.text %}<span class="qt-pill {{ 'p-bad' if r.clock.tone == 'late' else ('p-warn' if r.clock.tone == 'soon' else 'p-ok') }}">{{ r.clock.text }}</span>{% endif %}</td>
+          {% elif status == 'quote_sent' %}
+          <td class="r">{{ qr.money(r.quote_value, r.quote_currency) }}{% if r.quote_number %}<span class="s">{{ r.quote_number }}</span>{% endif %}</td>
+          <td>{{ dt(r.quote_sent_at) }}</td>
+          <td>{% if r.quote_valid_until %}{{ r.quote_valid_until.strftime('%d %b %Y') }}{% else %}—{% endif %}</td>
+          {% else %}
+          <td class="r">{{ qr.money(r.quote_value, r.quote_currency) if r.quote_value is not none else '—' }}</td>
+          <td>{% if r.status == 'won' %}<span class="qt-pill p-ok">Won</span>{% else %}<span class="qt-pill p-bad">{{ (r.close_reason or 'Lost').split(':')[0] }}</span>
+            <span class="s">{{ (r.close_reason or '').split(': ', 1)[1] if ': ' in (r.close_reason or '') else '' }}</span>{% endif %}</td>
+          {% endif %}
+          <td>{{ r.assigned_to|who(r.assigned_key) if r.assigned_to else '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody></table></div>
+    {% elif q %}
+    <div class="qt-empty">Nothing matches "{{ q }}" here. Try another tab, or clear the search.</div>
+    {% elif status == 'to_quote' %}
+    <div class="qt-empty">No requests waiting for a quotation. When a buyer asks for prices by email, WhatsApp or phone,
+      click <b>+ New request</b>, add what they asked for, and hand it to a salesperson.</div>
+    {% else %}
+    <div class="qt-empty">Nothing here yet.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

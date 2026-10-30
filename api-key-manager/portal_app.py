@@ -51,6 +51,9 @@ def create_app():
     # AI Lead Qualification (2026-10-30): reads WhatsApp / website chats once the buyer pauses.
     import lead_qualify
     lead_qualify.start()
+    # Quotations › Requests (2026-10-30): "did you send it?" alerts when a request's time is up.
+    import quote_requests
+    quote_requests.start()
     flask_app.register_blueprint(bookings_bp)
     from accounts_routes import accounts_bp
     flask_app.register_blueprint(accounts_bp)
