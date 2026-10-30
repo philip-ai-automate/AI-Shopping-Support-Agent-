@@ -84,7 +84,7 @@ def ensure_tables():
                               AND to_regclass('idx_quote_requests_source') IS NOT NULL
                               AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public'
                                     AND table_name='quote_requests'
-                                    AND column_name IN ('first_quote_at','source_key','edited')) = 3 AS ok""")
+                                    AND column_name IN ('first_quote_at','source_key','edited','ai_answer')) = 4 AS ok""")
         if cur.fetchone()["ok"]:
             _tables_ok = True
             return
@@ -134,6 +134,8 @@ def ensure_tables():
         cur.execute("ALTER TABLE quote_requests ADD COLUMN IF NOT EXISTS source_key VARCHAR(200)")
         cur.execute("ALTER TABLE quote_requests ADD COLUMN IF NOT EXISTS edited BOOLEAN NOT NULL DEFAULT FALSE")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_quote_requests_source ON quote_requests (tenant_id, source_key)")
+        # Phase 3: the AI's last decision on the buyer's answer (for Undo).
+        cur.execute("ALTER TABLE quote_requests ADD COLUMN IF NOT EXISTS ai_answer JSONB")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_quote_requests_tenant ON quote_requests (tenant_id, status, created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_quote_requests_lead ON quote_requests (lead_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_quote_requests_due ON quote_requests (due_at) WHERE status='to_quote'")
@@ -351,7 +353,7 @@ _LIST_COLS = """id, tenant_id, ref_no, lead_id, status, channel, buyer_company, 
                 buyer_country, deliver_to, needed_by, notes, buyer_words, lines, estimate, currency, assigned_key,
                 assigned_to, due_at, quote_value, quote_currency, quote_valid_until, quote_number, quote_sent_via,
                 quote_sent_at, first_quote_at, quote_sent_by, quote_pdf_name, (quote_pdf IS NOT NULL) AS has_pdf, close_reason,
-                closed_at, closed_by, created_by, created_at, updated_at"""
+                closed_at, closed_by, created_by, created_at, updated_at, ai_answer"""
 
 
 def ref(r) -> str:
@@ -511,7 +513,43 @@ def _event(cur, request_id, what, by_label):
                 (request_id, what[:2000], (by_label or "")[:200]))
 
 
+_tl = threading.local()
+
+
+def _logs_moves(fn):
+    """Deal moves made from Quotations count like Sales Pipeline moves: Team
+    performance (quotes sent, won, lost) and the lead's follow-ups. Logged
+    after the change is saved; a person's moves only (the AI has no session)."""
+    import functools
+
+    @functools.wraps(fn)
+    def run(*a, **k):
+        outer = getattr(_tl, "moves", None) is not None
+        if not outer:
+            _tl.moves = []
+        try:
+            res = fn(*a, **k)
+        except Exception:
+            if not outer:
+                _tl.moves = None
+            raise
+        if not outer:
+            moves, _tl.moves = _tl.moves, None
+            ok = res[0] if isinstance(res, tuple) else bool(res)
+            if ok and moves:
+                try:
+                    import staff_activity
+                    for lead_id, frm, to, notes in moves:
+                        staff_activity.log_stage_change(lead_id, frm, to, notes)
+                except Exception as e:
+                    print("⚠️ quote_requests activity log:", e)
+        return res
+    return run
+
+
 def _history(cur, lead_id, from_stage, to_stage, by_label, notes):
+    if getattr(_tl, "moves", None) is not None and from_stage != to_stage:
+        _tl.moves.append((lead_id, from_stage, to_stage, notes))
     cur.execute("""INSERT INTO merchant_pipeline_stage_history (lead_id, from_stage, to_stage, changed_by, notes)
                    VALUES (%s,%s,%s,%s,%s)""", (lead_id, from_stage, to_stage, (by_label or "")[:200], (notes or "")[:2000]))
 
@@ -581,6 +619,7 @@ def _make_opportunity(cur, lead: dict, by_label: str, why: str):
         lead["is_opportunity"] = True
 
 
+@_logs_moves
 def create(tenant_id: int, d: dict, actor: dict, s: dict, tz) -> dict:
     """d: buyer_company, buyer_name, buyer_email, buyer_phone, buyer_country,
     deliver_to, needed_by (date), notes, buyer_words, lines (clean), channel,
@@ -667,6 +706,7 @@ def update_details(tenant_id: int, request_id: int, d: dict, actor: dict) -> boo
         cur.close(); conn.close()
 
 
+@_logs_moves
 def mark_sent(tenant_id: int, request_id: int, f: dict, actor: dict) -> tuple:
     """f: value, currency, valid_until (date|None), number, via, pdf (bytes|None), pdf_name."""
     conn, cur = _db()
@@ -728,6 +768,7 @@ def mark_sent(tenant_id: int, request_id: int, f: dict, actor: dict) -> tuple:
         cur.close(); conn.close()
 
 
+@_logs_moves
 def mark_won(tenant_id: int, request_id: int, value, actor: dict, note: str = "") -> tuple:
     conn, cur = _db()
     try:
@@ -753,12 +794,18 @@ def mark_won(tenant_id: int, request_id: int, value, actor: dict, note: str = ""
                         (val, r["quote_currency"], lead["id"]))
             _history(cur, lead["id"], lead["stage"], "won", actor["label"], f"Quotation accepted (R-{r['ref_no']})")
             lead_id = lead["id"]
+            try:
+                import lead_followups
+                lead_followups.on_close(cur, lead["id"])
+            except Exception as e:
+                print("⚠️ quote_requests won follow-up close:", e)
         conn.commit()
         return True, f"R-{r['ref_no']} Won.", lead_id
     finally:
         cur.close(); conn.close()
 
 
+@_logs_moves
 def close(tenant_id: int, request_id: int, reason: str, actor: dict) -> tuple:
     """Lost (after a quote: the deal is Lost too) or Not quoted (before one:
     the deal is left as it is, the salesperson decides about the lead)."""
@@ -793,6 +840,7 @@ def close(tenant_id: int, request_id: int, reason: str, actor: dict) -> tuple:
         cur.close(); conn.close()
 
 
+@_logs_moves
 def reopen(tenant_id: int, request_id: int, actor: dict, tz, s: dict) -> tuple:
     """Lost / Not quoted → back where it was. A Lost deal set by this
     request goes back on the Sales Pipeline too."""
@@ -990,16 +1038,34 @@ def from_ai(tenant_id: int, lead_id: int, channel: str, r: dict, source_key: str
             # An email / reply is read once; reading it again changes nothing.
             conn.commit()
             return {"id": same["id"], "ref": f"R-{same['ref_no']}", "action": "same"}
-        if same and same["status"] in ("won", "lost"):
+        if (source_key or "").startswith("chat:") and not (same and same["status"] in ACTIVE):
             # A WhatsApp chat is one conversation per number, forever: a new
-            # order comes in the same chat. The earlier order's lines that the
-            # AI still sees in the conversation are left out.
-            old = {(ln.get("product_id") or (ln.get("name") or "").lower(), ln.get("qty")) for ln in same["lines"]}
+            # order comes in the same chat. Lines of this buyer's recently
+            # closed requests (from any channel) that the AI still sees in the
+            # conversation are left out, so a Won order is never asked again.
+            # The same buyer may be on more than one lead (a closed deal, then a new one): by email / number.
+            cur.execute("""SELECT x.id FROM merchant_pipeline_leads l JOIN merchant_pipeline_leads x ON x.tenant_id = l.tenant_id
+                            WHERE l.id=%s AND l.tenant_id=%s AND (x.id = l.id
+                               OR (COALESCE(l.email,'') <> '' AND lower(x.email) = lower(l.email))
+                               OR (length(regexp_replace(COALESCE(l.whatsapp_number, l.phone, ''), '\\D', '', 'g')) >= 7 AND
+                                   right(regexp_replace(COALESCE(l.whatsapp_number, l.phone, ''), '\\D', '', 'g'), 9) IN
+                                   (right(regexp_replace(COALESCE(x.whatsapp_number,''), '\\D', '', 'g'), 9),
+                                    right(regexp_replace(COALESCE(x.phone,''), '\\D', '', 'g'), 9))))
+                            LIMIT 50""", (lead_id, tenant_id))
+            same_buyer = [row["id"] for row in cur.fetchall()] or [lead_id]
+            cur.execute("""SELECT id, ref_no, lines FROM quote_requests WHERE tenant_id=%s AND status IN ('won','lost')
+                             AND (lead_id = ANY(%s) OR source_key=%s) AND COALESCE(closed_at, updated_at) > NOW() - INTERVAL '30 days'
+                            ORDER BY id DESC LIMIT 5""", (tenant_id, same_buyer, source_key))
+            closed = cur.fetchall()
+            old = {(ln.get("product_id") or (ln.get("name") or "").lower(), ln.get("qty"))
+                   for c in closed for ln in c["lines"]}
             lines = [ln for ln in lines if (ln.get("product_id") or ln["name"].lower(), ln.get("qty")) not in old]
             if not lines:
                 conn.commit()
-                return {"id": same["id"], "ref": f"R-{same['ref_no']}", "action": "same"}
-            same = None
+                c0 = closed[0] if closed else same
+                return {"id": c0["id"], "ref": f"R-{c0['ref_no']}", "action": "same"} if c0 else None
+            if same and same["status"] in ("won", "lost"):
+                same = None
         if same and same["status"] == "to_quote":
             if same["edited"]:
                 _event_once(cur, same["id"], "The buyer wrote more in the chat; not changed, because someone edited "
@@ -1037,8 +1103,8 @@ def from_ai(tenant_id: int, lead_id: int, channel: str, r: dict, source_key: str
                 conn.commit()
                 return {"id": act_r["id"], "ref": f"R-{act_r['ref_no']}", "action": "added" if add else "noted"}
             _event_once(cur, act_r["id"], "The buyer wrote again about prices after the quote was sent ("
-                   + CHANNEL_WORDS.get(AI_CHANNEL.get(channel), channel).lower() + "): "
-                   + (r.get("reason") or "")[:300], AI_ACTOR["label"])
+                   + CHANNEL_WORDS.get(AI_CHANNEL.get(channel), channel).lower() + "). Check the conversation.",
+                   AI_ACTOR["label"])
             conn.commit()
             return {"id": act_r["id"], "ref": f"R-{act_r['ref_no']}", "action": "noted"}
         cur.execute("""SELECT customer_name, contact_person, email, phone, whatsapp_number, addr_country,
@@ -1068,6 +1134,263 @@ def from_ai(tenant_id: int, lead_id: int, channel: str, r: dict, source_key: str
         return {"id": req["id"], "ref": f"R-{req['ref_no']}", "action": "same"}
     print(f"   [QUOTE] tenant={tenant_id} lead={lead_id} → R-{req['ref_no']} ({len(lines)} lines, {channel})")
     return {"id": req["id"], "ref": f"R-{req['ref_no']}", "action": "created"}
+
+
+# ── after the quote (Phase 3) ───────────────────────────────────────────────
+
+ANSWER_WORDS = {"accept": "accepted the quotation", "change": "asked for a change",
+                "decline": "declined the quotation", "question": "asked about the quotation"}
+SURE = 0.7      # below this the AI asks a person (Check these) instead of deciding
+
+
+def context_for_lead(tenant_id: int, lead_id: int):
+    """What the AI is told about this buyer's quotation, or None."""
+    if not lead_id or not allowed(tenant_id):
+        return None
+    ensure_tables()
+    conn, cur = _db()
+    try:
+        cur.execute("""SELECT ref_no, quote_number, quote_value, quote_currency, quote_valid_until, quote_sent_at, lines
+                         FROM quote_requests WHERE tenant_id=%s AND lead_id=%s AND status='quote_sent'
+                        ORDER BY quote_sent_at DESC LIMIT 1""", (tenant_id, lead_id))
+        q = cur.fetchone()
+    finally:
+        cur.close(); conn.close()
+    if not q:
+        return None
+    items = ", ".join(f"{('%g ' % ln['qty']) if ln.get('qty') is not None else ''}{ln.get('name')}" for ln in q["lines"][:12])
+    return (f"quotation {q['quote_number'] or 'R-%s' % q['ref_no']} for {money(q['quote_value'], q['quote_currency'])}"
+            f", sent {q['quote_sent_at'].strftime('%d %b %Y')}"
+            + (f", valid until {q['quote_valid_until'].strftime('%d %b %Y')}" if q.get("quote_valid_until") else "")
+            + f" ({items})")
+
+
+def _active_for_lead(cur, tenant_id, lead_id, status="quote_sent"):
+    cur.execute(f"""SELECT {_LIST_COLS} FROM quote_requests WHERE tenant_id=%s AND lead_id=%s AND status=%s
+                     ORDER BY id DESC LIMIT 1""", (tenant_id, lead_id, status))
+    return cur.fetchone()
+
+
+def on_answer(tenant_id: int, lead_id: int, channel: str, r: dict, source_key: str = ""):
+    """The buyer answered their quotation. Accept → Won, decline → Lost,
+    change → back to To quote, question → the salesperson is told. Not
+    sure → Check these. Returns {"id", "ref", "action"} or None."""
+    ans = r.get("quote_answer")
+    if ans not in ANSWER_WORDS or not lead_id or not allowed(tenant_id):
+        return None
+    conn, cur = _db()
+    try:
+        q = _active_for_lead(cur, tenant_id, lead_id)
+        if not q:
+            return None
+        lead = _lead(cur, tenant_id, lead_id)
+    finally:
+        cur.close(); conn.close()
+    detail = (r.get("quote_detail") or r.get("reason") or "").strip()[:300]
+    by = ANSWER_WORDS[ans]
+    via = CHANNEL_WORDS.get(AI_CHANNEL.get(channel), channel).lower()
+    conf = r.get("confidence")
+    out = {"id": q["id"], "ref": f"R-{q['ref_no']}"}
+    if ans in ("accept", "decline") and (conf is None or conf < SURE):
+        # Never Won or Lost on a guess.
+        conn, cur = _db()
+        try:
+            cur.execute("""INSERT INTO lead_check_items (tenant_id, lead_id, kind, reason)
+                           SELECT %s,%s,'unsure',%s WHERE NOT EXISTS (SELECT 1 FROM lead_check_items
+                                  WHERE lead_id=%s AND kind='unsure' AND status='open' AND reason=%s)""",
+                        (tenant_id, lead_id, f"Quote R-{q['ref_no']}: the buyer may have {by} ({via}). {detail}"[:1000],
+                         lead_id, f"Quote R-{q['ref_no']}: the buyer may have {by} ({via}). {detail}"[:1000]))
+            _event_once(cur, q["id"], f"The buyer may have {by} ({via}): {detail}. The AI wasn't sure, so it's in "
+                                      "Check these for a person to decide.", AI_ACTOR["label"])
+            conn.commit()
+        finally:
+            cur.close(); conn.close()
+        _answer_alert(tenant_id, q, "unsure", detail, via, source_key)
+        return {**out, "action": "unsure"}
+    before = {"status": q["status"], "lead_stage": (lead or {}).get("stage"), "lead_outcome": (lead or {}).get("outcome"),
+              "at": datetime.utcnow().isoformat(timespec="seconds"), "answer": ans, "detail": detail, "via": via,
+              "po": r.get("quote_po")}
+    if ans == "accept":
+        note = (f"Their order number {r['quote_po']}" if r.get("quote_po") else "") or detail
+        ok, _msg, won_lead = mark_won(tenant_id, q["id"], None, AI_ACTOR, note[:300])
+        if not ok:
+            return None
+        if won_lead:
+            try:
+                from portal_routes import _on_lead_won, _stamp_campaign_converted
+                _stamp_campaign_converted(won_lead)
+                _on_lead_won(tenant_id, won_lead)
+            except Exception as e:
+                print("⚠️ quote_requests won hooks:", e)
+    elif ans == "decline":
+        ok, _msg = close(tenant_id, q["id"], ("Declined: " + detail) if detail else "Declined by the buyer", AI_ACTOR)
+        if not ok:
+            return None
+    conn, cur = _db()
+    try:
+        if ans == "change":
+            from team_performance import tz_for
+            tz = tz_for(tenant_id)
+            line = f"Change asked {datetime.now(tz).strftime('%d %b')} ({via}): {detail or 'see the conversation'}"
+            cur.execute("""UPDATE quote_requests SET status='to_quote', due_at=%s, updated_at=NOW(),
+                                  notes=CASE WHEN notes IS NULL OR notes='' THEN %s ELSE notes || E'\n' || %s END
+                            WHERE id=%s AND status='quote_sent'""",
+                        (due_at(datetime.now(tz), settings(tenant_id), tz), line, line, q["id"]))
+            if not cur.rowcount:
+                conn.rollback()
+                return None
+            _event(cur, q["id"], f"The buyer asked for a change ({via}): {detail}. Back to To quote.", AI_ACTOR["label"])
+        elif ans == "question":
+            _event_once(cur, q["id"], f"The buyer asked about the quotation ({via}): {detail}", AI_ACTOR["label"])
+        else:
+            _event(cur, q["id"], f"Read by the AI: the buyer {by} ({via})" + (f": {detail}" if detail else "")
+                   + ". Undo on this page if that's wrong.", AI_ACTOR["label"])
+        if ans != "question":
+            cur.execute("UPDATE quote_requests SET ai_answer=%s WHERE id=%s", (psycopg2.extras.Json(before), q["id"]))
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    _answer_alert(tenant_id, q, ans, detail, via, source_key, po=r.get("quote_po"))
+    return {**out, "action": ans}
+
+
+def _answer_alert(tenant_id, q, ans, detail, via, source_key, po=None):
+    import auto_followups as _af
+    import hashlib
+    buyer = q.get("buyer_company") or q.get("buyer_name") or "The buyer"
+    val = money(q.get("quote_value"), q.get("quote_currency"))
+    num = q.get("quote_number") or f"R-{q['ref_no']}"
+    subject, lines = {
+        "accept": (f"Won: {buyer} accepted {num}",
+                   [f"{buyer} accepted quotation {num} ({val}) by {via}." + (f" Their order number: {po}." if po else ""),
+                    "The deal is marked Won. Raise the order in your own software as usual.",
+                    "If the AI got this wrong, open the request and press Undo."]),
+        "decline": (f"Lost: {buyer} declined {num}",
+                    [f"{buyer} declined quotation {num} ({val}) by {via}: {detail or 'no reason given'}.",
+                     "The deal is marked Lost and its follow-ups have stopped.",
+                     "If the AI got this wrong, open the request and press Undo."]),
+        "change": (f"{buyer} wants a change to {num}",
+                   [f"{buyer} asked for a change to quotation {num} by {via}: {detail or 'see the conversation'}.",
+                    "The request is back in To quote. Send a new quotation, then click Quote sent."]),
+        "question": (f"{buyer} asked about {num}",
+                     [f"{buyer} asked about quotation {num} by {via}: {detail or 'see the conversation'}.",
+                      "The AI doesn't discuss prices or terms: please reply to them."]),
+        "unsure": (f"Check this: {buyer} replied about {num}",
+                   [f"{buyer} replied about quotation {num} by {via}: {detail or 'see the conversation'}.",
+                    "The AI wasn't sure whether they accepted or declined, so nothing was changed.",
+                    "It's in Leads › Check these."]),
+    }[ans]
+    key = hashlib.sha1(f"{source_key}|{ans}|{detail}".encode()).hexdigest()[:12]
+    conn, cur = _db()
+    try:
+        _af.notify(cur, tenant_id, q.get("assigned_key") or "owner", f"quote_ans:{q['id']}:{key}", subject, lines,
+                   lead_id=q.get("lead_id"), link=f"{_af.PORTAL}/quotations/requests/{q['id']}")
+        conn.commit()
+    except Exception as e:
+        print(f"⚠️ quote_requests answer alert {q['id']}:", e)
+    finally:
+        cur.close(); conn.close()
+
+
+@_logs_moves
+def undo_ai(tenant_id: int, request_id: int, actor: dict) -> tuple:
+    """Put the request (and its deal) back as they were before the AI read the answer."""
+    conn, cur = _db()
+    try:
+        cur.execute(f"SELECT {_LIST_COLS} FROM quote_requests WHERE id=%s AND tenant_id=%s FOR UPDATE",
+                    (request_id, tenant_id))
+        q = cur.fetchone()
+        a = (q or {}).get("ai_answer") or {}
+        if not q or not a or a.get("undone"):
+            return False, "Nothing to undo."
+        if a["answer"] == "accept" and q["status"] != "won" or a["answer"] == "decline" and q["status"] != "lost" \
+                or a["answer"] == "change" and q["status"] != "to_quote":
+            return False, "Someone has changed this request since, so there's nothing to undo."
+        cur.execute("""UPDATE quote_requests SET status='quote_sent', closed_at=NULL, closed_by=NULL, close_reason=NULL,
+                              ai_answer = ai_answer || '{"undone": true}'::jsonb, updated_at=NOW() WHERE id=%s""",
+                    (request_id,))
+        if q.get("lead_id") and a["answer"] in ("accept", "decline"):
+            lead = _lead(cur, tenant_id, q["lead_id"])
+            if lead and lead.get("outcome") in ("won", "lost"):
+                cur.execute("""UPDATE merchant_pipeline_leads SET outcome=%s, stage=%s, won_date=NULL, dropped_at=NULL,
+                                      dropped_reason=NULL, updated_at=NOW() WHERE id=%s""",
+                            (a.get("lead_outcome"), a.get("lead_stage") or "proposal_sent", lead["id"]))
+                note = f"Undo: the AI had marked this {lead['outcome'].capitalize()} (R-{q['ref_no']})"
+                if lead["outcome"] == "lost":
+                    _history(cur, lead["id"], "lost", a.get("lead_stage") or "proposal_sent", actor["label"], note)
+                else:
+                    # Undoing a Won is not a new quote: history only, no Team performance count.
+                    cur.execute("""INSERT INTO merchant_pipeline_stage_history (lead_id, from_stage, to_stage, changed_by, notes)
+                                   VALUES (%s,'won',%s,%s,%s)""", (lead["id"], a.get("lead_stage") or "proposal_sent",
+                                                                  actor["label"][:200], note))
+        _event(cur, request_id, f"Undo: the AI's reading ({ANSWER_WORDS[a['answer']]}) was wrong. Back to Quote sent.",
+               actor["label"])
+        conn.commit()
+        return True, f"Undone: R-{q['ref_no']} is back to Quote sent."
+    finally:
+        cur.close(); conn.close()
+
+
+def extend(tenant_id: int, request_id: int, new_date, actor: dict) -> tuple:
+    conn, cur = _db()
+    try:
+        cur.execute("""UPDATE quote_requests SET quote_valid_until=%s, updated_at=NOW()
+                        WHERE id=%s AND tenant_id=%s AND status='quote_sent' RETURNING ref_no""",
+                    (new_date, request_id, tenant_id))
+        r = cur.fetchone()
+        if not r:
+            return False, "Only a quote with the buyer can be extended."
+        _event(cur, request_id, f"Valid until changed to {new_date.strftime('%d %b %Y')}", actor["label"])
+        conn.commit()
+        return True, f"R-{r['ref_no']} now valid until {new_date.strftime('%d %b %Y')}. Tell the buyer."
+    finally:
+        cur.close(); conn.close()
+
+
+def _expiry_once():
+    """2 days before a quote expires: remind the salesperson. On the day
+    after: ask them to extend it or close it as Lost (PhiXtra never extends
+    a price by itself)."""
+    import auto_followups as _af
+    from team_performance import tz_for
+    conn, cur = _db()
+    try:
+        cur.execute(f"""SELECT {_LIST_COLS} FROM quote_requests WHERE status='quote_sent' AND quote_valid_until IS NOT NULL
+                          AND quote_valid_until BETWEEN CURRENT_DATE - 7 AND CURRENT_DATE + 3 LIMIT 500""")
+        rows = cur.fetchall()
+    finally:
+        cur.close(); conn.close()
+    for q in rows:
+        try:
+            if not allowed(q["tenant_id"]):
+                continue
+            today = datetime.now(tz_for(q["tenant_id"])).date()
+            left = (q["quote_valid_until"] - today).days
+            buyer = q.get("buyer_company") or q.get("buyer_name") or "the buyer"
+            num = q.get("quote_number") or f"R-{q['ref_no']}"
+            link = f"{_af.PORTAL}/quotations/requests/{q['id']}"
+            vu = q["quote_valid_until"]
+            if left == 2:
+                ref, subj = f"quote_exp2:{q['id']}:{vu}", f"{num} for {buyer} expires in 2 days"
+                lines = [f"Your quotation {num} to {buyer} ({money(q['quote_value'], q['quote_currency'])}) is valid until "
+                         f"{vu.strftime('%A %d %B')}, with no answer yet.", "A call now often decides it."]
+            elif left < 0:
+                ref, subj = f"quote_expired:{q['id']}:{vu}", f"{num} for {buyer} has expired: extend or close?"
+                lines = [f"Your quotation {num} to {buyer} expired on {vu.strftime('%d %B')} with no answer.",
+                         "Open the request to extend it or close it as Lost. PhiXtra never extends a price by itself."]
+            else:
+                continue
+            conn, cur = _db()
+            try:
+                if _af.notify(cur, q["tenant_id"], q.get("assigned_key") or "owner", ref, subj, lines,
+                              lead_id=q.get("lead_id"), link=link) and left < 0:
+                    _event_once(cur, q["id"], f"Expired on {vu.strftime('%d %b %Y')}: the salesperson was asked to extend "
+                                         "or close it", "PhiXtra")
+                conn.commit()
+            finally:
+                cur.close(); conn.close()
+        except Exception as e:
+            print(f"⚠️ quote_requests expiry {q['id']}:", e)
 
 
 # ── alerts ──────────────────────────────────────────────────────────────────
@@ -1142,6 +1465,7 @@ def _loop():
             if lc.fetchone()[0]:
                 try:
                     _due_loop_once()
+                    _expiry_once()
                 finally:
                     lc.execute("SELECT pg_advisory_unlock(80301032)")
         except Exception as e:

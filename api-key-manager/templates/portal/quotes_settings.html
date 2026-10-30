@@ -29,6 +29,12 @@
       {% endfor %}
     </div>
     <div class="qt-card">
+      <h2>Follow-ups after a quote</h2>
+      <div class="qt-small" style="color:var(--ink)">When you click Quote sent, the deal moves to <b>Proposal sent</b>. Messages to buyers who go quiet are set in
+        <a href="{{ url_for('portal.sales_pipeline_settings') }}#followups">Pipeline Settings › Automatic follow-ups</a> (rule: "When a deal moves into a stage and there's no reply", stage Proposal sent).
+        The salesperson is also reminded 2 days before a quote expires, and asked to extend or close it when it does.</div>
+    </div>
+    <div class="qt-card">
       <h2>Your quoting software</h2>
       <div class="qt-f"><label class="wide">We make quotations in
         <select name="software"><option value="">—</option>{% for k, w in qr.SOFTWARE %}<option value="{{ k }}" {% if s.software == k %}selected{% endif %}>{{ w }}</option>{% endfor %}</select></label></div>

@@ -513,6 +513,14 @@ Reply with JSON only:
    //   TRANSLATED INTO ENGLISH (e.g. "kompostierbare Strohhalme" → "compostable straws").
    // qty = the number they gave for it; unit = the unit in English ("cases", "boxes", "packs", "kg"); note = size/colour/spec they added, in English.
    // In a chat, list everything they asked a price for in the WHOLE conversation (latest quantities win). Otherwise [].
+ "quote_answer": "accept" | "change" | "decline" | "question" | null,
+   // ONLY when "quotation_sent" is in what the business already has, and only about THAT quotation:
+   // accept = clearly accepts it / places the order; change = asks for a different price, quantity, product or terms;
+   // decline = says no (too expensive, bought elsewhere, no longer needed); question = asks about it without deciding;
+   // null = not about the quotation (or no quotation_sent). In a chat, judge the buyer's LATEST messages.
+ "quote_po": string|null,        // their order / PO number if they gave one when accepting
+ "quote_detail": string|null,    // in English, short: what change they want / why they declined / their question,
+                                 // keeping their EXACT figures (e.g. "£29 a case for 150 cases instead of 100")
  "deliver_to": string|null,      // the delivery place they gave (city, country or address) for this order
  "needed_by": "YYYY-MM-DD"|null, // the date they need it by, only if it can be worked out
  "reason": "one short plain sentence: why you decided this (what they want, how much, where, when, what is missing)",
@@ -571,9 +579,15 @@ TEXT:
                       "unit": str(it.get("unit")).strip()[:40] if isinstance(it.get("unit"), str) else None,
                       "note": str(it.get("note")).strip()[:300] if isinstance(it.get("note"), str) else None})
     out["items"] = items
-    for k in ("deliver_to", "needed_by"):
+    for k in ("deliver_to", "needed_by", "quote_po", "quote_detail"):
         v = out.get(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            v = str(v)
         out[k] = v.strip()[:300] if isinstance(v, str) and v.strip() else None
+    if out.get("needed_by") and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", out["needed_by"]):
+        out["needed_by"] = None
+    qa = out.get("quote_answer")
+    out["quote_answer"] = qa if qa in ("accept", "change", "decline", "question") and known and known.get("quotation_sent") else None
     out["is_enquiry"] = out.get("is_enquiry") is True
     out["new_requirement"] = out.get("new_requirement") is True
     out["intent"] = out.get("intent") if out.get("intent") in INTENT_WORDS else (
@@ -957,7 +971,9 @@ def act(tenant_id: int, channel: str, r: dict, ctx: dict, s: dict) -> dict:
 
         qualified = False
         reason = (r.get("reason") or "").strip()
-        if intent == "not_interested" and channel in ("chat", "whatsapp", "web"):
+        if r.get("quote_answer"):
+            pass    # an answer to a quotation: Quotations decides (Won / Lost / change), never Not a Fit here
+        elif intent == "not_interested" and channel in ("chat", "whatsapp", "web"):
             pass    # a chat is too casual ("just looking") to close a lead by itself; it stays as it is
         elif intent == "not_interested":
             why = "Not interested" + (f": {r['not_fit_reason']}" if r.get("not_fit_reason") else "")
@@ -1319,12 +1335,28 @@ def on_inbox_email(mb: dict, msg: dict, sender: str, received: datetime, token: 
         body = _message_text(token, msg)
         name = (((msg.get("from") or {}).get("emailAddress") or {}).get("name") or "").strip()
         text = f"From: {name} <{sender}>\nSubject: {msg.get('subject') or ''}\n\n{body}"
-        r = read(tenant_id, "email", text, s)
+        # A buyer answering a quotation (sent from the business's own software,
+        # so the answer arrives as a new email): the AI is told about the quote.
+        known = None
+        conn, cur = _db()
+        try:
+            m = find_buyer(cur, tenant_id, [sender])
+        finally:
+            cur.close(); conn.close()
+        if m.get("lead") and _is_open(m["lead"]):
+            known = {}
+            _add_quote_context(tenant_id, m["lead"]["id"], known)
+            known = known or None
+        r = read(tenant_id, "email", text, s, known=known)
+        if r.get("quote_answer"):
+            r["is_enquiry"] = True      # "Yes, go ahead, PO 4471" is about the quote, not a new enquiry
         if not r.get("is_enquiry") or r.get("intent") in ("not_enquiry", "auto_reply"):
             _mark(tenant_id, key, "not_enquiry")    # nothing about the email is kept
             return {"skipped": True}
         ctx = {"email": sender, "name": name if name and "@" not in name else None,
                "inbox_owner": (mb["owner_key"], mb.get("owner_label") or mb.get("email"))}
+        if known and r.get("quote_answer"):
+            ctx["lead_id"] = m["lead"]["id"]
         done = act(tenant_id, "email", r, ctx, s)
         if done.get("lead_id"):
             _record_email_on_lead(mb, msg, sender, received, done["lead_id"], body)
@@ -1409,6 +1441,7 @@ def on_reply(tenant_id: int, lead_id: int, reply_id: int, text: str, owner: tupl
                                            "delivery_country", "purchase_timeline", "business_type")}
         if answers_for(lead):
             known["answers to the business's own questions"] = {k: v.get("answer") for k, v in answers_for(lead).items()}
+        _add_quote_context(tenant_id, lead_id, known)
         r = read(tenant_id, "reply", text, s, known=known)
         if r.get("intent") in ("auto_reply", "not_enquiry") and not r.get("is_enquiry"):
             return {"skipped": True}
@@ -1422,6 +1455,17 @@ def on_reply(tenant_id: int, lead_id: int, reply_id: int, text: str, owner: tupl
         return {}
 
 
+def _add_quote_context(tenant_id, lead_id, known: dict):
+    """known["quotation_sent"] = the quotation this buyer has (if any)."""
+    try:
+        import quote_requests
+        q = quote_requests.context_for_lead(tenant_id, lead_id)
+        if q:
+            known["quotation_sent"] = q
+    except Exception as e:
+        print("⚠️ lead_qualify quote context:", e)
+
+
 def _quote_hook(tenant_id, channel, r, done, source_key, buyer_words):
     """A price request / full RFQ naming products becomes a quote request
     in Quotations › Requests (Intelligent RFQ Phase 2). Never raises."""
@@ -1429,6 +1473,12 @@ def _quote_hook(tenant_id, channel, r, done, source_key, buyer_words):
         if not done.get("lead_id") or done.get("error"):
             return
         import quote_requests
+        if r.get("quote_answer"):
+            ans = quote_requests.on_answer(tenant_id, done["lead_id"], channel, r, source_key)
+            if ans:
+                done["quote_answer"] = ans
+                if not r.get("new_requirement"):
+                    return
         res = quote_requests.from_ai(tenant_id, done["lead_id"], channel, r, source_key, buyer_words)
         if res:
             done["quote_request"] = res
@@ -1504,6 +1554,7 @@ def qualify_chat(tenant_id: int, session_id: str, last_id: int, lead_id: int = N
                                                    "delivery_country", "purchase_timeline", "business_type")}
                 if answers_for(lead):
                     known["answers to the business's own questions"] = {k: v.get("answer") for k, v in answers_for(lead).items()}
+                _add_quote_context(tenant_id, lead_id, known)
             else:
                 lead_id = None
     finally:
@@ -1517,6 +1568,8 @@ def qualify_chat(tenant_id: int, session_id: str, last_id: int, lead_id: int = N
         _mark(tenant_id, key, "empty", lead_id, last_id)
         return {}
     r = read(tenant_id, "chat", "\n".join(lines), s, known=known)
+    if lead_id and r.get("quote_answer"):
+        r["is_enquiry"] = True
     if not lead_id and (not r.get("is_enquiry") or r.get("intent") in ("not_enquiry", "auto_reply")):
         _mark(tenant_id, key, "not_enquiry", None, last_id)
         return {"skipped": True}

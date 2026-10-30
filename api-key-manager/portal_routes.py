@@ -42860,6 +42860,45 @@ def quotes_request_reopen(request_id: int):
     return redirect(url_for("portal.quotes_request_detail", request_id=request_id))
 
 
+@portal_bp.route("/quotations/requests/<int:request_id>/undo-ai", methods=["POST"])
+@team_feature("leads.page")
+def quotes_request_undo_ai(request_id: int):
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    if not _qr.get(tenant_id, request_id, _quotes_scope(customer)):
+        flash("Request not found.", "danger")
+        return redirect(url_for("portal.quotes_requests"))
+    ok, msg = _qr.undo_ai(tenant_id, request_id, _current_actor(customer))
+    flash(msg, "success" if ok else "warning")
+    return redirect(url_for("portal.quotes_request_detail", request_id=request_id))
+
+
+@portal_bp.route("/quotations/requests/<int:request_id>/extend", methods=["POST"])
+@team_feature("leads.page")
+def quotes_request_extend(request_id: int):
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    back = redirect(url_for("portal.quotes_request_detail", request_id=request_id))
+    if not _qr.get(tenant_id, request_id, _quotes_scope(customer)):
+        flash("Request not found.", "danger")
+        return redirect(url_for("portal.quotes_requests"))
+    try:
+        d = datetime.strptime((request.form.get("valid_until") or "").strip(), "%Y-%m-%d").date()
+    except ValueError:
+        flash("Choose the new 'Valid until' date.", "danger")
+        return back
+    if d < _tp.now_local(_tp.tz_for(tenant_id)).date():
+        flash("The new date is in the past.", "danger")
+        return back
+    ok, msg = _qr.extend(tenant_id, request_id, d, _current_actor(customer))
+    flash(msg, "success" if ok else "warning")
+    return back
+
+
 @portal_bp.route("/quotations/requests/<int:request_id>/lines.xlsx")
 @team_feature("leads.page")
 def quotes_request_xlsx(request_id: int):

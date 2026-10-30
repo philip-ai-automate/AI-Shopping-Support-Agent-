@@ -111,7 +111,7 @@ def _known(tenant_id: int, session_id: str) -> dict:
         cur = conn.cursor()
         try:
             cur.execute("""SELECT l.customer_name, l.business_type, l.product_interest, l.quantity,
-                                  l.delivery_country, l.purchase_timeline, l.decision_maker_engaged, l.qual_answers
+                                  l.delivery_country, l.purchase_timeline, l.decision_maker_engaged, l.qual_answers, l.id
                              FROM lead_qual_sources q JOIN merchant_pipeline_leads l ON l.id = q.lead_id
                             WHERE q.tenant_id=%s AND q.source_key=%s""", (tenant_id, "chat:" + session_id))
             r = cur.fetchone()
@@ -120,7 +120,7 @@ def _known(tenant_id: int, session_id: str) -> dict:
                 m = re.search(r"(\d{7,15})$", session_id) if session_id.startswith("wa-") else None
                 if m:
                     cur.execute("""SELECT customer_name, business_type, product_interest, quantity,
-                                          delivery_country, purchase_timeline, decision_maker_engaged, qual_answers
+                                          delivery_country, purchase_timeline, decision_maker_engaged, qual_answers, id
                                      FROM merchant_pipeline_leads
                                     WHERE tenant_id=%s AND dropped_at IS NULL
                                       AND (right(regexp_replace(COALESCE(whatsapp_number,''),'\\D','','g'),9)=%s
@@ -137,8 +137,43 @@ def _known(tenant_id: int, session_id: str) -> dict:
     if not r:
         return {}
     cols = ["customer_name", "business_type", "product_interest", "quantity", "delivery_country",
-            "purchase_timeline", "decision_maker_engaged", "qual_answers"]
+            "purchase_timeline", "decision_maker_engaged", "qual_answers", "lead_id"]
     return dict(zip(cols, r))
+
+
+def _quote_mode(tenant_id: int, lead_id) -> str:
+    """After handover the price belongs to the salesperson (Quotations,
+    Phase 3): the AI doesn't discuss the quotation, it passes it on."""
+    if not lead_id:
+        return ""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("""SELECT status, assigned_to, quote_number, ref_no FROM quote_requests
+                            WHERE tenant_id=%s AND lead_id=%s AND status IN ('to_quote','quote_sent')
+                            ORDER BY id DESC LIMIT 1""", (tenant_id, lead_id))
+            q = cur.fetchone()
+        except Exception:
+            conn.rollback()
+            q = None
+        cur.close()
+    finally:
+        conn.close()
+    if not q:
+        return ""
+    status, person, number, ref_no = q
+    who = (person or "").split()[0] if person and not person.startswith(("+", "Owner")) else "our sales team"
+    if status == "to_quote":
+        return ("\n\nTHIS CUSTOMER'S QUOTATION: their quote request (R-%s) has been handed to %s, who is preparing the "
+                "quotation. If they ask about it, say it is being prepared and will be sent to them. You may add products "
+                "they ask for to their request, but never give a final price, a discount, a delivery cost or a delivery "
+                "date: those come in the quotation." % (ref_no, who))
+    return ("\n\nTHIS CUSTOMER'S QUOTATION: a quotation (%s) has been sent to them by %s. Do NOT discuss, explain, "
+            "change or negotiate its prices, discounts, payment terms or delivery, and never say whether a lower price "
+            "is possible. If they ask about any of that, or accept or decline it, thank them and say you have passed "
+            "their message to %s, who will reply to them. You may still answer general questions about products and "
+            "stock." % (number or "R-%s" % ref_no, who, who))
 
 
 def addon(tenant_id: int, session_id: str) -> str:
@@ -157,9 +192,13 @@ def addon(tenant_id: int, session_id: str) -> str:
             "offer a discount, a final price, a delivery cost or a delivery date of your own: those come in the "
             "quotation from the sales team."
         )
+        known = _known(int(tenant_id), session_id or "") if session_id else {}
+        if s.get("quotes"):
+            mode = _quote_mode(int(tenant_id), known.get("lead_id"))
+            if mode:
+                quote = mode       # after handover: no price talk, replaces the quote-request rules
         if not (s["ask"] or s.get("questions")):
             return quote
-        known = _known(int(tenant_id), session_id or "") if session_id else {}
         missing = []
         for f in s["ask"]:
             v = known.get(LEAD_COLS[f])
