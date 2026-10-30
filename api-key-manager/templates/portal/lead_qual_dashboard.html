@@ -1,0 +1,268 @@
+{% extends "portal/base.html" %}
+{% block title %}Lead Qualification — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-wide{% endblock %}
+{% block head %}
+{# Lead Qualification dashboard (2026-10-30, Phase 2). Approved mock-up: section 2 of
+   1yo1cNY9ac33GpMRnXvnCp. Numbers: lead_qual_dashboard.build(). #}
+<style>
+.lq{--navy:#0B1D40;--hot:#B42318;--hot-bg:#FDECEA;--warm:#B54708;--warm-bg:#FEF3E2;--cold:#475467;--cold-bg:#EEF1F5;
+    --ok:#067647;--ok-bg:#E6F4EC;--wash:#F5F7FB;--tint2:#9DB8E8;display:grid;gap:14px}
+.lq-top{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.lq-top h1{font-family:Poppins,"Segoe UI",Arial,sans-serif;font-weight:700;font-size:22px;color:var(--navy);margin:0}
+.lq-sub,.lq-small{color:var(--muted);font-size:12.5px;line-height:1.55}
+.lq-filters{display:flex;gap:6px;flex-wrap:wrap;margin:0}
+.lq-filters select{width:auto;max-width:220px;display:inline-block;margin:0;font:inherit;font-size:12.5px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--line);
+    border-radius:8px;padding:7px 10px;min-height:36px;cursor:pointer}
+.lq-note{background:#fff;border:1px dashed var(--line);border-radius:12px;padding:14px 16px;font-size:13px;color:var(--ink);line-height:1.6}
+.lq-note a{color:#0B1D40;font-weight:700}
+.lq-kpis{display:grid;grid-template-columns:repeat(4,1fr) 1.4fr;gap:10px}
+.lq-kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;gap:2px;text-decoration:none;color:inherit}
+.lq-kpi.alert{border-color:#F5C9A8;background:#FFFAF5}
+.lq-kl{font-size:12.5px;color:var(--muted);font-weight:600}
+.lq-kv{font-family:Poppins,"Segoe UI",Arial,sans-serif;font-weight:700;font-size:26px;color:var(--navy);font-variant-numeric:tabular-nums;line-height:1.2}
+.lq-kv.sm{font-size:20px;min-width:64px}
+.lq-kd{font-size:12px;color:var(--muted)} .lq-kd.up{color:var(--ok);font-weight:600} .lq-kd.down{color:var(--hot);font-weight:600}
+.lq-kd.warn{color:var(--warm);font-weight:600}
+.lq-two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.lq-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;gap:10px;min-width:0;align-content:start}
+.lq-h3{font-family:Poppins,"Segoe UI",Arial,sans-serif;font-weight:600;color:var(--navy);font-size:15px;margin:0}
+.lq-h3.flex{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline}
+.lq-cnt{display:inline-block;background:var(--hot-bg);color:var(--hot);font-size:12px;font-weight:700;border-radius:99px;padding:1px 8px;margin-left:4px;vertical-align:2px}
+.lq-fun{display:grid;gap:2px}
+.lq-fbar{background:var(--navy);color:#fff;border-radius:6px;padding:7px 10px;display:flex;justify-content:space-between;gap:8px;min-width:150px;font-size:13px;max-width:100%}
+.lq-fbar.last{background:var(--ok)}
+.lq-fbar b{font-variant-numeric:tabular-nums}
+.lq-fconv{font-size:12px;color:var(--muted);padding:2px 0 2px 12px;border-left:2px dashed var(--tint2);margin-left:14px}
+.lq-legend{display:flex;gap:12px;font-size:12px;color:var(--muted)}
+.lq-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.lq-h{background:var(--hot)} .lq-w{background:#E38B2C} .lq-c{background:#B8C4D6}
+.lq-stack{display:grid;grid-template-columns:30px 1fr;gap:6px;height:190px}
+.lq-y{display:flex;flex-direction:column;justify-content:space-between;font-size:11px;color:var(--muted);text-align:right;padding-bottom:34px}
+.lq-cols{display:grid;gap:12px;align-items:end;
+    background:repeating-linear-gradient(to top,transparent 0,transparent calc(25% - 1px),#EEF1F6 calc(25% - 1px),#EEF1F6 25%);
+    background-size:100% calc(100% - 34px);background-repeat:no-repeat}
+.lq-colw{display:grid;grid-template-rows:1fr auto auto;height:100%;text-align:center;font-size:11px;color:var(--muted);min-width:0}
+.lq-colw em{font-style:normal;font-weight:700;color:var(--ink);font-size:11.5px}
+.lq-col{align-self:end;display:flex;flex-direction:column;border-radius:4px 4px 0 0;overflow:hidden;width:70%;justify-self:center}
+.lq-col i{display:block}
+.lq-scroll{overflow-x:auto}
+.lq-t{width:100%;border-collapse:collapse;font-size:13.5px}
+.lq-t th{font-size:11.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;background:var(--wash);padding:7px 8px;text-align:left;white-space:nowrap}
+.lq-t td{padding:9px 8px;border-bottom:1px solid #EEF1F6;vertical-align:top}
+.lq-t td b{display:block;color:var(--ink)} .lq-t td b a{color:var(--ink);text-decoration:none}
+.lq-t td .s{display:block;font-size:12px;color:var(--muted)}
+.lq-t .r{text-align:right;font-variant-numeric:tabular-nums}
+.lq-t tr.tot td{font-weight:700;color:var(--navy);border-bottom:none}
+.lq-t.slim td,.lq-t.slim th{padding:7px 6px}.lq-t.slim th{font-size:10.5px}.lq-t.slim td:first-child{white-space:nowrap}
+.lq-pill{display:inline-block;border-radius:99px;padding:2px 9px;font-size:12px;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.p-hot{background:var(--hot-bg);color:var(--hot)} .p-warm{background:var(--warm-bg);color:var(--warm)}
+.p-cold{background:var(--cold-bg);color:var(--cold)} .p-new{background:var(--ok-bg);color:var(--ok)}
+.lq-mini{display:inline-block;background:var(--navy);color:#fff;border-radius:7px;padding:5px 10px;font-size:12px;font-weight:600;white-space:nowrap;text-decoration:none}
+.lq-ctry{display:grid;gap:7px}
+.lq-cr{display:grid;grid-template-columns:130px 1fr 86px;gap:8px;align-items:center;font-size:13px}
+.lq-cb{position:relative;height:12px;background:#F3F6FB;border-radius:3px}
+.lq-cb i{position:absolute;left:0;top:0;bottom:0;background:#B8C4D6;border-radius:3px}
+.lq-cb i.q{background:var(--navy)}
+.lq-cn{font-variant-numeric:tabular-nums;text-align:right;color:var(--muted);font-size:12px}
+.lq-lg1,.lq-lg2{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;background:#B8C4D6}
+.lq-lg2{background:var(--navy);margin-left:6px}
+.lq-trust{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.lq-tr{display:grid;gap:2px;background:var(--wash);border-radius:10px;padding:10px 12px;font-size:13px;text-decoration:none;color:var(--ink)}
+.lq-empty{font-size:13px;color:var(--muted);padding:6px 0}
+@media (max-width:1100px){.lq-kpis{grid-template-columns:1fr 1fr}.lq-kpi.wide{grid-column:1/-1}}
+@media (max-width:900px){.lq-two,.lq-trust{grid-template-columns:1fr 1fr}}
+@media (max-width:620px){.lq-kpis,.lq-two,.lq-trust{grid-template-columns:1fr}.lq-cr{grid-template-columns:100px 1fr 80px}}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set K = d.kpi %}{% set F = d.funnel %}{% set T = d.trust %}
+{% macro tier_pill(score) -%}
+  {%- set t = 'hot' if score >= s.hot_from else ('warm' if score >= s.warm_from else 'cold') -%}
+  <span class="lq-pill p-{{ t }}" title="{{ score_labels.get(t, t|capitalize) }}">{{ score }}</span>
+{%- endmacro %}
+{% macro place(r) -%}
+  {%- set c = address_country_name(r.addr_country) if r.addr_country else '' -%}
+  {{ c }}{% if c and r.addr_city %} · {% endif %}{{ r.addr_city or '' }}
+{%- endmacro %}
+<div class="lq">
+  <div class="lq-top">
+    <div>
+      <h1>Lead Qualification</h1>
+      <div class="lq-sub">How the AI turned enquiries into orders · {{ d.period_label }}{% if not see_all %} · your leads{% endif %}</div>
+    </div>
+    <form class="lq-filters" method="GET" action="{{ url_for('portal.lead_qual_dashboard') }}">
+      <select name="period" onchange="this.form.submit()" aria-label="Period">
+        {% for k, l in periods %}<option value="{{ k }}" {% if f.period == k %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+      <select name="channel" onchange="this.form.submit()" aria-label="Channel">
+        <option value="">All channels</option>
+        {% for k, l in channels %}<option value="{{ k }}" {% if f.channel == k %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+      <select name="country" onchange="this.form.submit()" aria-label="Country">
+        <option value="">All countries</option>
+        {% for k, l in d.countries %}<option value="{{ k }}" {% if f.country == k %}selected{% endif %}>{{ l }}</option>{% endfor %}
+        {% if f.country and f.country not in d.countries|map('first')|list %}<option value="{{ f.country }}" selected>{{ address_country_name(f.country) }}</option>{% endif %}
+      </select>
+      {% if see_all %}
+      <select name="owner" onchange="this.form.submit()" aria-label="Owner">
+        <option value="">Everyone</option>
+        {% for k, l in d.owners %}<option value="{{ k }}" {% if f.owner == k %}selected{% endif %}>{{ l }}</option>{% endfor %}
+        {% if f.owner and f.owner not in d.owners|map('first')|list %}<option value="{{ f.owner }}" selected>Chosen person (no leads here)</option>{% endif %}
+      </select>
+      {% endif %}
+      <noscript><button type="submit">Show</button></noscript>
+    </form>
+  </div>
+
+  {% if not enabled %}
+  <div class="lq-note">AI Lead Qualification is switched off, so the AI isn't reading new enquiries. Switch it on in
+    <a href="{{ url_for('portal.sales_pipeline_settings') }}#ai-qualification">Pipeline Settings › AI Lead Qualification</a>.</div>
+  {% elif not K.enquiries and not d.needs and not d.quotes %}
+  <div class="lq-note">No enquiries in this period yet. The AI reads every new enquiry on WhatsApp, website chat and email, and the numbers here fill in as they come in.</div>
+  {% endif %}
+
+  <div class="lq-kpis">
+    <div class="lq-kpi"><span class="lq-kl">Enquiries</span><span class="lq-kv">{{ K.enquiries }}</span>
+      <span class="lq-kd {{ K.enquiries_change.dir }}">{% if K.enquiries_change.text %}{{ K.enquiries_change.text }} {{ d.prev_label }}{% else %}Every enquiry the AI read{% endif %}</span></div>
+    <div class="lq-kpi"><span class="lq-kl">Qualified</span><span class="lq-kv">{{ K.qualified }}</span>
+      <span class="lq-kd">{{ K.qualified_ai }} by AI · {{ K.qualified_staff }} by staff</span></div>
+    <a class="lq-kpi {% if K.needs %}alert{% endif %}" href="#needs"><span class="lq-kl">Needs you now</span><span class="lq-kv">{{ K.needs }}</span>
+      <span class="lq-kd {% if K.needs_over_day %}warn{% endif %}">{% if K.needs_over_day %}{{ K.needs_over_day }} waiting over 24 hours{% else %}Qualified, no quotation yet{% endif %}</span></a>
+    <div class="lq-kpi"><span class="lq-kl">Orders</span><span class="lq-kv">{{ K.orders }}</span>
+      <span class="lq-kd {{ K.orders_change.dir }}">{% if K.orders_change.text %}{{ K.orders_change.text }} {{ d.prev_label }}{% else %}Won in the Sales Pipeline{% endif %}</span></div>
+    <div class="lq-kpi wide"><span class="lq-kl">Revenue from qualified leads</span><span class="lq-kv">{{ K.revenue|money_total }}</span>
+      <span class="lq-kd">{{ K.revenue_ai|money_total }} from leads the AI qualified</span></div>
+  </div>
+
+  <div class="lq-two">
+    <div class="lq-card">
+      <h2 class="lq-h3">From enquiry to order</h2>
+      {% set base = F.enquiries or 1 %}
+      <div class="lq-fun">
+        <div><div class="lq-fbar" style="width:100%"><span>Enquiries</span><b>{{ F.enquiries }}</b></div></div>
+        <div class="lq-fconv">{{ F.q_pct }}% qualified</div>
+        <div><div class="lq-fbar" style="width:{{ (F.qualified * 100 / base)|round(1) }}%"><span>Qualified</span><b>{{ F.qualified }}</b></div></div>
+        <div class="lq-fconv">{{ F.quote_pct }}% got a quotation</div>
+        <div><div class="lq-fbar" style="width:{{ (F.quoted * 100 / base)|round(1) }}%"><span>Quotations sent</span><b>{{ F.quoted }}</b></div></div>
+        <div class="lq-fconv">{{ F.won_pct }}% became orders · {{ F.waiting }} still waiting · {{ F.lost }} lost</div>
+        <div><div class="lq-fbar last" style="width:{{ (F.orders * 100 / base)|round(1) }}%"><span>Orders</span><b>{{ F.orders }}</b></div></div>
+      </div>
+      <div class="lq-small">A quotation counts once the deal reaches Proposal Sent in the Sales Pipeline.</div>
+    </div>
+    <div class="lq-card">
+      <h2 class="lq-h3">{{ score_labels.get('hot','Hot') }}, {{ score_labels.get('warm','warm')|lower }} and {{ score_labels.get('cold','cold')|lower }} by {{ d.group }}</h2>
+      <div class="lq-legend"><span><i class="lq-h"></i>{{ score_labels.get('hot','Hot') }}</span><span><i class="lq-w"></i>{{ score_labels.get('warm','Warm') }}</span><span><i class="lq-c"></i>{{ score_labels.get('cold','Cold') }}</span></div>
+      {% set top = ((d.week_max + 3) // 4) * 4 %}
+      <div class="lq-stack">
+        <div class="lq-y"><span>{{ top }}</span><span>{{ top * 3 // 4 }}</span><span>{{ top // 2 }}</span><span>{{ top // 4 }}</span><span>0</span></div>
+        <div class="lq-cols" style="grid-template-columns:repeat({{ d.weeks|length or 1 }},1fr)">
+          {% for w in d.weeks %}
+          <div class="lq-colw">
+            <div class="lq-col" style="height:{{ (w.total * 100 / top)|round(1) }}%">
+              {% if w.hot %}<i class="lq-h" style="flex:{{ w.hot }}"></i>{% endif %}{% if w.warm %}<i class="lq-w" style="flex:{{ w.warm }}"></i>{% endif %}{% if w.cold %}<i class="lq-c" style="flex:{{ w.cold }}"></i>{% endif %}
+            </div>
+            <span>{{ w.label }}</span><em>{{ w.total }}</em>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="lq-small">Total: {{ d.tier_totals.hot }} {{ score_labels.get('hot','hot')|lower }} · {{ d.tier_totals.warm }} {{ score_labels.get('warm','warm')|lower }} · {{ d.tier_totals.cold }} {{ score_labels.get('cold','cold')|lower }}, by each lead's score today.</div>
+    </div>
+  </div>
+
+  <div class="lq-card" id="needs">
+    <h2 class="lq-h3 flex"><span>Needs you now <span class="lq-cnt">{{ d.needs|length }}</span></span><span class="lq-small">Qualified leads with no quotation yet, highest score first</span></h2>
+    {% if d.needs %}
+    <div class="lq-scroll">
+    <table class="lq-t">
+      <thead><tr><th>Buyer</th><th>Wants</th><th>Came in by</th><th class="r">Score</th><th>Waiting</th><th>Owner</th><th></th></tr></thead>
+      <tbody>
+      {% for r in d.needs[:10] %}
+        <tr>
+          <td><b><a href="{{ url_for('portal.opportunity_detail', lead_id=r.id) }}">{{ r.customer_name or '—' }}</a></b><span class="s">{{ place(r) }}</span></td>
+          <td>{{ [r.quantity, r.product_interest]|select|join(' ') or '—' }}{% if r.purchase_timeline %}<span class="s">{{ r.purchase_timeline }}</span>{% endif %}</td>
+          <td>{{ channel_short.get(r.channel, '—') }}</td>
+          <td class="r">{{ tier_pill(r.score or 0) }}</td>
+          <td><span class="lq-pill {{ 'p-hot' if r.waited_h >= 24 else ('p-warm' if r.waited_h >= 4 else 'p-new') }}">{{ r.waiting }}</span></td>
+          <td>{{ r.assigned_to or 'Nobody yet' }}</td>
+          <td><a class="lq-mini" href="{{ url_for('portal.opportunity_detail', lead_id=r.id) }}">Open</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if d.needs|length > 10 %}<div class="lq-small">Showing 10 of {{ d.needs|length }} · <a href="{{ url_for('portal.sales_pipeline') }}">See all in the Sales Pipeline</a></div>{% endif %}
+    {% else %}
+    <div class="lq-empty">Nobody is waiting. Every qualified lead has a quotation.</div>
+    {% endif %}
+  </div>
+
+  <div class="lq-card">
+    <h2 class="lq-h3 flex"><span>Quotations waiting for the customer <span class="lq-cnt" style="background:var(--wash);color:var(--navy)">{{ d.quotes|length }}</span></span>
+      <span class="lq-small">{{ d.quotes_value|money_total }} in open quotations</span></h2>
+    {% if d.quotes %}
+    <div class="lq-scroll">
+    <table class="lq-t">
+      <thead><tr><th>Buyer</th><th class="r">Value</th><th>Sent</th><th>Stage</th><th>Next follow-up</th><th>Owner</th></tr></thead>
+      <tbody>
+      {% for r in d.quotes[:10] %}
+        <tr>
+          <td><b><a href="{{ url_for('portal.opportunity_detail', lead_id=r.id) }}">{{ r.customer_name or '—' }}</a></b><span class="s">{{ place(r) }}</span></td>
+          <td class="r">{{ r.deal_value|money(r.currency) if r.deal_value else '—' }}</td>
+          <td>{% if r.proposal_date %}{{ r.proposal_date.strftime('%-d %b') }} · {% set dd = (d.today - r.proposal_date).days %}{{ 'today' if dd <= 0 else (dd ~ ' day' ~ ('s' if dd != 1 else '')) }}{% else %}—{% endif %}</td>
+          <td>{{ 'Negotiating' if r.stage == 'negotiating' else 'Proposal Sent' }}</td>
+          <td>{% if r.next_fu %}{{ r.next_fu.strftime('%a %-d %b') }}{% if r.next_fu_auto %} · automatic{% endif %}{% else %}<span class="lq-pill p-warm">None set</span>{% endif %}</td>
+          <td>{{ r.assigned_to or '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if d.quotes|length > 10 %}<div class="lq-small">Showing 10 of {{ d.quotes|length }} · <a href="{{ url_for('portal.sales_pipeline') }}">See all in the Sales Pipeline</a></div>{% endif %}
+    {% else %}
+    <div class="lq-empty">No quotations waiting. Deals at Proposal Sent or Negotiating show here.</div>
+    {% endif %}
+  </div>
+
+  <div class="lq-two">
+    <div class="lq-card">
+      <h2 class="lq-h3">By channel</h2>
+      <div class="lq-scroll"><table class="lq-t slim">
+        <thead><tr><th>Channel</th><th class="r">Enquiries</th><th class="r">Qualified</th><th class="r">Orders</th><th class="r">Revenue</th></tr></thead>
+        <tbody>
+        {% for c in d.by_channel %}
+          <tr><td>{{ c.label }}</td><td class="r">{{ c.enquiries }}</td><td class="r">{{ c.qualified }}</td><td class="r">{{ c.orders }}</td><td class="r">{{ c.revenue|money_total }}</td></tr>
+        {% endfor %}
+          <tr class="tot"><td>Total</td><td class="r">{{ K.enquiries }}</td><td class="r">{{ K.qualified }}</td><td class="r">{{ K.orders }}</td><td class="r">{{ K.revenue|money_total }}</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div class="lq-card">
+      <h2 class="lq-h3">By country</h2>
+      {% if d.by_country %}
+      <div class="lq-ctry">
+        {% for c in d.by_country %}
+        <div class="lq-cr"><span>{{ c.label }}</span>
+          <span class="lq-cb"><i style="width:{{ (c.enquiries * 100 / d.country_max)|round(1) }}%"></i><i class="q" style="width:{{ (c.qualified * 100 / d.country_max)|round(1) }}%"></i></span>
+          <span class="lq-cn">{{ c.enquiries }} · {{ c.qualified }} · {{ c.orders }}</span></div>
+        {% endfor %}
+      </div>
+      <div class="lq-small"><i class="lq-lg1"></i> enquiries <i class="lq-lg2"></i> qualified · numbers: enquiries · qualified · orders</div>
+      {% else %}
+      <div class="lq-empty">No enquiries in this period.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="lq-card">
+    <h2 class="lq-h3">How much the AI can be trusted</h2>
+    <div class="lq-trust">
+      <div class="lq-tr"><span class="lq-kv sm">{{ T.ai }}</span><span>leads qualified by the AI · <b>{{ T.staff }}</b> by staff</span></div>
+      <div class="lq-tr"><span class="lq-kv sm">{{ T.undone }}</span><span>AI decisions undone by staff{% if T.decisions %} ({{ T.undone_pct }}% of {{ T.decisions }}){% endif %}</span></div>
+      <a class="lq-tr" href="{{ url_for('portal.leads_check_these') }}"><span class="lq-kv sm">{{ T.check_open }}</span><span>in <u>Check these</u>: the AI wasn't sure and asked a person</span></a>
+      <div class="lq-tr"><span class="lq-kv sm">{{ T.ai_time }}</span><span>enquiry to qualified by the AI · staff took {{ T.staff_time }}</span></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

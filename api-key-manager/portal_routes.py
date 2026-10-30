@@ -40233,6 +40233,65 @@ def leads_check_these_resolve(item_id: int, action: str):
     return redirect(url_for("portal.leads_check_these"))
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# LEAD QUALIFICATION DASHBOARD (2026-10-30, Phase 2) — CRM › Lead Qualification.
+# Numbers: lead_qual_dashboard.py. Approved mock-up: section 2 of
+# 1yo1cNY9ac33GpMRnXvnCp. Same plan rule as AI Lead Qualification.
+# ══════════════════════════════════════════════════════════════════════════════
+import lead_qual_dashboard as _lqd
+
+
+@portal_bp.app_context_processor
+def _inject_aiq_dashboard():
+    def aiq_dashboard_on():
+        if "_aiq_dash_on" not in g:
+            cid = _customer_id()
+            cust = _get_customer(cid) if cid else None
+            try:
+                g._aiq_dash_on = bool(cust) and _lq.allowed(int(cust["tenant_id"]))
+            except Exception:
+                g._aiq_dash_on = False
+        return g._aiq_dash_on
+    return {"aiq_dashboard_on": aiq_dashboard_on}
+
+
+@portal_bp.route("/crm/lead-qualification")
+@team_feature("leads.page")
+def lead_qual_dashboard():
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "leads.page", "Leads")
+    if r2: return r2
+    if not _lq.allowed(tenant_id):
+        flash("The Lead Qualification dashboard is part of AI Lead Qualification, on the AI Sales Agent for B2B plan.",
+              "warning")
+        return redirect(url_for("portal.leads_page"))
+    s = _lq.settings(tenant_id)
+    tz = _tp.tz_for(tenant_id)
+    now = _tp.now_local(tz)
+    see_all = _leads_see_all()
+    me = _current_actor(customer)
+    period = request.args.get("period") or "month"
+    channel = request.args.get("channel") or ""
+    if channel not in dict(_lqd.CHANNELS):
+        channel = ""
+    names = {iso: n for iso, n in _addr.ADDRESS_COUNTRIES}
+    country = (request.args.get("country") or "").upper()
+    if country not in names:
+        country = ""
+    owner = (request.args.get("owner") or "")[:64] if see_all else ""
+    d = _lqd.build(tenant_id, s, now.date(), now, period=period, channel=channel, country=country, owner=owner,
+                   scope_key=None if see_all else me["key"], country_names=names, tz=tz)
+    return render_template("portal/lead_qual_dashboard.html", d=d, s=s, see_all=see_all,
+                           f={"period": d["period"], "channel": channel, "country": country, "owner": owner},
+                           periods=_lqd.PERIODS, channels=_lqd.CHANNELS, channel_short=_lqd.CHANNEL_SHORT,
+                           enabled=s.get("enabled"), score_labels=pipeline_effective_score_labels(tenant_id))
+
+
 @portal_bp.route("/sales-pipeline/<int:lead_id>/advance", methods=["POST"])
 @team_feature("crm.pipeline_board_edit")
 def sales_pipeline_advance(lead_id: int):

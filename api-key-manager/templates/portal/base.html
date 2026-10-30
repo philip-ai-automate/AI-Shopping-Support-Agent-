@@ -882,7 +882,8 @@
                                               'portal.whatsapp_segments', 'portal.whatsapp_segment_detail',
                                               'portal.sales_pipeline', 'portal.opportunity_detail', 'portal.report_pipeline_overview',
                                               'portal.sales_pipeline_settings', 'portal.lead_labels_page',
-                                              'portal.lead_labels_import_bounces', 'bookings.demos', 'portal.follow_ups_page') %}
+                                              'portal.lead_labels_import_bounces', 'bookings.demos', 'portal.follow_ups_page',
+                                              'portal.lead_qual_dashboard') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _crm_group %}open{% endif %}"
            data-tour="nav-contacts" onclick="sbToggle(this)">
@@ -897,6 +898,13 @@
            class="{% if request.endpoint in ('portal.whatsapp_contacts', 'portal.whatsapp_contact_detail') %}active{% endif %}">
           All Contacts
           {% if 'crm.contacts_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </a>
+        {% endif %}
+        {# Lead Qualification dashboard (2026-10-30): B2B plan + PhiXtra only, like AI Lead Qualification #}
+        {% if aiq_dashboard_on() and staff_can_open('portal.lead_qual_dashboard') %}
+        <a href="{{ url_for('portal.lead_qual_dashboard') }}"
+           class="{% if request.endpoint == 'portal.lead_qual_dashboard' %}active{% endif %}">
+          Lead Qualification
         </a>
         {% endif %}
         {% if staff_can_open('portal.crm_companies') %}
@@ -1689,6 +1697,7 @@
          'portal.crm_merge_review': 'crm-merge',
          'portal.report_pipeline_overview': 'crm-overview',
          'portal.daily_targets': 'crm-targets',
+         'portal.lead_qual_dashboard': 'crm-aiq-dashboard',
          'portal.sales_pipeline': 'crm-board',
          'portal.opportunity_detail': 'crm-board',
          'portal.lead_scoring_explainer': 'lead-score',

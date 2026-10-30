@@ -70,7 +70,7 @@
 <div class="crmg" id="crm-top">
 <div class="g-head">
   <p class="g-lede">Everything under <b>CRM</b> in the side menu, screen by screen and button by button: contacts, companies, your sales pipeline, segments, labels and settings. It also covers the WhatsApp and Email Segments that campaigns use. Every picture is from the live portal.</p>
-  <div class="g-meta">Last checked against the live portal: 28 September 2026 · Daily Targets added 24 October 2026 · Pipeline Settings tabs and AI Lead Qualification added 30 October 2026</div>
+  <div class="g-meta">Last checked against the live portal: 28 September 2026 · Daily Targets added 24 October 2026 · Pipeline Settings tabs, AI Lead Qualification and the Lead Qualification page added 30 October 2026</div>
 </div>
 <nav class="toc" aria-label="Contents"><details open><summary>Contents</summary>
   <p class="h">Contents</p>
@@ -119,9 +119,10 @@
         <li><a href="#crm-t-set">Setting targets</a></li>
         <li><a href="#crm-t-who">Who can see it</a></li>
       </ol></li>
-    <li><a href="#crm-roles">13. Who can do what</a></li>
-    <li><a href="#crm-recipes">14. Everyday tasks</a></li>
-    <li><a href="#crm-faq">15. Questions and problems</a></li>
+    <li><a href="#crm-aiq-dashboard">13. Lead Qualification</a></li>
+    <li><a href="#crm-roles">14. Who can do what</a></li>
+    <li><a href="#crm-recipes">15. Everyday tasks</a></li>
+    <li><a href="#crm-faq">16. Questions and problems</a></li>
   </ol>
 </details></nav>
 
@@ -144,6 +145,7 @@
   <div><b>Labels</b>Short markers such as "VIP" or "Follow-up" that you can put on contacts and deals.</div>
   <div><b>Pipeline Settings</b>Change the names of your pipeline stages and of the Hot / Warm / Cold score words.</div>
   <div><b>Daily Targets</b>How many leads each salesperson has contacted today, against their daily target. See <a href="#crm-targets">section 12</a>.</div>
+  <div><b>Lead Qualification</b>AI Sales Agent for B2B plan: how the AI turns enquiries into orders, and who is waiting for you. See <a href="#crm-aiq-dashboard">section 13</a>.</div>
 </div>
 
 <h3>Contacts and deals are different things</h3>
@@ -166,7 +168,7 @@
 <h3>Why you might not see a button</h3>
 <ul>
   <li><b>A gold padlock 🔒 next to a menu item</b> means your business's plan doesn't include that page. The owner can upgrade under Settings › My Plan.</li>
-  <li><b>A button is missing altogether</b> means your role doesn't allow that action (for example, only some staff may delete contacts). Ask the person who manages your team. <a href="#crm-roles">Section 13</a> lists every permission.</li>
+  <li><b>A button is missing altogether</b> means your role doesn't allow that action (for example, only some staff may delete contacts). Ask the person who manages your team. <a href="#crm-roles">Section 14</a> lists every permission.</li>
 </ul>
 </section>
 
@@ -869,8 +871,32 @@
 </section>
 
 <!-- 13 -->
+<section class="part" id="crm-aiq-dashboard">
+<h2><span class="num">13</span>Lead Qualification</h2>
+<p class="where">CRM › Lead Qualification · AI Sales Agent for B2B plan</p>
+<p>One page that shows how the AI turns enquiries into orders, which buyers need a person today, and how far you can trust the AI's decisions. Nobody types anything in: it counts what the AI reads on WhatsApp, website chat and email (see the Leads guide, section 18) and what your team does in the Sales Pipeline.</p>
+<figure><img src="/static/portal/tutorial/crm/c44_aiq_dashboard.jpg" width="1100" height="1454" alt="The Lead Qualification page: totals at the top, enquiry to order, hot warm and cold by week, Needs you now, quotations waiting, by channel, by country, and how much the AI can be trusted." loading="lazy"><figcaption>The Lead Qualification page, on a demo business with example buyers.</figcaption></figure>
+<p>Use the boxes at the top right to choose the time (this month, last month, the last 7, 30 or 90 days, or this year), one channel, one country, or one person's leads. Staff who can only see their own leads see only theirs, without the person box.</p>
+<div class="tbl"><table>
+<thead><tr><th>Part</th><th>What it shows</th></tr></thead>
+<tbody>
+<tr><td>Enquiries</td><td class="wrapok">Every enquiry the AI read in that time, each buyer once, with the change on the time before. Auto-replies and emails that weren't enquiries don't count.</td></tr>
+<tr><td>Qualified</td><td class="wrapok">How many of those buyers became an Opportunity on the Sales Pipeline, and how many the AI moved there and how many your staff did.</td></tr>
+<tr><td>Needs you now</td><td class="wrapok">Qualified buyers who have no quotation yet, and how many have waited over 24 hours. Click it to go to the list.</td></tr>
+<tr><td>Orders and revenue</td><td class="wrapok">Deals from those enquiries that were Won, and their deal value, with how much came from leads the AI qualified.</td></tr>
+<tr><td>From enquiry to order</td><td class="wrapok">The same enquiries followed through: qualified, quotation sent, order. A quotation counts once the deal reaches Proposal Sent on the Pipeline Board.</td></tr>
+<tr><td>Hot, warm and cold</td><td class="wrapok">Enquiries each week (each month for this year), coloured by the lead's score today. The words are your own Lead score labels.</td></tr>
+<tr><td>Needs you now (list)</td><td class="wrapok">Highest score first: what they want, how they came in, the score, how long they've waited since they were qualified, and the owner. Green is under 4 hours, orange under a day, red a day or more. <span class="ui">Open</span> opens the deal.</td></tr>
+<tr><td>Quotations waiting for the customer</td><td class="wrapok">Deals at Proposal Sent or Negotiating, biggest first: value, when it was sent, and the next follow-up. <b>None set</b> means nobody will chase it, so set a follow-up on the deal.</td></tr>
+<tr><td>By channel and by country</td><td class="wrapok">Enquiries, qualified, orders and revenue for WhatsApp, website chat, email enquiries and replies to your emails, and for your top countries.</td></tr>
+<tr><td>How much the AI can be trusted</td><td class="wrapok">Leads qualified by the AI and by staff, how many AI decisions your team undid, how many are waiting in <span class="ui">Check these</span>, and how long it took from enquiry to qualified: the AI against your staff.</td></tr>
+</tbody></table></div>
+<p>The page is in the CRM menu for anyone whose role can see Leads. Needs you now and Quotations waiting always show what is waiting today, whatever time you pick.</p>
+</section>
+
+<!-- 14 -->
 <section class="part" id="crm-roles">
-<h2><span class="num">13</span>Who can do what</h2>
+<h2><span class="num">14</span>Who can do what</h2>
 <p class="where">Set by the owner or team admin under Settings › Team › Roles</p>
 <p>The business owner can always do everything. Team members can do only what their role has ticked. If a tick is missing, the button simply isn't shown to them.</p>
 <div class="tbl"><table>
@@ -895,9 +921,9 @@
 <p>Pipeline Overview is controlled by the <b>Reports</b> row in Settings › Team › Roles. Whatever the ticks, staff only ever see segments they made, unless their role can manage the Team.</p>
 </section>
 
-<!-- 14 -->
+<!-- 15 -->
 <section class="part" id="crm-recipes">
-<h2><span class="num">14</span>Everyday tasks</h2>
+<h2><span class="num">15</span>Everyday tasks</h2>
 
 <div class="recipe"><h4>Log a phone call with a customer</h4>
 <p>Open the contact (All Contacts › click the name), type what was said in the note box on the right ("Called, wants 40 units by Friday"), and press <span class="ui">Add Note</span>. If the call moved the deal forward, also move the deal on the Pipeline Board.</p></div>
@@ -939,9 +965,9 @@
 <p>Pipeline Overview › <span class="ui">Last 7 days</span> › <span class="ui">📄 PDF</span>, and share the file.</p></div>
 </section>
 
-<!-- 14 -->
+<!-- 16 -->
 <section class="part" id="crm-faq">
-<h2><span class="num">15</span>Questions and problems</h2>
+<h2><span class="num">16</span>Questions and problems</h2>
 <h4>I added a lead but can't find it on the Pipeline Board.</h4>
 <p>New leads wait on the <b>Leads</b> page until someone presses <span class="ui">Qualify</span>. Only then do they appear on the Pipeline Board.</p>
 <h4>The same customer appears twice in All Contacts.</h4>
