@@ -94,7 +94,8 @@
       <div class="su-text">{{ ex.text }}</div>
       <div class="su-acts start">
         {% if ex.key == 'products' %}
-          {% if ex.source != 'list' and ex.shop_url %}<a class="su-btn line" href="{{ ex.shop_url }}" target="_blank" rel="noopener">{% if ex.source == 'shop' %}Change shop products{% else %}Choose shop products{% endif %}</a>{% endif %}
+          {% if ex.plugin_url and ex.source is none %}<a class="su-btn line" href="{{ ex.plugin_url }}" target="_blank" rel="noopener">Get the plugin from WordPress.org</a>
+          {% elif ex.source != 'list' and ex.shop_url %}<a class="su-btn line" href="{{ ex.shop_url }}" target="_blank" rel="noopener">{% if ex.source == 'shop' %}Change shop products{% else %}Choose shop products{% endif %}</a>{% endif %}
           {% if ex.site_ok and ex.source is none %}
           <form method="POST" action="{{ ex.read_url }}" style="margin:0">
             <input type="hidden" name="action" value="on"><input type="hidden" name="back" value="dashboard">
@@ -106,7 +107,8 @@
             <button type="submit" class="su-btn line">Stop reading products</button>
           </form>
           {% endif %}
-          {% if ex.source not in ('shop', 'site') %}<a class="su-btn line" href="{{ ex.list_url }}">{% if ex.source == 'list' %}Manage your list{% else %}Upload a list{% endif %}</a>{% endif %}
+          {% if ex.source == 'list' %}<a class="su-btn line" href="{{ ex.list_url }}">Manage your list</a>
+          {% elif ex.source is none %}<span class="su-text" style="flex-basis:100%;font-size:12.5px">Products not on your website? <a href="{{ ex.list_url }}">Upload a list instead</a>.</span>{% endif %}
         {% elif not ex.done %}
           <a class="su-btn line" href="{{ ex.url }}">{{ ex.action }}</a>
         {% endif %}

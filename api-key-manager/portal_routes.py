@@ -2919,21 +2919,24 @@ def _send_account_ready_email(
         steps.append(("Connect your WhatsApp number.",
                       "Use Meta's official sign-up window inside the portal. The number then works through PhiXtra, not the phone app."))
     if kind in ("both", "website"):
+        if wp:      # WordPress: the plugin comes first (31 Oct 2026)
+            steps.append(("Install the free PhiXtra plugin.", "Get it at https://wordpress.org/plugins/phixtra-ai-shopping-assistant/ "
+                                               "(or in WordPress: Plugins > Add New, search PhiXtra), then click Connect to PhiXtra "
+                                               "inside it. That adds the chat box."))
+            steps.append(("Send your products with one click.", "On the plugin's Products tab choose All published products "
+                                               "and click Save. No Excel, nothing to prepare."))
         steps.append(("Connect your website.",
                       f"Give permission for {site}, then click Sync now so the AI can read your pages."))
-        if wp:
-            steps.append(("Add the chat box.", "Install the free PhiXtra plugin in WordPress, then click "
-                                               "Connect to PhiXtra inside it."))
-            steps.append(("Choose your products (optional).", "Pick which WooCommerce products the AI can recommend, in the plugin."))
-        else:
+        if not wp:
             steps.append(("Add the chat box.", "Copy one line of code from the portal's Add Chat Box page into "
                                                "your website. There's a step-by-step guide for your platform."))
-            steps.append(("Add your products (optional).", "Read them from your website's pages, or upload an Excel or CSV list."))
+            steps.append(("Add your products (optional).", "Your AI reads them from your website's product pages. Nothing to prepare."))
     else:
         steps.append(("Upload your product list.", "Excel or CSV."))
     if b2b:
         steps = [st for st in steps if "optional" not in st[0]]
-        steps.append(("Upload your price list.", "Excel or CSV, or connect your WooCommerce shop. Your cost prices are never shown to buyers."))
+        steps.append(("Your prices.", "They come from your WooCommerce shop through the PhiXtra plugin, or from your website's "
+                                      "product pages. Nothing to prepare."))
     steps.append(("Start your 2-week AI trial when you're ready.", ""))
 
     trial_head = "Increase your revenue and customer satisfaction"
@@ -6510,6 +6513,9 @@ def _ready_made_list_off():
         return redirect(url_for("portal.products"))
 
 
+PLUGIN_PAGE_URL = "https://wordpress.org/plugins/phixtra-ai-shopping-assistant/"
+
+
 def _setup_checklist(tenant_id: int):
     """The Dashboard "Get set up" steps, or None for businesses that don't get it.
 
@@ -6577,11 +6583,15 @@ def _setup_checklist(tenant_id: int):
                                 else "Your AI reads your website's public pages (about, delivery, prices, FAQs)."),
                           action="Sync now", url=url_for("portal.store_info_website_sync"), post_sync=True))
 
-    # 3. Chat box.
+    # 3. Chat box (WordPress: the plugin is step 1, put first below).
     if wp:
-        steps.append(dict(key="chatbox", title="Install the PhiXtra plugin", done=bool(t["chatbox_seen_at"]),
-                          text="Install and activate the free PhiXtra AI Sales Agent plugin on WordPress, then click Connect to PhiXtra inside it. That sets up your API key and the chat box.",
-                          action="Get the plugin", url="https://wordpress.org/plugins/phixtra-ai-shopping-assistant/", check=True))
+        steps.insert(0, dict(key="chatbox", title="Install the PhiXtra plugin", done=bool(t["chatbox_seen_at"]),
+                             text="Get the free PhiXtra – AI Sales Agent plugin from WordPress.org: in your WordPress admin, go to "
+                                  "Plugins › Add New, search PhiXtra, click Install Now, then Activate. "
+                                  "In the plugin, click Connect to PhiXtra: that adds the chat box to your website. "
+                                  "Then open the plugin's Products tab, choose All published products and click Save. Your WooCommerce "
+                                  "products go to your AI by themselves and stay up to date. No Excel, nothing to prepare.",
+                             action="Get the plugin from WordPress.org", url=PLUGIN_PAGE_URL, check=True))
     else:
         gkey = _chatbox_guide_key(t["website_platform"] or "")
         steps.append(dict(key="chatbox", title="Add the chat box", done=bool(t["chatbox_seen_at"]),
@@ -6624,12 +6634,13 @@ def _setup_checklist(tenant_id: int):
     elif prod["source"] == "own":
         p_text = f"Your AI knows the {prod['own']} products and services you added in My Products & Services."
     else:
-        p_text = ("Optional. Choose which shop products the AI can recommend, inside the plugin, or upload a list instead (Excel or CSV). Use one or the other."
-                  if wp else "Optional. Let your AI read your products from your website's own pages, or upload a list (Excel or CSV). Use one or the other.")
-    if b2b and prod["source"] is None:
-        p_text = ("Upload your price list (Excel or CSV), or connect your WooCommerce shop, so the AI can answer "
-                  "trade buyers with your own prices. Your cost prices are never shown to buyers.")
+        p_text = ("Your WooCommerce products reach your AI through the PhiXtra plugin (free, from WordPress.org: Plugins › Add New, "
+                  "search PhiXtra). In the plugin's Products tab, choose All published products and click Save. Nothing to prepare."
+                  if wp else "Your AI can read your products and prices from your website's own product pages. One click, nothing to prepare.")
+        if b2b:
+            p_text += " Then the AI answers trade buyers with your own prices."
     extras = [dict(key="products", title="Your price list" if b2b else "Products", done=prod["source"] is not None, text=p_text,
+                   plugin_url=(PLUGIN_PAGE_URL if wp and not t["chatbox_seen_at"] else None),
                    shop_url=shop_tab, list_url=url_for("portal.data_sources"), source=prod["source"],
                    site_ok=(not wp) and bool(src), read_url=url_for("portal.store_info_website_read_products"))]
     wa_ok = t["channel_mode"] in ("dual", "both")

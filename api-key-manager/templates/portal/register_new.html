@@ -392,17 +392,20 @@ function steps() {
   var verify = ['Confirm your WhatsApp and email.', 'We send a code to each. Enter both and your account is ready.'];
   var wa = ['Connect your WhatsApp.', "Use Meta's official sign-up window. The number then works through PhiXtra, not the phone app."];
   var site = ['Connect your website.', 'You give permission first, then click Sync now and your AI reads your public pages. If something blocks us, we tell you the reason and how to fix it.'];
-  var box = ['Add the chat box.', wp ? 'Install the free PhiXtra plugin on WordPress and click Connect to PhiXtra inside it. No key to copy.' : 'Copy one line of code into ' + short + ', with a step-by-step guide.'];
-  var prod = wp ? ['Choose your products (optional).', 'Pick which WooCommerce products the AI can recommend, inside the plugin.'] : ['Add your products (optional).', "Your AI can read them from your website's pages, or you upload an Excel or CSV list."];
+  var box = wp ? ['Install the free PhiXtra plugin.', 'From WordPress.org (Plugins › Add New, search PhiXtra), then click Connect to PhiXtra inside it. That adds the chat box.'] : ['Add the chat box.', 'Copy one line of code into ' + short + ', with a step-by-step guide.'];
+  var prod = wp ? ['Send your products with one click.', 'In the plugin, choose All published products and click Save. No Excel, nothing to prepare.'] : ['Add your products (optional).', "Your AI reads them from your website's product pages. Nothing to prepare."];
   var free = ['Your team replies free', 'on PhiXtra Connect, with the shared inbox and CRM.'];
   var trial = ['Start your 2-week AI trial', 'from your dashboard when you are ready. No card needed.'];
   var webFree = ['Your team replies free', 'on PhiXtra Connect: website chats come to your shared inbox, and replies show in the visitor\'s chat box.'];
   var b2bVerify = ['Confirm your mobile and email.', 'We send a code to each: the mobile code comes on WhatsApp.'];
-  var price = ['Upload your price list.', 'Excel or CSV, or connect your WooCommerce shop. Your cost prices are never shown to buyers.'];
+  var price = ['Your prices.', "From your WooCommerce shop through the PhiXtra plugin, or from your website's product pages. Nothing to prepare."];
   var b2bWa = ['Connect WhatsApp', "whenever you are ready, through Meta's official window."];
   var b2bTrial = ['Start your 2-week B2B trial', 'from your dashboard when you are ready. No card needed.'];
-  return {'': [verify, trial], whatsapp: [verify, wa, free, trial], web: [verify, site, box, prod, webFree, trial], both: [verify, wa, site, box, prod, webFree, trial],
-          b2b: [b2bVerify, site, box, price, b2bWa, b2bTrial]}[TYPE];
+  // WordPress: the plugin comes first, then the website (31 Oct 2026).
+  var webSteps = wp ? [box, prod, site] : [site, box, prod];
+  var b2bSite = wp ? [box, price, site] : [site, box, price];
+  return {'': [verify, trial], whatsapp: [verify, wa, free, trial], web: [verify].concat(webSteps, [webFree, trial]), both: [verify, wa].concat(webSteps, [webFree, trial]),
+          b2b: [b2bVerify].concat(b2bSite, [b2bWa, b2bTrial])}[TYPE];
 }
 
 var BASED_HOME = document.createComment('blkBased');

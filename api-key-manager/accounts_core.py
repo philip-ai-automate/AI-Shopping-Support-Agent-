@@ -261,6 +261,8 @@ def setup_steps_many(tenant_ids) -> dict:
                      ("Sync website", tid in site_read),
                      ("Install plugin" if wp else "Add chat box", bool(t["chatbox_seen_at"])),
                      ("AI trial", trial)]
+            if wp:      # WordPress: the plugin is step 1 (31 Oct 2026)
+                steps.insert(0, steps.pop(2))
         elif kind == "Website plugin":
             steps = [("Account", True), ("Products", has_products), ("AI trial", trial)]
         else:
