@@ -67,6 +67,13 @@ def ensure_tables():
                                UNIQUE (tenant_id, number, version))""")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_quotations_request ON quotations (request_id, version DESC)")
             conn.commit()
+        # Part C: the order made in Products & Orders when the quotation is won.
+        cur.execute("""SELECT 1 FROM information_schema.columns
+                        WHERE table_name='quotations' AND column_name='order_id'""")
+        if not cur.fetchone():
+            cur.execute("SET lock_timeout = '5s'")
+            cur.execute("ALTER TABLE quotations ADD COLUMN IF NOT EXISTS order_id VARCHAR(36)")
+            conn.commit()
         _tables_ok = True
     except Exception as e:
         conn.rollback()
@@ -152,8 +159,9 @@ def get(tenant_id: int, qid: int):
         cur.close(); conn.close()
 
 
-def start(tenant_id: int, req: dict, actor: dict) -> int:
-    """The request's draft quotation (made now from the request if there is none)."""
+def start(tenant_id: int, req: dict, actor: dict, valid_until: date = None) -> int:
+    """The request's draft quotation (made now from the request if there is none).
+    valid_until: the new date when an extension makes the new version."""
     ensure_tables()
     conn, cur = _db()
     try:
@@ -162,6 +170,10 @@ def start(tenant_id: int, req: dict, actor: dict) -> int:
                         ORDER BY id DESC LIMIT 1""", (tenant_id, req["id"]))
         r = cur.fetchone()
         if r:
+            if valid_until:
+                cur.execute("""UPDATE quotations SET data = jsonb_set(data, '{valid_until}', to_jsonb(%s::text)),
+                                      valid_until=%s, updated_at=NOW() WHERE id=%s""",
+                            (valid_until.isoformat(), valid_until, r["id"]))
             conn.commit()
             return r["id"]
         cur.execute("""SELECT number, version, data FROM quotations WHERE tenant_id=%s AND request_id=%s
@@ -171,7 +183,7 @@ def start(tenant_id: int, req: dict, actor: dict) -> int:
         if prev:
             # A new version of the quotation already sent: same number, its lines.
             number, version, data = prev["number"], prev["version"] + 1, dict(prev["data"])
-            data["valid_until"] = (date.today() + timedelta(days=s["valid_days"])).isoformat()
+            data["valid_until"] = (valid_until or date.today() + timedelta(days=s["valid_days"])).isoformat()
         else:
             number, version = _take_number(cur, tenant_id), 1
             products = qr.products_for(tenant_id, [ln.get("product_id") for ln in req["lines"]])
@@ -187,7 +199,7 @@ def start(tenant_id: int, req: dict, actor: dict) -> int:
                             ORDER BY sent_at DESC LIMIT 1""", (tenant_id,))
             last = cur.fetchone()
             data = {"lines": lines, "charges": [], "tax": (last or {}).get("tax") or dict(TAX_DEFAULT),
-                    "valid_until": (date.today() + timedelta(days=s["valid_days"])).isoformat(),
+                    "valid_until": (valid_until or date.today() + timedelta(days=s["valid_days"])).isoformat(),
                     "deliver_place": req.get("deliver_to") or "", "deliver_terms": "",
                     "note": "", "plan": [], "prepared_by": _person(cur, tenant_id, req.get("assigned_key"),
                                                                    req.get("assigned_to") or actor["label"])}
@@ -285,6 +297,127 @@ def delete_draft(tenant_id: int, qid: int, actor: dict) -> tuple:
             qr._event(cur, r["request_id"], f"Draft quotation {r['number']} deleted", actor["label"])
         conn.commit()
         return (True, "Draft deleted. Its number isn't used again.") if r else (False, "Only a draft can be deleted.")
+    finally:
+        cur.close(); conn.close()
+
+
+def latest_sent(tenant_id: int, request_id: int):
+    """The quotation the buyer has now (the last one sent), or None."""
+    ensure_tables()
+    conn, cur = _db()
+    try:
+        cur.execute("""SELECT id, number, version, total, currency, valid_until, order_id FROM quotations
+                        WHERE tenant_id=%s AND request_id=%s AND status='sent' ORDER BY version DESC LIMIT 1""",
+                    (tenant_id, request_id))
+        return cur.fetchone()
+    finally:
+        cur.close(); conn.close()
+
+
+def _line_key(ln) -> str:
+    return ln.get("product_id") or (ln.get("name") or "").strip().lower()
+
+
+def changes_from_last(tenant_id: int, q: dict) -> dict:
+    """For a new version: what each line was on the version before it, so
+    the editor can mark what changed. {"label": "v1", "lines": {key: {...}}}"""
+    if q["version"] <= 1 or not q.get("request_id"):
+        return {}
+    conn, cur = _db()
+    try:
+        cur.execute("""SELECT version, data FROM quotations WHERE tenant_id=%s AND request_id=%s
+                          AND version < %s AND status IN ('sent','superseded') ORDER BY version DESC LIMIT 1""",
+                    (tenant_id, q["request_id"], q["version"]))
+        r = cur.fetchone()
+    finally:
+        cur.close(); conn.close()
+    if not r:
+        return {}
+    return {"label": "v%d" % r["version"] if r["version"] > 1 else "v1",
+            "lines": {_line_key(ln): {"qty": ln.get("qty"), "price": ln.get("price"), "disc": ln.get("disc") or 0}
+                      for ln in r["data"].get("lines") or []}}
+
+
+def make_order(tenant_id: int, request_id: int, actor: dict) -> tuple:
+    """Won → the order in Products & Orders, with the quotation's exact lines.
+    (ok, message, order_id). One order per quotation: a second click opens it.
+    Stock isn't touched, the same as every other order."""
+    req = qr.get(tenant_id, request_id)
+    if not req or req["status"] != "won":
+        return False, "Mark the request Won first.", None
+    ensure_tables()
+    conn, cur = _db()
+    try:
+        cur.execute("""SELECT * FROM quotations WHERE tenant_id=%s AND request_id=%s AND status='sent'
+                        ORDER BY version DESC LIMIT 1 FOR UPDATE""", (tenant_id, request_id))
+        q = cur.fetchone()
+        if not q:
+            conn.commit()
+            return False, "There's no quotation made in PhiXtra on this request.", None
+        if q["order_id"]:
+            cur.execute("SELECT id FROM orders WHERE id=%s AND tenant_id=%s", (q["order_id"], tenant_id))
+            if cur.fetchone():
+                conn.commit()
+                return True, "", q["order_id"]
+        s = qd.get(tenant_id)
+        doc = to_doc(tenant_id, q, s, req)
+        items = []      # (product_id, name, qty, unit price, amount)
+        for src, ln in zip(q["data"]["lines"], doc["lines"]):
+            qty = float(ln["qty"] or 0)
+            unit = round(float(ln["price"]) * (1 - float(ln.get("disc") or 0) / 100), 2)
+            u = (ln.get("unit") or "").strip()
+            if qty == int(qty):
+                name = ln["name"] + (f" ({u})" if u and u.lower() not in ln["name"].lower() else "")
+                items.append((src.get("product_id"), name, int(qty), unit, ln["amount"]))
+            else:           # orders count whole items: 2.5 hours goes as one line "…, 2.5 hours"
+                items.append((src.get("product_id"), f"{ln['name']}, {qty:g} {u}".strip(), 1, ln["amount"], ln["amount"]))
+        for c in doc["charges"]:
+            cq = float(c.get("qty") or 1)
+            items.append((None, c["name"], int(cq) if cq == int(cq) else 1,
+                          float(c["price"]) if cq == int(cq) else c["amount"], c["amount"]))
+        if doc["tax_amount"]:
+            items.append((None, doc["tax"]["label"], 1, doc["tax_amount"], doc["tax_amount"]))
+        cur.execute("""INSERT INTO order_reference_seq (tenant_id, last_seq) VALUES (%s, 1)
+                       ON CONFLICT (tenant_id) DO UPDATE SET last_seq = order_reference_seq.last_seq + 1
+                       RETURNING last_seq""", (tenant_id,))
+        reference = "PHX-%06d" % cur.fetchone()["last_seq"]
+        buyer = " · ".join(x for x in (req.get("buyer_company"), req.get("buyer_name")) if x)
+        notes = [f"From quotation {full_number(q)} (request R-{req['ref_no']})"]
+        if req.get("close_reason"):
+            notes.append(f"Buyer: {req['close_reason']}")
+        if req.get("buyer_email"):
+            notes.append(f"Email: {req['buyer_email']}")
+        if doc["deposit"]:
+            notes.append(f"Deposit asked: {qr.money(doc['deposit'], doc['currency'])}")
+        cur.execute("""INSERT INTO orders (tenant_id, reference, customer_phone, customer_name, delivery_address,
+                                           delivery_fee, total_amount, status, payment_method, notes, currency)
+                       VALUES (%s,%s,%s,%s,%s,0,%s,'PAYMENT_PENDING','bank_transfer',%s,%s) RETURNING id""",
+                    (tenant_id, reference, re.sub(r"\D", "", req.get("buyer_phone") or "")[:25], buyer[:255] or None,
+                     " · ".join(x for x in (doc["deliver"]["place"], doc["deliver"]["terms"]) if x) or None,
+                     doc["total"], " · ".join(notes), doc["currency"]))
+        order_id = cur.fetchone()["id"]
+        for pid, name, qty, unit, sub in items:
+            cur.execute("""INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price, subtotal)
+                           VALUES (%s,%s,%s,%s,%s,%s)""", (order_id, pid, name[:255], qty, unit, sub))
+        cur.execute("UPDATE quotations SET order_id=%s, updated_at=NOW() WHERE id=%s", (order_id, q["id"]))
+        qr._event(cur, request_id, f"Order {reference} made in Products & Orders from {full_number(q)}", actor["label"])
+        conn.commit()
+        return True, f"Order {reference} made from {full_number(q)}.", order_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close(); conn.close()
+
+
+def order_quotation(tenant_id: int, order_id: str):
+    """The quotation an order was made from (number, version, request_id), or None."""
+    ensure_tables()
+    conn, cur = _db()
+    try:
+        cur.execute("""SELECT id, number, version, request_id FROM quotations
+                        WHERE tenant_id=%s AND order_id=%s LIMIT 1""", (tenant_id, order_id))
+        return cur.fetchone()
     finally:
         cur.close(); conn.close()
 

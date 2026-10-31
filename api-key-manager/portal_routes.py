@@ -17230,6 +17230,20 @@ def _money_filter(val, code=None):
     return _money(val, code or None)
 
 
+@portal_bp.app_template_filter("money_exact")
+def _money_exact_filter(val, code=None):
+    """Like money, but keeps the pence when there are any (orders made from
+    quotations: £33.25 must not show as £33). Whole amounts look the same."""
+    try:
+        v = round(float(val or 0), 2)
+    except (TypeError, ValueError):
+        return _money(val, code or None)
+    if v == int(v):
+        return _money(v, code or None)
+    code = (code or _biz_currency() or "NGN").upper()
+    return f"{_selling_currency.currency_label(code)['prefix']}{v:,.2f}"
+
+
 def _has_other_currency_records(tenant_id=None) -> bool:
     """True when the business has deals or orders saved in a currency other
     than its current one (it changed currency). Their totals are then
@@ -28749,7 +28763,8 @@ def order_detail(order_id: str):
     _annotate_order(order)
     s = order.get("status", "")
 
-    can_verify_payment = s == "RECEIPT_RECEIVED"
+    from_quote = _qq.order_quotation(tenant_id, order["id"])
+    can_verify_payment = s == "RECEIPT_RECEIVED" or (s == "PAYMENT_PENDING" and bool(from_quote))
     can_dispatch       = s in ("PAYMENT_VERIFIED", "PROCESSING")
     can_deliver        = s == "DISPATCHED"
     can_cancel         = s in (
@@ -28763,6 +28778,7 @@ def order_detail(order_id: str):
         order              = order,
         items              = items,
         can_verify_payment = can_verify_payment,
+        from_quote         = from_quote,
         can_dispatch       = can_dispatch,
         can_deliver        = can_deliver,
         can_cancel         = can_cancel,
@@ -28790,6 +28806,8 @@ def _get_tenant_wa_creds(tenant_id: int) -> dict | None:
 
 def _notify_customer_wa(tenant_id: int, customer_phone: str, message: str):
     """Send a plain-text WA message to the customer using the tenant's Meta number."""
+    if not (customer_phone or "").strip():
+        return      # an order from a quotation may have only an email
     creds = _get_tenant_wa_creds(tenant_id)
     if not creds:
         return
@@ -28818,7 +28836,10 @@ def order_verify_payment(order_id: str):
         cur.execute("""
             UPDATE orders
                SET status = 'PAYMENT_VERIFIED', paid_at = NOW(), updated_at = NOW()
-             WHERE id = %s AND tenant_id = %s AND status = 'RECEIPT_RECEIVED'
+             WHERE id = %s AND tenant_id = %s
+               AND (status = 'RECEIPT_RECEIVED'
+                    -- an order made from a quotation is paid by bank transfer, no receipt step
+                    OR (status = 'PAYMENT_PENDING' AND EXISTS (SELECT 1 FROM quotations q WHERE q.order_id = orders.id)))
             RETURNING customer_phone, reference, customer_name
         """, (order_id, tenant_id))
         row = cur.fetchone()
@@ -42717,7 +42738,9 @@ def quotes_request_detail(request_id: int):
                            sent_by=_qr.SENT_BY, lost_reasons=_qr.LOST_REASONS,
                            not_quoted_reasons=_qr.NOT_QUOTED_REASONS, cur=r.get("currency") or _biz_currency(tenant_id),
                            country_name=dict(_addr.ADDRESS_COUNTRIES), today=now.date(), dt=_quote_dt(tz),
-                           maker=_qr.settings(tenant_id)["maker"], quotations=_qq.for_request(tenant_id, r["id"]))
+                           maker=_qr.settings(tenant_id)["maker"], quotations=_qq.for_request(tenant_id, r["id"]),
+                           sent_q=_qq.latest_sent(tenant_id, r["id"]),
+                           orders_on=_plan_grants_feature(_get_tenant_plan(tenant_id), "ecom.orders_view"))
 
 
 @portal_bp.route("/quotations/requests/<int:request_id>/edit", methods=["GET", "POST"])
@@ -42895,9 +42918,38 @@ def quotes_request_extend(request_id: int):
     if d < _tp.now_local(_tp.tz_for(tenant_id)).date():
         flash("The new date is in the past.", "danger")
         return back
+    req = _qr.get(tenant_id, request_id, _quotes_scope(customer))
+    if _qq.is_on(tenant_id) and req["status"] == "quote_sent" and _qq.latest_sent(tenant_id, request_id):
+        # Made in PhiXtra: the new date goes on a new version, so the buyer
+        # has a document that says it (Part C).
+        qid = _qq.start(tenant_id, req, _current_actor(customer), valid_until=d)
+        flash(f"New version with the date {d.strftime('%d %b %Y')}. Check it and send it to the buyer.", "success")
+        return redirect(url_for("portal.quotes_quotation_send", qid=qid))
     ok, msg = _qr.extend(tenant_id, request_id, d, _current_actor(customer))
     flash(msg, "success" if ok else "warning")
     return back
+
+
+@portal_bp.route("/quotations/requests/<int:request_id>/order", methods=["POST"])
+@team_feature("ecom.orders_manage")
+def quotes_request_order(request_id: int):
+    """Won → the order in Products & Orders from the quotation (Part C)."""
+    _rperm = _require_team_permission("ecom.orders_manage")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    if not _qr.get(tenant_id, request_id, _quotes_scope(customer)):
+        flash("Request not found.", "danger")
+        return redirect(url_for("portal.quotes_requests"))
+    r2 = _require_plan_sub_feature(customer, "ecom.orders_view", "Orders")
+    if r2: return r2
+    ok, msg, order_id = _qq.make_order(tenant_id, request_id, _current_actor(customer))
+    if not ok:
+        flash(msg, "warning")
+        return redirect(url_for("portal.quotes_request_detail", request_id=request_id))
+    if msg:
+        flash(msg + " It's waiting for payment.", "success")
+    return redirect(url_for("portal.order_detail", order_id=order_id))
 
 
 @portal_bp.route("/quotations/requests/<int:request_id>/lines.xlsx")
@@ -43142,6 +43194,7 @@ def quotes_quotation(qid: int):
     return render_template("portal/quotes_quotation.html", q=q, req=req, doc=doc, s=s, qq=_qq, qr=_qr,
                            checks=_qq.checks(tenant_id, q, req), products_json=_quote_products_json(products),
                            versions=_qq.for_request(tenant_id, req["id"]), cur=q["currency"] or _biz_currency(tenant_id),
+                           changes=_qq.changes_from_last(tenant_id, q),
                            open_preview=request.args.get("preview") == "1")
 
 

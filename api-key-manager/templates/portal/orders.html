@@ -133,10 +133,10 @@
           </a>
         </td>
         <td class="phone" data-m="Customer">
-          <a href="https://wa.me/{{ o.customer_phone }}" target="_blank"
+          {% if o.customer_phone %}<a href="https://wa.me/{{ o.customer_phone }}" target="_blank"
              rel="noopener" style="color:var(--txt)">
             +{{ o.customer_phone }}
-          </a>
+          </a>{% else %}<span style="color:var(--muted)">From a quotation</span>{% endif %}
           {% if o.customer_name %}
           <div style="font-size:11px;color:var(--muted);font-family:inherit">
             {{ o.customer_name }}
@@ -144,7 +144,7 @@
           {% endif %}
         </td>
         <td style="text-align:center">{{ o.item_count or 0 }}</td>
-        <td class="amount" data-m="Amount">{{ ((o.total_amount or 0)|float)|money(o.currency) }}</td>
+        <td class="amount" data-m="Amount">{{ ((o.total_amount or 0)|float)|money_exact(o.currency) }}</td>
         <td>
           {% if o.payment_method == 'paystack' %}
             <span title="Paystack">💳 Card</span>

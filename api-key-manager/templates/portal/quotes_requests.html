@@ -7,7 +7,7 @@
   <div class="qt-top">
     <div>
       <h1>Quotation requests</h1>
-      <div class="qt-sub">Every buyer who asked for prices. Make the quotation in your own software, send it, then click <b>Quote sent</b> here.
+      <div class="qt-sub">Every buyer who asked for prices. {% if s.maker == 'phixtra' %}Open a request and click <b>Make quotation</b>: PhiXtra makes it, you set the prices and send it.{% else %}Make the quotation in your own software, send it, then click <b>Quote sent</b> here.{% endif %}
         Target: {{ target_words[s.target]|lower }} (working hours).</div>
     </div>
     <a class="qt-btn dark" href="{{ url_for('portal.quotes_request_new') }}">+ New request</a>

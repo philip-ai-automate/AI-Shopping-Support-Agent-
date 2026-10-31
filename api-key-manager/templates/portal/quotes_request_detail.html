@@ -109,17 +109,37 @@
           <button type="button" class="qt-btn ok" data-open="mWon">Won: they accepted</button>
           <button type="button" class="qt-btn bad" data-open="mLost">Lost</button>
         </div>
+        {% set in_phixtra = maker == 'phixtra' and sent_q %}
+        {% if in_phixtra and draft_q %}
+        <a class="qt-btn sm" href="{{ url_for('portal.quotes_quotation', qid=draft_q.id) }}">Continue new version {{ draft_q.number }} v{{ draft_q.version }}</a>
+        {% elif in_phixtra %}
+        <form method="post" action="{{ url_for('portal.quotes_quotation_start', request_id=r.id) }}" style="margin:0">
+          <button class="qt-btn sm" style="width:100%">They asked for a change: make a new version</button></form>
+        {% else %}
         <button type="button" class="qt-btn sm" data-open="mSent">They asked for a change: record a new quote</button>
+        {% endif %}
         <form method="post" action="{{ url_for('portal.quotes_request_extend', request_id=r.id) }}" class="qt-btns" style="margin:0;align-items:center">
           <label class="qt-small" for="extDate" style="margin:0">Extend to</label>
           <input type="date" id="extDate" name="valid_until" min="{{ today.isoformat() }}" required style="width:auto;min-height:32px;padding:4px 8px;font-size:12.5px">
           <button class="qt-btn sm">Extend</button>
         </form>
+        {% if in_phixtra %}<div class="qt-small">Extending makes a new version with the new date, so the buyer has a document that says it.</div>{% endif %}
         <div class="qt-small">The AI reads the buyer's answer by email, WhatsApp or chat and marks it for you, with Undo.</div>
       {% elif r.status == 'won' %}
         <div style="font-size:13px;line-height:1.7"><b style="font-size:16px;color:var(--ok)">Won · {{ qr.money(r.quote_value, r.quote_currency) }}</b><br>
           {{ dt(r.closed_at) }}{% if r.close_reason %} · {{ r.close_reason }}{% endif %}</div>
-        <div class="qt-small">Raise the order in your own software as usual.{% if not (ai and not ai.undone and ai.answer == 'accept') %} To undo, use the deal on the Sales Pipeline.{% endif %}</div>
+        {% if sent_q and orders_on and staff_can_open('portal.quotes_request_order') %}
+          {% if sent_q.order_id %}
+          <a class="qt-btn dark" href="{{ url_for('portal.order_detail', order_id=sent_q.order_id) }}">Open the order</a>
+          {% else %}
+          <form method="post" action="{{ url_for('portal.quotes_request_order', request_id=r.id) }}" style="margin:0">
+            <button class="qt-btn dark" style="width:100%">Create the order in Products &amp; Orders</button></form>
+          <div class="qt-small">Every line of {{ sent_q.number }}{{ ' v%d'|format(sent_q.version) if sent_q.version > 1 }}, at the quoted prices. It waits for payment.</div>
+          {% endif %}
+        {% else %}
+        <div class="qt-small">Raise the order in your own software as usual.</div>
+        {% endif %}
+        {% if not (ai and not ai.undone and ai.answer == 'accept') %}<div class="qt-small">To undo, use the deal on the Sales Pipeline.</div>{% endif %}
       {% else %}
         <div style="font-size:13px;line-height:1.7"><b style="color:var(--hot)">{{ r.close_reason }}</b><br>{{ dt(r.closed_at) }}</div>
         <form method="post" action="{{ url_for('portal.quotes_request_reopen', request_id=r.id) }}">

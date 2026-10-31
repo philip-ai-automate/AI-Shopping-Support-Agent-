@@ -95,9 +95,9 @@
             <tr>
               <td style="font-weight:600">{{ item.product_name or '(unknown)' }}</td>
               <td style="text-align:center">{{ item.quantity }}</td>
-              <td style="text-align:right">{{ ((item.unit_price or 0)|float)|money(order.currency) }}</td>
+              <td style="text-align:right">{{ ((item.unit_price or 0)|float)|money_exact(order.currency) }}</td>
               <td style="text-align:right;font-weight:700">
-                {{ ((item.subtotal or 0)|float)|money(order.currency) }}
+                {{ ((item.subtotal or 0)|float)|money_exact(order.currency) }}
               </td>
             </tr>
             {% endfor %}
@@ -106,13 +106,13 @@
             {% if order.delivery_fee and order.delivery_fee|float > 0 %}
             <tr>
               <td colspan="3" style="text-align:right;font-weight:500;color:var(--muted)">Delivery Fee</td>
-              <td style="text-align:right">{{ (order.delivery_fee|float)|money(order.currency) }}</td>
+              <td style="text-align:right">{{ (order.delivery_fee|float)|money_exact(order.currency) }}</td>
             </tr>
             {% endif %}
             <tr>
               <td colspan="3" style="text-align:right">Total</td>
               <td style="text-align:right;font-size:16px">
-                {{ ((order.total_amount or 0)|float)|money(order.currency) }}
+                {{ ((order.total_amount or 0)|float)|money_exact(order.currency) }}
               </td>
             </tr>
           </tfoot>
@@ -128,6 +128,7 @@
     <!-- Customer & Delivery -->
     <div class="card">
       <div class="detail-section-title">Customer & Delivery</div>
+      {% if order.customer_phone %}
       <div class="info-row">
         <span class="info-label">WhatsApp</span>
         <span class="info-value">
@@ -137,6 +138,7 @@
           </a>
         </span>
       </div>
+      {% endif %}
       {% if order.customer_name %}
       <div class="info-row">
         <span class="info-label">Name</span>
@@ -174,13 +176,13 @@
       </div>
       <div class="info-row">
         <span class="info-label">Order Total</span>
-        <span class="info-value">{{ ((order.total_amount or 0)|float)|money(order.currency) }}</span>
+        <span class="info-value">{{ ((order.total_amount or 0)|float)|money_exact(order.currency) }}</span>
       </div>
       {% if order.amount_paid %}
       <div class="info-row">
         <span class="info-label">Amount Paid</span>
         <span class="info-value" style="color:var(--good)">
-          {{ (order.amount_paid|float)|money(order.currency) }}
+          {{ (order.amount_paid|float)|money_exact(order.currency) }}
         </span>
       </div>
       {% endif %}
@@ -244,7 +246,7 @@
         </div>
         {% else %}
           {% for step_status, icon, label, ts in steps %}
-            {% set is_done = step_status in reached_statuses.get(s, []) %}
+            {% set is_done = s in reached_statuses.get(step_status, []) and (step_status != s or s in ('DELIVERED','COMPLETED')) %}
             {% set is_active = step_status == s %}
             <div class="tl-step">
               <div class="tl-dot {% if is_done %}done{% elif is_active %}active{% else %}future{% endif %}">
@@ -282,14 +284,19 @@
     <div class="card">
       <div class="detail-section-title">Verify Payment</div>
       <p class="muted" style="margin-bottom:14px;font-size:13px">
+        {% if from_quote and order.status == 'PAYMENT_PENDING' %}
+        Made from quotation {{ from_quote.number }}{{ ' v%d'|format(from_quote.version) if from_quote.version > 1 }}.
+        When the buyer's payment arrives in your account, mark it paid.
+        {% else %}
         The customer has submitted a payment receipt. Confirm that the transfer
         has arrived in your account before verifying.
+        {% endif %}
       </p>
       <form method="POST"
             action="{{ url_for('portal.order_verify_payment', order_id=order.id) }}"
             onsubmit="return confirm('Confirm that payment has been received?')">
         <button type="submit" class="btn btn-primary" style="width:100%;background:var(--good)">
-          ✅ Verify Payment
+          ✅ {{ 'Payment received' if from_quote and order.status == 'PAYMENT_PENDING' else 'Verify Payment' }}
         </button>
       </form>
     </div>
@@ -350,7 +357,7 @@
       <div class="info-row">
         <span class="info-label">Total</span>
         <span class="info-value" style="font-size:16px">
-          {{ ((order.total_amount or 0)|float)|money(order.currency) }}
+          {{ ((order.total_amount or 0)|float)|money_exact(order.currency) }}
         </span>
       </div>
       {% if order.notes %}
@@ -363,10 +370,12 @@
     </div>
 
     <!-- Message Customer -->
+    {% if order.customer_phone %}
     <a href="https://wa.me/{{ order.customer_phone }}" target="_blank" rel="noopener"
        class="btn" style="width:100%;justify-content:center">
       💬 Message Customer on WhatsApp
     </a>
+    {% endif %}
 
     <!-- Cancel -->
     {% if can_cancel %}

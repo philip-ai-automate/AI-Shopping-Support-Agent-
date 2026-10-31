@@ -13,6 +13,7 @@
 #qeForm > .qt-grid{grid-template-columns:minmax(0,1fr) 300px}
 @media (max-width:1000px){ #qeForm > .qt-grid{grid-template-columns:1fr}}
 .qe input.need{border-color:#B42318;background:#FFF6F5}
+.qe .was{display:block;font-size:11.5px;color:#B54708;font-weight:600;margin-top:2px}
 .qe .meta{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
 .qe .rm,#qePlan .rm{border:0;background:none;color:#B42318;font-size:12px;text-decoration:underline;cursor:pointer;padding:0}
 .qe-tot{display:grid;grid-template-columns:1fr auto;gap:4px 18px;font-size:13.5px;font-variant-numeric:tabular-nums;min-width:260px;justify-self:end}
@@ -44,6 +45,7 @@
   {% if open_preview %}<div class="qt-ai" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
     <span><b>Saved.</b> See exactly what the buyer will get.</span>
     <a class="qt-btn dark sm" href="{{ url_for('portal.quotes_quotation_pdf', qid=q.id) }}" target="_blank" rel="noopener">Open the PDF</a></div>{% endif %}
+  {% if changes and draft %}<div class="qt-ai"><b>New version of {{ q.number }}</b>Copied from {{ changes.label }}, which the buyer has. Lines you change are marked in orange with what {{ changes.label }} said.</div>{% endif %}
   <form method="post" id="qeForm" class="qt" style="gap:14px">
     <input type="hidden" name="data_json" id="qeData">
     <input type="hidden" name="action" id="qeAction" value="save">
@@ -103,6 +105,7 @@
   var D = {{ q.data|tojson }};
   var PRODUCTS = {{ products_json|tojson }};
   var CUR = {{ cur_sign(cur)|tojson }};
+  var PREV = {{ (changes or {})|tojson }};
   var byName = {}, byId = {};
   PRODUCTS.forEach(function (p) { byName[p.name.toLowerCase()] = p; byId[p.id] = p; });
   function money(v) { return CUR + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -114,7 +117,7 @@
   function lineRow(ln) {
     var tr = el('tr');
     var name = input(ln.name, { list: 'prodList', maxlength: '300', 'aria-label': 'Product' });
-    var meta = el('span', { 'class': 'meta' });
+    var meta = el('span', { 'class': 'meta' }), was = el('span', { 'class': 'was' });
     var qty = input(ln.qty, { type: 'number', min: '0', step: 'any', 'aria-label': 'Quantity' });
     var unit = input(ln.unit, { maxlength: '40', placeholder: 'cases', 'aria-label': 'Unit' });
     var price = input(ln.price, { type: 'number', min: '0', step: 'any', 'aria-label': 'Your price' });
@@ -129,6 +132,14 @@
       if (!p) { bits.push('Not on your list'); }
       meta.textContent = bits.join(' · ');
       price.classList.toggle('need', price.value.trim() === '');
+      was.textContent = '';
+      if (PREV.lines) {     // a new version: what the version the buyer has said
+        var o = PREV.lines[tr._pid || name.value.trim().toLowerCase()];
+        if (!o) { was.textContent = 'New in this version'; }
+        else if (parseFloat(qty.value) !== Number(o.qty) || parseFloat(price.value) !== Number(o.price) || (parseFloat(disc.value) || 0) !== Number(o.disc || 0)) {
+          was.textContent = PREV.label + ': ' + Number(o.qty) + ' × ' + money(o.price || 0) + (Number(o.disc) ? ', ' + Number(o.disc) + '% off' : '');
+        }
+      }
     }
     name.addEventListener('change', function () {
       var p = byName[name.value.trim().toLowerCase()];
@@ -137,7 +148,7 @@
       describe(); total();
     });
     [qty, price, disc].forEach(function (i) { i.addEventListener('input', function () { describe(); total(); }); });
-    var c1 = el('td', { 'class': 'nm' }); c1.appendChild(name); c1.appendChild(meta);
+    var c1 = el('td', { 'class': 'nm' }); c1.appendChild(name); c1.appendChild(meta); c1.appendChild(was);
     var c2 = el('td', { 'class': 'qty' }); c2.appendChild(qty);
     var c3 = el('td', { 'class': 'un' }); c3.appendChild(unit);
     var c4 = el('td', { 'class': 'num' }); c4.appendChild(price);
