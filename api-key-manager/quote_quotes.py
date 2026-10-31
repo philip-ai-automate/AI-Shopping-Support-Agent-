@@ -190,7 +190,7 @@ def start(tenant_id: int, req: dict, actor: dict, valid_until: date = None) -> i
             lines = []
             for ln in req["lines"]:
                 p = products.get(ln.get("product_id"))
-                lines.append({"product_id": ln.get("product_id"), "name": ln["name"], "code": "",
+                lines.append({"product_id": ln.get("product_id"), "name": ln["name"], "code": (p or {}).get("sku") or "",
                               "qty": ln.get("qty") or 0, "unit": ln.get("unit") or "",
                               "list_price": float(p["price"]) if p and p.get("price") is not None and not p.get("price_on_request") else None,
                               "price": float(p["price"]) if p and p.get("price") is not None and not p.get("price_on_request") else None,
@@ -488,10 +488,10 @@ def checks(tenant_id: int, q: dict, req: dict) -> list:
     short = []
     for ln in d["lines"]:
         p = products.get(ln.get("product_id"))
-        if p and not p.get("is_service"):
-            stock = int((p.get("stock_quantity") or 0) - (p.get("reserved_quantity") or 0))
-            if (ln.get("qty") or 0) > stock:
-                short.append(f"{ln['name']} ({stock} in stock)")
+        stock = qr.stock_of(p)
+        if stock is not None and (ln.get("qty") or 0) > stock:
+            short.append(f"{ln['name']} (out of stock on your website)" if p.get("from_website")
+                         else f"{ln['name']} ({stock} in stock)")
     if short:
         out.append(("warn", "Not enough stock for: " + "; ".join(short) + ". Say when the rest comes, in the note"))
     words = (req.get("buyer_words") or "") + "\n" + (req.get("notes") or "")

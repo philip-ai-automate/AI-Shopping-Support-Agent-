@@ -42642,7 +42642,7 @@ def _quote_form(tenant_id: int, customer, f, products: dict) -> tuple:
 def _quote_products_json(products: dict) -> list:
     return [{"id": p["id"], "name": p["name"],
              "price": (float(p["price"]) if p.get("price") is not None and not p.get("price_on_request") else None),
-             "stock": (None if p.get("is_service") else int((p.get("stock_quantity") or 0) - (p.get("reserved_quantity") or 0)))}
+             "stock": _qr.stock_of(p), "sku": p.get("sku") or "", "web": bool(p.get("from_website"))}
             for p in products.values()]
 
 
@@ -42730,7 +42730,7 @@ def quotes_request_detail(request_id: int):
     products = _qr.products_for(tenant_id, [ln.get("product_id") for ln in r["lines"]])
     for ln in r["lines"]:
         p = products.get(ln.get("product_id"))
-        ln["stock"] = None if not p or p.get("is_service") else int((p.get("stock_quantity") or 0) - (p.get("reserved_quantity") or 0))
+        ln["stock"] = _qr.stock_of(p)
         ln["on_list"] = bool(p)
     lead = _pipeline_lead_owned_by_tenant(r["lead_id"], tenant_id) if r.get("lead_id") else None
     return render_template("portal/quotes_request_detail.html", r=r, lead=lead, clock=_qr.time_left(r, now),

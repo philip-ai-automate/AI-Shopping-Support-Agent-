@@ -1568,6 +1568,7 @@ def qualify_chat(tenant_id: int, session_id: str, last_id: int, lead_id: int = N
         _mark(tenant_id, key, "empty", lead_id, last_id)
         return {}
     r = read(tenant_id, "chat", "\n".join(lines), s, known=known)
+    _add_logged_in(tenant_id, session_id, r)
     if lead_id and r.get("quote_answer"):
         r["is_enquiry"] = True
     if not lead_id and (not r.get("is_enquiry") or r.get("intent") in ("not_enquiry", "auto_reply")):
@@ -1583,6 +1584,34 @@ def qualify_chat(tenant_id: int, session_id: str, last_id: int, lead_id: int = N
           done.get("lead_id"), last_id)
     print(f"   [AI-QUALIFY] chat tenant={tenant_id} session={session_id} → {done}")
     return done
+
+
+def _add_logged_in(tenant_id: int, session_id: str, r: dict):
+    """A customer logged in to the website (WordPress plugin 3.9.16): the
+    details the website sent fill in whatever the chat didn't say."""
+    try:
+        conn, cur = _db()
+        try:
+            cur.execute("SELECT to_regclass('chat_visitors') IS NOT NULL AS ok")
+            if not cur.fetchone()["ok"]:
+                return
+            cur.execute("SELECT name, email, phone, company FROM chat_visitors WHERE tenant_id=%s AND session_id=%s",
+                        (tenant_id, session_id))
+            v = cur.fetchone()
+        finally:
+            cur.close(); conn.close()
+        if not v:
+            return
+        if v["email"] and not r.get("email"):
+            r["email"] = v["email"]
+        if v["phone"]:
+            r["phones"] = list(r.get("phones") or []) + [v["phone"]]
+        if v["company"] and not r.get("company"):
+            r["company"] = v["company"]
+        if v["name"] and not r.get("contact_person"):
+            r["contact_person"] = v["name"]
+    except Exception as e:
+        print("⚠️ lead_qualify logged-in visitor:", e)
 
 
 def _tenants_on() -> list:

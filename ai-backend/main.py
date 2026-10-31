@@ -94,6 +94,7 @@ class ChatRequest(BaseModel):
     override_system_prompt: str | None = None  # per-WA-number agent prompt (overrides tenant default)
     assistant_name: str | None = None          # name the website chat shows for the AI, e.g. "Kelvin"
     channel: str | None = None                 # "whatsapp" from the WA gateway → faster answer setting
+    visitor: dict | None = None                # logged-in website customer {name, email, phone, company} (plugin 3.9.16)
 
 
 def record_usage_event(
@@ -691,6 +692,10 @@ def _chat(req: ChatRequest):
     if not str(session_id).startswith("cw-"):
         from lead_qualify_ai import addon as _lq_addon
         system_prompt += _lq_addon(int(tenant_id), str(session_id))
+        if req.visitor:
+            # The website knows who this is (31 Oct 2026): keep it for the lead, and tell the AI.
+            import chat_visitor as _cv
+            system_prompt += _cv.prompt(_cv.save(int(tenant_id), str(session_id), req.visitor))
 
     print(f"✅ /chat tenant_id={tenant_id} session_id={session_id}")
 

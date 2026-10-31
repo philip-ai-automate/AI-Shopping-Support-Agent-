@@ -340,6 +340,9 @@ def estimate(lines: list):
 
 
 def products_for(tenant_id: int, ids=None) -> dict:
+    """The business's products for quotations: My Products, plus the
+    products its website sends (WordPress plugin sync, 31 Oct 2026), which
+    live only in the AI's index. A website sends in stock yes/no, not a count."""
     conn, cur = _db()
     try:
         if ids is not None:
@@ -354,9 +357,35 @@ def products_for(tenant_id: int, ids=None) -> dict:
                                   is_service, price_on_request
                              FROM products WHERE tenant_id=%s AND is_active ORDER BY lower(name) LIMIT 5000""",
                         (tenant_id,))
-        return {r["id"]: r for r in cur.fetchall()}
+        out = {r["id"]: dict(r, sku="") for r in cur.fetchall()}
+        # Website products. 'man-' and 'xls-' rows are copies of My Products / an uploaded list.
+        sql = """SELECT id, title, sku, price_min, currency, in_stock, categories_text FROM documents
+                  WHERE tenant_id=%s AND type='product' AND id NOT LIKE 'man-%%' AND id NOT LIKE 'xls-%%'
+                    AND COALESCE(title, '') <> ''"""
+        if ids is not None:
+            cur.execute(sql + " AND id = ANY(%s)", (tenant_id, ids))
+        else:
+            cur.execute(sql + " ORDER BY lower(title) LIMIT 5000", (tenant_id,))
+        for d in cur.fetchall():
+            out.setdefault(d["id"], {"id": d["id"], "name": d["title"], "price": d["price_min"],
+                                     "currency": d["currency"] or None, "stock_quantity": None,
+                                     "reserved_quantity": 0, "in_stock": d["in_stock"],
+                                     "category": (d["categories_text"] or "").split(",")[0].strip() or None,
+                                     "is_service": False, "price_on_request": d["price_min"] is None,
+                                     "sku": d["sku"] or "", "from_website": True})
+        return out
     finally:
         cur.close(); conn.close()
+
+
+def stock_of(p):
+    """What's free to sell: a number, 0 when a website says out of stock,
+    or None when it isn't counted (services, website products in stock)."""
+    if not p or p.get("is_service"):
+        return None
+    if p.get("from_website"):
+        return None if p.get("in_stock") is not False else 0
+    return int((p.get("stock_quantity") or 0) - (p.get("reserved_quantity") or 0))
 
 
 # ── reading ─────────────────────────────────────────────────────────────────

@@ -128,7 +128,8 @@
       var p = tr._pid && byId[tr._pid];
       var bits = [];
       if (tr._list !== null && tr._list !== undefined) { bits.push('List ' + money(tr._list)); }
-      if (p && p.stock !== null) { bits.push(p.stock + ' in stock'); }
+      if (p && p.web) { bits.push(p.stock === 0 ? 'Out of stock on your website' : 'In stock on your website'); }
+      else if (p && p.stock !== null) { bits.push(p.stock + ' in stock'); }
       if (!p) { bits.push('Not on your list'); }
       meta.textContent = bits.join(' · ');
       price.classList.toggle('need', price.value.trim() === '');
@@ -143,7 +144,7 @@
     }
     name.addEventListener('change', function () {
       var p = byName[name.value.trim().toLowerCase()];
-      tr._pid = p ? p.id : null; tr._list = p ? p.price : null;
+      tr._pid = p ? p.id : null; tr._list = p ? p.price : null; tr._code = p ? (p.sku || '') : '';
       if (p && price.value.trim() === '' && p.price !== null) { price.value = p.price; }
       describe(); total();
     });
