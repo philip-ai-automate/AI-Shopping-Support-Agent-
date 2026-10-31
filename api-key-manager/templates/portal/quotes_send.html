@@ -1,0 +1,91 @@
+{% extends "portal/base.html" %}
+{% block title %}Send {{ qq.full_number(q) }} — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-wide{% endblock %}
+{% block head %}{% include "portal/_quotes_css.html" %}
+<style>
+.sd-via{display:flex;gap:8px;flex-wrap:wrap}
+.sd-via label{display:flex;gap:8px;align-items:center;border:1.5px solid var(--line);border-radius:10px;padding:10px 14px;font-weight:600;font-size:13.5px;cursor:pointer;background:#fff}
+.sd-via label:has(input:checked){border-color:var(--navy);box-shadow:inset 0 0 0 1px var(--navy)}
+.sd-via label.off{opacity:.55;cursor:not-allowed}
+.sd-via input{width:auto;min-height:0;margin:0}
+.chk{display:grid;gap:6px;font-size:13px}
+.chk div{display:grid;grid-template-columns:18px 1fr;gap:6px}
+.chk .ok{color:#067647;font-weight:700}.chk .warn{color:#B54708;font-weight:700}.chk .bad{color:#B42318;font-weight:700}
+</style>
+{% endblock %}
+{% block content %}
+<div class="qt">
+  <div class="qt-top">
+    <div>
+      <div class="qt-sub"><a href="{{ url_for('portal.quotes_quotation', qid=q.id) }}">← Back to the quotation</a></div>
+      <h1>Send {{ qq.full_number(q) }} to {{ req.buyer_company or req.buyer_name }}</h1>
+      <div class="qt-sub">Total {{ qr.money(doc.total, doc.currency) }} · valid until {{ doc.valid_until.strftime('%d %b %Y') }}. The quotation goes as a PDF, in English; your message is in the buyer's language.</div>
+    </div>
+    <a class="qt-btn" href="{{ url_for('portal.quotes_quotation_pdf', qid=q.id) }}" target="_blank" rel="noopener">Open the PDF</a>
+  </div>
+
+  {% if not can %}
+  <div class="qt-card" style="border-color:#F5C9C3;background:#FFF6F5">
+    <b style="color:#B42318">Fix these before sending</b>
+    <div class="chk">{% for level, text in checks if level == 'bad' %}<div><span class="bad">!</span><span>{{ text }}</span></div>{% endfor %}</div>
+    <a class="qt-btn sm" style="justify-self:start" href="{{ url_for('portal.quotes_quotation', qid=q.id) }}">Back to the quotation</a>
+  </div>
+  {% else %}
+  <form method="post" class="qt-grid" id="sdForm">
+    <div class="qt-card">
+      <span class="qt-lbl">Send by</span>
+      <div class="sd-via">
+        <label class="{{ '' if req.buyer_email else 'off' }}"><input type="radio" name="via" value="email" {% if req.buyer_email %}checked{% else %}disabled{% endif %}> Email</label>
+        <label class="{{ '' if wa_ok else 'off' }}"><input type="radio" name="via" value="whatsapp" {% if wa_ok and (not req.buyer_email or req.channel == 'whatsapp') %}checked{% endif %} {% if not wa_ok %}disabled{% endif %}> WhatsApp</label>
+      </div>
+      {% if wa_why %}<div class="qt-small">WhatsApp: {{ wa_why }}</div>{% endif %}
+      <div class="qt-f">
+        <label class="wide" id="toEmail">To (email) <input name="to_email" value="{{ req.buyer_email or '' }}" maxlength="255"></label>
+        <label class="wide" id="toWa" hidden>To (WhatsApp) <input name="to_wa" value="{{ req.buyer_phone or '' }}" maxlength="40" readonly></label>
+        <label class="wide" id="subjBox">Subject <input name="subject" id="subject" maxlength="200"></label>
+        <label class="wide">Language of your message
+          <select id="lang">{% for k, w in qq.LANGS %}<option value="{{ k }}" {% if k == lang %}selected{% endif %}>{{ w }}{% if k == lang and k != 'en' %} (the buyer's){% endif %}</option>{% endfor %}</select></label>
+        <label class="wide">Your message <textarea name="message" id="message" rows="11" maxlength="4000"></textarea></label>
+      </div>
+      <input type="hidden" name="to" id="toFinal">
+      <div class="qt-small">Email goes from PhiXtra's mail service in your name; replies come to {{ (q.data.prepared_by or {}).get('email') or 'your quotation email' }}, with a copy of what was sent.</div>
+      <button class="qt-btn ok" id="sendBtn">Send quotation</button>
+    </div>
+    <div class="qt-card">
+      <span class="qt-lbl">After you press Send</span>
+      <ul class="qt-steps">
+        <li>The PDF is kept with the request, exactly as sent. It can't be changed afterwards; a change is a new version.</li>
+        <li>R-{{ req.ref_no }} moves to <b>Quote sent</b> and the deal to Proposal sent, with {{ qr.money(doc.total, doc.currency) }}.</li>
+        <li>Your follow-ups for Proposal sent start, and the AI reads the buyer's answer.</li>
+      </ul>
+      {% set warns = checks|selectattr(0, 'equalto', 'warn')|list %}
+      {% if warns %}<b style="font-size:13px">Still worth a look</b>
+      <div class="chk">{% for level, text in warns %}<div><span class="warn">!</span><span>{{ text }}</span></div>{% endfor %}</div>{% endif %}
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% if can %}
+<script>
+(function () {
+  var COVERS = {{ covers|tojson }};
+  var lang = document.getElementById('lang'), subj = document.getElementById('subject'), msg = document.getElementById('message');
+  function fill() { var c = COVERS[lang.value] || COVERS.en; subj.value = c[0]; msg.value = c[1]; msg.dir = lang.value === 'ar' ? 'rtl' : 'ltr'; }
+  fill();
+  lang.addEventListener('change', function () { if (!msg._edited || confirm('Replace your message with the ' + lang.options[lang.selectedIndex].text + ' one?')) { fill(); msg._edited = false; } });
+  msg.addEventListener('input', function () { msg._edited = true; });
+  function via() { var v = document.querySelector('input[name=via]:checked'); return v ? v.value : ''; }
+  function sync() {
+    var wa = via() === 'whatsapp';
+    document.getElementById('toEmail').hidden = wa; document.getElementById('subjBox').hidden = wa; document.getElementById('toWa').hidden = !wa;
+  }
+  document.querySelectorAll('input[name=via]').forEach(function (r) { r.addEventListener('change', sync); }); sync();
+  document.getElementById('sdForm').addEventListener('submit', function (e) {
+    if (!via()) { e.preventDefault(); alert('Choose email or WhatsApp.'); return; }
+    document.getElementById('toFinal').value = via() === 'whatsapp' ? document.querySelector('[name=to_wa]').value : document.querySelector('[name=to_email]').value;
+    var b = document.getElementById('sendBtn'); b.disabled = true; b.textContent = 'Sending…';
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

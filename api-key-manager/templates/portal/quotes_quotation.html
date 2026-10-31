@@ -1,0 +1,220 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ qq.full_number(q) }} · {{ req.buyer_company or req.buyer_name }} — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-wide{% endblock %}
+{% block head %}{% include "portal/_quotes_css.html" %}
+<style>
+.qe td input{min-height:32px;padding:5px 7px;font-size:13px}
+.qe td{vertical-align:middle}
+.qe td.nm{min-width:200px}
+.qe td.num input{width:78px;text-align:right}
+.qe td.qty input{width:64px;text-align:right}
+.qe td.un input{width:70px}
+.qe th,.qe td{padding-left:6px;padding-right:6px}
+#qeForm > .qt-grid{grid-template-columns:minmax(0,1fr) 300px}
+@media (max-width:1000px){ #qeForm > .qt-grid{grid-template-columns:1fr}}
+.qe input.need{border-color:#B42318;background:#FFF6F5}
+.qe .meta{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
+.qe .rm,#qePlan .rm{border:0;background:none;color:#B42318;font-size:12px;text-decoration:underline;cursor:pointer;padding:0}
+.qe-tot{display:grid;grid-template-columns:1fr auto;gap:4px 18px;font-size:13.5px;font-variant-numeric:tabular-nums;min-width:260px;justify-self:end}
+.qe-tot .k{color:var(--muted)} .qe-tot .v{text-align:right}
+.qe-tot .g{font-weight:700;color:var(--navy);font-size:16px;border-top:1px solid var(--line);padding-top:6px}
+.chk{display:grid;gap:7px;font-size:13px}
+.chk div{display:grid;grid-template-columns:18px 1fr;gap:6px}
+.chk .ok{color:#067647;font-weight:700}.chk .warn{color:#B54708;font-weight:700}.chk .bad{color:#B42318;font-weight:700}
+.qe-bar{position:sticky;bottom:0;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap;box-shadow:0 -4px 16px rgba(11,29,64,.06);z-index:5}
+@media (min-width:700px){.qe-bar{margin-right:190px}}  /* keep Send clear of the Need help button */
+</style>
+{% endblock %}
+{% block content %}
+{% set draft = q.status == 'draft' %}
+<div class="qt">
+  <div class="qt-top">
+    <div>
+      <div class="qt-sub"><a href="{{ url_for('portal.quotes_request_detail', request_id=req.id) }}">← Request R-{{ req.ref_no }}</a></div>
+      <h1>Quotation {{ qq.full_number(q) }} · {{ req.buyer_company or req.buyer_name }}</h1>
+      <div class="qt-sub">{% if draft %}Draft · prices are yours to set; PhiXtra fills list prices and checks, it never sets a price.
+        {% else %}Sent {{ q.sent_at.strftime('%d %b %Y, %H:%M') }} by {{ 'email' if q.sent_via == 'email' else 'WhatsApp' }} to {{ q.sent_to }} · can't be changed{% endif %}</div>
+    </div>
+    <div class="qt-btns">
+      <a class="qt-btn" href="{{ url_for('portal.quotes_quotation_pdf', qid=q.id) }}" target="_blank" rel="noopener">{{ 'Preview PDF' if draft else 'Open PDF' }}</a>
+      {% if versions|length > 1 %}{% for v in versions %}{% if v.id != q.id %}<a class="qt-btn sm" href="{{ url_for('portal.quotes_quotation', qid=v.id) }}">{{ v.number }}{{ ' v%d'|format(v.version) if v.version > 1 }} · {{ {'draft': 'draft', 'sending': 'sending', 'sent': 'sent', 'superseded': 'replaced'}.get(v.status, v.status) }}</a>{% endif %}{% endfor %}{% endif %}
+    </div>
+  </div>
+
+  {% if open_preview %}<div class="qt-ai" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+    <span><b>Saved.</b> See exactly what the buyer will get.</span>
+    <a class="qt-btn dark sm" href="{{ url_for('portal.quotes_quotation_pdf', qid=q.id) }}" target="_blank" rel="noopener">Open the PDF</a></div>{% endif %}
+  <form method="post" id="qeForm" class="qt" style="gap:14px">
+    <input type="hidden" name="data_json" id="qeData">
+    <input type="hidden" name="action" id="qeAction" value="save">
+    <div class="qt-grid">
+      <div class="qt-card">
+        <div class="qt-scroll"><table class="qe">
+          <thead><tr><th>Product</th><th class="r">Qty</th><th>Unit</th><th class="r">Your price ({{ cur_sign(cur) }})</th><th class="r">Disc. %</th><th class="r">Amount</th><th></th></tr></thead>
+          <tbody id="qeLines"></tbody>
+          <tbody id="qeCharges"></tbody>
+        </table></div>
+        {% if draft %}<div class="qt-btns"><button type="button" class="qt-btn sm" id="addLine">+ Add a product</button><button type="button" class="qt-btn sm" id="addCharge">+ Delivery or other charge</button></div>{% endif %}
+        <datalist id="prodList">{% for p in products_json %}<option value="{{ p.name }}">{% endfor %}</datalist>
+        <div class="qt-grid" style="grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)">
+          <div class="qt-f">
+            <label>Valid until <input type="date" id="vu" value="{{ q.data.valid_until }}"></label>
+            <label>Tax <span style="display:flex;gap:6px"><input id="taxName" value="{{ q.data.tax.name or 'VAT' }}" maxlength="20" style="width:70px" aria-label="Tax name"><input id="taxRate" type="number" min="0" max="100" step="any" value="{{ '%g'|format(q.data.tax.rate or 0) }}" style="width:70px" aria-label="Tax rate %"><span class="qt-small" style="align-self:center">%</span></span></label>
+            <label class="wide">Reason for the tax rate (shown on the quotation, e.g. "export of goods") <input id="taxReason" value="{{ q.data.tax.reason or '' }}" maxlength="120"></label>
+            <label>Deliver to <input id="dPlace" value="{{ q.data.deliver_place or '' }}" maxlength="200"></label>
+            <label>Delivery terms <input id="dTerms" value="{{ q.data.deliver_terms or '' }}" maxlength="200" placeholder="e.g. DAP, delivered to your door"></label>
+            <label class="wide">Note to the buyer <textarea id="note" rows="3" maxlength="1500" placeholder="Answer their question, explain delivery in parts…">{{ q.data.note or '' }}</textarea></label>
+          </div>
+          <div class="qe-tot" id="qeTot"></div>
+        </div>
+        {% if s.template == 'summary' %}
+        <details {% if q.data.plan %}open{% endif %}><summary class="qt-small" style="cursor:pointer">Delivery plan (optional, shown on the quotation)</summary>
+          <div id="qePlan" class="qt" style="gap:6px;margin-top:8px"></div>
+          {% if draft %}<button type="button" class="qt-btn sm" id="addPlan" style="justify-self:start">+ Add a delivery</button>{% endif %}
+        </details>{% endif %}
+      </div>
+
+      <div class="qt-card">
+        <span class="qt-lbl">Checked before sending</span>
+        <div class="chk">
+          {% for level, text in checks %}<div><span class="{{ level }}">{{ '✓' if level == 'ok' else '!' }}</span><span>{{ text }}</span></div>{% endfor %}
+        </div>
+        <div class="qt-ai"><b>PhiXtra never sets a price</b>It fills your list prices and checks what's missing. Every price is the salesperson's. Saved checks update when you save.</div>
+        <div class="qt-small">The buyer: <b>{{ req.buyer_company or req.buyer_name }}</b>{% if req.buyer_name and req.buyer_company %} · {{ req.buyer_name }}{% endif %}<br>{{ req.buyer_email or '' }} {{ req.buyer_phone or '' }}
+          {% if req.needed_by %}<br>Needs it by <b>{{ req.needed_by.strftime('%d %b %Y') }}</b>{% endif %}</div>
+        {% if req.notes or req.buyer_words %}<details><summary class="qt-small" style="cursor:pointer">What the buyer wrote</summary><div style="white-space:pre-line;font-size:12.5px;padding-top:6px">{{ req.notes or '' }}
+{{ req.buyer_words or '' }}</div></details>{% endif %}
+      </div>
+    </div>
+    {% if draft %}
+    <div class="qe-bar">
+      <button type="button" class="qt-btn sm bad" id="delBtn">Delete draft</button>
+      <span class="qt-btns"><span class="qt-small" id="qeState" style="align-self:center"></span>
+        <button class="qt-btn" data-act="save">Save draft</button>
+        <button class="qt-btn" data-act="preview">Save and preview PDF</button>
+        <button class="qt-btn dark" data-act="send">Next: send…</button></span>
+    </div>
+    {% endif %}
+  </form>
+</div>
+<script>
+(function () {
+  var DRAFT = {{ 'true' if draft else 'false' }};
+  var D = {{ q.data|tojson }};
+  var PRODUCTS = {{ products_json|tojson }};
+  var CUR = {{ cur_sign(cur)|tojson }};
+  var byName = {}, byId = {};
+  PRODUCTS.forEach(function (p) { byName[p.name.toLowerCase()] = p; byId[p.id] = p; });
+  function money(v) { return CUR + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function el(t, a) { var e = document.createElement(t); for (var k in (a || {})) { e.setAttribute(k, a[k]); } return e; }
+  function input(v, a) { var i = el('input', a); i.value = (v === null || v === undefined) ? '' : v; if (!DRAFT) { i.disabled = true; } return i; }
+  var lines = document.getElementById('qeLines'), charges = document.getElementById('qeCharges'), plan = document.getElementById('qePlan');
+  var dirty = false;
+
+  function lineRow(ln) {
+    var tr = el('tr');
+    var name = input(ln.name, { list: 'prodList', maxlength: '300', 'aria-label': 'Product' });
+    var meta = el('span', { 'class': 'meta' });
+    var qty = input(ln.qty, { type: 'number', min: '0', step: 'any', 'aria-label': 'Quantity' });
+    var unit = input(ln.unit, { maxlength: '40', placeholder: 'cases', 'aria-label': 'Unit' });
+    var price = input(ln.price, { type: 'number', min: '0', step: 'any', 'aria-label': 'Your price' });
+    var disc = input(ln.disc || 0, { type: 'number', min: '0', max: '100', step: 'any', 'aria-label': 'Discount %' });
+    var amt = el('td', { 'class': 'r' });
+    tr._pid = ln.product_id || null; tr._list = (ln.list_price === undefined) ? null : ln.list_price; tr._code = ln.code || ''; tr._note = ln.note || '';
+    function describe() {
+      var p = tr._pid && byId[tr._pid];
+      var bits = [];
+      if (tr._list !== null && tr._list !== undefined) { bits.push('List ' + money(tr._list)); }
+      if (p && p.stock !== null) { bits.push(p.stock + ' in stock'); }
+      if (!p) { bits.push('Not on your list'); }
+      meta.textContent = bits.join(' · ');
+      price.classList.toggle('need', price.value.trim() === '');
+    }
+    name.addEventListener('change', function () {
+      var p = byName[name.value.trim().toLowerCase()];
+      tr._pid = p ? p.id : null; tr._list = p ? p.price : null;
+      if (p && price.value.trim() === '' && p.price !== null) { price.value = p.price; }
+      describe(); total();
+    });
+    [qty, price, disc].forEach(function (i) { i.addEventListener('input', function () { describe(); total(); }); });
+    var c1 = el('td', { 'class': 'nm' }); c1.appendChild(name); c1.appendChild(meta);
+    var c2 = el('td', { 'class': 'qty' }); c2.appendChild(qty);
+    var c3 = el('td', { 'class': 'un' }); c3.appendChild(unit);
+    var c4 = el('td', { 'class': 'num' }); c4.appendChild(price);
+    var c5 = el('td', { 'class': 'num' }); c5.appendChild(disc);
+    var c7 = el('td');
+    if (DRAFT) { var rm = el('button', { type: 'button', 'class': 'rm' }); rm.textContent = 'Remove'; rm.addEventListener('click', function () { tr.remove(); total(); dirty = true; }); c7.appendChild(rm); }
+    [c1, c2, c3, c4, c5, amt, c7].forEach(function (c) { tr.appendChild(c); });
+    tr._get = function () { return { product_id: tr._pid, name: name.value, code: tr._code, qty: qty.value, unit: unit.value, list_price: tr._list, price: price.value, disc: disc.value, note: tr._note }; };
+    tr._amount = function () { var p = parseFloat(price.value), q = parseFloat(qty.value), d = parseFloat(disc.value) || 0; return (isNaN(p) || isNaN(q)) ? 0 : Math.round(p * (1 - d / 100) * q * 100) / 100; };
+    tr._amt = amt;
+    describe();
+    lines.appendChild(tr); return tr;
+  }
+  function chargeRow(c) {
+    var tr = el('tr');
+    var name = input(c.name, { maxlength: '120', placeholder: 'Delivery', 'aria-label': 'Charge' });
+    var qty = input(c.qty || 1, { type: 'number', min: '0', step: 'any', 'aria-label': 'Quantity' });
+    var price = input(c.price, { type: 'number', min: '0', step: 'any', 'aria-label': 'Price' });
+    var amt = el('td', { 'class': 'r' });
+    [qty, price].forEach(function (i) { i.addEventListener('input', total); });
+    var c1 = el('td', { 'class': 'nm' }); c1.appendChild(name); var m = el('span', { 'class': 'meta' }); m.textContent = 'Charge'; c1.appendChild(m);
+    var c2 = el('td', { 'class': 'qty' }); c2.appendChild(qty);
+    var c4 = el('td', { 'class': 'num' }); c4.appendChild(price);
+    var c7 = el('td');
+    if (DRAFT) { var rm = el('button', { type: 'button', 'class': 'rm' }); rm.textContent = 'Remove'; rm.addEventListener('click', function () { tr.remove(); total(); dirty = true; }); c7.appendChild(rm); }
+    [c1, c2, el('td'), c4, el('td'), amt, c7].forEach(function (c) { tr.appendChild(c); });
+    tr._get = function () { return { name: name.value, qty: qty.value, price: price.value }; };
+    tr._amount = function () { var p = parseFloat(price.value), q = parseFloat(qty.value) || 1; return isNaN(p) ? 0 : Math.round(p * q * 100) / 100; };
+    tr._amt = amt;
+    charges.appendChild(tr); return tr;
+  }
+  function planRow(st) {
+    if (!plan) { return; }
+    var row = el('div', { style: 'display:grid;grid-template-columns:150px 1fr auto;gap:6px' });
+    var d = input(st.date, { maxlength: '40', placeholder: 'Thu 12 Nov', 'aria-label': 'Delivery date' });
+    var t = input(st.text, { maxlength: '200', placeholder: 'What arrives', 'aria-label': 'What arrives' });
+    row.appendChild(d); row.appendChild(t);
+    if (DRAFT) { var rm = el('button', { type: 'button', 'class': 'rm' }); rm.textContent = 'Remove'; rm.addEventListener('click', function () { row.remove(); dirty = true; }); row.appendChild(rm); }
+    row._get = function () { return { date: d.value, text: t.value }; };
+    plan.appendChild(row);
+  }
+  function total() {
+    var prod = 0, ch = 0;
+    Array.prototype.forEach.call(lines.children, function (tr) { var a = tr._amount(); prod += a; tr._amt.textContent = money(a); });
+    Array.prototype.forEach.call(charges.children, function (tr) { var a = tr._amount(); ch += a; tr._amt.textContent = money(a); });
+    var sub = Math.round((prod + ch) * 100) / 100, rate = parseFloat(document.getElementById('taxRate').value) || 0;
+    var tax = Math.round(sub * rate) / 100, tot = Math.round((sub + tax) * 100) / 100;
+    var t = document.getElementById('qeTot'); t.innerHTML = '';
+    [['Products', prod], ['Charges', ch], [(document.getElementById('taxName').value || 'Tax') + ' ' + rate + '%', tax], ['Total', tot]].forEach(function (r, i) {
+      var k = el('span', { 'class': 'k' + (i === 3 ? ' g' : '') }); k.textContent = r[0];
+      var v = el('span', { 'class': 'v' + (i === 3 ? ' g' : '') }); v.textContent = money(r[1]);
+      t.appendChild(k); t.appendChild(v);
+    });
+  }
+  (D.lines || []).forEach(lineRow); (D.charges || []).forEach(chargeRow); (D.plan || []).forEach(planRow);
+  total();
+  ['taxRate', 'taxName'].forEach(function (id) { document.getElementById(id).addEventListener('input', total); });
+  if (!DRAFT) { document.querySelectorAll('#qeForm input, #qeForm textarea').forEach(function (i) { i.disabled = true; }); return; }
+  document.getElementById('addLine').addEventListener('click', function () { lineRow({ qty: 1, disc: 0 }).querySelector('input').focus(); dirty = true; });
+  document.getElementById('addCharge').addEventListener('click', function () { chargeRow({ name: 'Delivery', qty: 1 }).querySelector('input').focus(); dirty = true; });
+  var ap = document.getElementById('addPlan'); if (ap) { ap.addEventListener('click', function () { planRow({}); dirty = true; }); }
+  var form = document.getElementById('qeForm');
+  form.addEventListener('input', function () { dirty = true; document.getElementById('qeState').textContent = 'Not saved yet.'; });
+  document.querySelectorAll('[data-act]').forEach(function (b) { b.addEventListener('click', function () { document.getElementById('qeAction').value = b.getAttribute('data-act'); }); });
+  document.getElementById('delBtn').addEventListener('click', function () {
+    if (confirm('Delete this draft? Its number is not used again.')) { document.getElementById('qeAction').value = 'delete'; dirty = false; form.submit(); }
+  });
+  form.addEventListener('submit', function () {
+    dirty = false;
+    var get = function (box) { return box ? Array.prototype.map.call(box.children, function (r) { return r._get(); }) : []; };
+    document.getElementById('qeData').value = JSON.stringify({
+      lines: get(lines), charges: get(charges), plan: get(plan),
+      tax: { name: document.getElementById('taxName').value, rate: document.getElementById('taxRate').value, reason: document.getElementById('taxReason').value },
+      valid_until: document.getElementById('vu').value, deliver_place: document.getElementById('dPlace').value,
+      deliver_terms: document.getElementById('dTerms').value, note: document.getElementById('note').value });
+  });
+  window.addEventListener('beforeunload', function (e) { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+})();
+</script>
+{% endblock %}

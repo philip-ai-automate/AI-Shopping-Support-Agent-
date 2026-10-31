@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+{# PhiXtra quotation document (Part A, 31 Oct 2026; mock-up PKhjF22chVUgXF9mFNaomK section 4).
+   One page for the live preview (screen) and the PDF (Chromium prints it). Always English. #}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ s.title }} {{ q.number }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&family=Lora&display=swap" rel="stylesheet">
+<style>
+:root{--b:{{ s.colour }};--b2:{{ soft }};--qi:#17212E;--qm:#5D6B7C;--qh:#E2E8EF;--display:"Poppins","Segoe UI",Arial,sans-serif;--body:"Inter","Segoe UI",Arial,sans-serif;--quote:"Lora",Georgia,serif}
+*{box-sizing:border-box}
+@page{size:A4;margin:12mm 0 16mm}
+html,body{margin:0;background:{{ '#EEF2F7' if screen else '#fff' }}}
+body{font:12.5px/1.55 var(--body);color:var(--qi);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.page{background:#fff;max-width:794px;margin:{{ '18px auto' if screen else '0 auto' }};padding:0 44px 26px;display:grid;gap:20px;{{ 'box-shadow:0 10px 30px rgba(11,29,64,.12);' if screen else '' }}}
+.top{height:6px;background:var(--b);margin:0 -44px}
+.band{background:var(--b);color:#fff;margin:0 -44px;padding:24px 44px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.hd{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;padding-top:20px}
+.co{display:grid;gap:8px}
+.brand{display:flex;gap:10px;align-items:center}
+.brand img{max-height:52px;max-width:200px;object-fit:contain;display:block}
+.mark{width:44px;height:44px;border-radius:10px;background:var(--b);color:#fff;display:grid;place-items:center;font:700 16px var(--display);flex:none}
+.band .mark{background:#fff;color:var(--b)}
+.band .brand img{background:#fff;border-radius:8px;padding:4px}
+.name{font:700 17px var(--display)}
+.addr{font-size:11px;color:var(--qm);line-height:1.65}
+.ttl{display:grid;justify-items:end;gap:6px}
+.word{font:600 30px/1 var(--display);letter-spacing:-.01em}
+.no{font:600 12.5px var(--display);color:var(--b);background:var(--b2);border-radius:99px;padding:4px 12px;letter-spacing:.04em}
+.band .no{background:rgba(255,255,255,.18);color:#fff}
+.facts{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--qh);border-radius:10px;overflow:hidden;break-inside:avoid}
+.facts div{padding:10px 13px;display:grid;gap:2px;border-left:1px solid var(--qh)}
+.facts div:first-child{border-left:0}
+.facts span{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--qm);font-weight:600}
+.facts b{font:600 14px var(--display);font-variant-numeric:tabular-nums}
+.facts .tot{background:var(--b2)}.facts .tot b{color:var(--b);font-size:16px}
+.parties{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;font-size:11.5px;color:var(--qm);line-height:1.6}
+.parties b{display:block;color:var(--qi);font-size:12.5px}
+.k{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--b);font-weight:700;margin-bottom:4px}
+.open{margin:0;font:13.5px var(--quote)}
+table{width:100%;border-collapse:collapse}
+.t th{color:var(--qm);font-size:10px;text-transform:uppercase;letter-spacing:.08em;padding:0 9px 8px;border-bottom:2px solid var(--qi);text-align:left}
+.t td{padding:10px 9px;border-bottom:1px solid var(--qh);vertical-align:top}
+.t tr{break-inside:avoid}
+.t td b{font-weight:600;display:block}
+.t td small{display:block;color:var(--qm);font-size:10.5px;margin-top:1px}
+.r{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.n{width:24px;color:var(--qm);padding-left:0!important}
+.t td.r:last-child{font-weight:600}
+.off{color:#067647!important;font-weight:600}
+.band-t .t th{background:var(--b);color:#fff;border:0;padding:9px}
+.band-t .t th:first-child{border-radius:8px 0 0 8px;padding-left:12px}.band-t .t th:last-child{border-radius:0 8px 8px 0}
+.band-t .t .n{padding-left:12px!important}
+.mid{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start;break-inside:avoid}
+.plan{display:grid;gap:8px;font-size:11.5px;color:var(--qm)}
+.step{display:grid;grid-template-columns:24px 1fr;gap:8px}
+.step i{font-style:normal;width:22px;height:22px;border-radius:50%;border:1.5px solid var(--b);color:var(--b);display:grid;place-items:center;font:700 10.5px var(--display)}
+.step b{display:block;color:var(--qi);font-size:12px}
+.sum{display:grid;font-size:12px;font-variant-numeric:tabular-nums}
+.sum div{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--qh);color:var(--qm)}
+.sum div span:last-child{color:var(--qi)}
+.sum .g{background:var(--b);color:#fff;border:0;border-radius:8px;padding:11px 13px;margin-top:10px;font:600 16px var(--display)}
+.sum .g span:last-child{color:#fff}
+.accept{display:grid;grid-template-columns:1.1fr 1fr;gap:22px;background:#F7F9FB;border-radius:10px;padding:15px 17px;font-size:12px;break-inside:avoid}
+.band-t .accept{background:var(--b2)}
+.accept ol{margin:0;padding-left:18px;display:grid;gap:5px}
+.bank{white-space:pre-line;font-size:11.5px;font-variant-numeric:tabular-nums}
+.terms{margin:0;font-size:11px;color:var(--qm)}
+.ft{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:10px;color:var(--qm);border-top:1px solid var(--qh);padding-top:9px}
+.note{font-size:12px;background:#F7F9FB;border-radius:8px;padding:10px 12px;white-space:pre-line}
+/* Traditional */
+.tmeta{display:grid;justify-items:end;gap:8px}
+.tword{font:700 22px var(--display);letter-spacing:.12em;color:var(--b);text-transform:uppercase}
+.band .tword{color:#fff}
+.tmeta table{width:auto;font-size:11.5px;font-variant-numeric:tabular-nums}
+.tmeta th{font-weight:600;color:var(--qm);text-align:right;padding:2px 12px 2px 0}
+.tmeta td{padding:2px 0;text-align:right;font-weight:600}
+.band .tmeta th{color:rgba(255,255,255,.8)}
+.boxes{display:grid;grid-template-columns:1fr 1fr;gap:14px;font-size:11.5px;color:var(--qm);line-height:1.6}
+.boxes div{border:1px solid var(--qh);border-radius:6px;padding:10px 12px}
+.boxes b{display:block;color:var(--qi);font-size:12.5px}
+.h{display:block;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--qi);margin-bottom:4px}
+.tt{font-size:11.5px;border:1px solid #C9D2DE}
+.tt th{background:#F1F4F8;font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:7px 8px;border:1px solid #C9D2DE;text-align:left}
+.band-t .tt th{background:var(--b);color:#fff;border-color:var(--b)}
+.tt td{padding:7px 8px;border:1px solid #DCE2EA;vertical-align:top}
+.tt tr{break-inside:avoid}
+.tend{display:grid;grid-template-columns:1fr 280px;gap:22px;align-items:start;break-inside:avoid}
+.tnotes{font-size:11.5px;color:var(--qm);display:grid;gap:3px}
+.tnotes p{margin:0 0 8px;white-space:pre-line}
+.ttot th{font-weight:500;color:var(--qm);text-align:left;padding:7px 9px;border-bottom:1px solid var(--qh)}
+.ttot td{text-align:right;padding:7px 9px;border-bottom:1px solid var(--qh);font-variant-numeric:tabular-nums}
+.ttot .g th,.ttot .g td{font:700 14px var(--display);color:var(--qi);border-top:2px solid var(--qi);border-bottom:3px double var(--qi);padding:9px}
+.sign{border:1px solid var(--qh);border-radius:6px;padding:12px 14px;font-size:11.5px;color:var(--qm);display:grid;gap:6px;break-inside:avoid}
+.sign p{margin:0}
+.lines{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:12px}
+.lines div{display:grid;gap:4px;font-size:10.5px}
+.lines i{display:block;height:20px;border-bottom:1px solid var(--qi)}
+.p2{break-before:page;padding-top:24px;display:grid;gap:12px}
+.p2 h2{font:600 16px var(--display);margin:0}
+.p2 div{white-space:pre-line;font-size:11px;color:#334155;line-height:1.6;max-width:640px}
+.p2 div.long{column-count:2;column-gap:24px;max-width:none}
+.sample{position:fixed;top:8px;right:10px;background:#FEF3E2;color:#B54708;font:600 11px var(--body);border-radius:99px;padding:3px 10px}
+</style>
+</head>
+<body>
+{% if q.sample and screen %}<div class="sample">Example with your products</div>{% endif %}
+{% set band = s.header == 'band' %}
+{% set contact %}{% if s.show.email and s.email %}{{ s.email }}{% endif %}{% if s.show.email and s.email and s.show.phone and s.phone %} · {% endif %}{% if s.show.phone and s.phone %}{{ s.phone }}{% endif %}{% endset %}
+{% set reg %}{% if s.show.vat and prof.vat %}VAT {{ prof.vat }}{% endif %}{% if s.show.vat and prof.vat and s.show.company_no and prof.company_no %} · {% endif %}{% if s.show.company_no and prof.company_no %}Company no. {{ prof.company_no }}{% endif %}{% endset %}
+{% macro brandblock() %}<div class="brand">{% if logo %}<img src="{{ logo }}" alt="{{ prof.name }}">{% else %}<span class="mark">{{ initials }}</span>{% endif %}<span class="name">{{ prof.name }}</span></div>{% endmacro %}
+{% macro addrblock() %}<div class="addr">{% if s.show.address and prof.address %}{{ prof.address }}<br>{% endif %}{% if contact|trim %}{{ contact }}<br>{% endif %}{% if s.show.website and s.website %}{{ s.website }}<br>{% endif %}{% if reg|trim %}{{ reg }}{% endif %}</div>{% endmacro %}
+
+<div class="page {{ 'band-t' if band else '' }}">
+{% if s.template == 'traditional' %}
+  {% if band %}
+  <header class="band">{{ brandblock() }}<div class="tmeta"><div class="tword">{{ s.title }}</div></div></header>
+  <div class="hd" style="padding-top:0">{{ addrblock() }}
+  {% else %}
+  <div class="top"></div>
+  <div class="hd"><div class="co">{{ brandblock() }}{{ addrblock() }}</div>
+  {% endif %}
+    <div class="tmeta">{% if not band %}<div class="tword">{{ s.title }}</div>{% endif %}
+      <table>
+        <tr><th>{{ s.title }} no.</th><td>{{ q.number }}</td></tr>
+        <tr><th>Date</th><td>{{ q.date.strftime('%d %B %Y').lstrip('0') }}</td></tr>
+        <tr><th>Valid until</th><td>{{ q.valid_until.strftime('%d %B %Y').lstrip('0') }}</td></tr>
+        {% if q.ref %}<tr><th>Your reference</th><td>{{ q.ref }}</td></tr>{% endif %}
+        {% if q.prepared_by.name %}<tr><th>Prepared by</th><td>{{ q.prepared_by.name }}</td></tr>{% endif %}
+      </table></div>
+  </div>
+  <div class="boxes">
+    <div><span class="h">{{ s.title }} for</span><b>{{ q.buyer.company or q.buyer.name }}</b>{% if q.buyer.company and q.buyer.name %}Attn: {{ q.buyer.name }}{% if q.buyer.role %}, {{ q.buyer.role }}{% endif %}<br>{% endif %}{{ q.buyer.email or '' }}</div>
+    <div><span class="h">Deliver to</span><b>{{ q.deliver.place or '—' }}</b>{{ q.deliver.terms or '' }}</div>
+  </div>
+  {% if s.opening %}<p class="open">{{ s.opening }}</p>{% endif %}
+  <table class="tt">
+    <thead><tr>{% if show_code %}<th>Code</th>{% endif %}<th>Description</th><th class="r">Qty</th>{% if s.columns.unit %}<th>Unit</th>{% endif %}<th class="r">Unit price</th>{% if s.columns.discount %}<th class="r">Disc.</th>{% endif %}<th class="r">Amount</th></tr></thead>
+    <tbody>
+    {% for ln in q.lines %}
+      <tr>{% if show_code %}<td>{{ ln.code or '—' }}</td>{% endif %}<td>{{ ln.name }}{% if ln.note and not s.columns.discount %} <small>({{ ln.note }})</small>{% endif %}</td><td class="r">{{ '%g'|format(ln.qty) }}</td>{% if s.columns.unit %}<td>{{ ln.unit or ln.pack or '' }}</td>{% endif %}<td class="r">{{ plain(ln.price) }}</td>{% if s.columns.discount %}<td class="r">{{ ('%g%%'|format(ln.disc)) if ln.disc else '' }}</td>{% endif %}<td class="r">{{ plain(ln.amount) }}</td></tr>
+    {% endfor %}
+    {% for c in q.charges %}
+      <tr>{% if show_code %}<td>—</td>{% endif %}<td>{{ c.name }}</td><td class="r">{{ '%g'|format(c.qty) }}</td>{% if s.columns.unit %}<td></td>{% endif %}<td class="r">{{ plain(c.price) }}</td>{% if s.columns.discount %}<td></td>{% endif %}<td class="r">{{ plain(c.amount) }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+  <div class="tend">
+    <div class="tnotes">
+      {% if q.note %}<span class="h">Notes</span><p>{{ q.note }}</p>{% endif %}
+      {% if s.payment_terms or s.bank_details %}<span class="h">Payment terms</span><p>{{ s.payment_terms }}{% if s.bank_details %}
+{{ s.bank_details }}{% endif %}</p>{% endif %}
+    </div>
+    <table class="ttot">
+      <tr><th>Subtotal</th><td>{{ plain(q.subtotal) }}</td></tr>
+      <tr><th>{{ q.tax.label }}{% if q.tax.reason %} ({{ q.tax.reason }}){% endif %}</th><td>{{ plain(q.tax_amount) }}</td></tr>
+      <tr class="g"><th>Total {{ q.currency }}</th><td>{{ money(q.total) }}</td></tr>
+    </table>
+  </div>
+  <div class="sign">
+    <span class="h">Acceptance</span>
+    <p>We accept {{ s.title|lower }} {{ q.number }}{% if s.terms %} and the terms of sale{% endif %}. Please return a signed copy, or reply with your order number.</p>
+    <div class="lines"><div><i></i>Name</div><div><i></i>Signature</div><div><i></i>Date</div><div><i></i>Your order no.</div></div>
+  </div>
+{% else %}
+  {% if band %}
+  <header class="band">{{ brandblock() }}<div class="ttl"><span class="word">{{ s.title }}</span><span class="no">{{ q.number }}</span></div></header>
+  {% else %}
+  <div class="top"></div>
+  <header class="hd"><div class="co">{{ brandblock() }}{{ addrblock() }}</div><div class="ttl"><span class="word">{{ s.title }}</span><span class="no">{{ q.number }}</span></div></header>
+  {% endif %}
+  <div class="facts">
+    <div><span>Date</span><b>{{ q.date.strftime('%d %b %Y').lstrip('0') }}</b></div>
+    <div><span>Valid until</span><b>{{ q.valid_until.strftime('%d %b %Y').lstrip('0') }}</b></div>
+    <div><span>{{ 'Your request' if q.ref else 'Prepared by' }}</span><b>{{ q.ref or q.prepared_by.name or '—' }}</b></div>
+    <div class="tot"><span>Total ({{ q.currency }})</span><b>{{ money(q.total) }}</b></div>
+  </div>
+  <div class="parties">
+    <div><span class="k">Prepared for</span><b>{{ q.buyer.company or q.buyer.name }}</b>{% if q.buyer.company and q.buyer.name %}{{ q.buyer.name }}{% if q.buyer.role %}, {{ q.buyer.role }}{% endif %}<br>{% endif %}{{ q.buyer.email or '' }}</div>
+    <div><span class="k">Deliver to</span><b>{{ q.deliver.place or '—' }}</b>{{ q.deliver.terms or '' }}</div>
+    {% if band %}
+    <div><span class="k">From</span><b>{{ prof.name }}</b>{% if s.show.address and prof.address %}{{ prof.address }}<br>{% endif %}{{ q.prepared_by.name }}{% if q.prepared_by.phone %} · {{ q.prepared_by.phone }}{% endif %}</div>
+    {% else %}
+    <div><span class="k">Your contact</span><b>{{ q.prepared_by.name or prof.name }}</b>{% if q.prepared_by.phone %}{{ q.prepared_by.phone }}<br>{% endif %}{{ q.prepared_by.email or '' }}</div>
+    {% endif %}
+  </div>
+  {% if s.opening %}<p class="open">{{ s.opening }}</p>{% endif %}
+  <table class="t">
+    <thead><tr><th class="n">#</th><th>Item</th><th class="r">Qty</th><th class="r">Unit price</th><th class="r">Amount</th></tr></thead>
+    <tbody>
+    {% for ln in q.lines %}
+      <tr><td class="n">{{ loop.index }}</td>
+        <td><b>{{ ln.name }}</b>{% set sub = [ln.code if show_code else '', ln.pack] | select | join(' · ') %}{% if sub %}<small>{{ sub }}</small>{% endif %}</td>
+        <td class="r">{{ '%g'|format(ln.qty) }}{% if s.columns.unit and ln.unit %} {{ ln.unit }}{% endif %}</td>
+        <td class="r">{{ money(ln.price) }}{% if ln.disc and s.columns.discount %}<small class="off">{{ '%g'|format(ln.disc) }}% {{ (ln.note or 'discount')|lower }}</small>{% endif %}</td>
+        <td class="r">{{ money(ln.amount) }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+  <div class="mid">
+    <div class="plan">
+      {% if q.plan %}<span class="k">Delivery plan</span>
+        {% for st in q.plan %}<div class="step"><i>{{ loop.index }}</i><div><b>{{ st.date }}</b>{{ st.text }}</div></div>{% endfor %}
+      {% endif %}
+      {% if q.note %}<div class="note">{{ q.note }}</div>{% endif %}
+    </div>
+    <div class="sum">
+      <div><span>Products</span><span>{{ money(q.products_total) }}</span></div>
+      {% for c in q.charges %}<div><span>{{ c.name }}{% if c.qty != 1 %} ({{ '%g'|format(c.qty) }} × {{ money(c.price) }}){% endif %}</span><span>{{ money(c.amount) }}</span></div>{% endfor %}
+      <div><span>{{ q.tax.label }}{% if q.tax.reason %} · {{ q.tax.reason }}{% endif %}</span><span>{{ money(q.tax_amount) }}</span></div>
+      <div class="g"><span>Total ({{ q.currency }})</span><span>{{ money(q.total) }}</span></div>
+    </div>
+  </div>
+  <div class="accept">
+    <div><span class="k">How to accept</span>
+      <ol><li>Reply to this email or message with your order number.</li>
+        {% if q.deposit %}<li>Pay the {{ s.deposit_pct }}% deposit, <b>{{ money(q.deposit) }}</b>, quoting <b>{{ q.number }}</b>.</li>{% endif %}
+        <li>We confirm your order and delivery dates.{% if s.payment_terms %} {{ s.payment_terms }}{% endif %}</li></ol></div>
+    <div>{% if s.bank_details %}<span class="k">Bank details</span><div class="bank">{{ s.bank_details }}</div>{% endif %}</div>
+  </div>
+{% endif %}
+  <p class="terms">Prices in {{ q.currency }}, valid until {{ q.valid_until.strftime('%d %B %Y').lstrip('0') }}.{% if s.terms %} Our terms of sale are on the next page.{% endif %}</p>
+  {% if screen %}<footer class="ft"><span>{{ s.footer or prof.name }}</span><span>{{ q.number }}</span></footer>{% endif %}
+</div>
+{% if s.terms %}
+<div class="page p2"><h2>Terms of sale</h2><div class="{{ 'long' if s.terms|length > 2500 else '' }}">{{ s.terms }}</div></div>
+{% endif %}
+</body>
+</html>

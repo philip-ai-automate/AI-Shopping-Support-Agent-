@@ -42716,7 +42716,8 @@ def quotes_request_detail(request_id: int):
                            events=_qr.events(r["id"]), qr=_qr, tz=tz, lines_text=_qr.lines_text(r),
                            sent_by=_qr.SENT_BY, lost_reasons=_qr.LOST_REASONS,
                            not_quoted_reasons=_qr.NOT_QUOTED_REASONS, cur=r.get("currency") or _biz_currency(tenant_id),
-                           country_name=dict(_addr.ADDRESS_COUNTRIES), today=now.date(), dt=_quote_dt(tz))
+                           country_name=dict(_addr.ADDRESS_COUNTRIES), today=now.date(), dt=_quote_dt(tz),
+                           maker=_qr.settings(tenant_id)["maker"], quotations=_qq.for_request(tenant_id, r["id"]))
 
 
 @portal_bp.route("/quotations/requests/<int:request_id>/edit", methods=["GET", "POST"])
@@ -42950,9 +42951,247 @@ def quotes_settings():
         _qr.save_settings(tenant_id, {"target": f.get("target"), "work_start": f.get("work_start"),
                                       "work_end": f.get("work_end"), "software": f.get("software") or "",
                                       "alert_new": f.get("alert_new") == "1", "alert_due": f.get("alert_due") == "1",
-                                      "alert_manager": f.get("alert_manager") == "1"},
+                                      "alert_manager": f.get("alert_manager") == "1",
+                                      "website_on": f.get("website_on") == "1",
+                                      "maker": f.get("maker"),
+                                      "website_prices": f.get("website_prices")},
                           _current_actor(customer)["label"])
         flash("Quotation settings saved. New requests use them; requests already waiting keep their time.", "success")
         return redirect(url_for("portal.quotes_settings"))
     return render_template("portal/quotes_settings.html", s=_qr.settings(tenant_id), qr=_qr, can_edit=can_edit,
                            tzname=str(_tp.tz_for(tenant_id)))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# QUOTATIONS › QUOTATION DESIGN (2026-10-31, PhiXtra quotations Part A). Mock-up
+# PKhjF22chVUgXF9mFNaomK: 2 templates (Summary first / Traditional), light or
+# colour-band header, logo, colour, details, numbering, wording; live preview
+# and a test PDF from the same page. Logic: quote_design.py.
+# ══════════════════════════════════════════════════════════════════════════════
+import quote_design as _qd
+
+
+def _qd_form(f) -> dict:
+    return {"template": f.get("template"), "header": f.get("header"), "colour": f.get("colour"),
+            "show": {k: f.get("show_" + k) == "1" for k in ("address", "email", "phone", "vat", "company_no", "website")},
+            "columns": {k: f.get("col_" + k) == "1" for k in ("code", "unit", "discount")},
+            **{k: f.get(k) for k in ("email", "phone", "website", "prefix", "number_format", "next_number", "valid_days",
+                                    "title", "opening", "payment_terms", "deposit_pct", "bank_details", "terms", "footer")}}
+
+
+@portal_bp.route("/quotations/design", methods=["GET", "POST"])
+@team_feature("leads.page")
+def quotes_design():
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    can_edit = _role_sees_all("leads.see_all")
+    if request.method == "POST":
+        if not can_edit:
+            flash("Only people who can see all leads can change the quotation design.", "warning")
+            return redirect(url_for("portal.quotes_design"))
+        _qd.save(tenant_id, _qd_form(request.form), _current_actor(customer)["label"])
+        flash("Quotation design saved.", "success")
+        return redirect(url_for("portal.quotes_design"))
+    s = _qd.get(tenant_id)
+    prof = _qd.profile(tenant_id)
+    return render_template("portal/quotes_design.html", s=s, prof=prof, qd=_qd, can_edit=can_edit,
+                           checklist=_qd.checklist(tenant_id, s, prof), maker=_qr.settings(tenant_id)["maker"],
+                           preview_html=_qd.render_html(tenant_id, s, _qd.sample_quote(tenant_id, s)))
+
+
+@portal_bp.route("/quotations/design/preview", methods=["POST"])
+@team_feature("leads.page")
+def quotes_design_preview():
+    """The live preview: the quotation with what is typed now (not saved)."""
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    cur_s = _qd.get(tenant_id)
+    s = _qd.clean(_qd_form(request.form), base=cur_s)
+    s["has_logo"] = cur_s["has_logo"]
+    return Response(_qd.render_html(tenant_id, s, _qd.sample_quote(tenant_id, s)), mimetype="text/html")
+
+
+@portal_bp.route("/quotations/design/logo", methods=["GET", "POST"])
+@team_feature("leads.page")
+def quotes_design_logo():
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    if request.method == "GET":
+        data = _qd.logo_bytes(tenant_id)
+        if not data:
+            return Response(status=404)
+        return Response(data, mimetype="image/png", headers={"Cache-Control": "no-store"})
+    back = redirect(url_for("portal.quotes_design"))
+    if not _role_sees_all("leads.see_all"):
+        flash("Only people who can see all leads can change the quotation design.", "warning")
+        return back
+    who = _current_actor(customer)["label"]
+    action = request.form.get("action")
+    if action == "remove":
+        _qd.remove_logo(tenant_id, who)
+        flash("Logo removed. Your initials show instead.", "success")
+    elif action == "colour":
+        c = _qd.colour_from_logo(tenant_id)
+        if c:
+            _qd.save(tenant_id, {"colour": c}, who)
+            flash(f"Brand colour set from your logo ({c}).", "success")
+        else:
+            flash("Couldn't find a clear colour in the logo. Pick one by hand.", "warning")
+    else:
+        up = request.files.get("logo")
+        problem = _qd.save_logo(tenant_id, up.read(_qd.MAX_LOGO + 1) if up and up.filename else b"", who)
+        flash(problem or "Logo saved.", "danger" if problem else "success")
+    return back
+
+
+@portal_bp.route("/quotations/design/test.pdf")
+@team_feature("leads.page")
+def quotes_design_test_pdf():
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    s = _qd.get(tenant_id)
+    q = _qd.sample_quote(tenant_id, s)
+    prof = _qd.profile(tenant_id)
+    try:
+        pdf = _qd.render_pdf(_qd.render_html(tenant_id, s, q, screen=False), s.get("footer") or prof["name"], q["number"])
+    except Exception as e:
+        print(f"⚠️ quotation test PDF tenant={tenant_id}:", e)
+        flash("The test PDF couldn't be made just now. Please try again in a minute.", "danger")
+        return redirect(url_for("portal.quotes_design"))
+    return Response(pdf, mimetype="application/pdf",
+                    headers={"Content-Disposition": f"inline; filename=\"Test {q['number']}.pdf\""})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PHIXTRA QUOTATIONS · MAKING AND SENDING (2026-10-31, Part B). Mock-up
+# PKhjF22chVUgXF9mFNaomK sections 3 + 5. Logic: quote_quotes.py.
+# ══════════════════════════════════════════════════════════════════════════════
+import quote_quotes as _qq
+
+
+def _qq_load(customer, tenant_id, qid):
+    """(quotation, request) the person may open, else (None, None)."""
+    q = _qq.get(tenant_id, qid)
+    if not q or not q["request_id"]:
+        return None, None
+    req = _qr.get(tenant_id, q["request_id"], _quotes_scope(customer))
+    return (q, req) if req else (None, None)
+
+
+@portal_bp.route("/quotations/requests/<int:request_id>/quotation", methods=["POST"])
+@team_feature("leads.page")
+def quotes_quotation_start(request_id: int):
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    req = _qr.get(tenant_id, request_id, _quotes_scope(customer))
+    if not req:
+        flash("Request not found.", "danger")
+        return redirect(url_for("portal.quotes_requests"))
+    if not _qq.is_on(tenant_id):
+        flash("Choose \"In PhiXtra\" in Quotation settings to make quotations here.", "warning")
+        return redirect(url_for("portal.quotes_request_detail", request_id=request_id))
+    if req["status"] in ("won", "lost"):
+        flash("This request is closed. Reopen it first.", "warning")
+        return redirect(url_for("portal.quotes_request_detail", request_id=request_id))
+    qid = _qq.start(tenant_id, req, _current_actor(customer))
+    return redirect(url_for("portal.quotes_quotation", qid=qid))
+
+
+@portal_bp.route("/quotations/q/<int:qid>", methods=["GET", "POST"])
+@team_feature("leads.page")
+def quotes_quotation(qid: int):
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    q, req = _qq_load(customer, tenant_id, qid)
+    if not q:
+        flash("Quotation not found.", "danger")
+        return redirect(url_for("portal.quotes_requests"))
+    if request.method == "POST":
+        action = request.form.get("action") or "save"
+        if action == "delete":
+            ok, msg = _qq.delete_draft(tenant_id, qid, _current_actor(customer))
+            flash(msg, "success" if ok else "warning")
+            return redirect(url_for("portal.quotes_request_detail", request_id=req["id"]))
+        try:
+            raw = _json.loads(request.form.get("data_json") or "{}")
+        except (TypeError, ValueError):
+            raw = {}
+        ok, msg = _qq.save(tenant_id, qid, raw, _current_actor(customer))
+        if not ok:
+            flash(msg, "warning")
+            return redirect(url_for("portal.quotes_quotation", qid=qid))
+        if action == "send":
+            return redirect(url_for("portal.quotes_quotation_send", qid=qid))
+        flash("Draft saved.", "success")
+        return redirect(url_for("portal.quotes_quotation", qid=qid) + ("?preview=1" if action == "preview" else ""))
+    products = _qr.products_for(tenant_id)
+    s = _qd.get(tenant_id)
+    doc = _qq.to_doc(tenant_id, q, s, req)
+    return render_template("portal/quotes_quotation.html", q=q, req=req, doc=doc, s=s, qq=_qq, qr=_qr,
+                           checks=_qq.checks(tenant_id, q, req), products_json=_quote_products_json(products),
+                           versions=_qq.for_request(tenant_id, req["id"]), cur=q["currency"] or _biz_currency(tenant_id),
+                           open_preview=request.args.get("preview") == "1")
+
+
+@portal_bp.route("/quotations/q/<int:qid>.pdf")
+@team_feature("leads.page")
+def quotes_quotation_pdf(qid: int):
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    q, req = _qq_load(customer, tenant_id, qid)
+    if not q:
+        flash("Quotation not found.", "danger")
+        return redirect(url_for("portal.quotes_requests"))
+    data = _qq.stored_pdf(tenant_id, qid) if q["status"] != "draft" else None
+    if not data:
+        try:
+            data = _qq.make_pdf(tenant_id, q, req)
+        except Exception as e:
+            print(f"⚠️ quotation PDF {qid}:", e)
+            flash("The PDF couldn't be made just now. Please try again in a minute.", "danger")
+            return redirect(url_for("portal.quotes_quotation", qid=qid))
+    name = _qq.pdf_name(tenant_id, q) if q["status"] != "draft" else f"DRAFT {_qq.pdf_name(tenant_id, q)}"
+    return Response(data, mimetype="application/pdf", headers={"Content-Disposition": f"inline; filename=\"{name}\""})
+
+
+@portal_bp.route("/quotations/q/<int:qid>/send", methods=["GET", "POST"])
+@team_feature("leads.page")
+def quotes_quotation_send(qid: int):
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    q, req = _qq_load(customer, tenant_id, qid)
+    if not q:
+        flash("Quotation not found.", "danger")
+        return redirect(url_for("portal.quotes_requests"))
+    if q["status"] != "draft":
+        flash("This quotation has already been sent.", "warning")
+        return redirect(url_for("portal.quotes_request_detail", request_id=req["id"]))
+    chk = _qq.checks(tenant_id, q, req)
+    if request.method == "POST":
+        ok, msg = _qq.send(tenant_id, qid, request.form.get("via"), request.form.get("to"),
+                           request.form.get("subject"), request.form.get("message"), _current_actor(customer))
+        flash(msg, "success" if ok else "danger")
+        return redirect(url_for("portal.quotes_request_detail", request_id=req["id"]) if ok
+                        else url_for("portal.quotes_quotation_send", qid=qid))
+    lang = _qq.detect_lang(req.get("buyer_words") or req.get("notes") or "")
+    covers = {k: _qq.cover(k, q, req, tenant_id) for k, _ in _qq.LANGS}
+    wa_ok, wa_why = _qq.wa_ready(tenant_id, req.get("buyer_phone") or "")
+    return render_template("portal/quotes_send.html", q=q, req=req, qq=_qq, checks=chk, can=_qq.can_send(chk),
+                           lang=lang, covers=covers, wa_ok=wa_ok, wa_why=(wa_why if not wa_ok else ""),
+                           doc=_qq.to_doc(tenant_id, q, _qd.get(tenant_id), req), qr=_qr)

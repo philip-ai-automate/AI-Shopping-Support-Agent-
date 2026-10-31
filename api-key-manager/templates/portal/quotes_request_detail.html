@@ -76,7 +76,19 @@
         {% if r.buyer_phone %}{{ r.buyer_phone }}{% endif %}</div>
       {% if lead %}<a class="qt-small" href="{{ url_for('portal.opportunity_detail', lead_id=lead.id) if lead.is_opportunity else url_for('portal.lead_detail', lead_id=lead.id) }}">Open the {{ 'deal' if lead.is_opportunity else 'lead' }} →</a>{% endif %}
 
-      {% if r.status == 'to_quote' %}
+      {% set draft_q = (quotations|selectattr('status', 'equalto', 'draft')|list)[0] if quotations|selectattr('status', 'equalto', 'draft')|list else None %}
+      {% if r.status == 'to_quote' and maker == 'phixtra' %}
+        <span class="qt-lbl" style="margin-top:6px">Next</span>
+        {% if draft_q %}
+        <a class="qt-btn dark" href="{{ url_for('portal.quotes_quotation', qid=draft_q.id) }}">Continue quotation {{ draft_q.number }}{{ ' v%d'|format(draft_q.version) if draft_q.version > 1 }}</a>
+        {% else %}
+        <form method="post" action="{{ url_for('portal.quotes_quotation_start', request_id=r.id) }}" style="margin:0">
+          <button class="qt-btn dark" style="width:100%">{{ 'Make new version' if quotations else 'Make quotation' }}</button></form>
+        <div class="qt-small">Fills itself from this request and your product list. You set the prices, PhiXtra checks it, makes the PDF and sends it.</div>
+        {% endif %}
+        <button type="button" class="qt-btn sm" data-open="mSent">Sent it another way: record Quote sent</button>
+        <button type="button" class="qt-btn sm bad" data-open="mNotQuoted">Not quoting</button>
+      {% elif r.status == 'to_quote' %}
         <span class="qt-lbl" style="margin-top:6px">Next</span>
         <ol class="qt-steps">
           <li>Make the quotation in your own software (Copy lines or Download Excel saves retyping).</li>
@@ -115,6 +127,22 @@
       {% endif %}
     </div>
   </div>
+
+  {% if quotations %}
+  <div class="qt-card">
+    <span class="qt-lbl">Quotations made in PhiXtra</span>
+    <div class="qt-scroll"><table>
+      <thead><tr><th>Quotation</th><th>Status</th><th class="r">Total</th><th>Valid until</th><th></th></tr></thead>
+      <tbody>{% for v in quotations %}
+        <tr><td><a class="rowlink" href="{{ url_for('portal.quotes_quotation', qid=v.id) }}">{{ v.number }}{{ ' v%d'|format(v.version) if v.version > 1 }}</a></td>
+          <td><span class="qt-pill {{ 'p-grey' if v.status == 'draft' else ('p-info' if v.status == 'sent' else 'p-grey') }}">{{ {'draft': 'Draft', 'sending': 'Sending…', 'sent': 'Sent', 'superseded': 'Replaced by a newer version'}[v.status] }}</span>
+            {% if v.sent_at %}<span class="s">{{ dt(v.sent_at) }} · {{ 'email' if v.sent_via == 'email' else 'WhatsApp' }}</span>{% endif %}</td>
+          <td class="r">{{ qr.money(v.total, v.currency) if v.total is not none else '—' }}</td>
+          <td>{{ v.valid_until.strftime('%d %b %Y') if v.valid_until else '' }}</td>
+          <td><a class="qt-small" href="{{ url_for('portal.quotes_quotation_pdf', qid=v.id) }}" target="_blank" rel="noopener">PDF</a></td></tr>
+      {% endfor %}</tbody></table></div>
+  </div>
+  {% endif %}
 
   <div class="qt-card">
     <span class="qt-lbl">History</span>

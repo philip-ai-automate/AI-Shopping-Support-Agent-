@@ -61,7 +61,15 @@ DEFAULTS = {
     "alert_new": True,          # tell the salesperson when a request is handed to them
     "alert_due": True,          # ask the salesperson "did you send it?" when the time is up
     "alert_manager": True,      # tell the account owner one hour after that
+    # How the business makes quotations (Part A, 31 Oct 2026): "own" software
+    # (Copy lines / Download Excel + Quote sent) or "phixtra" (PhiXtra quotations).
+    "maker": "own",
+    # Phase 4: "Add to quote" + quote list on the business's website.
+    "website_on": False,
+    "website_prices": "list_estimate",   # list_estimate | estimate | none
 }
+WEBSITE_PRICES = [("list_estimate", "List prices and an estimate"), ("estimate", "An estimate only"),
+                  ("none", "No prices (\"Price on your quotation\")")]
 
 
 def _db():
@@ -182,7 +190,11 @@ def _clean_settings(raw: dict) -> dict:
         s["work_start"], s["work_end"] = DEFAULTS["work_start"], DEFAULTS["work_end"]
     if raw.get("software") in dict(SOFTWARE) or raw.get("software") == "":
         s["software"] = raw["software"]
-    for k in ("alert_new", "alert_due", "alert_manager"):
+    if raw.get("maker") in ("own", "phixtra"):
+        s["maker"] = raw["maker"]
+    if raw.get("website_prices") in dict(WEBSITE_PRICES):
+        s["website_prices"] = raw["website_prices"]
+    for k in ("alert_new", "alert_due", "alert_manager", "website_on"):
         if k in raw:
             v = raw[k]
             s[k] = v is True or v in ("1", "true", "on")

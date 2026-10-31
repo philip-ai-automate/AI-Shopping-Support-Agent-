@@ -79,7 +79,8 @@ def send_email(to_email: str, subject: str, html_body: str, text_body: str | Non
 def send_email_with_attachment(
     to_email: str, subject: str, html_body: str,
     attachment_bytes: bytes, attachment_filename: str, attachment_mimetype: str = "image/png",
-    text_body: str | None = None,
+    text_body: str | None = None, from_name: str | None = None, reply_to: str | None = None,
+    cc_email: str | None = None,
 ) -> bool:
     """Send an email with a single binary attachment. Returns True on success."""
     host = os.getenv("SMTP_HOST", "").strip()
@@ -97,8 +98,17 @@ def send_email_with_attachment(
     maintype, subtype = attachment_mimetype.split("/", 1)
 
     msg = EmailMessage()
-    msg["From"] = from_email
+    if from_name:
+        # e.g. "Amara at Harbour Supplies" <no-reply@phixtra.com> (quotations, 2026-10-31)
+        from email.utils import formataddr
+        msg["From"] = formataddr((from_name.replace("\n", " ").strip()[:80], from_email))
+    else:
+        msg["From"] = from_email
     msg["To"] = to_email
+    if cc_email:
+        msg["Cc"] = cc_email
+    if reply_to:
+        msg["Reply-To"] = reply_to
     msg["Subject"] = subject
     msg.set_content(text_body or "Please view this email in an HTML-capable client.")
     msg.add_alternative(html_body, subtype="html")

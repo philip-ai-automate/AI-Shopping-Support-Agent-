@@ -1,0 +1,164 @@
+{% extends "portal/base.html" %}
+{% block title %}Quotation design — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-wide{% endblock %}
+{% block head %}{% include "portal/_quotes_css.html" %}
+<style>
+.qdz{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:16px;align-items:start}
+.qdz .qt-card h2{font-size:14px}
+.qdz-prev{position:sticky;top:12px;display:grid;gap:8px}
+.qdz-prev iframe{width:100%;height:calc(100vh - 120px);min-height:640px;border:1px solid var(--line);border-radius:12px;background:#EEF2F7}
+.qdz-row{display:grid;grid-template-columns:130px 1fr;gap:8px;align-items:center;font-size:13px}
+.qdz-row > span{color:var(--muted);font-weight:600}
+.qdz-chips{display:flex;gap:6px;flex-wrap:wrap}
+.qdz-chips label{display:inline-flex;gap:6px;align-items:center;border:1.5px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600;cursor:pointer;background:#fff}
+.qdz-chips input{width:auto;min-height:0;margin:0}
+.qdz-chips label:has(input:checked){border-color:var(--navy);box-shadow:inset 0 0 0 1px var(--navy)}
+.qdz-sw{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;padding:3px 0}
+.qdz-sw input{width:18px!important;height:18px;min-height:0!important;margin:0}
+.qdz-logo{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.qdz-logo img{max-height:48px;max-width:160px;border:1px solid var(--line);border-radius:8px;padding:4px;background:#fff}
+.qdz-colour{display:flex;gap:8px;align-items:center}
+.qdz-colour input[type=color]{width:44px;height:36px;padding:2px;min-height:0}
+.qdz-check{display:grid;gap:5px;font-size:13px}
+.qdz-check div{display:grid;grid-template-columns:20px 1fr;gap:6px}
+.qdz-save{position:sticky;bottom:0;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap;box-shadow:0 -4px 16px rgba(11,29,64,.06)}
+@media (min-width:700px){.qdz-save{margin-right:190px}}  /* keep Save clear of the Need help button */
+@media (max-width:1100px){.qdz{grid-template-columns:1fr}.qdz-prev{position:static}.qdz-prev iframe{height:760px}}
+@media (max-width:560px){.qdz-row{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+{% block content %}
+<div class="qt">
+  <div class="qt-top">
+    <div>
+      <h1>Quotation design</h1>
+      <div class="qt-sub">How your quotations look when PhiXtra makes them. The preview is the real document, with your own products.</div>
+    </div>
+    <a class="qt-btn" href="{{ url_for('portal.quotes_design_test_pdf') }}" target="_blank" rel="noopener">Download a test PDF</a>
+  </div>
+
+  {% if maker != 'phixtra' %}
+  <div class="qt-empty">You make your quotations in your own software, so this design isn't used yet. To make them in PhiXtra,
+    choose "In PhiXtra" in <a href="{{ url_for('portal.quotes_settings') }}">Quotation settings</a>. You can set the design up first.</div>
+  {% endif %}
+
+  <div class="qdz">
+    <div class="qt" style="gap:12px">
+      <div class="qt-card" style="background:var(--info-bg);border-color:#C9D9FB">
+        <b style="color:var(--info)">Before your first quotation</b>
+        <div class="qdz-check">
+          {% for c in checklist %}<div><span class="ck {{ 'ok' if c.ok else ('warn' if c.soft else 'bad') }}" style="font-weight:700;color:{{ '#067647' if c.ok else ('#B54708' if c.soft else '#B42318') }}">{{ '✓' if c.ok else '!' }}</span>
+            <span>{{ c.text }}{% if not c.ok and c.fix %} <span class="qt-small">· {{ c.fix }}</span>{% endif %}</span></div>{% endfor %}
+        </div>
+      </div>
+
+      <div class="qt-card">
+        <h2>Logo</h2>
+        <div class="qdz-logo">
+          {% if s.has_logo %}<img src="{{ url_for('portal.quotes_design_logo') }}?v={{ s.get('updated_at', '') }}" alt="Your logo">{% else %}<span class="qt-small">No logo: your initials show instead.</span>{% endif %}
+          {% if can_edit %}
+          <form method="post" action="{{ url_for('portal.quotes_design_logo') }}" enctype="multipart/form-data" class="qt-btns" style="margin:0;align-items:center">
+            <input type="file" name="logo" accept="image/png,image/jpeg,image/webp" aria-label="Logo file" style="width:auto;min-height:0;font-size:12.5px">
+            <button class="qt-btn sm">Upload</button>
+          </form>
+          {% if s.has_logo %}
+          <form method="post" action="{{ url_for('portal.quotes_design_logo') }}" style="margin:0"><input type="hidden" name="action" value="colour"><button class="qt-btn sm">Take colour from logo</button></form>
+          <form method="post" action="{{ url_for('portal.quotes_design_logo') }}" style="margin:0"><input type="hidden" name="action" value="remove"><button class="qt-btn sm bad">Remove</button></form>
+          {% endif %}
+          {% endif %}
+        </div>
+        <div class="qt-small">PNG or JPG, up to 3 MB. {% if not s.saved and s.has_logo %}Your Brand Kit logo is used until you upload another.{% endif %}</div>
+      </div>
+
+      <form method="post" id="qdForm" class="qt" style="gap:12px">
+        <fieldset {% if not can_edit %}disabled{% endif %} style="border:0;padding:0;margin:0;display:grid;gap:12px">
+        <div class="qt-card">
+          <h2>Look</h2>
+          <div class="qdz-row"><span>Template</span><div class="qdz-chips">
+            {% for k, w in qd.TEMPLATES %}<label><input type="radio" name="template" value="{{ k }}" {% if s.template == k %}checked{% endif %}>{{ w }}</label>{% endfor %}</div></div>
+          <div class="qt-small">Summary first puts the total and dates at the top. Traditional puts the total at the end, with a signature block.</div>
+          <div class="qdz-row"><span>Header</span><div class="qdz-chips">
+            {% for k, w in qd.HEADERS %}<label><input type="radio" name="header" value="{{ k }}" {% if s.header == k %}checked{% endif %}>{{ w }}</label>{% endfor %}</div></div>
+          <div class="qdz-row"><span>Brand colour</span><div class="qdz-colour"><input type="color" name="colour" value="{{ s.colour }}" aria-label="Brand colour"><span class="qt-small">{{ s.colour }}</span></div></div>
+        </div>
+
+        <div class="qt-card">
+          <h2>Your details</h2>
+          <div class="qt-small">Name, address, VAT and company number come from <a href="{{ url_for('portal.settings') }}#business">Settings › Business details</a>{% if prof.name %}: <b>{{ prof.name }}</b>{% endif %}. Switch off anything you don't want shown.</div>
+          <div class="qt-f">
+            <label>Email on quotations <input type="email" name="email" value="{{ s.email }}" maxlength="160"></label>
+            <label>Phone <input name="phone" value="{{ s.phone }}" maxlength="40" placeholder="+44 161 000 0000"></label>
+            <label class="wide">Website <input name="website" value="{{ s.website }}" maxlength="160"></label>
+          </div>
+          {% for k, w in [('address', 'Address' ~ (': ' ~ prof.address if prof.address else ' (not in your profile yet)')), ('email', 'Email'), ('phone', 'Phone'), ('website', 'Website'),
+                          ('vat', 'VAT number' ~ (': ' ~ prof.vat if prof.vat else ' (not in your profile)')), ('company_no', 'Company number' ~ (': ' ~ prof.company_no if prof.company_no else ' (not in your profile)'))] %}
+          <label class="qdz-sw"><span>{{ w }}</span><input type="checkbox" name="show_{{ k }}" value="1" {% if s.show[k] %}checked{% endif %}></label>
+          {% endfor %}
+        </div>
+
+        <div class="qt-card">
+          <h2>Numbers and dates</h2>
+          <div class="qt-f">
+            <label>Starts with <input name="prefix" value="{{ s.prefix }}" maxlength="8" pattern="[A-Za-z0-9-]{1,8}"></label>
+            <label>Next number <input type="number" name="next_number" value="{{ s.next_number }}" min="1"></label>
+            <label class="wide">Format
+              <select name="number_format">{% for k, w in qd.NUMBER_FORMATS %}<option value="{{ k }}" {% if s.number_format == k %}selected{% endif %}>{{ qd.number_text(dict(s, number_format=k), s.next_number) }}</option>{% endfor %}</select></label>
+            <label class="wide">Valid for (days) <input type="number" name="valid_days" value="{{ s.valid_days }}" min="1" max="365"></label>
+          </div>
+          <div class="qt-small">Numbers are never reused. A changed quotation keeps its number with v2, v3.</div>
+        </div>
+
+        <div class="qt-card">
+          <h2>What the table shows</h2>
+          {% for k, w in [('code', 'Product code'), ('unit', 'Unit (cases, packs…)'), ('discount', 'Discount')] %}
+          <label class="qdz-sw"><span>{{ w }}</span><input type="checkbox" name="col_{{ k }}" value="1" {% if s.columns[k] %}checked{% endif %}></label>
+          {% endfor %}
+        </div>
+
+        <div class="qt-card">
+          <h2>Your words</h2>
+          <div class="qt-f">
+            <label class="wide">Title <input name="title" value="{{ s.title }}" maxlength="30"></label>
+            <label class="wide">Opening line <input name="opening" value="{{ s.opening }}" maxlength="300"></label>
+            <label class="wide">Payment terms <input name="payment_terms" value="{{ s.payment_terms }}" maxlength="300" placeholder="30% with order, balance before dispatch"></label>
+            <label class="wide">Deposit asked with the order (%) <input type="number" name="deposit_pct" value="{{ s.deposit_pct }}" min="0" max="100"></label>
+            <label class="wide">Bank details <textarea name="bank_details" rows="4" maxlength="600" placeholder="Bank, sort code, account number, IBAN, BIC">{{ s.bank_details }}</textarea></label>
+            <label class="wide">Terms of sale (printed on page 2) <textarea name="terms" rows="5" maxlength="12000">{{ s.terms }}</textarea></label>
+            <label class="wide">Footer <input name="footer" value="{{ s.footer }}" maxlength="300" placeholder="Registered in England No. …"></label>
+          </div>
+          <div class="qt-small">Quotations are always in English. Covering messages and follow-ups go in the buyer's language.</div>
+        </div>
+        </fieldset>
+        {% if can_edit %}
+        <div class="qdz-save"><span class="qt-small" id="qdState">The preview updates as you type.</span><button class="qt-btn dark">Save design</button></div>
+        {% else %}<div class="qt-small">Only people who can see all leads can change the quotation design.</div>{% endif %}
+      </form>
+    </div>
+
+    <div class="qdz-prev">
+      <span class="qt-lbl">Live preview · example with your products</span>
+      <iframe id="qdPreview" title="Quotation preview" sandbox="allow-same-origin" srcdoc="{{ preview_html|e }}"></iframe>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var form = document.getElementById('qdForm'), frame = document.getElementById('qdPreview'), state = document.getElementById('qdState');
+  if (!form) { return; }
+  var timer = null, dirty = false;
+  function refresh() {
+    fetch({{ url_for('portal.quotes_design_preview')|tojson }}, { method: 'POST', body: new FormData(form), credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (h) { if (h) { var y = frame.contentWindow ? frame.contentWindow.scrollY : 0; frame.srcdoc = h; frame.onload = function () { try { frame.contentWindow.scrollTo(0, y); } catch (e) {} }; } })
+      .catch(function () {});
+  }
+  form.addEventListener('input', function (e) {
+    dirty = true; if (state) { state.textContent = 'Not saved yet.'; }
+    if (e.target.name === 'colour') { e.target.nextElementSibling.textContent = e.target.value.toUpperCase(); }
+    clearTimeout(timer); timer = setTimeout(refresh, 350);
+  });
+  form.addEventListener('submit', function () { dirty = false; });
+  window.addEventListener('beforeunload', function (e) { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+})();
+</script>
+{% endblock %}

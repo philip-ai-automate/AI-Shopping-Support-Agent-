@@ -54,6 +54,9 @@ def create_app():
     # Quotations › Requests (2026-10-30): "did you send it?" alerts when a request's time is up.
     import quote_requests
     quote_requests.start()
+    # Website "Add to quote" + quote list (2026-10-31, Quotations Phase 4): public, own checks.
+    from quote_public import quote_public_bp
+    flask_app.register_blueprint(quote_public_bp)
     flask_app.register_blueprint(bookings_bp)
     from accounts_routes import accounts_bp
     flask_app.register_blueprint(accounts_bp)

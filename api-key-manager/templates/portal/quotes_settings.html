@@ -10,6 +10,28 @@
   <form method="post" class="qt" style="gap:14px">
     <fieldset {% if not can_edit %}disabled{% endif %} style="border:0;padding:0;margin:0;display:grid;gap:14px">
     <div class="qt-card">
+      <h2>How do you make quotations?</h2>
+      <label style="display:flex;gap:10px;align-items:flex-start;font-size:13.5px">
+        <input type="radio" name="maker" value="own" {% if s.maker != 'phixtra' %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:2px 0 0">
+        <span><b>In our own software</b> (Xero, QuickBooks, Sage, Excel…). Requests give you Copy lines and Download Excel; you send the quotation and click Quote sent.</span></label>
+      <label style="display:flex;gap:10px;align-items:flex-start;font-size:13.5px">
+        <input type="radio" name="maker" value="phixtra" {% if s.maker == 'phixtra' %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:2px 0 0">
+        <span><b>In PhiXtra.</b> PhiXtra makes the quotation from the request in your own design, makes the PDF and sends it.
+          Set it up in <a href="{{ url_for('portal.quotes_design') }}">Quotation design</a>.</span></label>
+    </div>
+    <div class="qt-card">
+      <h2>"Add to quote" on your website</h2>
+      <label style="display:flex;gap:10px;align-items:center;font-size:13.5px">
+        <input type="checkbox" name="website_on" value="1" {% if s.website_on %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:0">
+        Show "Add to quote" and a quote list on my website</label>
+      <div class="qt-f"><label class="wide">What buyers see before your quotation
+        <select name="website_prices">{% for k, w in qr.WEBSITE_PRICES %}<option value="{{ k }}" {% if s.website_prices == k %}selected{% endif %}>{{ w }}</option>{% endfor %}</select></label></div>
+      <div class="qt-small" style="color:var(--ink)"><b>WordPress / WooCommerce:</b> the PhiXtra plugin adds an "Add to quote" button on every product page.
+        <b>Any other website:</b> the PhiXtra chat button gets a "Request a quote" option. Buyers send their list with their name and email; no account needed.
+        An estimate is always called an estimate: your quotation is the only price that counts.
+        After you switch it on or off, a WordPress shop shows the change within 10 minutes.</div>
+    </div>
+    <div class="qt-card">
       <h2>How fast you send quotations</h2>
       <div class="qt-f">
         <label class="wide">Send each quotation within

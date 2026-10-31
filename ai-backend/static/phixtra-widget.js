@@ -24,6 +24,8 @@
   var GREET = script.getAttribute("data-greeting") || "";
   var SUGG = []; try { SUGG = JSON.parse(script.getAttribute("data-suggestions") || "[]") || []; } catch (e) { SUGG = []; }
   var BASE = (script.src || "").replace(/\/widget\.js.*$/, "");
+  // Quote list (2026-10-31, PhiXtra Quotations): the portal takes website quote requests.
+  var PORTAL = script.getAttribute("data-portal") || "https://portal.phixtra.com";
   if (!SITE || !BASE) { return; }
 
   function store(k, v) { try { if (v === undefined) { return localStorage.getItem(k); } localStorage.setItem(k, v); } catch (e) { return null; } }
@@ -104,7 +106,30 @@
       "@media (max-width:480px){.panel{position:fixed;right:8px;left:8px;bottom:86px;width:auto;height:calc(100vh - 110px)}}",
       ".sugg{display:flex;flex-direction:column;align-items:flex-start;gap:7px}",
       ".sugg button{border:1px solid #C3CEDF;background:#fff;color:#0B1D40;border-radius:999px;padding:8px 12px;font-size:13.5px;font-weight:600;cursor:pointer;text-align:left;max-width:100%}",
-      ".sugg button:hover{border-color:" + color + "}"
+      ".sugg button:hover{border-color:" + color + "}",
+      /* quote list (2026-10-31) */
+      ".qbar{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 14px;background:#fff;border-bottom:1px solid #D9E1EE}",
+      ".qbar[hidden]{display:none}",
+      ".qbar button{border:1.5px solid " + color + ";background:#fff;color:" + color + ";border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer}",
+      ".qbar span{font-size:12px;color:#4A5B78}",
+      ".qv{flex:1;overflow-y:auto;padding:12px 14px;background:#fff;display:flex;flex-direction:column;gap:10px;font-size:13.5px;color:#111E2D}",
+      ".qv[hidden],.msgs[hidden],.bar[hidden]{display:none}",
+      ".qv input,.qv textarea{width:100%;border:1px solid #C3CEDF;border-radius:8px;padding:8px 10px;font-size:14px;color:#111E2D}",
+      ".qv label{display:flex;flex-direction:column;gap:3px;font-size:12.5px;font-weight:600}",
+      ".qres{display:flex;flex-direction:column;gap:6px}",
+      ".qres button,.qrow{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid #D9E1EE;background:#F8FAFD;border-radius:10px;padding:8px 10px;font-size:13px;text-align:left;cursor:pointer;color:#111E2D}",
+      ".qrow{cursor:default;background:#fff}",
+      ".qres button span:last-child{white-space:nowrap;font-weight:700;color:" + color + "}",
+      ".qrow input{width:70px;padding:5px 6px}",
+      ".qrow .rm{border:0;background:none;color:#B42318;font-size:12px;text-decoration:underline;cursor:pointer;padding:0}",
+      ".qest{display:flex;justify-content:space-between;background:#F4F6FA;border-radius:8px;padding:8px 10px;font-size:12.5px}",
+      ".qest b{font-size:15px}",
+      ".qgo{height:42px;border:0;border-radius:10px;background:" + color + ";color:#fff;font-weight:700;font-size:14px;cursor:pointer}",
+      ".qgo:disabled{opacity:.6}",
+      ".qerr{color:#B42318;font-size:13px;margin:0}",
+      ".qok{background:#E6F4EC;color:#067647;border-radius:10px;padding:12px;font-weight:600;margin:0}",
+      ".qhp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}",
+      ".qmuted{color:#4A5B78;font-size:12.5px;margin:0}"
     ].join("") + (PAGE ? ":host{display:block;width:100%;height:100%}.btn,.x{display:none!important}" +
       ".panel{position:absolute;inset:0;width:auto;max-width:none;height:auto;max-height:none;border-radius:0;box-shadow:none}" +
       "@media (min-width:700px){.panel{left:50%;right:auto;width:520px;transform:translateX(-50%);top:20px;bottom:20px;border-radius:18px;box-shadow:0 20px 60px rgba(11,29,64,.18)}}" +
@@ -131,6 +156,7 @@
     var foot = el("div", "foot"); foot.textContent = "Powered by PhiXtra AI";
     panel.appendChild(top); panel.appendChild(msgs); panel.appendChild(bar); panel.appendChild(foot);
     root.appendChild(panel); root.appendChild(btn);
+    setupQuote(panel, top, msgs, bar);
 
     var greeted = false;
     function open() { panel.hidden = false; badge.hidden = true; if (!greeted) { greeted = true; addMsg(GREET || cfg.greeting || "Hello! How can I help you today?", "ai"); showSugg(); } msgs.scrollTop = msgs.scrollHeight; setTimeout(function () { input.focus(); }, 50); }
@@ -323,5 +349,105 @@
     }
     bar.addEventListener("submit", function (e) { e.preventDefault(); sendText(input.value); });
     if (PAGE) { open(); }
+
+    // ── Request a quote (2026-10-31): a quote list inside the chat box, when
+    // the business has switched it on in PhiXtra (Quotations › Quotation settings).
+    function setupQuote(panel, top, msgs, bar) {
+      fetch(PORTAL + "/public/quote/config?site=" + encodeURIComponent(SITE))
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (q) { if (q && q.enabled) { buildQuote(q); } })
+        .catch(function () {});
+      function buildQuote(q) {
+        var QKEY = "phixtra_w_quote_" + SITE, list = [];
+        try { list = JSON.parse(localStorage.getItem(QKEY) || "[]") || []; } catch (e) { list = []; }
+        function keep() { try { localStorage.setItem(QKEY, JSON.stringify(list)); } catch (e) { /* private mode */ } }
+        var showPrices = q.prices === "list_estimate", showEst = q.prices !== "none";
+        function money(v) { return (q.prefix || "") + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+        var qbar = el("div", "qbar");
+        var qb = el("button"); qb.type = "button"; qbar.appendChild(el("span")).textContent = "Need prices for several products?"; qbar.appendChild(qb);
+        var qv = el("div", "qv"); qv.hidden = true;
+        panel.insertBefore(qbar, msgs); panel.insertBefore(qv, msgs);
+        var sent = null, inQuote = false;
+        function label() { qb.textContent = inQuote ? "\u2190 Back to chat" : "Request a quote" + (list.length ? " (" + list.length + ")" : ""); }
+        label();
+        qb.addEventListener("click", function () { inQuote = !inQuote; qv.hidden = !inQuote; msgs.hidden = inQuote; bar.hidden = inQuote; label(); if (inQuote) { draw(); } });
+        function txt(tag, cls, t) { var e = el(tag, cls); e.textContent = t; return e; }
+        function draw() {
+          qv.innerHTML = "";
+          if (sent) {
+            qv.appendChild(txt("p", "qok", sent));
+            var b = txt("button", "qgo", "Back to chat"); b.type = "button";
+            b.addEventListener("click", function () { sent = null; qb.click(); }); qv.appendChild(b); return;
+          }
+          var sl = el("label"); sl.appendChild(document.createTextNode("Find a product"));
+          var s = el("input"); s.type = "search"; s.placeholder = "e.g. paper cups"; s.maxLength = 80; sl.appendChild(s); qv.appendChild(sl);
+          var res = el("div", "qres"); qv.appendChild(res);
+          var timer = null;
+          function search() {
+            fetch(PORTAL + "/public/quote/products?site=" + encodeURIComponent(SITE) + "&q=" + encodeURIComponent(s.value.trim()))
+              .then(function (r) { return r.ok ? r.json() : { items: [] }; })
+              .then(function (j) {
+                res.innerHTML = "";
+                (j.items || []).slice(0, 8).forEach(function (p) {
+                  var b = el("button"); b.type = "button";
+                  b.appendChild(txt("span", "", p.name));
+                  b.appendChild(txt("span", "", (showPrices && p.price !== null ? money(p.price) + " \u00b7 " : "") + "+ Add"));
+                  b.addEventListener("click", function () {
+                    var f = list.filter(function (l) { return l.id === p.id; })[0];
+                    if (f) { f.qty += 1; } else { list.push({ id: p.id, name: p.name, qty: 1, price: p.price }); }
+                    keep(); label(); draw();
+                  });
+                  res.appendChild(b);
+                });
+              }).catch(function () {});
+          }
+          s.addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(function () { if (s.value.trim() || !list.length) { search(); } else { res.innerHTML = ""; } }, 250); });
+          if (!list.length) { search(); }   // a first look at the products; once the list has some, results come from searching
+          if (!list.length) { qv.appendChild(txt("p", "qmuted", "Add the products you need, then send one request.")); return; }
+          qv.appendChild(txt("b", "", "Your quote list"));
+          var total = 0, priced = false;
+          list.forEach(function (l, i) {
+            var row = el("div", "qrow"); row.appendChild(txt("span", "", l.name));
+            var right = el("span");
+            var n = el("input"); n.type = "number"; n.min = "1"; n.step = "any"; n.value = l.qty; n.setAttribute("aria-label", "Quantity of " + l.name);
+            n.addEventListener("change", function () { l.qty = Math.max(1, parseFloat(n.value) || 1); keep(); draw(); });
+            var rm = txt("button", "rm", "Remove"); rm.type = "button";
+            rm.addEventListener("click", function () { list.splice(i, 1); keep(); label(); draw(); });
+            right.appendChild(n); right.appendChild(rm); row.appendChild(right); qv.appendChild(row);
+            if (l.price !== null && l.price !== undefined) { total += l.price * l.qty; priced = true; }
+          });
+          if (showEst && priced) {
+            var est = el("div", "qest"); est.appendChild(txt("span", "", "Estimate at list prices, before delivery and tax")); est.appendChild(txt("b", "", money(total))); qv.appendChild(est);
+          } else { qv.appendChild(txt("p", "qmuted", "Prices come in your quotation.")); }
+          var f = el("form"); f.noValidate = true; f.style.cssText = "display:flex;flex-direction:column;gap:8px";
+          [["company", "Company", "text"], ["name", "Your name", "text"], ["email", "Work email", "email"], ["phone", "Phone or WhatsApp (optional)", "tel"],
+           ["deliver_to", "Deliver to (city, country)", "text"]].forEach(function (d) {
+            var lb = el("label"); lb.appendChild(document.createTextNode(d[1])); var inp = el("input"); inp.name = d[0]; inp.type = d[2]; lb.appendChild(inp); f.appendChild(lb);
+          });
+          var nl = el("label"); nl.appendChild(document.createTextNode("Notes (any language)")); var ta = el("textarea"); ta.name = "notes"; ta.rows = 2; nl.appendChild(ta); f.appendChild(nl);
+          var hp = el("input"); hp.name = "website"; hp.className = "qhp"; hp.tabIndex = -1; hp.setAttribute("aria-hidden", "true"); f.appendChild(hp);
+          var err = el("p", "qerr"); err.setAttribute("role", "alert"); f.appendChild(err);
+          var go = txt("button", "qgo", "Send quote request"); go.type = "submit"; f.appendChild(go);
+          f.addEventListener("submit", function (e) {
+            e.preventDefault();
+            var v = function (k) { return (f.elements[k].value || "").trim(); };
+            if (!v("name") && !v("company")) { err.textContent = "Please add your name or company."; return; }
+            if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v("email"))) { err.textContent = "Please add a valid email so we can send your quotation."; return; }
+            err.textContent = ""; go.disabled = true; go.textContent = "Sending\u2026";
+            fetch(PORTAL + "/public/quote/submit", { method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ site: SITE, lines: list.map(function (l) { return { product_id: l.id, name: l.name, qty: l.qty }; }),
+                company: v("company"), name: v("name"), email: v("email"), phone: v("phone"), deliver_to: v("deliver_to"),
+                notes: v("notes"), hp: f.elements.website.value, lang: navigator.language || "en", page: location.href }) })
+              .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+              .then(function (x) {
+                if (x.ok && x.j.ok) { sent = x.j.message || "Thank you! Your quote request has been sent."; list = []; keep(); label(); draw(); }
+                else { err.textContent = (x.j && x.j.error) || "Sorry, something went wrong. Please try again."; go.disabled = false; go.textContent = "Send quote request"; }
+              })
+              .catch(function () { err.textContent = "Sorry, we couldn't send it. Please try again."; go.disabled = false; go.textContent = "Send quote request"; });
+          });
+          qv.appendChild(f);
+        }
+      }
+    }
   }
 })();
