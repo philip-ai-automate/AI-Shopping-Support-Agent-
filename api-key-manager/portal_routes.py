@@ -981,7 +981,7 @@ def _cheapest_dual_plan() -> dict | None:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT name, price_ngn, price_usd, price_dollars FROM plans
-            WHERE channel_mode='dual' AND is_active=TRUE AND NOT is_custom
+            WHERE channel_mode='dual' AND is_active=TRUE AND NOT is_custom AND slug NOT LIKE 'b2b%%'
             ORDER BY price_ngn, sort_order LIMIT 1""")
         row = cur.fetchone()
         cur.close(); conn.close()
@@ -1234,7 +1234,7 @@ def _min_plan_for_feature(feature_key: str, merchant_mode: str = "whatsapp") -> 
         cur.execute(f"""
             SELECT name FROM plans
             WHERE channel_mode IN (%s, 'dual', CASE WHEN %s = 'whatsapp' THEN 'single' END)
-              AND is_active=TRUE AND {col}=TRUE
+              AND is_active=TRUE AND {col}=TRUE AND slug NOT LIKE 'b2b%%'
             ORDER BY (channel_mode = 'dual'), sort_order LIMIT 1
         """, (merchant_mode, merchant_mode))
     else:
@@ -1242,7 +1242,7 @@ def _min_plan_for_feature(feature_key: str, merchant_mode: str = "whatsapp") -> 
             SELECT p.name FROM plans p
             JOIN plan_feature_grants g ON g.plan_id = p.id AND g.feature_key=%s
             WHERE p.channel_mode IN (%s, 'dual', CASE WHEN %s = 'whatsapp' THEN 'single' END)
-              AND p.is_active=TRUE
+              AND p.is_active=TRUE AND p.slug NOT LIKE 'b2b%%'
             ORDER BY (p.channel_mode = 'dual'), p.sort_order LIMIT 1
         """, (feature_key, merchant_mode, merchant_mode))
     row = cur.fetchone()
@@ -1280,7 +1280,7 @@ def _require_plan_sub_feature(customer: dict, feature_key: str, feature_label: s
         ai_trial_available=plan.get("ai_trial_available", False),
         ai_trial_used=plan.get("ai_trial_used", False),
         free_plan_name=plan.get("free_plan_name", "PhiXtra Connect"),
-        trial_plan_name=plan.get("trial_plan_name", "Enterprise"),
+        trial_plan_name=plan.get("trial_plan_name", "Retail Scale"),
         ai_customers_words=plan.get("ai_customers_words", "your WhatsApp customers"),
     )
 
@@ -1348,6 +1348,38 @@ def _get_staff_limit(tenant_id: int) -> int:
         return int(row.get("staff_limit") or 0)
     except Exception:
         return 0
+
+
+def _wa_number_limit(tenant_id: int) -> int:
+    """WhatsApp numbers a business may connect (2 Nov 2026, user decision):
+    the same as its plan's team logins (plans.staff_limit), at least 1."""
+    return max(1, _get_staff_limit(tenant_id))
+
+
+def _wa_number_limit_message(tenant_id: int, phone_number_id: str):
+    """None when this number may be connected; otherwise the polite message.
+    A number the business already has (re-connect / edit) never counts."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""SELECT COUNT(*) FILTER (WHERE active),
+                              COUNT(*) FILTER (WHERE phone_number_id = %s)
+                       FROM wa_tenants WHERE tenant_id = %s""",
+                    (phone_number_id, tenant_id))
+        active_count, already = cur.fetchone()
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _wa_number_limit_message error:", e)
+        return None
+    if already:
+        return None
+    limit = _wa_number_limit(tenant_id)
+    if active_count < limit:
+        return None
+    word = "number" if limit == 1 else "numbers"
+    return (f"Your plan includes {limit} WhatsApp {word}, the same as your team logins, "
+            f"and {active_count} {'is' if active_count == 1 else 'are'} already connected. "
+            "To add another number, you can move to a bigger plan in Settings › Billing.")
 
 
 def _get_team_members(tenant_id: int, active_only: bool = False) -> list:
@@ -2558,8 +2590,8 @@ WA_AI_TRIAL_DAYS = 14
 # NEW_WEBSITE_SIGNUP=1 switches website sign-ups onto it (off until go-live).
 AI_OFF_FREE_PLAN_SLUGS = ("connect", "web_free")
 NEW_WEBSITE_SIGNUP = os.getenv("NEW_WEBSITE_SIGNUP", "0") == "1"
-TRIAL_PLAN_NAMES = {"pro": "Enterprise", "web_enterprise": "Enterprise — Website",
-                    "enterprise_dual": "Enterprise — Dual Agent", "b2b": "AI Sales Agent for B2B"}
+TRIAL_PLAN_NAMES = {"pro": "Retail Scale · WhatsApp", "web_enterprise": "Retail Scale · Website",
+                    "enterprise_dual": "Retail Scale · Website + WhatsApp", "b2b": "B2B Growth"}
 
 # AI Sales Agent for B2B (2026-10-29): a business that signed up from the B2B
 # sign-up has company_profiles.is_b2b; its 2-week trial runs on the 'b2b'
@@ -3600,6 +3632,7 @@ def wp_connect():
             domain = site_url.replace("https://", "").replace("http://", "").rstrip("/").split("/")[0]
         return render_template(
             "portal/wp_connect.html",
+            b2b_sells_options=B2B_SELLS_OPTIONS, selling_currencies=_selling_currency.currencies(),
             domain=domain[:255],
             email=admin_email[:255],
         )
@@ -3617,7 +3650,7 @@ def wp_connect():
     recaptcha_response = request.form.get("g-recaptcha-response", "")
     if not recaptcha_response:
         flash("Please tick \"I'm not a robot\" before creating your account.", "danger")
-        return render_template("portal/wp_connect.html", domain=(request.form.get("tenant_domain") or "").strip(),
+        return render_template("portal/wp_connect.html", b2b_sells_options=B2B_SELLS_OPTIONS, selling_currencies=_selling_currency.currencies(), domain=(request.form.get("tenant_domain") or "").strip(),
                                email=(request.form.get("email") or "").strip(), form_data=request.form)
     try:
         rv = _req.post("https://www.google.com/recaptcha/api/siteverify",
@@ -3638,33 +3671,64 @@ def wp_connect():
 
     if not first_name or not last_name or not email or not password:
         flash("First name, last name, email, and password are all required.", "danger")
-        return render_template("portal/wp_connect.html", domain=tenant_domain, email=email,
+        return render_template("portal/wp_connect.html", b2b_sells_options=B2B_SELLS_OPTIONS, selling_currencies=_selling_currency.currencies(), domain=tenant_domain, email=email,
                                form_data=request.form)
 
     if _password_problem(password):
         flash(_password_problem(password), "danger")
-        return render_template("portal/wp_connect.html", domain=tenant_domain, email=email,
+        return render_template("portal/wp_connect.html", b2b_sells_options=B2B_SELLS_OPTIONS, selling_currencies=_selling_currency.currencies(), domain=tenant_domain, email=email,
                                form_data=request.form)
 
     phone_country = (request.form.get("phone_country") or "").strip().upper()
     phone_number, _perr = _phone_from_form(phone_number, phone_country)
     if _perr:
         flash(_perr, "danger")
-        return render_template("portal/wp_connect.html", domain=tenant_domain, email=email,
+        return render_template("portal/wp_connect.html", b2b_sells_options=B2B_SELLS_OPTIONS, selling_currencies=_selling_currency.currencies(), domain=tenant_domain, email=email,
+                               form_data=request.form)
+
+    # Currency the business sells / quotes in (2026-10-31): ₦, $ or £ only for now.
+    selling_currency = (request.form.get("selling_currency") or "").strip().upper()
+    if selling_currency not in _selling_currency.currency_codes():
+        flash("Please choose the currency you sell in.", "danger")
+        return render_template("portal/wp_connect.html", b2b_sells_options=B2B_SELLS_OPTIONS, selling_currencies=_selling_currency.currencies(), domain=tenant_domain, email=email,
                                form_data=request.form)
 
     if not tenant_domain:
         flash("Store domain is required.", "danger")
-        return render_template("portal/wp_connect.html", domain=tenant_domain, email=email,
+        return render_template("portal/wp_connect.html", b2b_sells_options=B2B_SELLS_OPTIONS, selling_currencies=_selling_currency.currencies(), domain=tenant_domain, email=email,
                                form_data=request.form)
 
-    return _hold_signup("web", "wp_connect", dict(
+    # Business type Retail / B2B (2026-10-31): B2B businesses
+    # businesses give their company details, like the B2B sign-up on /register,
+    # and get the B2B trial (company_profiles.is_b2b). The public = as before.
+    signup_args = dict(
         first_name=first_name, last_name=last_name, email=email,
         phone_number=phone_number, tenant_domain=tenant_domain,
         hear_about_us="wordpress_plugin", business_country=phone_country,
         signup_channel="website" if NEW_WEBSITE_SIGNUP else None,
-        website_platform="wordpress",
-    ), password, lambda: render_template("portal/wp_connect.html", domain=tenant_domain, email=email,
+        website_platform="wordpress", selling_currency=selling_currency,
+    )
+    if (request.form.get("sell_to") or "").strip().lower() == "b2b":
+        g = lambda k, n=200: (request.form.get(k) or "").strip()[:n]
+        company = dict(registered_name=g("business_name"), trading_name=g("trading_name"),
+                       reg_country=g("business_based", 2).upper(), reg_number=g("reg_number", 60),
+                       vat_number=g("vat_number", 60), address_line1=g("address_line1", 255),
+                       city=g("city", 120), postcode=g("postcode", 30), sells=g("sells", 60),
+                       job_title=g("job_title", 120))
+        problem = None
+        if not company["registered_name"]:
+            problem = "Registered company name is required."
+        elif company["reg_country"] not in _pn.SUPPORTED_REGIONS:
+            problem = "Please choose your country of registration."
+        elif not company["address_line1"] or not company["city"]:
+            problem = "Please enter your business address and town or city."
+        if problem:
+            flash(problem, "danger")
+            return render_template("portal/wp_connect.html", b2b_sells_options=B2B_SELLS_OPTIONS, selling_currencies=_selling_currency.currencies(),
+                                   domain=tenant_domain, email=email, form_data=request.form)
+        signup_args.update(business_country=company["reg_country"], signup_channel="both",
+                           business_name=company["registered_name"], company=company)
+    return _hold_signup("web", "wp_connect", signup_args, password, lambda: render_template("portal/wp_connect.html", b2b_sells_options=B2B_SELLS_OPTIONS, selling_currencies=_selling_currency.currencies(), domain=tenant_domain, email=email,
                                          form_data=request.form))
 
 
@@ -12515,12 +12579,13 @@ def _dashboard_plan_flags(tenant_id: int, plan_info) -> tuple:
         plan = plan_info or {}
         plan_id = int(plan.get("plan_id") or 0)
         conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT id, channel_mode, price_ngn, is_custom FROM plans WHERE id=%s", (plan_id,))
+        cur.execute("SELECT id, slug, channel_mode, price_ngn, is_custom FROM plans WHERE id=%s", (plan_id,))
         row = cur.fetchone()
         if row and not row["is_custom"] and float(row["price_ngn"] or 0) > 0:
             cur.execute("""SELECT MAX(price_ngn) AS top FROM plans
-                           WHERE is_active AND NOT COALESCE(is_custom, FALSE) AND channel_mode = %s""",
-                        (row["channel_mode"],))
+                           WHERE is_active AND NOT COALESCE(is_custom, FALSE) AND channel_mode = %s
+                             AND (slug LIKE 'b2b%%') = %s""",
+                        (row["channel_mode"], str(row["slug"] or "").startswith("b2b")))
             top = float(row["price_ngn"] or 0) >= float((cur.fetchone() or {}).get("top") or 0)
         website_plan = bool(row) and (row["channel_mode"] or "") in ("dual", "both", "woocommerce")
         cur.execute("SELECT 1 FROM website_sources WHERE tenant_id=%s", (tenant_id,))
@@ -15801,6 +15866,12 @@ def whatsapp_save_connection():
         flash("No active PhiXtra API key found for your account. Please contact support.", "danger")
         return redirect(url_for("portal.whatsapp_connect"))
 
+    if not existing:
+        _lim_msg = _wa_number_limit_message(tenant_id, phone_number_id)
+        if _lim_msg:
+            flash(_lim_msg, "warning")
+            return redirect(url_for("portal.whatsapp_connect"))
+
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
@@ -16555,6 +16626,9 @@ def whatsapp_embedded_callback():
 
     if len(phones) == 1:
         pn = phones[0]
+        _lim_msg = _wa_number_limit_message(tenant_id, pn["phone_number_id"])
+        if _lim_msg:
+            return jsonify({"error": _lim_msg}), 400
         # Auto-register webhook and save immediately (single phone — no selection needed)
         _auto_register_webhook(pn["waba_id"], token)
         saved = _save_wa_embedded_connection(
@@ -16615,6 +16689,11 @@ def whatsapp_embedded_complete():
         return redirect(url_for("portal.whatsapp_connect"))
 
     token_expires_at = datetime.fromisoformat(expires_str) if expires_str else None
+
+    _lim_msg = _wa_number_limit_message(tenant_id, phone_number_id)
+    if _lim_msg:
+        flash(_lim_msg, "warning")
+        return redirect(url_for("portal.whatsapp_connect"))
 
     _auto_register_webhook(waba_id, token)
     saved = _save_wa_embedded_connection(
@@ -35204,7 +35283,29 @@ def _plan_mode(plan) -> str:
     return "whatsapp" if mode == "single" else mode
 
 
-def _plan_visible_to(plan, merchant_mode: str) -> bool:
+def _is_b2b_plan(plan) -> bool:
+    """B2B Starter / Growth / Scale (2026-10-31): slugs start with "b2b"."""
+    return str((plan or {}).get("slug") or "").startswith("b2b")
+
+
+def _tenant_is_b2b(tenant_id) -> bool:
+    """A business that signed up for the AI Sales Agent for B2B. Never raises."""
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("SELECT is_b2b FROM company_profiles WHERE tenant_id=%s", (int(tenant_id),))
+        row = cur.fetchone(); cur.close(); conn.close()
+        return bool(row and row[0])
+    except Exception:
+        return False
+
+
+def _plan_visible_to(plan, merchant_mode: str, is_b2b: bool = False) -> bool:
+    # B2B plans are only for B2B businesses, and B2B businesses buy B2B plans
+    # (plus the free plan / Custom for everyone).
+    if _is_b2b_plan(plan):
+        return is_b2b
+    if is_b2b:
+        return _plan_mode(plan) == "both"
     return _plan_mode(plan) in (merchant_mode, "dual", "both")
 
 
@@ -35240,8 +35341,14 @@ def billing_plans():
     # Since 2026-09-23 "their own channel" is the one they signed up for:
     # a WhatsApp merchant never sees WooCommerce-only plans and vice versa.
     merchant_mode = _merchant_plan_mode(customer)
-    single_plans = [p for p in plans if _plan_mode(p) == merchant_mode]
-    dual_plans   = [p for p in plans if _plan_mode(p) == "dual"]
+    is_b2b = _tenant_is_b2b(tenant_id)
+    if is_b2b:      # B2B businesses see the three B2B plans (2026-10-31)
+        single_plans = [p for p in plans if _is_b2b_plan(p)]
+        dual_plans   = []
+    else:
+        plans_nb     = [p for p in plans if not _is_b2b_plan(p)]
+        single_plans = [p for p in plans_nb if _plan_mode(p) == merchant_mode]
+        dual_plans   = [p for p in plans_nb if _plan_mode(p) == "dual"]
     has_own_plans = bool(single_plans)
     # A free plan for everyone (PhiXtra Connect, 2026-10-06) leads the
     # merchant's own line-up; other "everyone" plans (Custom) go last.
@@ -35254,12 +35361,14 @@ def billing_plans():
     # dropped to Free afterwards) — shown as "Current plan", never buyable
     # (billing_plan_upgrade still rejects plans not visible to them).
     _cur = next((p for p in plans if p["id"] == current.get("plan_id")), None)
-    if _cur and not _plan_visible_to(_cur, merchant_mode):
+    if _cur and not _plan_visible_to(_cur, merchant_mode, is_b2b) and _cur not in single_plans:
         single_plans = [_cur] + single_plans
 
     # Default the toggle to whichever mode the merchant is currently on.
     default_channel_mode = "dual" if (current.get("channel_mode") == "dual"
                                       or request.args.get("view") == "dual") else "single"
+    if is_b2b:
+        default_channel_mode = "single"
 
     # One currency per business, from its country (2026-10-17). None → the
     # page asks "Where is your business based?" before showing any price.
@@ -35566,7 +35675,7 @@ def billing_plan_upgrade():
     plan = cur.fetchone()
     cur.close(); conn.close()
 
-    if not plan or plan["price_ngn"] == 0 or not _plan_visible_to(plan, _merchant_plan_mode(customer)):
+    if not plan or plan["price_ngn"] == 0 or not _plan_visible_to(plan, _merchant_plan_mode(customer), _tenant_is_b2b(customer["tenant_id"])):
         flash("Invalid plan selected.", "danger")
         return redirect(url_for("portal.billing_plans"))
 

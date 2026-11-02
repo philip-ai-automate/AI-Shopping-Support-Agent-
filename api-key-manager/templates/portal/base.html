@@ -1245,14 +1245,14 @@
         <a href="{{ url_for('portal.ai_instruction_whatsapp') }}"
            class="{% if request.endpoint == 'portal.ai_instruction_whatsapp' %}active{% endif %}">
           WhatsApp AI Instruction
-          {% if 'legacy:feat_advanced_ai' not in granted_features or 'whatsapp' not in _ai_ch %}<span class="sb-lock" title="{{ 'Part of the Dual Agent plan' if 'whatsapp' not in _ai_ch else 'Upgrade to unlock' }}">🔒</span>{% endif %}
+          {% if 'legacy:feat_advanced_ai' not in granted_features or 'whatsapp' not in _ai_ch %}<span class="sb-lock" title="{{ 'Part of the Website + WhatsApp plans' if 'whatsapp' not in _ai_ch else 'Upgrade to unlock' }}">🔒</span>{% endif %}
         </a>
         {% endif %}
         {% if staff_can_open('portal.ai_instruction_website') %}
         <a href="{{ url_for('portal.ai_instruction_website') }}"
            class="{% if request.endpoint == 'portal.ai_instruction_website' %}active{% endif %}">
           Website AI Instruction
-          {% if 'legacy:feat_advanced_ai' not in granted_features or 'web' not in _ai_ch %}<span class="sb-lock" title="{{ 'Part of the Dual Agent plan' if 'web' not in _ai_ch else 'Upgrade to unlock' }}">🔒</span>{% endif %}
+          {% if 'legacy:feat_advanced_ai' not in granted_features or 'web' not in _ai_ch %}<span class="sb-lock" title="{{ 'Part of the Website + WhatsApp plans' if 'web' not in _ai_ch else 'Upgrade to unlock' }}">🔒</span>{% endif %}
         </a>
         {% endif %}
         {% if staff_can_open('portal.handoff_rules') %}
@@ -1299,16 +1299,16 @@
             <a href="{{ url_for('portal.store_info_delete') }}" class="{% if request.endpoint and request.endpoint.startswith('portal.store_info_delete') %}active{% endif %}">Delete</a>
             {% endif %}
             {% if staff_can_open('portal.store_info_website_connect') %}
-            <a href="{{ url_for('portal.store_info_website_connect') }}" class="{% if request.endpoint == 'portal.store_info_website_connect' %}active{% endif %}">Connect Website{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Dual Agent plans">🔒</span>{% endif %}</a>
+            <a href="{{ url_for('portal.store_info_website_connect') }}" class="{% if request.endpoint == 'portal.store_info_website_connect' %}active{% endif %}">Connect Website{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Website + WhatsApp plans">🔒</span>{% endif %}</a>
             {% endif %}
             {% if staff_can_open('portal.store_info_website_chatbox') %}
-            <a href="{{ url_for('portal.store_info_website_chatbox') }}" class="{% if request.endpoint == 'portal.store_info_website_chatbox' %}active{% endif %}">Add Chat Box{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Dual Agent plans">🔒</span>{% endif %}</a>
+            <a href="{{ url_for('portal.store_info_website_chatbox') }}" class="{% if request.endpoint == 'portal.store_info_website_chatbox' %}active{% endif %}">Add Chat Box{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Website + WhatsApp plans">🔒</span>{% endif %}</a>
             {% endif %}
             {% if staff_can_open('portal.store_info_website_sync') %}
-            <a href="{{ url_for('portal.store_info_website_sync') }}" class="{% if request.endpoint == 'portal.store_info_website_sync' %}active{% endif %}">Sync Website{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Dual Agent plans">🔒</span>{% endif %}</a>
+            <a href="{{ url_for('portal.store_info_website_sync') }}" class="{% if request.endpoint == 'portal.store_info_website_sync' %}active{% endif %}">Sync Website{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Website + WhatsApp plans">🔒</span>{% endif %}</a>
             {% endif %}
             {% if staff_can_open('portal.store_info_website_delete') %}
-            <a href="{{ url_for('portal.store_info_website_delete') }}" class="{% if request.endpoint == 'portal.store_info_website_delete' %}active{% endif %}">Delete Website{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Dual Agent plans">🔒</span>{% endif %}</a>
+            <a href="{{ url_for('portal.store_info_website_delete') }}" class="{% if request.endpoint == 'portal.store_info_website_delete' %}active{% endif %}">Delete Website{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Website + WhatsApp plans">🔒</span>{% endif %}</a>
             {% endif %}
           </div>
         </div>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="shopify-api-key" content="{{ api_key }}">
+<script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
+<title>PhiXtra</title>
+<style>
+ *{box-sizing:border-box}
+ body{font-family:-apple-system,BlinkMacSystemFont,"San Francisco","Segoe UI",Roboto,"Helvetica Neue",sans-serif;background:#f1f1f1;margin:0;padding:20px;color:#303030;font-size:14px;line-height:1.5}
+ .wrap{max-width:720px;margin:0 auto}
+ .card{background:#fff;border-radius:12px;padding:20px 22px;box-shadow:0 1px 0 rgba(26,26,26,.07),0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}
+ h1{font-size:20px;margin:0 0 2px;font-weight:650} h2{font-size:16px;margin:0 0 10px;font-weight:650}
+ .sub{color:#616161;margin:0 0 16px}
+ .vals{list-style:none;padding:0;margin:0}
+ .vals li{display:flex;gap:12px;padding:10px 0;border-top:1px solid #ebebeb}
+ .vals li:first-child{border-top:0}
+ .vals .ic{font-size:20px;line-height:1.2;flex:0 0 26px}
+ .vals b{display:block;font-weight:600}
+ .vals span{color:#4a4a4a}
+ .tag{display:inline-block;font-size:11px;font-weight:600;background:#e8f1ff;color:#0b4fb3;border-radius:6px;padding:0 6px;margin-left:4px;vertical-align:1px}
+ label.f{display:block;font-weight:550;margin:14px 0 4px}
+ input[type=text],input[type=email]{width:100%;padding:8px 10px;border:1px solid #8a8a8a;border-radius:8px;font-size:14px}
+ input.code{letter-spacing:6px;font-size:20px;max-width:180px;text-align:center}
+ .row2{display:flex;gap:12px}.row2>div{flex:1}
+ @media(max-width:520px){.row2{flex-direction:column;gap:0}}
+ .choice{display:flex;gap:10px;flex-wrap:wrap}
+ .choice label{display:flex;align-items:center;gap:8px;border:1px solid #c9c9c9;border-radius:8px;padding:9px 14px;cursor:pointer;flex:1;min-width:200px}
+ .choice input{margin:0}
+ .note{color:#616161;font-size:13px;margin:4px 0 0}
+ .ro{background:#f7f7f7;border-radius:8px;padding:9px 12px;margin-top:14px;color:#303030}
+ .btn{display:inline-block;background:#303030;color:#fff;border:0;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:600;cursor:pointer;margin-top:18px}
+ .btn:disabled{opacity:.55;cursor:default}
+ .btn.sec{background:#fff;color:#303030;border:1px solid #c9c9c9;margin-top:0;padding:7px 14px;font-weight:550;white-space:nowrap}
+ .lnk{background:none;border:0;color:#005bd3;cursor:pointer;font-size:14px;padding:0;text-decoration:underline}
+ .err{background:#fee9e8;color:#8e1f0b;border-radius:8px;padding:9px 12px;margin-top:14px;display:none}
+ .legal{color:#616161;font-size:12px;margin-top:12px}
+ .legal a{color:#005bd3}
+ .steps{list-style:none;padding:0;margin:0}
+ .steps li{display:flex;align-items:center;gap:14px;padding:14px 0;border-top:1px solid #ebebeb}
+ .steps li:first-child{border-top:0}
+ .steps .n{flex:0 0 28px;height:28px;border-radius:50%;background:#f1f1f1;display:flex;align-items:center;justify-content:center;font-weight:650}
+ .steps .t{flex:1}.steps .t b{display:block}.steps .t span{color:#616161}
+ .ok{color:#0c5132;font-weight:600}
+ .hide{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+ <div id="s-load" class="card"><p class="sub" style="margin:0">Loading…</p></div>
+
+ <!-- Screen 1: Welcome -->
+ <div id="s-welcome" class="hide">
+  <div class="card">
+   <h1>Welcome to PhiXtra: your AI sales agent</h1>
+   <p class="sub">From first enquiry to confirmed order.</p>
+   <ul class="vals">
+    <li><div class="ic">💬</div><div><b>Every enquiry answered</b><span>On your store chat, WhatsApp and email, in the buyer's own language, day and night, using your Shopify products, prices and stock.</span></div></li>
+    <li><div class="ic">🧾</div><div><b>Quote requests, ready for your salesperson <span class="tag">B2B</span></b><span>When a business buyer asks for a price, your AI agent writes it up as a quote request with the products and quantities. Your salesperson is alerted so the quote goes out fast.</span></div></li>
+    <li><div class="ic">✅</div><div><b>Accepted quotes become Shopify orders <span class="tag">B2B</span></b><span>When the buyer says yes, the order and invoice are created in your Shopify.</span></div></li>
+    <li><div class="ic">🔁</div><div><b>Automatic follow-ups</b><span>Buyers who go quiet hear from you on time, so no sale slips away.</span></div></li>
+    <li><div class="ic">📊</div><div><b>Every sale tracked</b><span>Each enquiry becomes a lead in your sales pipeline, from first message to won order.</span></div></li>
+   </ul>
+  </div>
+
+  <div class="card" id="c-form">
+   <label class="f" style="margin-top:0">Who do you sell to?</label>
+   <div class="choice">
+    <label><input type="radio" name="sell_to" value="retail"> Shoppers (Retail)</label>
+    <label><input type="radio" name="sell_to" value="b2b"> Businesses (B2B)</label>
+   </div>
+   <div class="row2">
+    <div><label class="f" for="first">First name</label><input type="text" id="first" autocomplete="given-name" maxlength="80"></div>
+    <div><label class="f" for="last">Last name</label><input type="text" id="last" autocomplete="family-name" maxlength="80"></div>
+   </div>
+   <div class="ro">Email: <b id="w-email"></b><p class="note">We'll email you a short code to confirm it's you.</p></div>
+   <div class="ro">Store: <b id="w-store"></b> · Currency: <b id="w-cur"></b></div>
+   <div class="err" id="e-form"></div>
+   <button class="btn" id="b-create">Create my PhiXtra account</button>
+   <p style="margin:14px 0 0">Already use PhiXtra? <button class="lnk" id="b-tolink">Link my account</button></p>
+   <p class="legal">By continuing you agree to PhiXtra's <a href="https://phixtra.com/terms-conditions/" target="_blank" rel="noopener">Terms</a> and <a href="https://phixtra.com/privacy-policy/" target="_blank" rel="noopener">Privacy Policy</a>.</p>
+  </div>
+
+  <div class="card hide" id="c-code">
+   <h2>Check your email</h2>
+   <p class="sub">We've sent a 6-digit code to <b id="c-email"></b>. It works for 10 minutes.</p>
+   <label class="f" for="code-new">Code</label>
+   <input type="text" class="code" id="code-new" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
+   <div class="err" id="e-code"></div>
+   <div><button class="btn" id="b-confirm">Create my PhiXtra account</button></div>
+   <p style="margin:14px 0 0"><button class="lnk" id="b-back1">Back</button></p>
+  </div>
+ </div>
+
+ <!-- Screen 2: Link my account -->
+ <div id="s-link" class="card hide">
+  <h1>Link your PhiXtra account</h1>
+  <p class="sub" id="l-intro">Use the email you log in to PhiXtra with.</p>
+  <div id="l-step1">
+   <label class="f" for="l-email">Email</label>
+   <input type="email" id="l-email" autocomplete="email" maxlength="255">
+   <p class="note">We'll email you a short code to confirm it's you.</p>
+   <div class="err" id="e-l1"></div>
+   <button class="btn" id="b-send">Send code</button>
+  </div>
+  <div id="l-step2" class="hide">
+   <p>We've sent a 6-digit code to <b id="l-sent"></b>. It works for 10 minutes.</p>
+   <label class="f" for="l-code">Code</label>
+   <input type="text" class="code" id="l-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
+   <div class="err" id="e-l2"></div>
+   <div><button class="btn" id="b-link">Link account</button></div>
+  </div>
+  <p style="margin:14px 0 0"><button class="lnk" id="b-back2">Back</button></p>
+ </div>
+
+ <!-- Screen 3: Home -->
+ <div id="s-home" class="hide">
+  <div class="card">
+   <h1>Your store is connected to PhiXtra <span class="ok">✓</span></h1>
+   <p class="sub" id="h-biz" style="margin:0"></p>
+  </div>
+  <div class="card">
+   <ul class="steps">
+    <li><div class="n">1</div><div class="t"><b>Products</b><span id="h-products">Your products will show here once they've been read from Shopify.</span></div></li>
+    <li><div class="n">2</div><div class="t"><b>Chat on your store</b><span>Show the PhiXtra chat on your store.</span></div><button class="btn sec" disabled>Turn on</button></li>
+    <li id="h-quotes" class="hide"><div class="n">3</div><div class="t"><b>Quotations <span class="tag">B2B</span></b><span>Quote requests from your buyers arrive in Quotations › Requests.</span></div><button class="btn sec" data-open="/quotations/requests">Open</button></li>
+    <li><div class="n" id="h-wa-n">3</div><div class="t"><b>WhatsApp and email</b><span>Connect your WhatsApp number and email in your PhiXtra account.</span></div><button class="btn sec" data-open="/dashboard">Open PhiXtra</button></li>
+   </ul>
+  </div>
+ </div>
+
+</div>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const screens = ['s-load', 's-welcome', 's-link', 's-home'];
+  let st = {}, newToken = '', linkToken = '';
+
+  function show(id) { screens.forEach(s => $(s).classList.toggle('hide', s !== id)); window.scrollTo(0, 0); }
+  function err(id, msg) { const e = $(id); e.textContent = msg || ''; e.style.display = msg ? 'block' : 'none'; }
+  async function api(path, body) {
+    const r = await fetch('/shopify/api/' + path, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    let d = {}; try { d = await r.json(); } catch (e) {}
+    return { ok: r.ok, status: r.status, d };
+  }
+
+  function render(d) {
+    st = d;
+    if (d.linked) {
+      $('h-biz').textContent = d.business || d.shop_name;
+      $('h-quotes').classList.toggle('hide', !d.is_b2b);
+      $('h-wa-n').textContent = d.is_b2b ? '4' : '3';
+      show('s-home');
+    } else {
+      $('w-email').textContent = d.email || '—';
+      $('w-store').textContent = d.shop_name;
+      $('w-cur').textContent = d.currency || '—';
+      show('s-welcome');
+    }
+  }
+
+  function toLink(email, existed) {
+    $('l-intro').textContent = existed
+      ? 'This email or store already has a PhiXtra account. Link it to this Shopify store.'
+      : 'Use the email you log in to PhiXtra with.';
+    $('l-email').value = email || '';
+    $('l-step1').classList.remove('hide'); $('l-step2').classList.add('hide');
+    err('e-l1'); err('e-l2');
+    show('s-link');
+  }
+
+  $('b-create').onclick = async function () {
+    err('e-form');
+    const pick = document.querySelector('input[name=sell_to]:checked');
+    if (!pick) return err('e-form', 'Please choose who you sell to.');
+    if (!$('first').value.trim() || !$('last').value.trim()) return err('e-form', 'Please enter your first and last name.');
+    this.disabled = true;
+    const r = await api('signup', { sell_to: pick.value, first_name: $('first').value, last_name: $('last').value });
+    this.disabled = false;
+    if (r.status === 409 && r.d.exists) return toLink(r.d.email, true);
+    if (r.d.linked) return render(r.d);
+    if (!r.ok) return err('e-form', r.d.error || 'Something went wrong. Please try again.');
+    newToken = r.d.token; $('c-email').textContent = r.d.email; $('code-new').value = '';
+    $('c-form').classList.add('hide'); $('c-code').classList.remove('hide'); err('e-code');
+  };
+  $('b-confirm').onclick = async function () {
+    err('e-code'); this.disabled = true;
+    const r = await api('signup/confirm', { token: newToken, code: $('code-new').value });
+    this.disabled = false;
+    if (r.status === 409 && r.d.exists) return toLink(r.d.email, true);
+    if (!r.ok) {
+      err('e-code', r.d.error || 'Something went wrong. Please try again.');
+      if (r.d.restart) setTimeout(() => $('b-back1').click(), 2500);
+      return;
+    }
+    render(r.d);
+  };
+  $('b-back1').onclick = function () { $('c-code').classList.add('hide'); $('c-form').classList.remove('hide'); };
+  $('b-tolink').onclick = function () { toLink('', false); };
+
+  $('b-send').onclick = async function () {
+    err('e-l1'); this.disabled = true;
+    const r = await api('link', { email: $('l-email').value });
+    this.disabled = false;
+    if (r.d.linked) return render(r.d);
+    if (!r.ok) return err('e-l1', r.d.error || 'Something went wrong. Please try again.');
+    linkToken = r.d.token; $('l-sent').textContent = r.d.email; $('l-code').value = '';
+    $('l-step1').classList.add('hide'); $('l-step2').classList.remove('hide');
+  };
+  $('b-link').onclick = async function () {
+    err('e-l2'); this.disabled = true;
+    const r = await api('link/confirm', { token: linkToken, code: $('l-code').value });
+    this.disabled = false;
+    if (!r.ok) {
+      err('e-l2', r.d.error || 'Something went wrong. Please try again.');
+      if (r.d.restart) setTimeout(() => toLink($('l-email').value, false), 2500);
+      return;
+    }
+    render(r.d);
+  };
+  $('b-back2').onclick = function () { render(st); };
+
+  document.querySelectorAll('[data-open]').forEach(b => b.onclick = async function () {
+    const w = window.open('', '_blank');
+    const r = await api('open', { next: this.dataset.open });
+    const url = (r.ok && r.d.url) || 'https://portal.phixtra.com/login';
+    if (w) w.location = url; else window.open(url, '_blank');
+  });
+
+  (async function () {
+    const r = await api('session');
+    if (!r.ok) { $('s-load').innerHTML = '<p class="sub" style="margin:0">We could not connect to your store just now. Please reload this page.</p>'; return; }
+    render(r.d);
+  })();
+})();
+</script>
+</body>
+</html>

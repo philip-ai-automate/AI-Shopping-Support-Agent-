@@ -776,6 +776,25 @@ async def receive_webhook(
         print(f"   [META] Handoff active for session={session_id} — AI skipped")
         return {"status": "ok", "reason": "handoff_active"}
 
+    # ── Automatic replies (2026-10-31): don't let the AI answer a customer's
+    # "away" / auto-reply message, and stop two automatic systems answering
+    # each other. The message is already logged above, so it's in the Inbox.
+    if msg.get("message_type") == "text":
+        try:
+            import auto_reply_guard
+            _guard = auto_reply_guard.check(int(tenant_id), customer_phone, text)
+        except Exception as _ge:
+            print(f"⚠️ auto_reply_guard failed: {_ge}")
+            _guard = None
+        if _guard == "auto_reply":
+            print(f"   [META] Automatic reply from {customer_phone} — AI stays quiet")
+            return {"status": "ok", "reason": "auto_reply"}
+        if _guard == "loop":
+            print(f"   [META] Reply loop with {customer_phone} — chat handed to the team")
+            create_handoff(session_id, tenant_id, customer_phone)
+            await notify_merchant_handoff(tenant_id, phone_number_id, access_token, customer_phone, text)
+            return {"status": "ok", "reason": "reply_loop"}
+
     # ── Campaign reply gate — AI handles normally ─────────────────────────────
     # Campaign recipients are served by AI like any other customer.
     # Escalation is handled by the merchant's configured handoff rules (portal →

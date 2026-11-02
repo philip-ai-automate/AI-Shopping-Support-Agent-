@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}{{ 'Website chat' if missing_channel == 'web' else 'WhatsApp' }} needs Dual Agent — PhiXtra Portal{% endblock %}
+{% block title %}{{ 'Website chat' if missing_channel == 'web' else 'WhatsApp' }} needs a Website + WhatsApp plan — PhiXtra Portal{% endblock %}
 
 {% block content %}
 <style>
@@ -49,17 +49,17 @@
 
     <div class="upgrade-icon">🔒</div>
     {% if missing_channel == 'web' %}
-    <div class="upgrade-title">Website chat is part of the Dual Agent plan</div>
+    <div class="upgrade-title">Website chat is part of the Website + WhatsApp plans</div>
     <div class="upgrade-sub">
       Your plan runs the AI Sales Agent on WhatsApp.
-      Upgrade to a Dual Agent plan to add the AI chat box to your website and unlock <strong>{{ feature_label }}</strong>.
+      Upgrade to a Website + WhatsApp plan to add the AI chat box to your website and unlock <strong>{{ feature_label }}</strong>.
       The same AI then answers customers on WhatsApp and on your website, from one account.
     </div>
     {% else %}
-    <div class="upgrade-title">WhatsApp is part of the Dual Agent plan</div>
+    <div class="upgrade-title">WhatsApp is part of the Website + WhatsApp plans</div>
     <div class="upgrade-sub">
       Your plan runs the AI Sales Agent on your website.
-      Upgrade to a Dual Agent plan to add WhatsApp{% if feature_label and feature_label != 'WhatsApp' %} and unlock <strong>{{ feature_label }}</strong>{% endif %}.
+      Upgrade to a Website + WhatsApp plan to add WhatsApp{% if feature_label and feature_label != 'WhatsApp' %} and unlock <strong>{{ feature_label }}</strong>{% endif %}.
       The same AI then answers customers on your website and on WhatsApp, from one account.
     </div>
     {% endif %}
@@ -67,7 +67,7 @@
     {% if dual_plan %}
     <div class="dual-price">
       {% if dual_price_text %}
-      <div class="dual-price-label">Dual Agent plans start at</div>
+      <div class="dual-price-label">Website + WhatsApp plans start at</div>
       <div class="dual-price-amount">{{ dual_price_text }} <span>/ month</span></div>
       {% endif %}
       <div class="dual-price-name">{{ dual_plan.name }}</div>
@@ -83,7 +83,7 @@
 
     <div class="upgrade-actions">
       <a href="{{ url_for('portal.billing_plans', view='dual') }}" class="btn-upgrade-main">
-        See Dual Agent plans
+        See Website + WhatsApp plans
       </a>
       <a href="javascript:history.back()" class="btn-upgrade-back">
         ← Go back

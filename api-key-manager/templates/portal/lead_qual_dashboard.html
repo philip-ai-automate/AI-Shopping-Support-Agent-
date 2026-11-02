@@ -255,6 +255,24 @@
     </div>
   </div>
 
+  <div class="lq-card" id="by-salesperson">
+    <h2 class="lq-h3">By salesperson</h2>
+    {% if d.by_owner %}
+    <div class="lq-scroll"><table class="lq-t slim">
+      <thead><tr><th>Salesperson</th><th class="r">Enquiries</th><th class="r">Qualified</th><th class="r">Quotes sent</th><th class="r">Orders</th><th class="r">Win rate</th><th class="r">Revenue</th></tr></thead>
+      <tbody>
+      {% for o in d.by_owner %}
+        <tr><td>{{ o.label }}</td><td class="r">{{ o.enquiries }}</td><td class="r">{{ o.qualified }}</td><td class="r">{{ o.quoted }}</td><td class="r">{{ o.orders }}</td><td class="r">{% if o.win_pct is not none %}{{ o.win_pct }}%{% else %}–{% endif %}</td><td class="r">{{ o.revenue|money_total }}</td></tr>
+      {% endfor %}
+        <tr class="tot"><td>Total</td><td class="r">{{ K.enquiries }}</td><td class="r">{{ K.qualified }}</td><td class="r">{{ d.funnel.quoted }}</td><td class="r">{{ K.orders }}</td><td class="r">{% if d.funnel.quoted %}{{ d.funnel.won_pct }}%{% else %}–{% endif %}</td><td class="r">{{ K.revenue|money_total }}</td></tr>
+      </tbody>
+    </table></div>
+    <div class="lq-small">Win rate = orders ÷ quotes sent, for enquiries that came in during this period. Each lead counts for the person who owns it now.</div>
+    {% else %}
+    <div class="lq-empty">No enquiries in this period.</div>
+    {% endif %}
+  </div>
+
   <div class="lq-card">
     <h2 class="lq-h3">How much the AI can be trusted</h2>
     <div class="lq-trust">

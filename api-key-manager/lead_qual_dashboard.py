@@ -293,6 +293,19 @@ def build(tenant_id: int, s: dict, today: date, now: datetime, period: str = "mo
                            **tally(rest)})
     country_max = max([c["enquiries"] for c in by_country] + [1])
 
+    # By salesperson (owner of the lead) — who is winning orders. 2026-10-31
+    by_owner_all = {}
+    for r in rows:
+        by_owner_all.setdefault(r["assigned_key"] or "", []).append(r)
+    by_owner = []
+    for k, g in by_owner_all.items():
+        t = tally(g)
+        qn = sum(1 for r in g if r["is_opportunity"] and _quoted(r))
+        name = next((r["assigned_to"] for r in g if r["assigned_to"]), None)
+        by_owner.append({"key": k, "label": (name or "Someone") if k else "Not assigned yet",
+                         "quoted": qn, "win_pct": _pct(t["orders"], qn) if qn else None, **t})
+    by_owner.sort(key=lambda o: (o["key"] == "", -o["orders"], -o["revenue"], -o["enquiries"], o["label"]))
+
     ai_q = [r for r in qualified if r["by_ai"]]
     staff_q = [r for r in qualified if not r["by_ai"]]
 
@@ -319,7 +332,7 @@ def build(tenant_id: int, s: dict, today: date, now: datetime, period: str = "mo
         },
         "weeks": weeks, "week_max": week_max, "tier_totals": tier_totals,
         "needs": needs, "quotes": quotes, "quotes_value": quotes_value,
-        "by_channel": by_channel, "by_country": by_country, "country_max": country_max,
+        "by_channel": by_channel, "by_country": by_country, "country_max": country_max, "by_owner": by_owner,
         "trust": {
             "ai": len(ai_q), "staff": len(staff_q),
             "undone": dec["undone"], "decisions": dec["total"], "undone_pct": _pct(dec["undone"], dec["total"]),

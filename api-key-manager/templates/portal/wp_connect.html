@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Connect your store — PhiXtra</title>
+  <title>Connect your website — PhiXtra</title>
   <style>
     :root{
       --ink:#030C18; --bg:#F7F8FA; --card:#fff;
@@ -14,20 +14,33 @@
     body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--txt)}
     a{color:var(--ink)}
     a:hover{text-decoration:underline}
-    .flash{max-width:440px;margin:0 auto 14px;padding:11px 14px;border-radius:10px;font-size:13px}
+    .flash{max-width:580px;margin:0 auto 14px;padding:11px 14px;border-radius:10px;font-size:13px}
     .flash.danger{background:rgba(240,68,56,0.08);border:1px solid rgba(240,68,56,0.25);color:#b42318}
     .flash.warning{background:rgba(247,144,9,0.08);border:1px solid rgba(247,144,9,0.25);color:#92400e}
+    /* Business type (Retail / B2B) + B2B company details (2026-10-31) */
+    .lbl{font-size:12.5px;font-weight:700}
+    .opt{font-weight:400;color:var(--muted)}
+    .req{color:#D92D20;font-weight:700;margin-left:2px}
+    .fld{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}
+    .fld input,.fld select{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:10px;font-size:14px;background:#fff;font-family:inherit}
+    .row2{display:flex;gap:12px}
+    @media (max-width:420px){.row2{flex-direction:column}}
+    .st-cards{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .st-opt{position:relative;margin:0}
+    .st-opt input{position:absolute;opacity:0;width:1px;height:1px;margin:0}
+    .st-opt span{display:flex;flex-direction:column;gap:3px;border:1.5px solid #C3CEDF;border-radius:10px;padding:11px 12px;cursor:pointer;background:#fff;height:100%}
+    .st-opt b{font-size:13.5px;color:#0B1D40}
+    .st-opt small{font-size:11.5px;color:#4A5B78;line-height:1.4}
+    .st-opt input:checked+span{border-color:#0B1D40;background:#E8EEF8}
+    .st-opt input:focus-visible+span{outline:2px solid #0B1D40;outline-offset:2px}
+    .co-box{display:flex;flex-direction:column;gap:14px;border:1px solid var(--line);border-radius:12px;padding:16px;background:#FBFCFD}
   </style>
 </head>
 <body>
 <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:48px 20px 40px">
 
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:22px">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <path d="M4 4h9a5 5 0 0 1 0 10H8v6H4V4z" fill="var(--ink)"/>
-      <path d="M20 4 6 20" stroke="var(--accent)" stroke-width="3.4" stroke-linecap="round"/>
-    </svg>
-    <span style="font-size:17px;font-weight:800;letter-spacing:-.3px;color:var(--ink)">PhiXtra</span>
+  <div style="display:flex;align-items:center;justify-content:center;margin-bottom:22px">
+    <img src="{{ url_for('static', filename='portal/phixtra-logo.png') }}" alt="PhiXtra" style="height:84px;width:auto;display:block;mix-blend-mode:multiply"/>
   </div>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -38,7 +51,7 @@
     {% endif %}
   {% endwith %}
 
-  <div style="width:100%;max-width:440px;background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:0 24px 60px rgba(3,12,24,0.10);padding:36px 34px 30px">
+  <div style="width:100%;max-width:580px;background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:0 24px 60px rgba(3,12,24,0.10);padding:36px 34px 30px">
 
     {% if domain %}
     <div style="display:flex;align-items:center;gap:8px;background:rgba(18,183,106,0.08);border:1px solid rgba(18,183,106,0.25);border-radius:10px;padding:9px 13px;margin-bottom:22px">
@@ -49,18 +62,85 @@
     </div>
     {% endif %}
 
-    <h1 style="font-size:21px;font-weight:800;letter-spacing:-.4px;margin:0 0 8px;line-height:1.25">Connect your AI shopping assistant</h1>
+    <h1 style="font-size:21px;font-weight:800;letter-spacing:-.4px;margin:0 0 8px;line-height:1.25">Connect your AI Sales Agent</h1>
     <p style="font-size:13.5px;color:var(--muted);line-height:1.6;margin:0 0 26px">
-      PhiXtra is the AI service that powers the chat widget you just installed. Creating a free account
-      gives you an <strong style="color:var(--txt)">API key</strong> &mdash; paste it into the plugin's
-      settings in WordPress to switch the assistant on. Takes about a minute.
+      PhiXtra powers the AI Sales Agent on your website. Create your free account, confirm your email
+      and WhatsApp, then approve this website. Your plugin connects automatically.
     </p>
 
     <form method="POST" action="{{ url_for('portal.wp_connect') }}" novalidate id="connectForm" style="display:flex;flex-direction:column;gap:16px">
+      <p style="font-size:12px;color:var(--muted);margin:0">Fields marked <span class="req" aria-hidden="true">*</span> are required.</p>
+      {% set fd = form_data or {} %}
+      {% set st = 'b2b' if fd.get('sell_to') == 'b2b' else 'public' %}
+      <div class="fld" role="radiogroup" aria-labelledby="lblSellTo">
+        <span class="lbl" id="lblSellTo">Business type <span class="req" aria-hidden="true">*</span></span>
+        <div class="st-cards">
+          <label class="st-opt"><input type="radio" name="sell_to" value="public" {% if st == 'public' %}checked{% endif %}><span><b>Retail</b><small>Online shop</small></span></label>
+          <label class="st-opt"><input type="radio" name="sell_to" value="b2b" {% if st == 'b2b' %}checked{% endif %}><span><b>B2B</b><small>Wholesale, distribution, export, manufacturing</small></span></label>
+        </div>
+      </div>
+
+      <div id="secCompany" {% if st != 'b2b' %}hidden{% endif %}>
+        <div class="co-box">
+          <div>
+            <div style="font-size:15px;font-weight:800">Your company</div>
+            <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-top:3px">These details appear on your quotations and help your AI Sales Agent answer buyers. You can change them later in your portal.</div>
+          </div>
+          <div class="fld">
+            <label class="lbl" for="fBusinessName">Registered company name <span class="req" aria-hidden="true">*</span></label>
+            <input type="text" name="business_name" id="fBusinessName" maxlength="200" placeholder="e.g. Harbour Supplies Ltd" autocomplete="organization" value="{{ fd.get('business_name', '') }}"/>
+          </div>
+          <div class="fld">
+            <label class="lbl" for="fTrading">Trading name <span class="opt">(optional)</span></label>
+            <input type="text" name="trading_name" id="fTrading" maxlength="200" placeholder="If buyers know you by another name" value="{{ fd.get('trading_name', '') }}"/>
+          </div>
+          <div class="fld">
+            <label class="lbl" for="fBased">Country of registration <span class="req" aria-hidden="true">*</span></label>
+            {% set based = fd.get('business_based', '') %}
+            <select name="business_based" id="fBased">
+              <option value="">Country…</option>
+              <optgroup label="Most used">
+                {% for iso, name, cc in PHONE_COUNTRIES_POPULAR %}<option value="{{ iso }}" {% if based == iso %}selected{% endif %}>{{ name }}</option>{% endfor %}
+              </optgroup>
+              <optgroup label="All countries">
+                {% set _pop = PHONE_COUNTRIES_POPULAR | map(attribute=0) | list %}{% for iso, name, cc in PHONE_COUNTRIES %}<option value="{{ iso }}" {% if based == iso and iso not in _pop %}selected{% endif %}>{{ name }}</option>{% endfor %}
+              </optgroup>
+            </select>
+          </div>
+          <div class="row2">
+            <div class="fld">
+              <label class="lbl" for="fRegNo">Company registration number <span class="opt">(optional)</span></label>
+              <input type="text" name="reg_number" id="fRegNo" maxlength="60" placeholder="e.g. 12345678" value="{{ fd.get('reg_number', '') }}"/>
+            </div>
+            <div class="fld">
+              <label class="lbl" for="fVat">VAT or tax number <span class="opt">(optional)</span></label>
+              <input type="text" name="vat_number" id="fVat" maxlength="60" placeholder="e.g. GB123456789" value="{{ fd.get('vat_number', '') }}"/>
+            </div>
+          </div>
+          <div class="fld">
+            <label class="lbl" for="fAddr">Business address <span class="req" aria-hidden="true">*</span></label>
+            <input type="text" name="address_line1" id="fAddr" maxlength="255" placeholder="Street address" autocomplete="address-line1" value="{{ fd.get('address_line1', '') }}"/>
+          </div>
+          <div class="row2">
+            <div class="fld">
+              <label class="lbl" for="fCity">Town or city <span class="req" aria-hidden="true">*</span></label>
+              <input type="text" name="city" id="fCity" maxlength="120" autocomplete="address-level2" value="{{ fd.get('city', '') }}"/>
+            </div>
+            <div class="fld">
+              <label class="lbl" for="fPostcode">Postcode <span class="opt">(if you have one)</span></label>
+              <input type="text" name="postcode" id="fPostcode" maxlength="30" autocomplete="postal-code" value="{{ fd.get('postcode', '') }}"/>
+            </div>
+          </div>
+          <div class="fld">
+            <label class="lbl" for="fJob">Your job title</label>
+            <input type="text" name="job_title" id="fJob" maxlength="120" placeholder="e.g. Sales Director" value="{{ fd.get('job_title', '') }}"/>
+          </div>
+        </div>
+      </div>
 
       {% if not domain %}
       <div style="display:flex;flex-direction:column;gap:6px">
-        <label style="font-size:12.5px;font-weight:700">Your store domain</label>
+        <label style="font-size:12.5px;font-weight:700">Your store domain <span class="req" aria-hidden="true">*</span></label>
         <input type="text" name="tenant_domain" placeholder="mystore.com" required
                pattern="[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}"
                value="{{ form_data.get('tenant_domain', '') if form_data else '' }}"
@@ -70,30 +150,29 @@
       <input type="hidden" name="tenant_domain" value="{{ domain }}"/>
       {% endif %}
 
-      <div style="display:flex;gap:12px">
-        <div style="flex:1;display:flex;flex-direction:column;gap:6px">
-          <label style="font-size:12.5px;font-weight:700">First name</label>
+      <div class="row2">
+        <div class="fld">
+          <label class="lbl">First name <span class="req" aria-hidden="true">*</span></label>
           <input type="text" name="first_name" required placeholder="Sarah" autocomplete="given-name"
-                 value="{{ form_data.get('first_name', '') if form_data else '' }}"
-                 style="padding:11px 13px;border:1px solid var(--line);border-radius:10px;font-size:14px"/>
+                 value="{{ form_data.get('first_name', '') if form_data else '' }}"/>
         </div>
-        <div style="flex:1;display:flex;flex-direction:column;gap:6px">
-          <label style="font-size:12.5px;font-weight:700">Last name</label>
+        <div class="fld">
+          <label class="lbl">Last name <span class="req" aria-hidden="true">*</span></label>
           <input type="text" name="last_name" required placeholder="Jones" autocomplete="family-name"
-                 value="{{ form_data.get('last_name', '') if form_data else '' }}"
-                 style="padding:11px 13px;border:1px solid var(--line);border-radius:10px;font-size:14px"/>
+                 value="{{ form_data.get('last_name', '') if form_data else '' }}"/>
         </div>
       </div>
 
       <div style="display:flex;flex-direction:column;gap:6px">
-        <label style="font-size:12.5px;font-weight:700">Email address</label>
+        <label style="font-size:12.5px;font-weight:700">Email address <span class="req" aria-hidden="true">*</span></label>
         <input type="email" name="email" required autocomplete="email"
                value="{{ form_data.get('email', '') if form_data else email }}"
                style="padding:11px 13px;border:1px solid var(--line);border-radius:10px;font-size:14px"/>
+        <span style="font-size:11.5px;color:var(--muted)">We'll email you a short code to confirm it's you.</span>
       </div>
 
       <div style="display:flex;flex-direction:column;gap:6px">
-        <label style="font-size:12.5px;font-weight:700">Password <span style="font-weight:400;color:var(--muted)">(8 characters or more, with a special character such as ! @ # $ %)</span></label>
+        <label style="font-size:12.5px;font-weight:700">Password <span class="req" aria-hidden="true">*</span> <span style="font-weight:400;color:var(--muted)">(8 characters or more, with a special character such as ! @ # $ %)</span></label>
         <div style="position:relative">
           <input type="password" name="password" id="fPassword" required minlength="8" pattern="(?=.*[^A-Za-z0-9\s]).{8,}" title="At least 8 characters, including a special character such as ! @ # $ %" placeholder="••••••••" autocomplete="new-password"
                  style="width:100%;padding:11px 40px 11px 13px;border:1px solid var(--line);border-radius:10px;font-size:14px"/>
@@ -105,7 +184,7 @@
       </div>
 
       <div style="display:flex;flex-direction:column;gap:6px">
-        <label style="font-size:12.5px;font-weight:700">Mobile phone (on WhatsApp)</label>
+        <label style="font-size:12.5px;font-weight:700">Mobile phone (on WhatsApp) <span class="req" aria-hidden="true">*</span></label>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           {% set pc_name = 'phone_country' %}{% set pc_id = 'fPhoneCountry' %}
           {% set pc_selected = form_data.get('phone_country', '') if form_data else '' %}
@@ -115,9 +194,12 @@
                  value="{{ form_data.get('phone_number', '') if form_data else '' }}"
                  style="flex:1 1 170px;min-width:0;padding:11px 13px;border:1px solid var(--line);border-radius:10px;font-size:14px"/>
         </div>
-        <span style="font-size:11.5px;color:var(--muted)">Use a mobile number that has WhatsApp. We send your code there.</span>
+        <span style="font-size:11.5px;color:var(--muted)">Use a mobile number that has WhatsApp. We'll send a short code to this WhatsApp number to confirm it's yours.</span>
       </div>
 
+      {% set sc_selected = fd.get('selling_currency', '') %}{% set sc_wrap_class = 'fld' %}{% set sc_err_hidden = true %}
+      {% set sc_country_ids = ['fPhoneCountry', 'fBased'] %}
+      {% include "portal/_selling_currency_field.html" %}
       <div style="display:none;visibility:hidden;position:absolute;left:-9999px">
         <input type="text" name="website" tabindex="-1" autocomplete="off"/>
       </div>
@@ -126,10 +208,30 @@
       <div class="g-recaptcha" data-sitekey="6LdARassAAAAAE2riEDaWAuK-g2DY7e67qoAjOUc"></div>
 
       <button type="submit" style="background:var(--ink);color:#fff;border:none;border-radius:10px;padding:13px 18px;font-size:14.5px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
-        Create My Account &amp; Connect
+        <span id="submitLbl">{{ 'Create my B2B account & Connect' if st == 'b2b' else 'Create My Account & Connect' }}</span>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
       </button>
     </form>
+    <script>
+    (function(){
+      var sec = document.getElementById('secCompany'), lbl = document.getElementById('submitLbl');
+      function curLabel(){
+        var c = document.getElementById('lblSellCur'); if (!c) return;
+        var b2b = (document.querySelector('input[name="sell_to"]:checked') || {}).value === 'b2b';
+        c.className = 'lbl';
+        c.innerHTML = (b2b ? 'What currency do you quote in?' : 'What currency do you sell in?') + ' <span class="req" aria-hidden="true">*</span>';
+      }
+      curLabel();
+      document.querySelectorAll('input[name="sell_to"]').forEach(function(r){
+        r.addEventListener('change', function(){
+          var b2b = this.value === 'b2b';
+          sec.hidden = !b2b;
+          lbl.textContent = b2b ? 'Create my B2B account & Connect' : 'Create My Account & Connect';
+          curLabel();
+        });
+      });
+    })();
+    </script>
     <p style="text-align:center;font-size:12.5px;color:var(--muted);margin:12px 0 0">Next we'll send a code to your WhatsApp and a code to your email.</p>
 
     <p style="text-align:center;font-size:12.5px;color:var(--muted);margin:18px 0 0">

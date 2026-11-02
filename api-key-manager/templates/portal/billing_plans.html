@@ -146,13 +146,15 @@
   {% endif %}
 </div>
 {% else %}
+    {% set fair = (current.plan_slug or '').startswith('b2b') %}{# B2B plans: unlimited, fair use (2026-10-31) #}
     <div class="usage-counts">
       <span class="usage-num">{{ current.messages_used }}</span>
-      <span class="usage-denom"> / {{ current.ai_messages_limit if current.ai_messages_limit != -1 else '∞' }} AI messages</span>
+      <span class="usage-denom">{% if fair %} AI replies this month · Unlimited (fair use){% else %} / {{ current.ai_messages_limit if current.ai_messages_limit != -1 else '∞' }} AI messages{% endif %}</span>
     </div>
   </div>
 
-  {% set pct = current.usage_pct %}
+  {% set pct = 0 if fair else current.usage_pct %}
+  {% if not fair %}
   <div class="meter-bar">
     <div class="meter-fill {% if pct >= 100 %}danger{% elif pct >= 80 %}warn{% endif %}"
          style="width:{{ pct }}%"></div>
@@ -165,6 +167,7 @@
       {% else %}{{ current.messages_remaining }} remaining{% endif %}
     </span>
   </div>
+  {% endif %}
 
   {% if current.is_wa_ai_trial %}
   <div style="background:#FFFAEB;border:1px solid #FEC84B;border-radius:10px;
@@ -220,11 +223,11 @@
 {% if dual_plans %}
 <div class="channel-toggle-wrap">
   <div class="channel-toggle">
-    <button type="button" id="toggleSingleBtn" onclick="setChannelMode('single')">{% if merchant_mode == 'woocommerce' %}Website (WooCommerce) AI Sales Agent{% else %}WhatsApp AI Sales Agent{% endif %}</button>
-    <button type="button" id="toggleDualBtn" onclick="setChannelMode('dual')">Dual Agent Plan (WhatsApp + Website)</button>
+    <button type="button" id="toggleSingleBtn" onclick="setChannelMode('single')">{% if merchant_mode == 'woocommerce' %}Website{% else %}WhatsApp{% endif %}</button>
+    <button type="button" id="toggleDualBtn" onclick="setChannelMode('dual')">Website + WhatsApp</button>
   </div>
 </div>
-<p class="channel-note">Running both the WhatsApp AI Sales Agent and the Website AI Sales Agent on one account? Switch to Dual Agent Plan pricing.</p>
+<p class="channel-note">Want the AI on your website and on WhatsApp? Choose Website + WhatsApp.</p>
 {% endif %}
 
 {# Prices in the business's one plan currency (2026-10-17): ₦ Nigeria,
@@ -285,8 +288,9 @@
     <li>
       <span class="feat-yes">✓</span>
       <span class="feat-lbl">
+        {% if (plan.slug or '').startswith('b2b') %}<strong>Unlimited</strong> AI replies (fair use){% else %}
         <strong>{{ plan.ai_messages_limit if plan.ai_messages_limit != -1 else 'Unlimited' }}</strong>
-        AI messages/mo
+        AI messages/mo{% endif %}
       </span>
     </li>
     <li>
@@ -339,7 +343,7 @@
     {% endif %}
     {% endfor %}
 
-    {% if not _no_ai and plan_ccy in ('NGN', 'GBP') %}
+    {% if not _no_ai and plan_ccy in ('NGN', 'GBP') and not (plan.slug or '').startswith('b2b') %}
     <li>
       <span class="feat-yes">✓</span>
       <span class="feat-lbl">Overage: {{ overage(plan) }}</span>
@@ -363,7 +367,7 @@
       Upgrade to {{ plan.name }}
     </button>
     {% endif %}
-    {% if plan.my_price and not plan.is_custom and plan_ccy in ('NGN', 'GBP') %}
+    {% if plan.my_price and not plan.is_custom and plan_ccy in ('NGN', 'GBP') and not (plan.slug or '').startswith('b2b') %}
     <div class="overage-note">Overage charged at {{ overage(plan) }}</div>
     {% endif %}
   </div>
@@ -374,7 +378,7 @@
 <div class="plans-grid" id="singlePlansGrid">
 {% if not has_own_plans %}
 <div style="grid-column:1/-1;text-align:center;color:var(--muted);font-size:14px;padding:12px 0">
-  No {{ 'WooCommerce' if merchant_mode == 'woocommerce' else 'WhatsApp' }} plans are available yet{% if dual_plans %} — see the Dual Agent Plan option above{% endif %}, or talk to us about a Custom plan.
+  No {{ 'WooCommerce' if merchant_mode == 'woocommerce' else 'WhatsApp' }} plans are available yet{% if dual_plans %} — see the Website + WhatsApp option above{% endif %}, or talk to us about a Custom plan.
 </div>
 {% endif %}
 {% for plan in single_plans %}{{ plan_card(plan, current) }}{% endfor %}

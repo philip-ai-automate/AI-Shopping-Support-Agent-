@@ -54,6 +54,9 @@ def create_app():
     # Quotations › Requests (2026-10-30): "did you send it?" alerts when a request's time is up.
     import quote_requests
     quote_requests.start()
+    # B2B fair use (2026-10-31): warn PhiXtra when a B2B business passes 80% of its AI replies.
+    import fair_use
+    fair_use.start()
     # Website "Add to quote" + quote list (2026-10-31, Quotations Phase 4): public, own checks.
     from quote_public import quote_public_bp
     flask_app.register_blueprint(quote_public_bp)
@@ -67,6 +70,10 @@ def create_app():
     # "Try it yourself" Seller side: /demo/<slug> login + demo-visitor lock
     from demo_visitor import demo_bp, enforce_demo_lock, demo_bar_context
     flask_app.register_blueprint(demo_bp)
+    # PhiXtra for Shopify (2026-11-01, Step 1 Part 1: install & connect).
+    import shopify_app
+    shopify_app.ensure_tables()
+    flask_app.register_blueprint(shopify_app.shopify_bp)
     flask_app.before_request(enforce_demo_lock)
     flask_app.context_processor(demo_bar_context)
 
