@@ -6615,6 +6615,12 @@ def _setup_checklist(tenant_id: int):
         prod = _product_sources(tenant_id, cur)
         b2b = _is_b2b_tenant(tenant_id, cur)
         shopify_shop = _store_shopify(cur, tenant_id)
+        if shopify_shop and not src:
+            # Linked through the Shopify app: the store counts as connected (2026-11-02).
+            import shopify_app as _sa
+            _sa.ensure_website_source(shopify_shop)
+            cur.execute("SELECT * FROM website_sources WHERE tenant_id=%s", (tenant_id,))
+            src = cur.fetchone()
         cur.close(); conn.close()
     except Exception as e:
         print("⚠️ _setup_checklist:", e)
@@ -6626,8 +6632,10 @@ def _setup_checklist(tenant_id: int):
 
     # 1. Connect: the business types its address and gives permission.
     if src:
+        _host = (src.get('url') or '').replace('https://', '').replace('http://', '').rstrip('/')
         steps.append(dict(key="website", title="Connect your website", done=True,
-                          text=f"Connected: {(src.get('url') or '').replace('https://', '').replace('http://', '').rstrip('/')}"))
+                          text=(f"Connected through the PhiXtra app in Shopify: {_host}" if src.get("created_by") == "shopify_app"
+                                else f"Connected: {_host}")))
     elif last and not last["ok"]:
         steps.append(dict(key="website", title="Connect your website", done=False, state="failed",
                           text=f"We couldn't reach your website: {last['reason'] or 'unknown reason'}",
@@ -6648,6 +6656,8 @@ def _setup_checklist(tenant_id: int):
         found = (src or {}).get("pages_found")
         steps.append(dict(key="sync", title="Sync your website", done=False,
                           text=(f"We found {found} pages. Click Sync now so your AI reads them." if found
+                                else "Your AI reads your store's public pages (about, delivery, returns, FAQs). "
+                                     "Your products come from Shopify separately." if shopify_shop
                                 else "Your AI reads your website's public pages (about, delivery, prices, FAQs)."),
                           action="Sync now", url=url_for("portal.store_info_website_sync"), post_sync=True))
 

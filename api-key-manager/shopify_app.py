@@ -333,6 +333,26 @@ def set_embed_data(shop: str) -> bool:
     return True
 
 
+def ensure_website_source(shop: str):
+    """Dashboard set-up (2026-11-02): installing the app proves the store is
+    the business's, so its website counts as connected without typing the
+    address. Sync then reads the store's public pages (about, delivery, FAQs);
+    products come from the product sync. Never replaces an existing one."""
+    row = _shop_row(shop)
+    if not row or not row.get("tenant_id") or row.get("uninstalled_at"):
+        return
+    host = (row.get("primary_domain") or shop).lower()
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("""INSERT INTO website_sources (tenant_id, url, frequency, status, site_title, created_by, created_label)
+                       VALUES (%s, %s, 'manual', 'connected', %s, 'shopify_app', 'PhiXtra app in Shopify')
+                       ON CONFLICT (tenant_id) DO NOTHING""",
+                    (int(row["tenant_id"]), f"https://{host}/", row.get("shop_name")))
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+
+
 def subscribe_uninstall(shop: str):
     try:
         d = graphql(shop, _WEBHOOK_SUB, {"topic": "APP_UNINSTALLED",
@@ -565,6 +585,10 @@ def _link(shop, tenant_id, user_id):
         conn.commit()
     finally:
         cur.close(); conn.close()
+    try:
+        ensure_website_source(shop)
+    except Exception as e:
+        print(f"⚠️ shopify website source {shop}: {e}")
     # Part 3: the chat embed needs the business's chat key on the store.
     try:
         set_embed_data(shop)
