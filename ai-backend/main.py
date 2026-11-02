@@ -2381,7 +2381,7 @@ _w_spec.loader.exec_module(_demo_codes)
 
 
 @app.get("/c/{slug}")
-def chat_link_page(slug: str, v: str = ""):
+def chat_link_page(request: _WRequest, slug: str, v: str = ""):
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
@@ -2407,9 +2407,15 @@ def chat_link_page(slug: str, v: str = ""):
         try:
             dv = _demo_codes.get(conn, v, r["tenant_id"])
             if not dv:
-                dv = _demo_codes.create(conn, r["tenant_id"], r["slug"])
-                return _WRedirect(f"/c/{r['slug']}?v={_demo_codes.token(dv)}", status_code=302,
+                # Same browser already has a demo (e.g. opened Try as a Seller
+                # first) → reuse it so Buyer and Seller pair; else a new one.
+                dv = (_demo_codes.get(conn, request.cookies.get(_demo_codes.COOKIE), r["tenant_id"])
+                      or _demo_codes.create(conn, r["tenant_id"], r["slug"]))
+                resp = _WRedirect(f"/c/{r['slug']}?v={_demo_codes.token(dv)}", status_code=302,
                                   headers={"Cache-Control": "no-store"})
+                resp.set_cookie(_demo_codes.COOKIE, _demo_codes.token(dv), max_age=_demo_codes.COOKIE_AGE,
+                                domain=_demo_codes.COOKIE_DOMAIN, path="/", secure=True, httponly=True, samesite="lax")
+                return resp
             _demo_codes.touch(conn, dv["code"])
         finally:
             conn.close()
@@ -2432,7 +2438,11 @@ padding:0 14px;background:#FFF4E5;color:#7C2D12;font-size:13px;font-weight:700;w
 <body>{strip}
 <script src="/widget.js?v={int(os.path.getmtime(_WIDGET_FILE))}" data-site="{e(r["site_key"])}" data-mode="page" data-top="{top}" data-suggestions="{sugg}" data-greeting="{e(r["greeting"] or "")}"{session_attr} async></script>
 </body></html>"""
-    return _WHTML(page, headers={"Cache-Control": "no-store"})
+    resp = _WHTML(page, headers={"Cache-Control": "no-store"})
+    if r["is_demo"]:
+        resp.set_cookie(_demo_codes.COOKIE, tok, max_age=_demo_codes.COOKIE_AGE,
+                        domain=_demo_codes.COOKIE_DOMAIN, path="/", secure=True, httponly=True, samesite="lax")
+    return resp
 
 
 @app.get("/widget.js")

@@ -53,6 +53,13 @@ def buyer_session(code: str, secret: str) -> str:
     return prefix(code, secret) + "b"
 
 
+# One demo per browser across chat.phixtra.com (Buyer) and portal.phixtra.com
+# (Seller): both homepage buttons read this cookie, so they pair (2 Nov).
+COOKIE = "phx_demo"
+COOKIE_DOMAIN = ".phixtra.com"
+COOKIE_AGE = 86400
+
+
 def token(v: dict) -> str:
     return f"{v['code']}.{v['secret']}"
 

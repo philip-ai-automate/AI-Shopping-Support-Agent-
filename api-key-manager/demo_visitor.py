@@ -180,6 +180,7 @@ def demo_login(slug: str):
         # Came from the Buyer chat (?v=…) → same visitor, so both sides pair.
         # Else keep this browser's own code, else make a new one.
         v = (demo_codes.get(conn, request.args.get("v"), tenant_id)
+             or demo_codes.get(conn, request.cookies.get(demo_codes.COOKIE), tenant_id)
              or (demo_codes.get(conn, session.get("demo_token"), tenant_id)
                  if session.get("demo_visitor") == slug else None)
              or demo_codes.create(conn, tenant_id, slug))
@@ -199,7 +200,10 @@ def demo_login(slug: str):
     session["demo_tenant"] = tenant_id
     session["demo_token"] = demo_codes.token(v)
     # Open on their buyer chat if they started there, else newest of theirs.
-    return redirect("/inbox?phone=web:" + row[0] if row else "/inbox")
+    resp = redirect("/inbox?phone=web:" + row[0] if row else "/inbox")
+    resp.set_cookie(demo_codes.COOKIE, demo_codes.token(v), max_age=demo_codes.COOKIE_AGE,
+                    domain=demo_codes.COOKIE_DOMAIN, path="/", secure=True, httponly=True, samesite="Lax")
+    return resp
 
 
 def _qr(text: str) -> str:
