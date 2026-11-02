@@ -1152,7 +1152,7 @@ def _chat(req: ChatRequest):
                         url = matched_doc.get("url") or ""
                         # Build Add to Cart URL: WooCommerce accepts ?add-to-cart={id}
                         # For variable products the customer lands on product page to pick variant
-                        cart_url = f"{url}?add-to-cart={product_id}" if product_id and url else url
+                        cart_url = __import__("search").cart_url_for(url, product_id)
 
                         product_recommendations.append({
                             "name": matched_doc.get("title") or name,
@@ -1201,7 +1201,7 @@ def _chat(req: ChatRequest):
                                 doc_by_title[fb_title_key] = matched_doc
                             product_id = _extract_product_id(matched_doc.get("id", ""))
                             url = matched_doc.get("url") or ""
-                            cart_url = f"{url}?add-to-cart={product_id}" if product_id and url else url
+                            cart_url = __import__("search").cart_url_for(url, product_id)
                             product_recommendations.append({
                                 "name": matched_doc.get("title") or name,
                                 "price": _format_price(matched_doc.get("price_min"), matched_doc.get("price_max"), matched_doc.get("currency") or ""),
@@ -2361,7 +2361,16 @@ def _w_site(site_key: str, request) -> tuple:
             # chat.phixtra.com/c/<name> — only for businesses that have one.
             cur.execute("SELECT 1 FROM chat_links WHERE tenant_id=%s AND enabled LIMIT 1", (row["tenant_id"],))
             via_link = cur.fetchone() is not None
-        if not via_link and (not row["domain"] or _w_host(origin) != _w_host(row["domain"])):
+        # Shopify (2026-11-02, Part 3): a linked store's chat runs on its own
+        # domain and its myshopify.com address, which may differ from the
+        # web address saved for the business.
+        cur.execute("""SELECT shop FROM shopify_shops WHERE tenant_id=%s AND uninstalled_at IS NULL
+                         AND %s IN (lower(shop), lower(COALESCE(primary_domain,'')),
+                                    regexp_replace(lower(COALESCE(primary_domain,'')), '^www\\.', ''))
+                        LIMIT 1""", (row["tenant_id"], _w_host(origin)))
+        _sh = cur.fetchone()
+        shopify_shop = _sh["shop"] if _sh else None
+        if not via_link and not shopify_shop and (not row["domain"] or _w_host(origin) != _w_host(row["domain"])):
             return None, (403, "This chat box only works on its own website")
         cur.execute("""
             SELECT api_key_plain FROM api_keys
@@ -2371,6 +2380,7 @@ def _w_site(site_key: str, request) -> tuple:
         k = cur.fetchone()
         row = dict(row)
         row["via_link"] = via_link
+        row["shopify_shop"] = shopify_shop
         row["api_key"] = k["api_key_plain"] if k else None
         row["ai_on"] = bool(row["api_key"]) and row["plan_slug"] not in _W_AI_OFF_PLANS and row["ai_enabled"] is not False
         return row, None
@@ -2481,6 +2491,56 @@ def widget_js():
 _W_SEEN: set = set()   # tenants whose chat box we already know is on their website
 
 
+_W_SHOP_SEEN: dict = {}
+
+
+def _w_shopify_seen(shop: str) -> None:
+    """Shopify app Home "Chat on your store: last seen …" (2026-11-02): the
+    chat box loaded on the store. Written at most every 10 minutes per store."""
+    now = _w_time.time()
+    if now - _W_SHOP_SEEN.get(shop, 0) < 600:
+        return
+    _W_SHOP_SEEN[shop] = now
+    conn = get_db_connection()
+    if not conn:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE shopify_shops SET chat_seen_at = NOW() WHERE shop = %s", (shop,))
+        conn.commit(); cur.close()
+    except Exception as e:
+        print("⚠️ _w_shopify_seen:", e)
+    finally:
+        conn.close()
+
+
+def _w_visitor(row: dict, req) -> dict | None:
+    """A logged-in Shopify customer's name, email and company, sent by the
+    PhiXtra chat app embed and signed with the store's secret. None when not
+    sent or the signature doesn't match (then nothing is used)."""
+    v, sig = getattr(req, "visitor", None), (getattr(req, "visitor_sig", None) or "").strip().lower()
+    if not row.get("shopify_shop") or not isinstance(v, dict) or not sig:
+        return None
+    name, email, company = (str(v.get(k) or "") for k in ("name", "email", "company"))
+    conn = get_db_connection()
+    if not conn:
+        return None
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT visitor_secret FROM shopify_shops WHERE shop=%s", (row["shopify_shop"],))
+        r = cur.fetchone(); cur.close()
+    finally:
+        conn.close()
+    if not r or not r[0]:
+        return None
+    import hmac as _hm, hashlib as _hl
+    want = _hm.new(r[0].encode(), f"{name}|{email}|{company}".encode(), _hl.sha256).hexdigest()
+    if not _hm.compare_digest(want, sig):
+        print(f"⚠️ widget visitor signature mismatch for {row['shopify_shop']}")
+        return None
+    return {"name": name, "email": email, "company": company}
+
+
 def _w_mark_seen(tenant_id: int) -> None:
     """The chat box just loaded on the business's own website: tick "Add the
     chat box" in its set-up steps (2026-10-18). PhiXtra never visits the
@@ -2508,6 +2568,8 @@ def widget_config(site: str, request: _WRequest):
         return _WJSON({"enabled": False, "detail": err[1]}, status_code=err[0])
     if not row.get("via_link"):   # the chat link page is not the business's website
         _w_mark_seen(int(row["tenant_id"]))
+    if row.get("shopify_shop"):
+        _w_shopify_seen(row["shopify_shop"])
     # The box always shows (2026-10-06). AI off (PhiXtra Connect) = "team"
     # mode: the business's staff answer from the Inbox.
     if row["ai_on"]:
@@ -2524,6 +2586,8 @@ class WidgetChatRequest(BaseModel):
     site: str
     message: str
     session_id: str | None = None
+    visitor: dict | None = None        # logged-in Shopify customer (Part 3), signed
+    visitor_sig: str | None = None
 
 
 @app.post("/widget/chat/stream")
@@ -2541,7 +2605,8 @@ def widget_chat_stream(req: WidgetChatRequest, request: _WRequest):
     sid = (req.session_id or "").strip()[:80] or None
     if row.get("via_link") and sid:
         _w_list_demo_chat(int(row["tenant_id"]), sid, msg)
-    return chat_stream(ChatRequest(api_key=row["api_key"], message=msg, session_id=sid, channel="website"))
+    return chat_stream(ChatRequest(api_key=row["api_key"], message=msg, session_id=sid, channel="website",
+                                   visitor=_w_visitor(row, req)))
 
 
 def _w_list_demo_chat(tenant_id: int, sid: str, msg: str) -> None:
@@ -2585,6 +2650,10 @@ def widget_message(req: WidgetChatRequest, request: _WRequest):
     if not _w_rate_ok(request, req.site):
         raise HTTPException(status_code=429, detail="Too many messages. Please wait a few minutes.")
     from web_team_chat import save_visitor_message
+    _v = _w_visitor(row, req)
+    if _v:
+        import chat_visitor as _cv
+        _cv.save(int(row["tenant_id"]), sid, _v)
     saved = save_visitor_message(int(row["tenant_id"]), sid, msg)
     c = saved["contact"]
     return {"status": "ok", "first": saved["first"], "has_contact": bool(c["email"] or c["phone"]),

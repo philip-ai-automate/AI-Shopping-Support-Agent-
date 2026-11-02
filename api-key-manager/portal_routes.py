@@ -6614,6 +6614,7 @@ def _setup_checklist(tenant_id: int):
         last = cur.fetchone()
         prod = _product_sources(tenant_id, cur)
         b2b = _is_b2b_tenant(tenant_id, cur)
+        shopify_shop = _store_shopify(cur, tenant_id)
         cur.close(); conn.close()
     except Exception as e:
         print("⚠️ _setup_checklist:", e)
@@ -6659,6 +6660,13 @@ def _setup_checklist(tenant_id: int):
                                   "Then open the plugin's Products tab, choose All published products and click Save. Your WooCommerce "
                                   "products go to your AI by themselves and stay up to date. No Excel, nothing to prepare.",
                              action="Get the plugin from WordPress.org", url=PLUGIN_PAGE_URL, check=True))
+    elif shopify_shop:
+        # Shopify app, Part 3 (2026-11-02): the chat is switched on from the app, no code.
+        steps.append(dict(key="chatbox", title="Chat on your website", done=bool(t["chatbox_seen_at"]),
+                          text="Turn it on from the PhiXtra app in your Shopify admin. No code to copy.",
+                          action="Open in Shopify",
+                          url=f"https://admin.shopify.com/store/{shopify_shop.replace('.myshopify.com', '')}/apps/{__import__('shopify_app')._key()}",
+                          check=True))
     else:
         gkey = _chatbox_guide_key(t["website_platform"] or "")
         steps.append(dict(key="chatbox", title="Add the chat box", done=bool(t["chatbox_seen_at"]),

@@ -137,7 +137,7 @@
       <span class="more hide" id="h-skipped"></span>
       <span class="more hide" id="h-off"></span></div>
       <div id="h-pact"><span class="pill" id="h-pill">Reading</span></div></li>
-    <li><div class="n">2</div><div class="t"><b>Chat on your store</b><span>Show the PhiXtra chat on your store.</span></div><button class="btn sec" disabled>Turn on</button></li>
+    <li><div class="n">2</div><div class="t"><b>Chat on your store</b><span id="h-chat">Let buyers chat with your AI agent on every page of your store. Press Turn on, then Save in the theme editor.</span></div><div id="h-cact"><button class="btn sec" id="b-chat">Turn on</button></div></li>
     <li id="h-quotes" class="hide"><div class="n">3</div><div class="t"><b>Quotations <span class="tag">B2B</span></b><span id="h-qtext">Quote requests from your buyers arrive in Quotations › Requests.</span><span class="more hide" id="h-qerr" style="color:#8e1f0b"></span></div><div id="h-qact"><button class="btn sec" data-open="/quotations/requests">Open</button></div></li>
     <li><div class="n" id="h-wa-n">3</div><div class="t"><b>WhatsApp and email</b><span>Connect your WhatsApp number and email in your PhiXtra account.</span></div><button class="btn sec" data-open="/dashboard">Open PhiXtra</button></li>
    </ul>
@@ -221,6 +221,27 @@
     };
     $('h-pact').querySelectorAll('[data-open]').forEach(b => b.onclick = openPhx);
   }
+  function chat(c) {
+    if (!c) return;
+    const t = $('h-chat'), a = $('h-cact');
+    const m = c.seen_minutes_ago;
+    const btn = '<button class="btn sec" id="b-chat">Turn on</button>';
+    if (m != null && m < 7 * 24 * 60) {
+      const ago = m < 1 ? 'just now' : m < 60 ? m + (m === 1 ? ' minute ago' : ' minutes ago')
+        : m < 48 * 60 ? Math.round(m / 60) + (Math.round(m / 60) === 1 ? ' hour ago' : ' hours ago')
+        : Math.round(m / 1440) + ' days ago';
+      t.textContent = 'Your chat is on. Last seen on your store ' + ago + '.';
+      a.innerHTML = '<span class="pill go">On</span>';
+    } else if (m != null) {
+      t.textContent = "We haven't seen the chat on your store for a while. If you turned it off, press Turn on to switch it back on.";
+      a.innerHTML = btn;
+    } else {
+      t.textContent = 'Let buyers chat with your AI agent on every page of your store. Press Turn on, then Save in the theme editor.';
+      a.innerHTML = btn;
+    }
+    const b = $('b-chat');
+    if (b) b.onclick = function () { window.open(c.embed_url, '_top'); };
+  }
   function quotes(q) {
     const t = $('h-qtext'), a = $('h-qact');
     $('h-qerr').classList.add('hide');
@@ -256,6 +277,7 @@
       $('h-biz').textContent = d.business || d.shop_name;
       $('h-quotes').classList.toggle('hide', !d.is_b2b);
       quotes(d.quotes);
+      chat(d.chat);
       $('h-wa-n').textContent = d.is_b2b ? '4' : '3';
       show('s-home');
     } else {

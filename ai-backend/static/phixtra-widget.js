@@ -32,6 +32,12 @@
   var SKEY = "phixtra_w_session_" + SITE;
   // "Try it yourself" demo: the page names the visitor's own private chat.
   var FIXSID = script.getAttribute("data-session") || "";
+  // Logged-in Shopify customer (2026-11-02, Shopify app Part 3): sent by the
+  // PhiXtra chat app embed, signed by the store, checked by PhiXtra.
+  var VSIG = script.getAttribute("data-visitor-sig") || "";
+  var VISITOR = VSIG ? { name: script.getAttribute("data-visitor-name") || "", email: script.getAttribute("data-visitor-email") || "",
+                         company: script.getAttribute("data-visitor-company") || "" } : null;
+  function withVisitor(o) { if (VISITOR) { o.visitor = VISITOR; o.visitor_sig = VSIG; } return o; }
   if (FIXSID) { SKEY += "_" + FIXSID; store(SKEY, FIXSID); }
   var sessionId = store(SKEY) || FIXSID;
   if (!sessionId) { sessionId = "w-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); store(SKEY, sessionId); }
@@ -47,6 +53,11 @@
     host.id = "phixtra-chat-root";
     host.style.cssText = PAGE ? "position:fixed;left:0;right:0;bottom:0;top:" + TOPPX + "px;z-index:2147483000;"
                               : "position:fixed;right:20px;bottom:20px;z-index:2147483000;";
+    // Many store themes (e.g. Shopify's Dawn: div:empty{display:none}) hide
+    // empty boxes; ours looks empty because its content is in a shadow root
+    // (2026-11-02). Keep it shown whatever the page's styles say.
+    host.style.setProperty("display", "block", "important");
+    host.style.setProperty("visibility", "visible", "important");
     document.body.appendChild(host);
     var root = host.attachShadow ? host.attachShadow({ mode: "open" }) : host;
 
@@ -234,6 +245,7 @@
       var n = el("input"); n.placeholder = "Your name"; n.setAttribute("aria-label", "Your name");
       var ph = el("input"); ph.placeholder = "Phone number"; ph.type = "tel"; ph.setAttribute("aria-label", "Phone number");
       var em = el("input"); em.placeholder = "Email address"; em.type = "email"; em.setAttribute("aria-label", "Email address");
+      if (VISITOR) { n.value = VISITOR.name; em.value = VISITOR.email; }
       var b = el("button"); b.type = "submit"; b.textContent = "Send my details";
       [n, ph, em, b].forEach(function (i) { f.appendChild(i); });
       f.addEventListener("submit", function (e) {
@@ -284,7 +296,7 @@
     async function tell(text) {
       try {
         var res = await fetch(BASE + "/widget/message", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ site: SITE, message: text, session_id: sessionId }) });
+          body: JSON.stringify(withVisitor({ site: SITE, message: text, session_id: sessionId })) });
         var d = await res.json();
         if (!res.ok) { throw new Error(d.detail || "error"); }
         if (d.first) { addMsg("Thanks for your message. Someone from our team will reply here shortly.", "sys"); }
@@ -300,7 +312,7 @@
       function draw() { timer = null; if (bubble) { bubble.innerHTML = format(shown); msgs.scrollTop = msgs.scrollHeight; } }
       try {
         var res = await fetch(BASE + "/widget/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ site: SITE, message: text, session_id: sessionId }) });
+          body: JSON.stringify(withVisitor({ site: SITE, message: text, session_id: sessionId })) });
         if (!res.ok || !res.body) { throw new Error("http " + res.status); }
         var reader = res.body.getReader(), dec = new TextDecoder(), buf = "";
         while (true) {

@@ -37,12 +37,33 @@ API_VERSION = "2026-10"
 _SHOP_RE = re.compile(r"^[a-z0-9][a-z0-9\-]*\.myshopify\.com$")
 
 
+_CONF = "/etc/systemd/system/phixtra-portal.service.d/shopify.conf"
+_conf_cache: dict = {}
+
+
+def _env(name: str) -> str:
+    """From the portal service's environment; scripts run by cron (product
+    sync, 2026-11-02) don't have it, so they read the same root-only file."""
+    v = os.getenv(name, "")
+    if v:
+        return v
+    if not _conf_cache:
+        try:
+            for line in open(_CONF, encoding="utf-8"):
+                m = re.match(r'\s*Environment="?([A-Z_]+)=(.*?)"?\s*$', line)
+                if m:
+                    _conf_cache[m.group(1)] = m.group(2)
+        except OSError:
+            pass
+    return _conf_cache.get(name, "")
+
+
 def _key() -> str:
-    return os.getenv("SHOPIFY_API_KEY", "")
+    return _env("SHOPIFY_API_KEY")
 
 
 def _secret() -> str:
-    return os.getenv("SHOPIFY_API_SECRET", "")
+    return _env("SHOPIFY_API_SECRET")
 
 
 def valid_shop(shop: str) -> bool:
@@ -87,7 +108,9 @@ def ensure_tables():
                         WHERE table_name='shopify_shops'""")
         have = {r[0] for r in cur.fetchall()}
         for col, typ in (("owner_user_id", "TEXT"), ("linked_at", "TIMESTAMPTZ"), ("address1", "TEXT"),
-                         ("city", "TEXT"), ("zip", "TEXT")):
+                         ("city", "TEXT"), ("zip", "TEXT"),
+                         # Part 3 (2026-11-02): store chat
+                         ("visitor_secret", "TEXT"), ("embed_key_set_for", "INTEGER"), ("chat_seen_at", "TIMESTAMPTZ")):
             if col not in have:
                 cur.execute(f"ALTER TABLE shopify_shops ADD COLUMN {col} {typ}")
         conn.commit()
@@ -274,6 +297,42 @@ def refresh_shop_details(shop: str):
         cur.close(); conn.close()
 
 
+_APP_INSTALL_Q = "{ currentAppInstallation { id } }"
+_METAFIELDS_SET = """mutation($m: [MetafieldsSetInput!]!) { metafieldsSet(metafields: $m) {
+  userErrors { field message } } }"""
+
+
+def set_embed_data(shop: str) -> bool:
+    """Part 3: save the business's chat key and the store's signing secret as
+    app data on the store, for the PhiXtra chat app embed. Done once per
+    linked business (again if the store is linked to another account)."""
+    row = _shop_row(shop)
+    if not row or not row.get("tenant_id") or row.get("uninstalled_at"):
+        return False
+    tid = int(row["tenant_id"])
+    if row.get("embed_key_set_for") == tid and row.get("visitor_secret"):
+        return True
+    import secrets as _s
+    import portal_routes as pr
+    site_key = pr._site_widget_key(tid)
+    secret = row.get("visitor_secret") or _s.token_hex(24)
+    owner = graphql(shop, _APP_INSTALL_Q)["currentAppInstallation"]["id"]
+    d = graphql(shop, _METAFIELDS_SET, {"m": [
+        {"ownerId": owner, "namespace": "phixtra", "key": "site_key", "type": "single_line_text_field", "value": site_key},
+        {"ownerId": owner, "namespace": "phixtra", "key": "visitor_secret", "type": "single_line_text_field", "value": secret},
+    ]})["metafieldsSet"]
+    if d.get("userErrors"):
+        print(f"⚠️ shopify embed data {shop}: {d['userErrors']}")
+        return False
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("UPDATE shopify_shops SET visitor_secret=%s, embed_key_set_for=%s WHERE shop=%s", (secret, tid, shop))
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    return True
+
+
 def subscribe_uninstall(shop: str):
     try:
         d = graphql(shop, _WEBHOOK_SUB, {"topic": "APP_UNINSTALLED",
@@ -335,6 +394,12 @@ def api_session():
             print(f"⚠️ shopify shop details {shop}: {e}")
         if fresh or not (row or {}).get("shop_name"):
             subscribe_uninstall(shop)
+    cur_row = _shop_row(shop)
+    if cur_row.get("tenant_id") and cur_row.get("embed_key_set_for") != cur_row["tenant_id"]:
+        try:
+            set_embed_data(shop)
+        except Exception as e:
+            print(f"⚠️ shopify embed data {shop}: {e}")
     return jsonify(_state(_shop_row(shop)))
 
 
@@ -443,6 +508,9 @@ def _state(row):
         out.update(business=t.get("name") or "", is_b2b=bool(t.get("is_b2b")))
         out["products"] = _products_state(row)
         out["quotes"] = _quotes_state(int(row["tenant_id"]))
+        seen = row.get("chat_seen_at")
+        out["chat"] = {"seen_minutes_ago": None if not seen else max(0, int((time.time() - seen.timestamp()) // 60)),
+                       "embed_url": f"shopify://admin/themes/current/editor?context=apps&activateAppId={_key()}/chat"}
     return out
 
 
@@ -497,6 +565,11 @@ def _link(shop, tenant_id, user_id):
         conn.commit()
     finally:
         cur.close(); conn.close()
+    # Part 3: the chat embed needs the business's chat key on the store.
+    try:
+        set_embed_data(shop)
+    except Exception as e:
+        print(f"⚠️ shopify embed data {shop}: {e}")
 
 
 def _send_code(pending_row) -> bool:

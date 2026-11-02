@@ -136,6 +136,42 @@ def _fmt_currency_val(val: float, currency: str, tenant_id: Optional[int] = None
 INFO_DOC_TYPES = ("page", "post", "store_info", "product_off")
 
 
+# Shopify stores (2026-11-02, Part 3): "?add-to-cart=" is WooCommerce's; on a
+# Shopify store the card opens the product page, where the buyer picks the
+# option and adds it to the cart.
+_SHOPIFY_HOSTS = {"at": 0.0, "hosts": set()}
+
+
+def _shopify_hosts() -> set:
+    import time as _t
+    if _t.time() - _SHOPIFY_HOSTS["at"] > 300:
+        hosts = set()
+        try:
+            conn = _get_pg_conn()
+            cur = conn.cursor()
+            cur.execute("""SELECT lower(shop), lower(COALESCE(primary_domain, '')) FROM shopify_shops
+                            WHERE uninstalled_at IS NULL""")
+            for a, b in cur.fetchall():
+                hosts.update(h for h in (a, b) if h)
+            cur.close(); conn.close()
+        except Exception as e:
+            print("⚠️ shopify hosts:", e)
+        _SHOPIFY_HOSTS.update(at=_t.time(), hosts=hosts)
+    return _SHOPIFY_HOSTS["hosts"]
+
+
+def cart_url_for(url: str, product_id) -> str:
+    """The card's "Add to cart" link: WooCommerce's ?add-to-cart=, or the
+    product page itself on a Shopify store."""
+    if not (product_id and url):
+        return url
+    from urllib.parse import urlparse as _up
+    host = (_up(url).hostname or "").lower()
+    if host.endswith(".myshopify.com") or host in _shopify_hosts():
+        return url
+    return f"{url}?add-to-cart={product_id}"
+
+
 def _is_product_doc(doc: Dict[str, Any]) -> bool:
     return (doc.get("type") or "product") not in INFO_DOC_TYPES
 
@@ -938,7 +974,7 @@ def search_related_products(
             doc_id = doc.get("id") or ""
             product_id = _extract_pid(doc_id)
             url = doc.get("url") or ""
-            cart_url = f"{url}?add-to-cart={product_id}" if product_id and url else url
+            cart_url = cart_url_for(url, product_id)
             related.append({
                 "name": name,
                 "price": _fmt_price(doc.get("price_min"), doc.get("price_max"), doc.get("currency") or ""),
