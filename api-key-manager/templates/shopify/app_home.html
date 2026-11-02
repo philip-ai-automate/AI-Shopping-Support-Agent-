@@ -135,7 +135,8 @@
     <li><div class="n">1</div><div class="t"><b>Products</b><span id="h-products">Reading your products from Shopify…</span>
       <div class="prog wait" id="h-prog"><i></i></div>
       <span class="more hide" id="h-skipped"></span>
-      <span class="more hide" id="h-off"></span></div>
+      <span class="more hide" id="h-off"></span>
+      <span class="more hide" id="h-pages"></span></div>
       <div id="h-pact"><span class="pill" id="h-pill">Reading</span></div></li>
     <li><div class="n">2</div><div class="t"><b>Chat on your store</b><span id="h-chat">Let buyers chat with your AI agent on every page of your store. Press Turn on, then Save in the theme editor.</span></div><div id="h-cact"><button class="btn sec" id="b-chat">Turn on</button></div></li>
     <li id="h-quotes" class="hide"><div class="n">3</div><div class="t"><b>Quotations <span class="tag">B2B</span></b><span id="h-qtext">Quote requests from your buyers arrive in Quotations › Requests.</span><span class="more hide" id="h-qerr" style="color:#8e1f0b"></span></div><div id="h-qact"><button class="btn sec" data-open="/quotations/requests">Open</button></div></li>
@@ -173,6 +174,7 @@
     const txt = $('h-products'), prog = $('h-prog'), pill = $('h-pill');
     const n = (x) => Number(x || 0).toLocaleString();
     $('h-skipped').classList.add('hide'); $('h-off').classList.add('hide');
+    pagesLine(p.pages);
     $('h-pact').innerHTML = '';
     if (reading) {
       const counted = p.status === 'importing' && p.total;
@@ -264,6 +266,24 @@
       a.innerHTML = '<button class="btn sec" data-open="/quotations/requests">Open</button>';
     }
     a.querySelectorAll('[data-open]').forEach(b => b.onclick = openPhx);
+  }
+  function pagesLine(w) {
+    const e = $('h-pages');
+    if (!w) { e.classList.add('hide'); return; }
+    const n = Number(w.read || 0);
+    if (w.status === 'done' && n) {
+      e.textContent = 'Your AI agent has also read ' + n.toLocaleString() + (n === 1 ? ' page' : ' pages') + ' of your store (about, delivery, returns, FAQs).';
+      e.style.color = '';
+    } else if (w.status === 'pending' || w.status === 'reading') {
+      e.textContent = "Reading your store's pages (about, delivery, returns, FAQs)…";
+      e.style.color = '';
+    } else {
+      e.textContent = "We couldn't read your store's pages (about, delivery, returns) "
+        + (w.protected ? 'because your store is password-protected' : 'just now')
+        + ". Your AI agent will know less about delivery and returns until we can. We'll try again automatically.";
+      e.style.color = '#8a5a00';
+    }
+    e.classList.remove('hide');
   }
   async function refresh() {
     const r = await api('session');

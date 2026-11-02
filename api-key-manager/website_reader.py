@@ -533,12 +533,28 @@ def doc_id_for(tenant_id: int, url: str) -> str:
     return f"site-{tenant_id}-{hashlib.md5(url.encode()).hexdigest()[:16]}"
 
 
+SHOPIFY_PROTECTED = ("Your store is password-protected, so its pages can't be read yet. "
+                     "We'll try again automatically.")
+
+
+def _shopify_source(cur, tenant_id: int) -> bool:
+    """Store linked through the PhiXtra app in Shopify (2026-11-02)."""
+    cur.execute("""SELECT 1 FROM website_sources w JOIN shopify_shops s ON s.tenant_id = w.tenant_id
+                    WHERE w.tenant_id=%s AND w.created_by='shopify_app' AND s.uninstalled_at IS NULL""", (tenant_id,))
+    return cur.fetchone() is not None
+
+
 def schedule_allowed(tenant_id: int) -> bool:
     """Automatic re-reading (daily/weekly/monthly) is a plan feature
     (Plan editor key store.website_schedule — paid plans). Same plan lookup
-    as the portal (_get_tenant_plan: no plan → plan 1)."""
+    as the portal (_get_tenant_plan: no plan → plan 1). Shopify stores linked
+    through the app are always re-read weekly, so the AI agent's delivery and
+    returns knowledge never depends on the owner remembering (2026-11-02)."""
     conn = db()
     cur = conn.cursor()
+    if _shopify_source(cur, tenant_id):
+        conn.close()
+        return True
     cur.execute("""SELECT 1 FROM tenants t JOIN plan_feature_grants g
                    ON g.plan_id = COALESCE(t.plan_id, 1) AND g.feature_key = ANY(%s)
                    WHERE t.id = %s""", (["store.website_schedule", "store.website_connect"], tenant_id))
@@ -578,6 +594,21 @@ def run_tenant(tenant_id: int) -> None:
         c2.close()
 
     print(f"tenant {tenant_id}: reading {src['url']}", flush=True)
+    shopify = src.get("created_by") == "shopify_app"
+    retry_days = "1" if shopify else _next_days(tenant_id, src["frequency"])   # Shopify: retry daily after a failure
+    if shopify:
+        # A password-protected store answers every page with its password
+        # page; don't read that as if it were the store.
+        try:
+            r = requests.get(normalise_start(src["url"]), headers={"User-Agent": UA}, timeout=20, allow_redirects=True)
+            if urlparse(r.url).path.rstrip("/").endswith("/password"):
+                cur.execute("""UPDATE website_sources SET status='error', status_detail=%s,
+                               next_read_at=NOW() + INTERVAL '1 day' WHERE tenant_id=%s""", (SHOPIFY_PROTECTED, tenant_id))
+                conn.commit(); conn.close()
+                print(f"tenant {tenant_id}: Shopify store password-protected, retry tomorrow", flush=True)
+                return
+        except Exception as e:
+            print(f"tenant {tenant_id}: Shopify password check: {e}", flush=True)
     try:
         # Products come from one place at a time: an uploaded list wins.
         cur.execute("""SELECT 1 FROM data_sources WHERE tenant_id=%s AND is_active
@@ -590,7 +621,7 @@ def run_tenant(tenant_id: int) -> None:
         print(f"tenant {tenant_id}: failed: {e}", flush=True)
         cur.execute("""UPDATE website_sources SET status='error', status_detail=%s,
                        next_read_at=NOW() + (%s || ' days')::interval WHERE tenant_id=%s""",
-                    (msg, _next_days(tenant_id, src["frequency"]), tenant_id))
+                    (msg, retry_days, tenant_id))
         conn.commit()
         conn.close()
         return
@@ -651,7 +682,8 @@ def run_tenant(tenant_id: int) -> None:
     n_products = sum(1 for p in pages if p.get("kind") == "product")
     cur.execute("""UPDATE website_sources SET status=%s, status_detail=%s, pages_read=%s, last_read_at=NOW(),
                    next_read_at=NOW() + (%s || ' days')::interval WHERE tenant_id=%s""",
-                ("done" if pages else "error", detail, len(pages) - n_products, _next_days(tenant_id, src["frequency"]), tenant_id))
+                ("done" if pages else "error", detail, len(pages) - n_products,
+                 _next_days(tenant_id, src["frequency"]) if pages else retry_days, tenant_id))
     conn.commit()
     conn.close()
     print(f"tenant {tenant_id}: {len(pages) - n_products} pages read, {n_products} products, {len(skipped)} skipped, {len(gone)} removed", flush=True)

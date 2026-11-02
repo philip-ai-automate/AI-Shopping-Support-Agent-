@@ -344,13 +344,20 @@ def ensure_website_source(shop: str):
     host = (row.get("primary_domain") or shop).lower()
     conn = get_db_connection(); cur = conn.cursor()
     try:
+        # Read straight away, then weekly (2026-11-02): owners never have to
+        # remember Sync now. website_reader retries daily if it can't read.
         cur.execute("""INSERT INTO website_sources (tenant_id, url, frequency, status, site_title, created_by, created_label)
-                       VALUES (%s, %s, 'manual', 'connected', %s, 'shopify_app', 'PhiXtra app in Shopify')
+                       VALUES (%s, %s, 'weekly', 'pending', %s, 'shopify_app', 'PhiXtra app in Shopify')
                        ON CONFLICT (tenant_id) DO NOTHING""",
                     (int(row["tenant_id"]), f"https://{host}/", row.get("shop_name")))
+        new = cur.rowcount == 1
         conn.commit()
     finally:
         cur.close(); conn.close()
+    if new:
+        import subprocess
+        subprocess.Popen(f"cd /root/phixtra-app/api-key-manager && /usr/bin/python3 website_reader.py --tenant {int(row['tenant_id'])} "
+                         f">> /var/log/website_reader.log 2>&1", shell=True, start_new_session=True)
 
 
 def subscribe_uninstall(shop: str):
@@ -566,11 +573,18 @@ def _products_state(row):
         off = cur.fetchone()[0]
         cur.execute("SELECT count(*) FROM shopify_products WHERE shop=%s", (row["shop"],))
         held = cur.fetchone()[0]
+        cur.execute("""SELECT status, pages_read, status_detail FROM website_sources
+                        WHERE tenant_id=%s AND created_by='shopify_app'""", (row["tenant_id"],))
+        w = cur.fetchone()
     finally:
         cur.close(); conn.close()
+    pages = None
+    if w:
+        pages = {"status": w[0], "read": w[1] or 0,
+                 "protected": bool(w[2] and "password-protected" in w[2])}
     return {"status": st, "total": row.get("sync_total"), "done": row.get("sync_done") or 0,
             "skipped": row.get("sync_skipped") or 0, "count": held, "off": off,
-            "minutes_ago": mins, "error": bool(row.get("sync_error")) and st == "error"}
+            "minutes_ago": mins, "error": bool(row.get("sync_error")) and st == "error", "pages": pages}
 
 
 def _link(shop, tenant_id, user_id):

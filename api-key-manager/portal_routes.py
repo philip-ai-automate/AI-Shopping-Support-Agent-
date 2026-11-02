@@ -6652,6 +6652,14 @@ def _setup_checklist(tenant_id: int):
     elif src and src.get("status") in ("pending", "reading"):
         steps.append(dict(key="sync", title="Sync your website", done=False, state="checking",
                           text="Reading your website now. This usually takes a few minutes."))
+    elif shopify_shop and src and src.get("status") == "error":
+        # Shopify (2026-11-02): read automatically; say why it couldn't be, and that it retries.
+        _why = ("because your store is password-protected" if "password-protected" in (src.get("status_detail") or "")
+                else "just now")
+        steps.append(dict(key="sync", title="Sync your website", done=False, state="failed",
+                          text=f"We couldn't read your store's pages (about, delivery, returns) {_why}. Your AI agent will "
+                               "know less about delivery and returns until we can. We'll try again automatically.",
+                          action="Try now", url=url_for("portal.store_info_website_sync"), post_sync=True))
     else:
         found = (src or {}).get("pages_found")
         steps.append(dict(key="sync", title="Sync your website", done=False,
