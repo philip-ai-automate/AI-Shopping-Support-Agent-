@@ -3121,12 +3121,46 @@ def _send_verified_welcome_email_web(
 
 
 
+# Portal front door (2026-11-02): "Try it yourself" demos, one per kind of
+# business. Shown only when that demo business exists and is switched on.
+_FRONT_DEMOS = {
+    "b2b-demo": dict(label="Businesses (B2B)", buyer_btn="Be the buyer", seller_btn="Be the seller",
+                     text="Harbour Supplies Ltd, a packaging wholesaler. Ask for trade prices in any language and "
+                          "watch a quote request reach the sales team."),
+    "b2c-demo": dict(label="Shoppers (B2C)", buyer_btn="Be the shopper", seller_btn="Be the shop",
+                     text="Ashby Row, an online clothing and accessories shop. Ask for a size, a colour or delivery "
+                          "in any language and see product photos in the chat."),
+}
+
+
+def _front_demos():
+    out = []
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("SELECT slug, seller_url FROM chat_links WHERE is_demo AND enabled AND slug = ANY(%s)",
+                    (list(_FRONT_DEMOS),))
+        rows = dict(cur.fetchall())
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ front demos:", e)
+        rows = {}
+    for slug, d in _FRONT_DEMOS.items():
+        if slug in rows:
+            out.append(dict(d, buyer_url=f"https://chat.phixtra.com/c/{slug}",
+                            seller_url=rows[slug] or f"https://portal.phixtra.com/demo/{slug}"))
+    return out
+
+
+def _front_door(nxt=None, autofocus=False):
+    return render_template("portal/front_door.html", next=nxt, demos=_front_demos(), autofocus=autofocus)
+
+
 @portal_bp.route("/", methods=["GET"])
 @public_route
 def home():
     if _logged_in() and _customer_id():
         return redirect(url_for("portal.dashboard"))
-    return render_template("portal/home.html")
+    return _front_door()
 
 
 # Android app (2026-10-25): proves com.phixtra.app belongs to this site, so
@@ -4855,7 +4889,7 @@ def login():
     if request.method == "GET":
         if _logged_in() and _customer_id():
             return redirect(nxt or url_for("portal.home"))
-        return render_template("portal/login.html", next=nxt)
+        return _front_door(nxt, autofocus=True)
 
     email    = (request.form.get("email")    or "").strip().lower()
     password = (request.form.get("password") or "").strip()

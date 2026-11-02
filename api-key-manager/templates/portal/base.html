@@ -1650,14 +1650,14 @@
 <!-- ══════════════ DEMO MODE BANNER ══════════════ -->
 {% if _demo_visitor %}
   <div class="demo-bar dv-bar">
-    <span><span class="dv-long">PhiXtra demo · You are the seller</span><strong class="dv-short">Seller demo</strong></span>
-    <a href="{{ _demo_visitor.buyer_url }}" target="_blank" rel="noopener"><span class="dv-long">Open the </span>Buyer chat</a>
-    <a href="#" onclick="var p=document.getElementById('dvPhone');p.hidden=!p.hidden;return false"><span class="dv-long">Be the buyer on </span>your phone<span class="dv-long"> / WhatsApp</span></a>
-    <a href="{{ _demo_visitor.trial_url }}" style="background:#fff;color:#1d4ed8;text-decoration:none;padding:1px 10px;border-radius:999px;line-height:18px"><span class="dv-long">Start my free B2B trial</span><span class="dv-short">Free B2B trial</span></a>
+    <span><span class="dv-long">PhiXtra demo · You are the {{ 'shop' if _demo_visitor.shop else 'seller' }}</span><strong class="dv-short">{{ 'Shop' if _demo_visitor.shop else 'Seller' }} demo</strong></span>
+    <a href="{{ _demo_visitor.buyer_url }}" target="_blank" rel="noopener"><span class="dv-long">Open the </span>{{ 'Shopper' if _demo_visitor.shop else 'Buyer' }} chat</a>
+    <a href="#" onclick="var p=document.getElementById('dvPhone');p.hidden=!p.hidden;return false"><span class="dv-long">Be the {{ 'shopper' if _demo_visitor.shop else 'buyer' }} on </span>your phone<span class="dv-long"> / WhatsApp</span></a>
+    <a href="{{ _demo_visitor.trial_url }}" style="background:#fff;color:#1d4ed8;text-decoration:none;padding:1px 10px;border-radius:999px;line-height:18px"><span class="dv-long">Start my free {{ '' if _demo_visitor.shop else 'B2B ' }}trial</span><span class="dv-short">Free {{ '' if _demo_visitor.shop else 'B2B ' }}trial</span></a>
   </div>
   <div id="dvPhone" hidden style="position:fixed;z-index:10050;top:96px;right:12px;width:min(560px,calc(100vw - 24px));background:#fff;color:#111E2D;border-radius:14px;box-shadow:0 12px 40px rgba(11,29,64,.25);padding:16px 18px;font-size:14px;line-height:1.45">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <strong style="font-size:15px">Be the buyer on your phone</strong>
+      <strong style="font-size:15px">Be the {{ 'shopper' if _demo_visitor.shop else 'buyer' }} on your phone</strong>
       <a href="#" onclick="document.getElementById('dvPhone').hidden=true;return false" style="color:#64748b;text-decoration:none;font-size:20px;line-height:1">×</a>
     </div>
     <p style="margin:0 0 12px;color:#475569">Scan with your phone camera. Your messages show here in your own Inbox, and only you can see them.</p>

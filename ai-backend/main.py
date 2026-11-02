@@ -1,8 +1,11 @@
 
 
 # ===== Phixtra Safe Recommendation Guard =====
-def _validate_products(products):
-    """Allow only real catalog products with URL, product_id, and a non-zero price."""
+def _validate_products(products, photo_cards: bool = False):
+    """Allow only real catalog products with URL, product_id, and a non-zero price.
+    photo_cards (website chat, 2026-11-02): a product with no web page (added
+    by hand or from a price list) may still be a card when it has a photo;
+    the card then shows no "View product" link."""
     safe = []
     for p in products:
         url = p.get("url")
@@ -10,6 +13,8 @@ def _validate_products(products):
         name = p.get("name")
         price = p.get("price") or ""
         if url and product_id and name and price:
+            safe.append(p)
+        elif photo_cards and not url and name and price and p.get("image_url"):
             safe.append(p)
     return safe
 # ===== End Guard =====
@@ -1320,7 +1325,8 @@ def _chat(req: ChatRequest):
         "handoff_triggered": handoff_triggered,
     }
     _all_recs = list(product_recommendations)
-    product_recommendations = _validate_products(product_recommendations)
+    product_recommendations = _validate_products(product_recommendations,
+                                                 photo_cards=(getattr(req, "channel", None) != "whatsapp"))
     # Products with no web page (an uploaded price list, or added by hand)
     # can't be cards, so the reply named "the option below" and nothing
     # followed (2026-10-29). Name them with their price in the reply instead.

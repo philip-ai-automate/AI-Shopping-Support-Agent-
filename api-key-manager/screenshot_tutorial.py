@@ -14,7 +14,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeoutError
 
 DEMO_EMAIL = "demo@phixtra.com"
-DEMO_PASSWORD = "Demo1234!"
+DEMO_PASSWORD = open("/root/.phixtra_demo_password").read().strip()  # retired public password 2026-11-02
 OUT_DIR = Path(__file__).parent / "static" / "portal" / "tutorial"
 
 # (slug, path) — slug becomes the PNG filename and the eventual guide id.

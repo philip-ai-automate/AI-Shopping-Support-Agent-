@@ -234,7 +234,9 @@ def demo_bar_context():
         return {"_demo_visitor": None}
     tok = demo_codes.token(v)
     buyer = BUYER_URL.format(slug=slug, token=tok)
-    out = {"buyer_url": buyer, "trial_url": TRIAL_URL, "code": v["code"],
+    shop = slug == "b2c-demo"   # shop demo (2026-11-02): shopper / shop wording, normal trial
+    out = {"buyer_url": buyer, "trial_url": "https://portal.phixtra.com/register" if shop else TRIAL_URL,
+           "shop": shop, "code": v["code"],
            "buyer_qr": _qr(buyer), "wa_url": None, "wa_qr": None, "wa_number": None}
     number, name = _demo_wa_number(v["tenant_id"])
     digits = re.sub(r"\D", "", number or "")

@@ -34,7 +34,7 @@ from tutorial_studio.lib import click_visibly, type_visibly, highlight, move_to
 
 BASE_URL = "https://portal.phixtra.com"
 DEMO_EMAIL = "demo@phixtra.com"
-DEMO_PASSWORD = "Demo1234!"
+DEMO_PASSWORD = open("/root/.phixtra_demo_password").read().strip()  # retired public password 2026-11-02
 
 VOICE_ID = "596d780fd5874d7983847b6a0e0c49e6"  # "Georgia - Lifelike - Broadcaster" — female, confident
 

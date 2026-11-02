@@ -20,7 +20,7 @@ previous run first, by campaign name):
   - 2 pending rows in the Needs Review queue, ready to Approve/Reject
 
 Works on portal.phixtra.com
-(demo@phixtra.com / Demo1234!), same tenant/database, see
+(demo@phixtra.com / (password in /root/.phixtra_demo_password)), same tenant/database, see
 project_phixtra_connect_design memory.
 """
 
@@ -177,7 +177,7 @@ print()
 print("=" * 60)
 print("✅  Campaign Intelligence demo data added!")
 print("=" * 60)
-print(f"   Login    : demo@phixtra.com / Demo1234!")
+print(f"   Login    : demo@phixtra.com / (password in /root/.phixtra_demo_password)")
 print(f"   Works on : https://portal.phixtra.com")
 print(f"   Campaign : {CAMPAIGN_NAME}")
 print(f"   See it at: WhatsApp Campaigns → Reports → {CAMPAIGN_NAME}")

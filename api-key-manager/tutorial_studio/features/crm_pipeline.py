@@ -30,7 +30,7 @@ from tutorial_studio.lib import click_visibly
 
 BASE_URL = "https://portal.phixtra.com"
 DEMO_EMAIL = "demo@phixtra.com"
-DEMO_PASSWORD = "Demo1234!"
+DEMO_PASSWORD = open("/root/.phixtra_demo_password").read().strip()  # retired public password 2026-11-02
 
 BEATS = {
     # ── 1. Leads ─────────────────────────────────────────────────────────

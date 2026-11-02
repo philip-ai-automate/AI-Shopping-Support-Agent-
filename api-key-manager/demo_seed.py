@@ -6,7 +6,7 @@ Usage:
     python demo_seed.py
 
 What it creates:
-  - A fresh tenant + customer (demo@phixtra.com / Demo1234!)
+  - A fresh tenant + customer (demo@phixtra.com / (password in /root/.phixtra_demo_password))
   - Active WhatsApp connection (fake but valid-looking)
   - 8 contacts with realistic Nigerian names + phones
   - 60+ WhatsApp conversations spanning 30 days
@@ -42,7 +42,7 @@ conn.autocommit = False
 cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
 DEMO_EMAIL    = "demo@phixtra.com"
-DEMO_PASSWORD = "Demo1234!"
+DEMO_PASSWORD = open("/root/.phixtra_demo_password").read().strip()  # retired public password 2026-11-02
 DEMO_BUSINESS = "TechMart Nigeria"
 
 def pw_hash(plain: str) -> str:
