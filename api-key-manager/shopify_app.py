@@ -442,7 +442,26 @@ def _state(row):
         t = _tenant_info(int(row["tenant_id"]))
         out.update(business=t.get("name") or "", is_b2b=bool(t.get("is_b2b")))
         out["products"] = _products_state(row)
+        out["quotes"] = _quotes_state(int(row["tenant_id"]))
     return out
+
+
+def _quotes_state(tenant_id):
+    """Home screen Quotations line (2026-11-02): 'open' on a B2B plan,
+    'trial' while the free 2-week trial can still be started, else 'plans'."""
+    try:
+        import quote_requests
+        if quote_requests.allowed(tenant_id):
+            return "open"
+    except Exception:
+        pass
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT trial_granted_at IS NULL FROM tenants WHERE id=%s", (tenant_id,))
+        r = cur.fetchone()
+        return "trial" if (r and r[0]) else "plans"
+    finally:
+        cur.close(); conn.close()
 
 
 def _products_state(row):
@@ -682,6 +701,29 @@ def api_sync():
     return jsonify(_state(_shop_row(shop)))
 
 
+@shopify_bp.route("/api/trial", methods=["POST"])
+@public_route
+def api_trial():
+    """"Start free trial" on the Home screen: the business's one 2-week trial
+    (B2B Growth for B2B businesses), same as Billing › Start my AI trial.
+    Only the Shopify user who created or linked the account can start it."""
+    w = _who()
+    if not w:
+        return _bad_token()
+    shop, user_id, row = w
+    if not row.get("tenant_id"):
+        return jsonify({"error": "Link this store to a PhiXtra account first."}), 400
+    if not user_id or user_id != (row.get("owner_user_id") or ""):
+        return jsonify({"error": "Only the person who connected this store to PhiXtra can start the trial."}), 403
+    import portal_routes as pr
+    tid = int(row["tenant_id"])
+    if pr._start_wa_ai_trial(tid):
+        pr.insert_audit_log(action="trial_started", tenant_id=tid, details={"from": "shopify_app", "shop": shop})
+        out = _state(_shop_row(shop)); out["trial_started"] = True
+        return jsonify(out)
+    return jsonify({"error": "The free trial has already been used on this account. Choose a plan in PhiXtra to continue."}), 409
+
+
 @shopify_bp.route("/api/open", methods=["POST"])
 @public_route
 def api_open():
@@ -695,7 +737,7 @@ def api_open():
         return jsonify({"error": "not_linked"}), 400
     d = request.get_json(silent=True) or {}
     nxt = d.get("next") if d.get("next") in ("/dashboard", "/quotations/requests", "/data-sources",
-                                             "/products/store?offer=off") else "/dashboard"
+                                             "/products/store?offer=off", "/billing/plans") else "/dashboard"
     if not user_id or user_id != (row.get("owner_user_id") or ""):
         return jsonify({"url": "https://portal.phixtra.com/login"})
     conn = get_db_connection(); cur = conn.cursor()

@@ -4,7 +4,7 @@
 {% block content %}
 {# Store product photos (2026-10-25): label only. Order and photos come from the WooCommerce store. #}
 <div style="margin-bottom:18px">
-  <a href="{{ url_for('portal.products_store') }}" style="font-size:13px;color:var(--muted);text-decoration:none">← Back to Store products</a>
+  <a href="{{ url_for('portal.products_store') }}" style="font-size:13px;color:var(--muted);text-decoration:none">← Back to {{ 'Shopify' if is_shopify else 'WooCommerce' }} products</a>
 </div>
 {% if is_shopify %}
 <div class="card" style="margin-bottom:18px">

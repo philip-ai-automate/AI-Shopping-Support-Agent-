@@ -29285,10 +29285,17 @@ def products():
                              OR (coalesce(p.image_url,'') <> '' AND NOT EXISTS (SELECT 1 FROM product_photos ph WHERE ph.tenant_id=p.tenant_id AND ph.product_key='p:'||p.id::text)))""",
                       (tenant_id,))
         _unl = {r["id"] for r in _pcur.fetchall()}
-        _pcur.execute("SELECT count(*) AS n FROM documents WHERE tenant_id=%s AND type='product' AND id LIKE 'product-%%'", (tenant_id,))
+        _pcur.execute("SELECT count(*) AS n FROM documents WHERE tenant_id=%s AND type IN ('product','product_off') AND id LIKE 'product-%%'", (tenant_id,))
         store_count = int(_pcur.fetchone()["n"])
+        _pcur.execute("SELECT count(*) AS n FROM products WHERE tenant_id=%s AND is_active", (tenant_id,))
+        own_count = int(_pcur.fetchone()["n"])
+        store_label = _store_tab_label(_pcur, tenant_id)
     finally:
         _pc.close()
+    # Store products but nothing added here (2026-11-02): open on the store's
+    # products, so a Shopify / WooCommerce owner doesn't see "No products yet".
+    if store_count and not own_count and request.args.get("tab") != "own" and not (q or category or photos_filter):
+        return redirect(url_for("portal.products_store"))
     product_list, total, categories = _get_products(
         tenant_id, q=q, category=category, page=page, only_ids=_unl if photos_filter else None
     )
@@ -29311,6 +29318,7 @@ def products():
         photos_filter   = photos_filter,
         unlabelled_total = len(_unl),
         store_count     = store_count,
+        store_label     = store_label,
         total           = total,
         total_pages     = total_pages,
         page            = page,
@@ -29625,6 +29633,11 @@ def _store_doc(cur, tenant_id, doc_id):
     return cur.fetchone()
 
 
+def _store_tab_label(cur, tenant_id):
+    """'Shopify products' or 'WooCommerce products' for the Store tab."""
+    return "Shopify products" if _store_shopify(cur, tenant_id) else "WooCommerce products"
+
+
 def _store_shopify(cur, tenant_id):
     """The Shopify store linked to this business (Part 2, 2026-11-02), or None."""
     cur.execute("""SELECT shop FROM shopify_shops WHERE tenant_id=%s AND uninstalled_at IS NULL
@@ -29669,6 +29682,8 @@ def products_store():
             where += " AND type='product_off'"
         cur.execute("SELECT count(*) AS n FROM documents WHERE tenant_id=%s AND type='product_off' AND id LIKE 'product-%%'", (tenant_id,))
         off_total = int(cur.fetchone()["n"])
+        cur.execute("SELECT count(*) AS n FROM documents WHERE tenant_id=%s AND type IN ('product','product_off') AND id LIKE 'product-%%'", (tenant_id,))
+        store_total = int(cur.fetchone()["n"])
         unl_sql = """(EXISTS (SELECT 1 FROM product_photos ph WHERE ph.tenant_id=documents.tenant_id AND ph.product_key='d:'||documents.id AND ph.view_label IS NULL)
                       OR (coalesce(image_url,'') <> '' AND NOT EXISTS (SELECT 1 FROM product_photos ph WHERE ph.tenant_id=documents.tenant_id AND ph.product_key='d:'||documents.id)))"""
         if photos_filter:
@@ -29694,6 +29709,7 @@ def products_store():
     return render_template("portal/products_store.html", customer=customer, docs=docs, total=total, q=q, page=page,
                            total_pages=max(1, -(-total // 40)), photos_filter=photos_filter, unlabelled_total=unlabelled_total,
                            off_filter=off_filter, off_total=off_total, is_shopify=bool(shop),
+                           store_label="Shopify products" if shop else "WooCommerce products", store_total=store_total,
                            can_edit=_team_member_has_permission("ecom.products_edit"))
 
 

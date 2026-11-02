@@ -94,8 +94,8 @@
 
 {% if store_count %}
 <nav class="pg-tabs" aria-label="Product lists">
-  <a href="{{ url_for('portal.products') }}" class="on">Products added here</a>
-  <a href="{{ url_for('portal.products_store') }}">Store products ({{ '{:,}'.format(store_count) }})</a>
+  <a href="{{ url_for('portal.products_store') }}">{{ store_label or 'Store products' }} ({{ '{:,}'.format(store_count) }})</a>
+  <a href="{{ url_for('portal.products', tab='own') }}" class="on">Products added here</a>
 </nav>
 {% endif %}
 

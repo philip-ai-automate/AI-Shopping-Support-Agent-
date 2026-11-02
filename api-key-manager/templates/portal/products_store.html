@@ -31,8 +31,8 @@
   </div>
 </div>
 <nav class="pg-tabs" aria-label="Product lists">
-  <a href="{{ url_for('portal.products') }}">Products added here</a>
-  <a href="{{ url_for('portal.products_store') }}" class="on">Store products</a>
+  <a href="{{ url_for('portal.products_store') }}" class="on">{{ store_label or 'Store products' }} ({{ '{:,}'.format(store_total or 0) }})</a>
+  <a href="{{ url_for('portal.products', tab='own') }}">Products added here</a>
 </nav>
 <div class="card">
   <form method="GET" action="{{ url_for('portal.products_store') }}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
