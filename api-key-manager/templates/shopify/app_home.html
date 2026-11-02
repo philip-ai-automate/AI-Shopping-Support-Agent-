@@ -43,6 +43,15 @@
  .steps .n{flex:0 0 28px;height:28px;border-radius:50%;background:#f1f1f1;display:flex;align-items:center;justify-content:center;font-weight:650}
  .steps .t{flex:1}.steps .t b{display:block}.steps .t span{color:#616161}
  .ok{color:#0c5132;font-weight:600}
+ .pill{display:inline-block;font-size:12px;font-weight:600;border-radius:99px;padding:2px 10px;white-space:nowrap;background:#f1f1f1;color:#616161}
+ .pill.go{background:#cdfee1;color:#0c5132}
+ .prog{height:6px;border-radius:99px;background:#ebebeb;overflow:hidden;margin-top:8px;max-width:320px}
+ .prog i{display:block;height:100%;width:0;background:#303030;transition:width .4s}
+ .prog.wait i{width:30%;animation:slide 1.4s ease-in-out infinite}
+ @keyframes slide{0%{margin-left:-30%}100%{margin-left:100%}}
+ @media (prefers-reduced-motion:reduce){.prog.wait i{animation:none;width:100%;opacity:.35}}
+ .steps .t .more{display:block;color:#616161;font-size:13px;margin-top:6px}
+ .lnk2{background:none;border:0;padding:0;color:#005bd3;font:inherit;cursor:pointer;text-decoration:underline}
  .hide{display:none!important}
 </style>
 </head>
@@ -123,7 +132,11 @@
   </div>
   <div class="card">
    <ul class="steps">
-    <li><div class="n">1</div><div class="t"><b>Products</b><span id="h-products">Your products will show here once they've been read from Shopify.</span></div></li>
+    <li><div class="n">1</div><div class="t"><b>Products</b><span id="h-products">Reading your products from Shopify…</span>
+      <div class="prog wait" id="h-prog"><i></i></div>
+      <span class="more hide" id="h-skipped"></span>
+      <span class="more hide" id="h-off"></span></div>
+      <div id="h-pact"><span class="pill" id="h-pill">Reading</span></div></li>
     <li><div class="n">2</div><div class="t"><b>Chat on your store</b><span>Show the PhiXtra chat on your store.</span></div><button class="btn sec" disabled>Turn on</button></li>
     <li id="h-quotes" class="hide"><div class="n">3</div><div class="t"><b>Quotations <span class="tag">B2B</span></b><span>Quote requests from your buyers arrive in Quotations › Requests.</span></div><button class="btn sec" data-open="/quotations/requests">Open</button></li>
     <li><div class="n" id="h-wa-n">3</div><div class="t"><b>WhatsApp and email</b><span>Connect your WhatsApp number and email in your PhiXtra account.</span></div><button class="btn sec" data-open="/dashboard">Open PhiXtra</button></li>
@@ -147,9 +160,76 @@
     return { ok: r.ok, status: r.status, d };
   }
 
+  async function openPhx() {
+    const w = window.open('', '_blank');
+    const r = await api('open', { next: this.dataset.open });
+    const url = (r.ok && r.d.url) || 'https://portal.phixtra.com/login';
+    if (w) w.location = url; else window.open(url, '_blank');
+  }
+  let pollT = null;
+  function products(p) {
+    if (!p) return;
+    const reading = ['queued', 'reading', 'importing'].includes(p.status);
+    const txt = $('h-products'), prog = $('h-prog'), pill = $('h-pill');
+    const n = (x) => Number(x || 0).toLocaleString();
+    $('h-skipped').classList.add('hide'); $('h-off').classList.add('hide');
+    $('h-pact').innerHTML = '';
+    if (reading) {
+      const counted = p.status === 'importing' && p.total;
+      txt.textContent = 'Reading your products from Shopify…' + (counted ? ' ' + n(p.done) + ' of ' + n(p.total) : '');
+      prog.classList.remove('hide');
+      prog.classList.toggle('wait', !counted);
+      prog.firstElementChild.style.width = counted ? Math.min(100, Math.round(100 * p.done / p.total)) + '%' : '';
+      $('h-pact').innerHTML = '<span class="pill">Reading</span>';
+      clearTimeout(pollT); pollT = setTimeout(refresh, 4000);
+      return;
+    }
+    prog.classList.add('hide');
+    const again = '<button class="btn sec" id="b-again">Read products again</button>';
+    if (p.status === 'list_in_use') {
+      txt.textContent = "You're using a product list uploaded to PhiXtra, so your Shopify products aren't added. "
+        + "To use your Shopify products instead, remove that list in PhiXtra, under Products & Orders › Add products from Excel.";
+      $('h-pact').innerHTML = '<button class="btn sec" data-open="/data-sources">Open PhiXtra</button>';
+    } else if (p.status === 'error') {
+      txt.textContent = "We couldn't read your products just now. We'll try again tonight, or you can try now.";
+      $('h-pact').innerHTML = again;
+    } else {
+      const ago = p.minutes_ago == null ? '' : (p.minutes_ago < 1 ? ' Last update just now.'
+        : ' Last update ' + n(p.minutes_ago) + (p.minutes_ago === 1 ? ' minute' : ' minutes') + ' ago.');
+      txt.textContent = p.count
+        ? n(p.count) + (p.count === 1 ? ' product' : ' products') + ' ready for your AI agent. Changes you make in Shopify are picked up automatically.' + (p.minutes_ago != null && p.minutes_ago < 600 ? ago : '')
+        : 'No products are on sale in your online store yet. When you add one in Shopify, it comes here automatically.';
+      $('h-pact').innerHTML = again;
+      if (p.skipped) {
+        $('h-skipped').textContent = n(p.skipped) + (p.skipped === 1 ? ' product is a draft, archived or hidden' : ' products are drafts, archived or hidden')
+          + " from your online store, so your AI agent won't offer " + (p.skipped === 1 ? 'it.' : 'them.');
+        $('h-skipped').classList.remove('hide');
+      }
+      if (p.off) {
+        $('h-off').innerHTML = '';
+        $('h-off').append(n(p.off) + (p.off === 1 ? ' product is' : ' products are') + ' switched off for your AI agent. ');
+        const b = document.createElement('button'); b.className = 'lnk2'; b.textContent = 'See ' + (p.off === 1 ? 'it' : 'them');
+        b.dataset.open = '/products/store?offer=off'; b.onclick = openPhx;
+        $('h-off').append(b); $('h-off').classList.remove('hide');
+      }
+    }
+    const ag = $('b-again');
+    if (ag) ag.onclick = async function () {
+      ag.disabled = true;
+      const r = await api('sync');
+      if (r.ok) render(r.d); else ag.disabled = false;
+    };
+    $('h-pact').querySelectorAll('[data-open]').forEach(b => b.onclick = openPhx);
+  }
+  async function refresh() {
+    const r = await api('session');
+    if (r.ok) render(r.d);
+  }
+
   function render(d) {
     st = d;
     if (d.linked) {
+      products(d.products);
       $('h-biz').textContent = d.business || d.shop_name;
       $('h-quotes').classList.toggle('hide', !d.is_b2b);
       $('h-wa-n').textContent = d.is_b2b ? '4' : '3';
@@ -223,12 +303,7 @@
   };
   $('b-back2').onclick = function () { render(st); };
 
-  document.querySelectorAll('[data-open]').forEach(b => b.onclick = async function () {
-    const w = window.open('', '_blank');
-    const r = await api('open', { next: this.dataset.open });
-    const url = (r.ok && r.d.url) || 'https://portal.phixtra.com/login';
-    if (w) w.location = url; else window.open(url, '_blank');
-  });
+  document.querySelectorAll('[data-open]').forEach(b => b.onclick = openPhx);
 
   (async function () {
     const r = await api('session');

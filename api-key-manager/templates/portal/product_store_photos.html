@@ -6,11 +6,33 @@
 <div style="margin-bottom:18px">
   <a href="{{ url_for('portal.products_store') }}" style="font-size:13px;color:var(--muted);text-decoration:none">← Back to Store products</a>
 </div>
+{% if is_shopify %}
+<div class="card" style="margin-bottom:18px">
+  <div style="display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">
+    <div style="flex:1;min-width:240px">
+      <h2 style="margin:0 0 6px">{{ doc.title }}{% if off %} <span style="display:inline-block;font-size:11px;font-weight:700;border-radius:99px;padding:1px 8px;background:#FFF3D6;color:#8A5A00;vertical-align:3px">Not offered</span>{% endif %}</h2>
+      <b style="display:block;margin-top:10px">Offer this product</b>
+      <p class="muted" style="margin:4px 0 0;max-width:62ch">When this is off, your AI agent won't suggest this product or give its price. If a buyer asks for it by name, your AI agent tells them your team will help and passes the chat to your team.</p>
+      <p class="muted" style="margin:8px 0 0;font-size:13px">Your Shopify store isn't changed. The product stays on your website.{% if shopify_url %} <a href="{{ shopify_url }}" target="_blank" rel="noopener">Edit in Shopify</a>{% endif %}</p>
+    </div>
+    {% if can_edit %}
+    <form method="POST" action="{{ url_for('portal.product_store_offer') }}" style="margin:0">
+      <input type="hidden" name="doc_id" value="{{ doc.id }}"><input type="hidden" name="offer" value="{{ '1' if off else '0' }}">
+      <input type="hidden" name="next" value="{{ url_for('portal.product_store_photos', doc_id=doc.id) }}">
+      <button type="submit" role="switch" aria-checked="{{ 'false' if off else 'true' }}" aria-label="Offer this product"
+        style="position:relative;width:44px;height:24px;border-radius:99px;border:0;cursor:pointer;background:{{ '#C9CFDB' if off else '#1F6B5C' }}">
+        <span style="position:absolute;top:3px;left:{{ '3px' if off else '23px' }};width:18px;height:18px;border-radius:50%;background:#fff"></span>
+      </button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
 <div class="card pg-card" id="photos">
   <div class="pg-head">
     <div>
       <h2>{{ doc.title }}</h2>
-      <p>Photos come from your WooCommerce store, in the store's order (the first is the main photo). Say what each photo shows, so the AI sends the right one when a customer asks "show me the back" or "do you have it in red?". Labels are saved in PhiXtra only and kept when your store syncs again.</p>
+      <p>Photos come from your {{ 'Shopify' if is_shopify else 'WooCommerce' }} store, in the store's order (the first is the main photo). Say what each photo shows, so the AI sends the right one when a customer asks "show me the back" or "do you have it in red?". Labels are saved in PhiXtra only and kept when your store syncs again.</p>
     </div>
     <span class="pg-count">{{ gallery|length }} photo{{ '' if gallery|length == 1 else 's' }}</span>
   </div>

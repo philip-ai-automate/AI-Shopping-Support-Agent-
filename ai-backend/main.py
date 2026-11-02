@@ -583,7 +583,34 @@ def _no_products_instruction(tenant_id: int) -> str:
         cur.close()
     finally:
         conn.close()
-    return ("" if has else _NO_PRODUCTS_INSTRUCTION) + (_PRICE_ON_REQUEST_INSTRUCTION if on_request else "")
+    return (("" if has else _NO_PRODUCTS_INSTRUCTION) + (_PRICE_ON_REQUEST_INSTRUCTION if on_request else "")
+            + _shopify_b2b_price_instruction(tenant_id))
+
+
+_SHOPIFY_B2B_PRICE_INSTRUCTION = (
+    "\n\nSHOPIFY B2B PRICES: Product prices you have are this store's public list prices. "
+    "When a business buyer asks for a price, give the list price and add, in the buyer's language, "
+    "that their business account price is confirmed on the quote."
+)
+
+
+def _shopify_b2b_price_instruction(tenant_id: int) -> str:
+    """B2B business whose products come from Shopify (2026-11-02): until
+    quotations use each company's own Shopify price, prices are list prices."""
+    conn = get_db_connection()
+    if not conn:
+        return ""
+    try:
+        cur = conn.cursor()
+        cur.execute("""SELECT 1 FROM shopify_shops s JOIN company_profiles cp ON cp.tenant_id = s.tenant_id
+                        WHERE s.tenant_id=%s AND s.uninstalled_at IS NULL AND cp.is_b2b LIMIT 1""", (tenant_id,))
+        on = cur.fetchone() is not None
+        cur.close()
+    except Exception:
+        on = False
+    finally:
+        conn.close()
+    return _SHOPIFY_B2B_PRICE_INSTRUCTION if on else ""
 
 
 @app.post("/chat")

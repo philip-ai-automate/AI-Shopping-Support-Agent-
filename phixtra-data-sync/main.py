@@ -726,6 +726,22 @@ def sync_batch(
             "_embed_text": _make_embed_text(d, it.type, title),
         })
 
+    # "Offer this product" switched off in the portal (2026-11-02): keep it
+    # as type 'product_off' so a store update never turns it back on.
+    try:
+        _off_ids = [d["id"] for d in pg_docs if d["type"] == "product"]
+        if _off_ids:
+            _oc = _pg(); _ocur = _oc.cursor()
+            _ocur.execute("SELECT doc_id FROM store_product_off WHERE tenant_id=%s AND doc_id = ANY(%s)",
+                          (tenant_id, _off_ids))
+            _off = {r[0] for r in _ocur.fetchall()}
+            _ocur.close(); _oc.close()
+            for d in pg_docs:
+                if d["id"] in _off:
+                    d["type"] = "product_off"
+    except Exception as e:
+        print("⚠️ store_product_off check:", e)
+
     try:
         _pg_upsert_docs(tenant_id, req.site_url, pg_docs, tenant_domain)
         _last_sync_error[tenant_domain] = ""

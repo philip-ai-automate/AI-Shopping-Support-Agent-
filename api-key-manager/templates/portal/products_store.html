@@ -7,6 +7,15 @@
 .sp-table td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
 .sp-thumb{width:44px;height:44px;border-radius:8px;object-fit:cover;background:#F5F7FB;flex-shrink:0}
 .sp-name{display:flex;gap:10px;align-items:center}
+.sp-sub{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.sp-sub a{color:inherit}
+.sp-off{display:inline-block;font-size:11px;font-weight:700;border-radius:99px;padding:1px 8px;background:#FFF3D6;color:#8A5A00;margin-left:6px}
+.sw{position:relative;width:40px;height:22px;border-radius:99px;border:0;background:#C9CFDB;cursor:pointer;vertical-align:middle;flex-shrink:0}
+.sw::after{content:"";position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
+.sw.on{background:#1F6B5C}.sw.on::after{left:21px}
+.sw:focus-visible{outline:2px solid #0B1D40;outline-offset:2px}
+.sw:disabled{cursor:default;opacity:.6}
+.sp-bulk{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px;font-size:13px}
 </style>
 {% endblock %}
 {% block content %}
@@ -14,7 +23,11 @@
 <div class="page-header" style="margin-bottom:16px">
   <div>
     <div class="section-title">My Products &amp; Services</div>
+    {% if is_shopify %}
+    <p class="muted">Products from your Shopify store. To change a product, price or stock, edit it in Shopify and it updates here by itself. You can label photos here so the AI agent sends the right one; your store isn't changed.</p>
+    {% else %}
     <p class="muted">Products from your WooCommerce store. Label their photos here so the AI sends the right one; your store isn't changed.</p>
+    {% endif %}
   </div>
 </div>
 <nav class="pg-tabs" aria-label="Product lists">
@@ -25,35 +38,68 @@
   <form method="GET" action="{{ url_for('portal.products_store') }}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
     <input type="text" name="q" value="{{ q }}" placeholder="Search store products…" style="flex:1;min-width:200px">
     {% if photos_filter %}<input type="hidden" name="photos" value="unlabelled">{% endif %}
+    {% if off_filter %}<input type="hidden" name="offer" value="off">{% endif %}
     <button type="submit" class="btn btn-sm">Search</button>
     <a href="{{ url_for('portal.products_store', photos=None if photos_filter else 'unlabelled', q=q or None) }}" class="btn btn-sm"
        style="{% if photos_filter %}background:#0B1D40;color:#fff{% endif %}">Photos without a label ({{ '{:,}'.format(unlabelled_total) }})</a>
-    {% if q or photos_filter %}<a href="{{ url_for('portal.products_store') }}" class="btn btn-sm">Clear</a>{% endif %}
+    {% if is_shopify or off_total %}
+    <a href="{{ url_for('portal.products_store', offer=None if off_filter else 'off', q=q or None) }}" class="btn btn-sm"
+       style="{% if off_filter %}background:#0B1D40;color:#fff{% endif %}">Not offered ({{ '{:,}'.format(off_total) }})</a>
+    {% endif %}
+    {% if q or photos_filter or off_filter %}<a href="{{ url_for('portal.products_store') }}" class="btn btn-sm">Clear</a>{% endif %}
     <span class="muted" style="margin-left:auto;font-size:13px">{{ '{:,}'.format(total) }} product{{ 's' if total != 1 }}</span>
   </form>
+  {% set back = request.full_path.rstrip('?') %}
+  {% set switches = is_shopify and can_edit %}
+  {% if switches and docs %}
+  <form method="POST" action="{{ url_for('portal.product_store_offer') }}" id="bulk" class="sp-bulk">
+    <input type="hidden" name="next" value="{{ back }}">
+    <span class="muted">Ticked products:</span>
+    <button type="submit" name="offer" value="0" class="btn btn-sm">Don't offer</button>
+    <button type="submit" name="offer" value="1" class="btn btn-sm">Offer</button>
+  </form>
+  {% endif %}
   <div style="overflow-x:auto">
     <table class="sp-table">
-      <thead><tr><th>Product</th><th>Price</th><th>Photos</th><th style="text-align:right"></th></tr></thead>
+      <thead><tr>{% if switches %}<th style="width:28px"><input type="checkbox" id="sp-all" aria-label="Tick all products on this page"></th>{% endif %}<th>Product</th><th>Price</th><th>Photos</th>{% if is_shopify %}<th>Offer this product</th>{% endif %}<th style="text-align:right"></th></tr></thead>
       <tbody>
         {% for d in docs %}
         <tr>
-          <td><div class="sp-name">{% if d.image_url %}<img class="sp-thumb" src="{{ d.image_url }}" alt="" loading="lazy">{% else %}<span class="sp-thumb"></span>{% endif %}<span>{{ d.title }}</span></div></td>
-          <td>{% if d.price_min %}{{ (d.price_min|float)|money(d.currency) }}{% else %}—{% endif %}</td>
+          {% if switches %}<td><input type="checkbox" name="doc_id" value="{{ d.id }}" form="bulk" class="sp-tick" aria-label="Tick {{ d.title }}"></td>{% endif %}
+          <td><div class="sp-name">{% if d.image_url %}<img class="sp-thumb" src="{{ d.image_url }}" alt="" loading="lazy">{% else %}<span class="sp-thumb"></span>{% endif %}<span>{{ d.title }}{% if d.off %}<span class="sp-off">Not offered</span>{% endif %}
+            {% if d.shopify_url %}<span class="sp-sub">{% if d.in_stock == false %}Sold out · {% endif %}<a href="{{ d.shopify_url }}" target="_blank" rel="noopener">Edit in Shopify</a></span>{% endif %}</span></div></td>
+          <td>{% if d.price_min %}{{ (d.price_min|float)|money(d.currency) }}{% if d.price_max and (d.price_max|float) - (d.price_min|float) > 0.009 %}–{{ (d.price_max|float)|money(d.currency) }}{% endif %}{% else %}—{% endif %}</td>
           <td>{% if d.photo_n %}<span class="pg-chip n">{{ d.photo_n }} photo{{ 's' if d.photo_n != 1 }}</span>{% else %}<span class="muted">No photo</span>{% endif %}
               {% if d.photo_unl %} <span class="pg-chip w">{{ d.photo_unl }} to label</span>{% endif %}</td>
-          <td style="text-align:right"><a class="btn btn-sm" href="{{ url_for('portal.product_store_photos', doc_id=d.id) }}">Photos</a></td>
+          {% if is_shopify %}<td>{% if switches %}<button type="submit" form="of-{{ loop.index }}" class="sw {{ '' if d.off else 'on' }}" role="switch" aria-checked="{{ 'false' if d.off else 'true' }}" aria-label="Offer {{ d.title }}" title="{{ 'Not offered: click to offer it again' if d.off else 'Offered: click to stop offering it' }}"></button>{% else %}<span class="sw {{ '' if d.off else 'on' }}" aria-label="{{ 'Not offered' if d.off else 'Offered' }}"></span>{% endif %}</td>{% endif %}
+          <td style="text-align:right"><a class="btn btn-sm" href="{{ url_for('portal.product_store_photos', doc_id=d.id) }}">{{ 'Open' if is_shopify else 'Photos' }}</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="4" class="muted" style="padding:24px;text-align:center">{{ 'No products match.' if (q or photos_filter) else 'No store products yet. They appear here after your WooCommerce store syncs.' }}</td></tr>
+        <tr><td colspan="6" class="muted" style="padding:24px;text-align:center">{{ 'No products match.' if (q or photos_filter or off_filter) else ('No store products yet. They appear here once your Shopify products have been read.' if is_shopify else 'No store products yet. They appear here after your WooCommerce store syncs.') }}</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+  {% if switches %}
+  {% for d in docs %}
+  <form method="POST" action="{{ url_for('portal.product_store_offer') }}" id="of-{{ loop.index }}" hidden>
+    <input type="hidden" name="doc_id" value="{{ d.id }}"><input type="hidden" name="offer" value="{{ '1' if d.off else '0' }}"><input type="hidden" name="next" value="{{ back }}">
+  </form>
+  {% endfor %}
+  <script>
+  (function () {
+    var all = document.getElementById('sp-all');
+    if (all) all.addEventListener('change', function () {
+      document.querySelectorAll('.sp-tick').forEach(function (c) { c.checked = all.checked; });
+    });
+  })();
+  </script>
+  {% endif %}
   {% if total_pages > 1 %}
   <div style="display:flex;gap:8px;justify-content:center;margin-top:14px;font-size:13px">
-    {% if page > 1 %}<a href="{{ url_for('portal.products_store', q=q or None, photos='unlabelled' if photos_filter else None, page=page-1) }}">&laquo; Prev</a>{% endif %}
+    {% if page > 1 %}<a href="{{ url_for('portal.products_store', q=q or None, photos='unlabelled' if photos_filter else None, offer='off' if off_filter else None, page=page-1) }}">&laquo; Prev</a>{% endif %}
     <span>Page {{ page }} of {{ total_pages }}</span>
-    {% if page < total_pages %}<a href="{{ url_for('portal.products_store', q=q or None, photos='unlabelled' if photos_filter else None, page=page+1) }}">Next &raquo;</a>{% endif %}
+    {% if page < total_pages %}<a href="{{ url_for('portal.products_store', q=q or None, photos='unlabelled' if photos_filter else None, offer='off' if off_filter else None, page=page+1) }}">Next &raquo;</a>{% endif %}
   </div>
   {% endif %}
 </div>

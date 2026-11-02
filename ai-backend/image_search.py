@@ -117,6 +117,7 @@ def find_matching_products(tenant_id: int, image_bytes: bytes, top_k: int = 3) -
                 SELECT d.id, d.title, d.url, d.price_min, d.price_max, d.in_stock, d.image_url, d.currency,
                        1 - b.dist AS score
                 FROM best b JOIN documents d ON d.id = b.doc_id AND d.tenant_id = %s
+                                           AND d.type <> 'product_off'
                 ORDER BY b.dist
                 LIMIT %s
                 """,

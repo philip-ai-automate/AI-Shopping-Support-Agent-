@@ -29616,10 +29616,18 @@ def product_photos_delete(product_id: str, photo_id: int):
 # photos can be labelled in PhiXtra. Labels stay in PhiXtra (the store isn't
 # changed) and are kept when the store syncs again (matched by photo link).
 def _store_doc(cur, tenant_id, doc_id):
-    cur.execute("""SELECT id, title, price_min, price_max, currency, image_url, url, in_stock, categories_text
-                   FROM documents WHERE tenant_id=%s AND type='product' AND id=%s AND id LIKE 'product-%%'""",
+    cur.execute("""SELECT id, type, title, price_min, price_max, currency, image_url, url, in_stock, categories_text
+                   FROM documents WHERE tenant_id=%s AND type IN ('product','product_off') AND id=%s AND id LIKE 'product-%%'""",
                 (tenant_id, doc_id))
     return cur.fetchone()
+
+
+def _store_shopify(cur, tenant_id):
+    """The Shopify store linked to this business (Part 2, 2026-11-02), or None."""
+    cur.execute("""SELECT shop FROM shopify_shops WHERE tenant_id=%s AND uninstalled_at IS NULL
+                    ORDER BY linked_at DESC NULLS LAST LIMIT 1""", (tenant_id,))
+    r = cur.fetchone()
+    return (r["shop"] if isinstance(r, dict) else r[0]) if r else None
 
 
 def _store_photo_items(doc):
@@ -29641,6 +29649,7 @@ def products_store():
     if r2: return r2
     q = (request.args.get("q") or "").strip()
     photos_filter = request.args.get("photos") == "unlabelled"
+    off_filter = request.args.get("offer") == "off"
     try:
         page = max(1, int(request.args.get("page") or 1))
     except ValueError:
@@ -29648,30 +29657,41 @@ def products_store():
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        shop = _store_shopify(cur, tenant_id)
         # photos without a confirmed label: listed photos without a label, or a main photo never opened yet
-        where, params = "tenant_id=%s AND type='product' AND id LIKE 'product-%%'", [tenant_id]
+        where, params = "tenant_id=%s AND type IN ('product','product_off') AND id LIKE 'product-%%'", [tenant_id]
         if q:
             where += " AND title ILIKE %s"; params.append(f"%{q}%")
+        if off_filter:
+            where += " AND type='product_off'"
+        cur.execute("SELECT count(*) AS n FROM documents WHERE tenant_id=%s AND type='product_off' AND id LIKE 'product-%%'", (tenant_id,))
+        off_total = int(cur.fetchone()["n"])
         unl_sql = """(EXISTS (SELECT 1 FROM product_photos ph WHERE ph.tenant_id=documents.tenant_id AND ph.product_key='d:'||documents.id AND ph.view_label IS NULL)
                       OR (coalesce(image_url,'') <> '' AND NOT EXISTS (SELECT 1 FROM product_photos ph WHERE ph.tenant_id=documents.tenant_id AND ph.product_key='d:'||documents.id)))"""
         if photos_filter:
             where += " AND " + unl_sql
         cur.execute(f"SELECT count(*) AS n FROM documents WHERE {where}", params)
         total = int(cur.fetchone()["n"])
-        cur.execute(f"SELECT count(*) AS n FROM documents WHERE tenant_id=%s AND type='product' AND id LIKE 'product-%%' AND {unl_sql}", (tenant_id,))
+        cur.execute(f"SELECT count(*) AS n FROM documents WHERE tenant_id=%s AND type IN ('product','product_off') AND id LIKE 'product-%%' AND {unl_sql}", (tenant_id,))
         unlabelled_total = int(cur.fetchone()["n"])
         per = 40
-        cur.execute(f"""SELECT id, title, price_min, currency, image_url, in_stock FROM documents WHERE {where}
+        cur.execute(f"""SELECT id, type, title, price_min, price_max, currency, image_url, in_stock FROM documents WHERE {where}
                         ORDER BY title LIMIT %s OFFSET %s""", params + [per, (page - 1) * per])
         docs = [dict(d) for d in cur.fetchall()]
         cnt = _pp.counts(cur, tenant_id, [f"d:{d['id']}" for d in docs])
         for d in docs:
             has = 1 if d.get("image_url") else 0
             d["photo_n"], d["photo_unl"] = cnt.get(f"d:{d['id']}", (has, has))
+            d["off"] = d.get("type") == "product_off"
+            if shop:
+                import shopify_sync as _ss
+                d["shopify_url"] = _ss.admin_url(shop, d["id"].replace("product-", ""))
     finally:
         conn.close()
     return render_template("portal/products_store.html", customer=customer, docs=docs, total=total, q=q, page=page,
-                           total_pages=max(1, -(-total // 40)), photos_filter=photos_filter, unlabelled_total=unlabelled_total)
+                           total_pages=max(1, -(-total // 40)), photos_filter=photos_filter, unlabelled_total=unlabelled_total,
+                           off_filter=off_filter, off_total=off_total, is_shopify=bool(shop),
+                           can_edit=_team_member_has_permission("ecom.products_edit"))
 
 
 @portal_bp.route("/products/store/<doc_id>")
@@ -29692,14 +29712,80 @@ def product_store_photos(doc_id: str):
         if not doc:
             flash("Product not found.", "danger")
             return redirect(url_for("portal.products_store"))
-        _pp.sync_links(cur, tenant_id, f"d:{doc_id}", _store_photo_items(doc), "woo", "WooCommerce")
+        shop = _store_shopify(cur, tenant_id)
+        if not shop:
+            # WooCommerce sends the main photo only; Shopify photos come with the product sync.
+            _pp.sync_links(cur, tenant_id, f"d:{doc_id}", _store_photo_items(doc), "woo", "WooCommerce")
         _pp.fill_suggestions(cur, tenant_id, f"d:{doc_id}")
         conn.commit()
         gallery = _pp.photos(cur, tenant_id, f"d:{doc_id}")
     finally:
         conn.close()
+    shopify_url = None
+    if shop:
+        import shopify_sync as _ss
+        shopify_url = _ss.admin_url(shop, doc_id.replace("product-", ""))
     return render_template("portal/product_store_photos.html", customer=customer, doc=doc, gallery=gallery,
-                           photo_views=_pp.VIEWS, can_edit=_team_member_has_permission("ecom.products_edit"))
+                           photo_views=_pp.VIEWS, can_edit=_team_member_has_permission("ecom.products_edit"),
+                           is_shopify=bool(shop), shopify_url=shopify_url, off=doc.get("type") == "product_off")
+
+
+@portal_bp.route("/products/store/offer", methods=["POST"])
+@team_feature("ecom.products_edit")
+def product_store_offer():
+    """"Offer this product" (2026-11-02, Shopify Part 2): switch store
+    products off/on for the AI agent. Off = kept as type 'product_off' (the
+    AI never suggests it and hands the chat to the team if asked by name);
+    phixtra-data-sync keeps it off on every store update."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("ecom.products_edit")
+    if _rperm: return _rperm
+    customer = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.products_view", "My Products & Services")
+    if r2: return r2
+    import re as _re_off
+    ids = [i for i in request.form.getlist("doc_id") if _re_off.fullmatch(r"product-[A-Za-z0-9_\-=]{1,120}", i or "")][:500]
+    offer = request.form.get("offer") == "1"
+    back = request.form.get("next") or ""
+    if not back.startswith("/products/store"):
+        back = url_for("portal.products_store")
+    if not ids:
+        flash("Tick the products first.", "warning")
+        return redirect(back)
+    actor = _current_actor(customer)["label"]
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("""SELECT id FROM documents WHERE tenant_id=%s AND id = ANY(%s)
+                         AND type IN ('product','product_off')""", (tenant_id, ids))
+        ids = [r[0] for r in cur.fetchall()]
+        if offer:
+            cur.execute("DELETE FROM store_product_off WHERE tenant_id=%s AND doc_id = ANY(%s)", (tenant_id, ids))
+            cur.execute("UPDATE documents SET type='product' WHERE tenant_id=%s AND id = ANY(%s) AND type='product_off'",
+                        (tenant_id, ids))
+        else:
+            for i in ids:
+                cur.execute("""INSERT INTO store_product_off (tenant_id, doc_id, set_by) VALUES (%s,%s,%s)
+                               ON CONFLICT (tenant_id, doc_id) DO NOTHING""", (tenant_id, i, actor))
+            cur.execute("UPDATE documents SET type='product_off' WHERE tenant_id=%s AND id = ANY(%s) AND type='product'",
+                        (tenant_id, ids))
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        insert_audit_log(action="store_product_offer" if offer else "store_product_off", tenant_id=tenant_id,
+                         details={"doc_ids": ids[:50], "count": len(ids), "by": actor})
+    except Exception:
+        pass
+    n = len(ids)
+    if offer:
+        flash(f"Your AI agent offers {'this product' if n == 1 else f'these {n} products'} again.", "success")
+    else:
+        flash(f"Your AI agent won't offer {'this product' if n == 1 else f'these {n} products'}. "
+              "If a buyer asks by name, the chat goes to your team.", "success")
+    return redirect(back)
 
 
 @portal_bp.route("/products/store/<doc_id>/photos/<int:photo_id>/label", methods=["POST"])

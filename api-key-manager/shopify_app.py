@@ -90,6 +90,9 @@ def ensure_tables():
                          ("city", "TEXT"), ("zip", "TEXT")):
             if col not in have:
                 cur.execute(f"ALTER TABLE shopify_shops ADD COLUMN {col} {typ}")
+        conn.commit()
+        import shopify_sync
+        shopify_sync.ensure_tables()
         cur.execute("""
             CREATE TABLE IF NOT EXISTS shopify_sso (
                 token_hash  TEXT PRIMARY KEY,
@@ -366,8 +369,25 @@ def webhooks():
             cur.execute("""UPDATE shopify_shops SET uninstalled_at=NOW(), access_token=NULL,
                               refresh_token=NULL, updated_at=NOW() WHERE shop=%s""", (shop,))
         elif topic == "shop/redact":
-            # 48 h after uninstall: remove what we hold about the shop.
+            # 48 h after uninstall: remove what we hold about the shop,
+            # including its products on the AI agent (Part 2).
+            try:
+                import shopify_sync
+                shopify_sync.forget_shop(shop)
+            except Exception as e:
+                print(f"⚠️ shopify forget products {shop}: {e}")
             cur.execute("DELETE FROM shopify_shops WHERE shop=%s", (shop,))
+        elif topic in ("products/create", "products/update", "products/delete", "inventory_levels/update"):
+            # Part 2: re-read just this product on the next sync run (cron, every minute).
+            cur.execute("SELECT 1 FROM shopify_shops WHERE shop=%s AND tenant_id IS NOT NULL AND uninstalled_at IS NULL", (shop,))
+            if cur.fetchone():
+                kind, ref = {"products/create": ("product", payload.get("id")),
+                             "products/update": ("product", payload.get("id")),
+                             "products/delete": ("delete", payload.get("id")),
+                             "inventory_levels/update": ("inventory_item", payload.get("inventory_item_id"))}[topic]
+                if ref:
+                    cur.execute("""INSERT INTO shopify_sync_queue (shop, kind, ref) VALUES (%s,%s,%s)
+                                   ON CONFLICT (shop, kind, ref) DO NOTHING""", (shop, kind, str(ref)))
         # customers/data_request + customers/redact: logged for PhiXtra to act
         # on (we hold no Shopify customer data in Step 1).
         conn.commit()
@@ -421,7 +441,29 @@ def _state(row):
     if row.get("tenant_id"):
         t = _tenant_info(int(row["tenant_id"]))
         out.update(business=t.get("name") or "", is_b2b=bool(t.get("is_b2b")))
+        out["products"] = _products_state(row)
     return out
+
+
+def _products_state(row):
+    """Home screen, step 1 (Part 2): where the product read is."""
+    st = row.get("sync_status") or "queued"
+    last = row.get("sync_last_at")
+    mins = None
+    if last:
+        mins = max(0, int((time.time() - last.timestamp()) // 60))
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("""SELECT count(*) FROM store_product_off o JOIN shopify_products p
+                         ON p.tenant_id=o.tenant_id AND p.doc_id=o.doc_id WHERE p.shop=%s""", (row["shop"],))
+        off = cur.fetchone()[0]
+        cur.execute("SELECT count(*) FROM shopify_products WHERE shop=%s", (row["shop"],))
+        held = cur.fetchone()[0]
+    finally:
+        cur.close(); conn.close()
+    return {"status": st, "total": row.get("sync_total"), "done": row.get("sync_done") or 0,
+            "skipped": row.get("sync_skipped") or 0, "count": held, "off": off,
+            "minutes_ago": mins, "error": bool(row.get("sync_error")) and st == "error"}
 
 
 def _link(shop, tenant_id, user_id):
@@ -430,6 +472,9 @@ def _link(shop, tenant_id, user_id):
         cur.execute("""UPDATE shopify_shops SET tenant_id=%s, owner_user_id=%s, linked_at=NOW(),
                           updated_at=NOW() WHERE shop=%s""", (int(tenant_id), user_id or None, shop))
         cur.execute("UPDATE tenants SET website_platform='shopify' WHERE id=%s AND COALESCE(website_platform,'')=''", (int(tenant_id),))
+        # Part 2: read the store's products straight away.
+        cur.execute("""UPDATE shopify_shops SET sync_status='queued', sync_total=NULL, sync_done=0,
+                          sync_skipped=NULL, sync_error=NULL WHERE shop=%s""", (shop,))
         conn.commit()
     finally:
         cur.close(); conn.close()
@@ -622,6 +667,21 @@ def api_link_confirm():
     return jsonify(_state(_shop_row(shop)))
 
 
+@shopify_bp.route("/api/sync", methods=["POST"])
+@public_route
+def api_sync():
+    """"Read products again" on the Home screen (Part 2)."""
+    w = _who()
+    if not w:
+        return _bad_token()
+    shop, _user, row = w
+    if not row.get("tenant_id"):
+        return jsonify({"error": "Link this store to a PhiXtra account first."}), 400
+    import shopify_sync
+    shopify_sync.request_full_read(shop)
+    return jsonify(_state(_shop_row(shop)))
+
+
 @shopify_bp.route("/api/open", methods=["POST"])
 @public_route
 def api_open():
@@ -634,7 +694,8 @@ def api_open():
     if not row.get("tenant_id"):
         return jsonify({"error": "not_linked"}), 400
     d = request.get_json(silent=True) or {}
-    nxt = d.get("next") if d.get("next") in ("/dashboard", "/quotations/requests") else "/dashboard"
+    nxt = d.get("next") if d.get("next") in ("/dashboard", "/quotations/requests", "/data-sources",
+                                             "/products/store?offer=off") else "/dashboard"
     if not user_id or user_id != (row.get("owner_user_id") or ""):
         return jsonify({"url": "https://portal.phixtra.com/login"})
     conn = get_db_connection(); cur = conn.cursor()

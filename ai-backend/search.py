@@ -133,7 +133,7 @@ def _fmt_currency_val(val: float, currency: str, tenant_id: Optional[int] = None
 # Information the AI should read in full and answer from in its own words
 # (website pages, blog posts, Store Information) — as opposed to products,
 # which the customer is shown as cards (2026-10-01).
-INFO_DOC_TYPES = ("page", "post", "store_info")
+INFO_DOC_TYPES = ("page", "post", "store_info", "product_off")
 
 
 def _is_product_doc(doc: Dict[str, Any]) -> bool:
@@ -253,7 +253,7 @@ def _find_title_matches(tenant_id: int, query: str) -> List[Dict[str, Any]]:
             SELECT id, title, content, url, sku, brand, price_min, price_max, in_stock, type,
                    categories_text, site_url, tenant_id, image_url, COALESCE(currency, '') AS currency
             FROM documents
-            WHERE tenant_id = %s AND type IN ('page', 'post', 'store_info')
+            WHERE tenant_id = %s AND type IN ('page', 'post', 'store_info', 'product_off')
               AND id NOT LIKE %s
               AND (title ~* %s OR left(coalesce(content, ''), %s) ~* %s)
             LIMIT 60
@@ -290,6 +290,13 @@ def _format_doc(doc: Dict[str, Any], max_chars: int, tenant_id: Optional[int] = 
     items get up to RAG_INFO_MAX_CHARS, since a pricing page or uploaded
     price list cut at 900 characters loses most of its plans (2026-10-01)."""
     title = (doc.get("title") or "").strip()
+    if (doc.get("type") or "") == "product_off":
+        # "Offer this product" switched off by the business (2026-11-02).
+        return (f"Type: Product the business does NOT offer through you\n"
+                f"Title: {title}\n"
+                "Rule: Never suggest this product and never give its price, stock or details. "
+                "If the customer asks for it by name, tell them our team will help them with it, "
+                "and set needs_handoff to true.").strip()
     is_product = _is_product_doc(doc)
     if not is_product:
         max_chars = max(max_chars, int(os.getenv("RAG_INFO_MAX_CHARS", "6000")))
@@ -785,7 +792,7 @@ def search_two_engines(
 
     # Website engine
     try:
-        rows = _hybrid(["type IN ('page', 'post', 'store_info')"], [], info_top_k)
+        rows = _hybrid(["type IN ('page', 'post', 'store_info', 'product_off')"], [], info_top_k)
         # The business's own corrections ("Fix this answer") go first.
         try:
             fixes = _find_corrections(tenant_id, q_vec, clean_query)

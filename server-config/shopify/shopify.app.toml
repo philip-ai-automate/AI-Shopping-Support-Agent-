@@ -1,0 +1,25 @@
+# PhiXtra Shopify app settings. Pushed to Shopify with: shopify app deploy
+name = "PhiXtra"
+client_id = "d0bb96537310ec3905d8cb5866ef1f3a"
+application_url = "https://portal.phixtra.com/shopify/app"
+embedded = true
+
+[access_scopes]
+scopes = "read_products,read_inventory"
+
+[auth]
+redirect_urls = [ "https://portal.phixtra.com/shopify/callback" ]
+
+[webhooks]
+api_version = "2026-10"
+
+# Privacy (compliance) webhooks required by Shopify.
+# app/uninstalled is subscribed by the portal itself after install.
+[[webhooks.subscriptions]]
+compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+uri = "https://portal.phixtra.com/shopify/webhooks"
+
+# Part 2 (2 Nov 2026): product sync. Each change re-reads that product.
+[[webhooks.subscriptions]]
+topics = [ "products/create", "products/update", "products/delete", "inventory_levels/update" ]
+uri = "https://portal.phixtra.com/shopify/webhooks"
