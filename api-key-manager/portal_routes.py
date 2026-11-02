@@ -6490,8 +6490,11 @@ def _product_sources(tenant_id: int, cur=None) -> dict:
                           COUNT(*) FILTER (WHERE id LIKE 'xls-%%') AS lists,
                           COUNT(*) FILTER (WHERE id LIKE 'site-%%') AS site,
                           COUNT(*) FILTER (WHERE id LIKE 'man-%%') AS own
-                     FROM documents WHERE tenant_id=%s AND type='product'""", (tenant_id,))
+                     FROM documents WHERE tenant_id=%s AND type IN ('product','product_off')""", (tenant_id,))
     r = cur.fetchone()
+    # Which kind of store sends the products (2026-11-02, Shopify Part 2).
+    cur.execute("""SELECT 1 FROM shopify_shops WHERE tenant_id=%s AND uninstalled_at IS NULL LIMIT 1""", (tenant_id,))
+    shop_name = "Shopify store" if cur.fetchone() else "WooCommerce shop"
     cur.execute("SELECT read_products FROM website_sources WHERE tenant_id=%s", (tenant_id,))
     ws = cur.fetchone()
     reading = bool(ws and ws["read_products"])
@@ -6502,7 +6505,7 @@ def _product_sources(tenant_id: int, cur=None) -> dict:
         cur.close(); conn.close()
     shop, from_lists, site, own = int(r["shop"]), int(r["lists"]), int(r["site"]), int(r["own"])
     return {"shop": shop, "lists": n_lists, "list_products": from_lists, "site": site, "read_products": reading,
-            "own": own,
+            "own": own, "shop_name": shop_name,
             "source": "list" if n_lists else ("shop" if shop else ("site" if (reading or site) else ("own" if own else None)))}
 
 
@@ -6691,7 +6694,7 @@ def _setup_checklist(tenant_id: int):
     if prod["source"] == "list":
         p_text = f"Your products come from your uploaded list ({prod['list_products']} products)."
     elif prod["source"] == "shop":
-        p_text = f"Your products come from your WooCommerce shop ({prod['shop']} products)."
+        p_text = f"Your products come from your {prod.get('shop_name') or 'WooCommerce shop'} ({prod['shop']} products)."
     elif prod["source"] == "site":
         p_text = (f"Your AI reads your products from your website's pages ({prod['site']} products so far). "
                   "Prices update each time your website is read.")
@@ -6943,7 +6946,7 @@ def store_info_website_read_products():
             flash("Your products come from your uploaded list. Remove the list first to read products from your website instead.", "warning")
             return redirect(back)
         if ps["shop"]:
-            flash("Your products come from your WooCommerce shop, so they aren't read from your website pages.", "warning")
+            flash(f"Your products come from your {ps.get('shop_name') or 'WooCommerce shop'}, so they aren't read from your website pages.", "warning")
             return redirect(back)
     conn = get_db_connection(); cur = conn.cursor()
     cur.execute("UPDATE website_sources SET read_products=%s WHERE tenant_id=%s", (turn_on, tenant_id))
@@ -32040,9 +32043,12 @@ def _remove_shop_products(tenant_id: int) -> int:
     while a list is in use)."""
     conn = get_db_connection(); cur = conn.cursor()
     try:
-        cur.execute("""DELETE FROM documents WHERE tenant_id=%s AND type='product' AND id NOT LIKE 'xls-%%'
+        cur.execute("""DELETE FROM documents WHERE tenant_id=%s AND type IN ('product','product_off') AND id NOT LIKE 'xls-%%'
                          AND id NOT LIKE 'man-%%'""", (tenant_id,))
         n = cur.rowcount
+        # Shopify (2026-11-02): forget what was sent, so every product is
+        # written again if the business later goes back to its store.
+        cur.execute("DELETE FROM shopify_products WHERE tenant_id=%s", (tenant_id,))
         cur.execute("UPDATE website_sources SET read_products=FALSE WHERE tenant_id=%s AND read_products", (tenant_id,))
         conn.commit()
         return n
@@ -32702,7 +32708,7 @@ def data_source_upload():
     # One source at a time (2026-10-18): a list replaces the shop's products.
     _ps = _product_sources(tenant_id)
     if (_ps["shop"] or _ps["source"] == "site") and request.form.get("replace_shop") != "yes":
-        flash("Your products come from " + ("your WooCommerce shop" if _ps["shop"] else "your website's pages") +
+        flash("Your products come from " + (f"your {_ps.get('shop_name') or 'WooCommerce shop'}" if _ps["shop"] else "your website's pages") +
               ". Tick the box to switch to an uploaded list instead.", "warning")
         return redirect(url_for("portal.data_sources"))
 
@@ -32844,6 +32850,7 @@ def data_source_sync(source_id: int):
             rows = _read_file_rows(source)
 
         count, skipped = _import_rows(tenant_id, rows, source["column_map"])
+        _shop_name = _product_sources(tenant_id).get("shop_name") or "WooCommerce shop"
         shop_removed = _remove_shop_products(tenant_id)
         on_ai, removed = _list_products_to_ai(tenant_id, source_id, rows, source["column_map"])
 
@@ -32858,7 +32865,7 @@ def data_source_sync(source_id: int):
         if removed:
             flash(f"{removed} product(s) that are no longer in your list were removed.", "success")
         if shop_removed:
-            flash(f"{shop_removed} product(s) from your WooCommerce shop were removed: your products now come from this list.", "success")
+            flash(f"{shop_removed} product(s) from your {_shop_name} were removed: your products now come from this list.", "success")
         insert_audit_log(admin_username=_store_info_actor(customer)["audit_username"], action="product_list_synced",
                          tenant_id=tenant_id, details={"source_id": source_id, "imported": count, "on_ai": on_ai,
                                                        "removed": removed, "shop_removed": shop_removed})
@@ -32897,7 +32904,21 @@ def data_source_delete(source_id: int):
     conn.commit()
     cur.close(); conn.close()
     gone = _remove_list_products(tenant_id, source_id)
-    flash(f"List removed{f', with its {gone} product(s)' if gone else ''}.", "success")
+    msg = f"List removed{f', with its {gone} product(s)' if gone else ''}."
+    # Shopify (2026-11-02): with no list left, read the store's products again now.
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("""SELECT 1 FROM data_sources WHERE tenant_id=%s AND is_active AND column_map IS NOT NULL LIMIT 1""", (tenant_id,))
+        lists_left = cur.fetchone() is not None
+        cur.execute("""UPDATE shopify_shops SET sync_status='queued', sync_error=NULL
+                        WHERE tenant_id=%s AND uninstalled_at IS NULL AND NOT %s
+                          AND COALESCE(sync_status,'') NOT IN ('reading','importing') RETURNING shop""", (tenant_id, lists_left))
+        if cur.fetchone():
+            msg += " Your Shopify products are being added to your AI agent again."
+        conn.commit(); cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ shopify re-read after list removed:", e)
+    flash(msg, "success")
     return redirect(url_for("portal.data_sources"))
 
 

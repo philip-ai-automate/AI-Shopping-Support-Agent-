@@ -222,8 +222,13 @@
     {% if product_sources and (product_sources.shop or product_sources.source == 'site') %}
     <div style="margin-top:14px;padding:12px 14px;border:1px solid #F2C94C;background:#FFF8E1;border-radius:10px;font-size:13.5px;line-height:1.5">
       {% if product_sources.shop %}
+      {% if product_sources.shop_name == 'Shopify store' %}
+      <strong>Your products come from your Shopify store ({{ product_sources.shop }} products).</strong>
+      Products come from one place at a time. Uploading a list removes your Shopify products from your AI agent, and they stop being added while the list is in use.
+      {% else %}
       <strong>Your products come from your WooCommerce shop ({{ product_sources.shop }} products).</strong>
       Products come from one place at a time. Uploading a list removes the shop's products from your AI and stops the plugin sending them.
+      {% endif %}
       {% else %}
       <strong>Your products come from your website's pages ({{ product_sources.site }} products).</strong>
       Products come from one place at a time. Uploading a list removes those products from your AI and stops reading products from your website.
