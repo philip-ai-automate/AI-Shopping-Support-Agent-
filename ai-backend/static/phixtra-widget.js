@@ -36,7 +36,8 @@
   // PhiXtra chat app embed, signed by the store, checked by PhiXtra.
   var VSIG = script.getAttribute("data-visitor-sig") || "";
   var VISITOR = VSIG ? { name: script.getAttribute("data-visitor-name") || "", email: script.getAttribute("data-visitor-email") || "",
-                         company: script.getAttribute("data-visitor-company") || "" } : null;
+                         company: script.getAttribute("data-visitor-company") || "",
+                         location: script.getAttribute("data-visitor-location") || "" } : null;
   function withVisitor(o) { if (VISITOR) { o.visitor = VISITOR; o.visitor_sig = VSIG; } return o; }
   if (FIXSID) { SKEY += "_" + FIXSID; store(SKEY, FIXSID); }
   var sessionId = store(SKEY) || FIXSID;

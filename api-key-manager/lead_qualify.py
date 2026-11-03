@@ -899,6 +899,39 @@ def _log_decision(cur, tenant_id, lead_id, channel, r, summary, total, tier, bef
     return cur.fetchone()["id"]
 
 
+def _shopify_trade(cur, tenant_id: int, lead: dict, r: dict, ctx: dict, created: bool) -> dict:
+    """Shopify Part 4: the buyer's Shopify B2B company, linked to the lead.
+    A new lead takes the company's name and the contact's name. {} = none."""
+    try:
+        cur.execute("SELECT 1 FROM shopify_shops WHERE tenant_id=%s AND uninstalled_at IS NULL AND b2b_status='done'",
+                    (tenant_id,))
+        if not cur.fetchone():
+            return {}
+        import shopify_b2b
+        emails = [e for e in (ctx.get("email"), r.get("email"), lead.get("email")) if e]
+        phones = []
+        for p in ([ctx.get("wa_number"), lead.get("whatsapp_number")]):
+            if _digits(p):
+                phones.append("+" + _digits(p))
+        phones += [p for p in list(r.get("phones") or []) + [lead.get("phone")] if p]
+        m = shopify_b2b.match(tenant_id, emails, phones, location_id=r.get("_shopify_location"),
+                              logged_in_email=r.get("_shopify_login_email"), cur=cur)
+        if not m:
+            return {}
+        shopify_b2b.link_lead(cur, tenant_id, lead["id"], m)
+        if created and m.get("company"):
+            cur.execute("""UPDATE merchant_pipeline_leads SET customer_name=%s,
+                                  contact_person=COALESCE(NULLIF(contact_person,''), %s)
+                            WHERE id=%s""", (m["company"][:300], (m.get("contact_name") or "")[:200] or None, lead["id"]))
+            lead["customer_name"] = m["company"][:300]
+            if not lead.get("contact_person") and m.get("contact_name"):
+                lead["contact_person"] = m["contact_name"][:200]
+        return m
+    except Exception as e:
+        print(f"⚠️ lead_qualify shopify trade tenant={tenant_id}: {e}")
+        return {}
+
+
 def act(tenant_id: int, channel: str, r: dict, ctx: dict, s: dict) -> dict:
     """Do what the reading says. ctx: lead_id (known), email, wa_number,
     name, inbox_owner (key, label), source_key, text. Returns what was done."""
@@ -949,6 +982,10 @@ def act(tenant_id: int, channel: str, r: dict, ctx: dict, s: dict) -> dict:
             cur.execute("""UPDATE merchant_pipeline_leads SET whatsapp_number=%s WHERE id=%s
                            AND COALESCE(whatsapp_number,'')=''""", (wa, lead["id"]))
             lead["whatsapp_number"] = wa
+        # Shopify Part 4 (3 Nov 2026): an existing Shopify B2B trade customer?
+        trade = _shopify_trade(cur, tenant_id, lead, r, ctx, created)
+        if trade:
+            done["trade_customer"] = {"company": trade["company"], "how": trade["how"], "certain": trade["certain"]}
         staff_owned = lead.get("qual_by") == "staff"
         before = {"_open": _is_open(lead), "is_opportunity": lead.get("is_opportunity"), "stage": lead.get("stage"),
                   "assigned_key": lead.get("assigned_key"), "assigned_to": lead.get("assigned_to"),
@@ -959,8 +996,18 @@ def act(tenant_id: int, channel: str, r: dict, ctx: dict, s: dict) -> dict:
         intent = r.get("intent")
         actions = []
 
+        # A trade customer's enquiry goes to whoever last dealt with that company.
+        if trade and not lead.get("assigned_key"):
+            import shopify_b2b
+            who = shopify_b2b.company_owner(cur, tenant_id, trade["shop"], trade["company_id"], not_lead=lead["id"])
+            if who:
+                cur.execute("""UPDATE merchant_pipeline_leads SET assigned_key=%s, assigned_to=%s
+                               WHERE id=%s AND assigned_key IS NULL""", (who[0], who[1], lead["id"]))
+                if cur.rowcount:
+                    lead["assigned_key"], lead["assigned_to"] = who
+                    actions.append(f"assigned to {who[1]} (looks after {trade['company']})")
         # Owner for a lead nobody owns.
-        if not lead.get("assigned_key") and (created or intent in STRONG_INTENTS or tier == "hot"):
+        if not lead.get("assigned_key") and (trade or created or intent in STRONG_INTENTS or tier == "hot"):
             who = _pick_owner(cur, tenant_id, s, ctx.get("inbox_owner"))
             if who:
                 cur.execute("""UPDATE merchant_pipeline_leads SET assigned_key=%s, assigned_to=%s
@@ -979,6 +1026,11 @@ def act(tenant_id: int, channel: str, r: dict, ctx: dict, s: dict) -> dict:
             why = "Not interested" + (f": {r['not_fit_reason']}" if r.get("not_fit_reason") else "")
             if _not_a_fit(cur, lead, why):
                 actions.append("closed as Not a Fit, follow-ups stopped")
+        elif trade and _is_open(lead):
+            # Existing customers skip lead scoring: straight to the Sales Pipeline.
+            qualified = _qualify(cur, lead, f"Existing Shopify trade customer: {trade['company']}.")
+            if qualified:
+                actions.append("existing trade customer — moved to the Sales Pipeline")
         elif _is_open(lead) and s["on_hot_qualify"] and (tier == "hot" or intent in STRONG_INTENTS):
             qualified = _qualify(cur, lead, reason)
             if qualified:
@@ -987,7 +1039,9 @@ def act(tenant_id: int, channel: str, r: dict, ctx: dict, s: dict) -> dict:
         cur.execute("""UPDATE merchant_pipeline_leads SET qual_reason=%s, qual_at=NOW(),
                               qual_by=CASE WHEN %s THEN 'ai' ELSE qual_by END WHERE id=%s""",
                     (reason[:1000] or None, qualified or not staff_owned, lead["id"]))
-        summary_bits = [INTENT_WORDS.get(intent, "Enquiry"), f"{tier.capitalize()} · {total}"] + actions
+        summary_bits = ([INTENT_WORDS.get(intent, "Enquiry"), f"Existing trade customer · {trade['company']}"] + actions
+                        if trade else
+                        [INTENT_WORDS.get(intent, "Enquiry"), f"{tier.capitalize()} · {total}"] + actions)
         summary = " · ".join(summary_bits)
         dec_id = _log_decision(cur, tenant_id, lead["id"], channel, r, summary, total, tier, before, created, qualified)
         if check:
@@ -1595,7 +1649,7 @@ def _add_logged_in(tenant_id: int, session_id: str, r: dict):
             cur.execute("SELECT to_regclass('chat_visitors') IS NOT NULL AS ok")
             if not cur.fetchone()["ok"]:
                 return
-            cur.execute("SELECT name, email, phone, company FROM chat_visitors WHERE tenant_id=%s AND session_id=%s",
+            cur.execute("SELECT * FROM chat_visitors WHERE tenant_id=%s AND session_id=%s",
                         (tenant_id, session_id))
             v = cur.fetchone()
         finally:
@@ -1610,6 +1664,10 @@ def _add_logged_in(tenant_id: int, session_id: str, r: dict):
             r["company"] = v["company"]
         if v["name"] and not r.get("contact_person"):
             r["contact_person"] = v["name"]
+        # Shopify Part 4: a signed, logged-in Shopify buyer (certain match).
+        if v.get("shopify_signed") and v["email"]:
+            r["_shopify_login_email"] = v["email"]
+            r["_shopify_location"] = v.get("shopify_location_id")
     except Exception as e:
         print("⚠️ lead_qualify logged-in visitor:", e)
 

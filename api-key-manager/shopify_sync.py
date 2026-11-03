@@ -569,6 +569,13 @@ def run_once() -> dict:
             else:
                 _set(shop, sync_status="error" if (row.get("sync_status") in ("queued", "reading", None, "")) else row.get("sync_status"),
                      sync_error=msg)
+    # Part 4: Shopify B2B companies, locations and contacts.
+    try:
+        import shopify_b2b
+        for shop, res in shopify_b2b.run_due():
+            out[shop + " b2b"] = res
+    except Exception as e:
+        print(f"⚠️ shopify b2b run: {e}")
     return out
 
 
@@ -584,6 +591,11 @@ def nightly() -> int:
                           AND COALESCE(sync_status,'') NOT IN ('reading','importing')""")
         n = cur.rowcount
         conn.commit()
+        try:
+            import shopify_b2b
+            shopify_b2b.nightly()
+        except Exception as e:
+            print(f"⚠️ shopify b2b nightly: {e}")
         return n
     finally:
         cur.close(); conn.close()

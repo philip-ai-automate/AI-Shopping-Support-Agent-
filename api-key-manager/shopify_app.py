@@ -116,6 +116,8 @@ def ensure_tables():
         conn.commit()
         import shopify_sync
         shopify_sync.ensure_tables()
+        import shopify_b2b
+        shopify_b2b.ensure_tables()
         cur.execute("""
             CREATE TABLE IF NOT EXISTS shopify_sso (
                 token_hash  TEXT PRIMARY KEY,
@@ -195,6 +197,10 @@ def _save_tokens(shop: str, data: dict):
                 refresh_token = EXCLUDED.refresh_token,
                 refresh_expires_at = EXCLUDED.refresh_expires_at,
                 scope = EXCLUDED.scope,
+                -- Part 4: the owner just approved the customer permission → read companies now.
+                b2b_status = CASE WHEN COALESCE(EXCLUDED.scope,'') LIKE '%%read_customers%%'
+                                   AND COALESCE(shopify_shops.scope,'') NOT LIKE '%%read_customers%%'
+                                  THEN 'queued' ELSE shopify_shops.b2b_status END,
                 installed_at = CASE WHEN shopify_shops.uninstalled_at IS NOT NULL
                                     THEN NOW() ELSE shopify_shops.installed_at END,
                 uninstalled_at = NULL,
@@ -468,6 +474,11 @@ def webhooks():
                 shopify_sync.forget_shop(shop)
             except Exception as e:
                 print(f"⚠️ shopify forget products {shop}: {e}")
+            try:
+                import shopify_b2b
+                shopify_b2b.forget(shop)
+            except Exception as e:
+                print(f"⚠️ shopify forget b2b {shop}: {e}")
             cur.execute("DELETE FROM shopify_shops WHERE shop=%s", (shop,))
         elif topic in ("products/create", "products/update", "products/delete", "inventory_levels/update"):
             # Part 2: re-read just this product on the next sync run (cron, every minute).
@@ -480,8 +491,29 @@ def webhooks():
                 if ref:
                     cur.execute("""INSERT INTO shopify_sync_queue (shop, kind, ref) VALUES (%s,%s,%s)
                                    ON CONFLICT (shop, kind, ref) DO NOTHING""", (shop, kind, str(ref)))
-        # customers/data_request + customers/redact: logged for PhiXtra to act
-        # on (we hold no Shopify customer data in Step 1).
+        elif topic in ("customers/redact", "customers/delete"):
+            # Part 4: remove that person from our copy of the store's B2B contacts.
+            cid = (payload.get("customer") or {}).get("id") if topic == "customers/redact" else payload.get("id")
+            try:
+                import shopify_b2b
+                shopify_b2b.forget_customer(shop, cid)
+            except Exception as e:
+                print(f"⚠️ shopify forget customer {shop}: {e}")
+        if topic in ("companies/create", "companies/update", "companies/delete",
+                     "company_locations/create", "company_locations/update", "company_locations/delete",
+                     "company_contacts/create", "company_contacts/update", "company_contacts/delete",
+                     "company_contact_roles/assign", "company_contact_roles/revoke", "customers/update"):
+            # Part 4: read the store's companies again a minute from now
+            # (customers/update only matters for someone we hold).
+            relevant = True
+            if topic == "customers/update":
+                cur.execute("SELECT 1 FROM shopify_b2b_contacts WHERE shop=%s AND customer_id=%s",
+                            (shop, str(payload.get("id") or "")))
+                relevant = cur.fetchone() is not None
+            if relevant:
+                cur.execute("UPDATE shopify_shops SET b2b_dirty_at=NOW() WHERE shop=%s AND tenant_id IS NOT NULL", (shop,))
+        # customers/data_request: logged (payload kept) for PhiXtra to answer;
+        # shopify_b2b.customer_data(shop, id) gives what we hold.
         conn.commit()
     finally:
         cur.close(); conn.close()
@@ -535,6 +567,11 @@ def _state(row):
         out.update(business=t.get("name") or "", is_b2b=bool(t.get("is_b2b")))
         out["products"] = _products_state(row)
         out["quotes"] = _quotes_state(int(row["tenant_id"]))
+        try:
+            import shopify_b2b
+            out["buyers"] = shopify_b2b.home_state(row)
+        except Exception:
+            out["buyers"] = None
         seen = row.get("chat_seen_at")
         out["chat"] = {"seen_minutes_ago": None if not seen else max(0, int((time.time() - seen.timestamp()) // 60)),
                        "embed_url": f"shopify://admin/themes/current/editor?context=apps&activateAppId={_key()}/chat"}
@@ -596,6 +633,8 @@ def _link(shop, tenant_id, user_id):
         # Part 2: read the store's products straight away.
         cur.execute("""UPDATE shopify_shops SET sync_status='queued', sync_total=NULL, sync_done=0,
                           sync_skipped=NULL, sync_error=NULL WHERE shop=%s""", (shop,))
+        # Part 4: read the store's B2B companies too.
+        cur.execute("UPDATE shopify_shops SET b2b_status='queued', b2b_error=NULL WHERE shop=%s", (shop,))
         conn.commit()
     finally:
         cur.close(); conn.close()

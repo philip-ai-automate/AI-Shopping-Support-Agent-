@@ -727,7 +727,7 @@ def _chat(req: ChatRequest):
         if req.visitor:
             # The website knows who this is (31 Oct 2026): keep it for the lead, and tell the AI.
             import chat_visitor as _cv
-            system_prompt += _cv.prompt(_cv.save(int(tenant_id), str(session_id), req.visitor))
+            system_prompt += _cv.prompt(_cv.save(int(tenant_id), str(session_id), req.visitor), int(tenant_id))
 
     print(f"✅ /chat tenant_id={tenant_id} session_id={session_id}")
 
@@ -2528,6 +2528,9 @@ def _w_visitor(row: dict, req) -> dict | None:
     if not row.get("shopify_shop") or not isinstance(v, dict) or not sig:
         return None
     name, email, company = (str(v.get(k) or "") for k in ("name", "email", "company"))
+    # Shopify Part 4 (3 Nov 2026): the buyer's selected B2B company location
+    # is signed too when present (name|email|company|location).
+    location = _re.sub(r"\D", "", str(v.get("location") or ""))[:20]
     conn = get_db_connection()
     if not conn:
         return None
@@ -2540,11 +2543,13 @@ def _w_visitor(row: dict, req) -> dict | None:
     if not r or not r[0]:
         return None
     import hmac as _hm, hashlib as _hl
-    want = _hm.new(r[0].encode(), f"{name}|{email}|{company}".encode(), _hl.sha256).hexdigest()
+    payload = f"{name}|{email}|{company}|{location}" if location else f"{name}|{email}|{company}"
+    want = _hm.new(r[0].encode(), payload.encode(), _hl.sha256).hexdigest()
     if not _hm.compare_digest(want, sig):
         print(f"⚠️ widget visitor signature mismatch for {row['shopify_shop']}")
         return None
-    return {"name": name, "email": email, "company": company}
+    return {"name": name, "email": email, "company": company,
+            "shopify_signed": True, "shopify_location_id": location or None}
 
 
 def _w_mark_seen(tenant_id: int) -> None:

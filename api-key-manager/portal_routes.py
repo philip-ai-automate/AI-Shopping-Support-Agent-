@@ -41235,6 +41235,31 @@ def deal_auto_followup(lead_id: int):
     return back
 
 
+@portal_bp.route("/leads/<int:lead_id>/shopify-location", methods=["POST"])
+@team_feature("leads.page")
+def shopify_trade_location(lead_id: int):
+    """Shopify Part 4: the salesperson picks which of the company's sites
+    (Shopify company locations) an enquiry is for."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if not _pipeline_lead_owned_by_tenant(lead_id, tenant_id):
+        flash("Lead not found.", "danger")
+        return redirect(url_for("portal.leads_page"))
+    import shopify_b2b as _sb2b
+    if _sb2b.set_lead_location(tenant_id, lead_id, (request.form.get("location_id") or "").strip()):
+        flash("Site saved.", "success")
+    else:
+        flash("That site isn't one of this company's sites in Shopify.", "danger")
+    nxt = request.form.get("next") or ""
+    if not nxt.startswith("/") or nxt.startswith("//"):
+        nxt = url_for("portal.lead_detail", lead_id=lead_id)
+    return redirect(nxt)
+
+
 @portal_bp.route("/leads/<int:lead_id>")
 @team_feature("leads.page")
 def lead_detail(lead_id: int, opp_view: bool = False):
@@ -41366,8 +41391,15 @@ def lead_detail(lead_id: int, opp_view: bool = False):
 
     cur.close(); conn.close()
 
+    try:
+        import shopify_b2b as _sb2b
+        shopify_trade = _sb2b.lead_card(tenant_id, lead_id)
+    except Exception as e:
+        print("⚠️ lead Shopify trade card:", e)
+        shopify_trade = {}
     return render_template(
         "portal/lead_detail.html",
+        shopify_trade=shopify_trade, shopify_trade_lead_id=lead_id,
         auto_fu=auto_fu,
         aiq=aiq, aiq_decisions=aiq_decisions, aiq_business_types=_lq.BUSINESS_TYPES,
         aiq_undo=_lq.undo_target(aiq_decisions, lead) if aiq else None,
@@ -43047,7 +43079,15 @@ def quotes_request_detail(request_id: int):
         ln["stock"] = _qr.stock_of(p)
         ln["on_list"] = bool(p)
     lead = _pipeline_lead_owned_by_tenant(r["lead_id"], tenant_id) if r.get("lead_id") else None
+    shopify_trade = {}
+    if lead:
+        try:
+            import shopify_b2b as _sb2b
+            shopify_trade = _sb2b.lead_card(tenant_id, lead["id"])
+        except Exception as e:
+            print("⚠️ quote request Shopify trade card:", e)
     return render_template("portal/quotes_request_detail.html", r=r, lead=lead, clock=_qr.time_left(r, now),
+                           shopify_trade=shopify_trade, shopify_trade_lead_id=(lead or {}).get("id"),
                            events=_qr.events(r["id"]), qr=_qr, tz=tz, lines_text=_qr.lines_text(r),
                            sent_by=_qr.SENT_BY, lost_reasons=_qr.LOST_REASONS,
                            not_quoted_reasons=_qr.NOT_QUOTED_REASONS, cur=r.get("currency") or _biz_currency(tenant_id),

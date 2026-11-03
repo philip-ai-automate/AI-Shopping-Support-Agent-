@@ -68,6 +68,7 @@
       <div id="copyMsg" class="qt-small" role="status" aria-live="polite"></div>
     </div>
 
+    {% if shopify_trade %}<div class="stc-q"><style>.stc-q .stc{margin:0 0 14px}</style>{% include "portal/_shopify_trade_card.html" %}</div>{% endif %}
     <div class="qt-card">
       <span class="qt-lbl">The buyer</span>
       <div style="font-size:13px;line-height:1.7">{% if r.buyer_company %}<b>{{ r.buyer_company }}</b>{% endif %}{% if r.buyer_country %}{{ ' · ' if r.buyer_company }}{{ country_name.get(r.buyer_country, r.buyer_country) }}{% endif %}{% if r.buyer_company or r.buyer_country %}<br>{% endif %}

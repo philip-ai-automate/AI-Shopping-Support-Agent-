@@ -139,7 +139,7 @@
       <span class="more hide" id="h-pages"></span></div>
       <div id="h-pact"><span class="pill" id="h-pill">Reading</span></div></li>
     <li><div class="n">2</div><div class="t"><b>Chat on your store</b><span id="h-chat">Let buyers chat with your AI agent on every page of your store. Press Turn on, then Save in the theme editor.</span></div><div id="h-cact"><button class="btn sec" id="b-chat">Turn on</button></div></li>
-    <li id="h-quotes" class="hide"><div class="n">3</div><div class="t"><b>Quotations <span class="tag">B2B</span></b><span id="h-qtext">Quote requests from your buyers arrive in Quotations › Requests.</span><span class="more hide" id="h-qerr" style="color:#8e1f0b"></span></div><div id="h-qact"><button class="btn sec" data-open="/quotations/requests">Open</button></div></li>
+    <li id="h-quotes" class="hide"><div class="n">3</div><div class="t"><b>Quotations <span class="tag">B2B</span></b><span id="h-qtext">Quote requests from your buyers arrive in Quotations › Requests.</span><span class="more hide" id="h-qerr" style="color:#8e1f0b"></span><span class="more hide" id="h-buyers"></span></div><div id="h-qact"><button class="btn sec" data-open="/quotations/requests">Open</button></div></li>
     <li><div class="n" id="h-wa-n">3</div><div class="t"><b>WhatsApp and email</b><span>Connect your WhatsApp number and email in your PhiXtra account.</span></div><button class="btn sec" data-open="/dashboard">Open PhiXtra</button></li>
    </ul>
   </div>
@@ -267,6 +267,27 @@
     }
     a.querySelectorAll('[data-open]').forEach(b => b.onclick = openPhx);
   }
+  function buyers(b) {
+    // Part 4 (3 Nov 2026): Shopify B2B companies recognised.
+    const e = $('h-buyers');
+    if (!b) { e.classList.add('hide'); return; }
+    const c = Number(b.companies || 0), p = Number(b.contacts || 0);
+    e.style.color = '';
+    if (b.status === 'done') {
+      e.textContent = 'Business buyers: ' + c.toLocaleString() + (c === 1 ? ' company' : ' companies') + ' and '
+        + p.toLocaleString() + (p === 1 ? ' contact' : ' contacts') + ' recognised when they get in touch.';
+    } else if (b.status === 'none') {
+      e.textContent = "Business buyers: your store has no B2B companies yet. When you add them in Shopify, we'll recognise their buyers.";
+    } else if (b.status === 'no_access') {
+      e.textContent = "Business buyers: waiting for Shopify's permission to recognise your B2B companies' buyers.";
+    } else if (b.status === 'error') {
+      e.textContent = "Business buyers: we couldn't read your B2B companies just now. We'll try again automatically.";
+      e.style.color = '#8a5a00';
+    } else {
+      e.textContent = 'Business buyers: reading your B2B companies…';
+    }
+    e.classList.remove('hide');
+  }
   function pagesLine(w) {
     const e = $('h-pages');
     if (!w) { e.classList.add('hide'); return; }
@@ -297,6 +318,7 @@
       $('h-biz').textContent = d.business || d.shop_name;
       $('h-quotes').classList.toggle('hide', !d.is_b2b);
       quotes(d.quotes);
+      buyers(d.is_b2b ? d.buyers : null);
       chat(d.chat);
       $('h-wa-n').textContent = d.is_b2b ? '4' : '3';
       show('s-home');
