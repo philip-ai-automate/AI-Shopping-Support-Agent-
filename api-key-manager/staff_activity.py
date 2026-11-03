@@ -16,7 +16,7 @@ import threading as _threading
 
 from db import get_db_connection
 
-DEFAULT_TZ = "Africa/Lagos"      # only when a business has no time zone and no country set
+DEFAULT_TZ = "Europe/London"     # only when a business has no time zone and no country set (was Lagos until 2026-11-02)
 ACTIVE_GAP_MIN = 15              # a gap longer than this is "away", not active time
 _PRESENCE_EVERY_S = 60           # write presence at most once a minute per person per worker
 
@@ -213,7 +213,7 @@ def _zone_for_country(cc: str):
 
 def tenant_tz_name(tenant_id: int) -> str:
     """The business's own day (2026-10-11): the time zone chosen in
-    Settings, else the main zone of its business country, else Lagos.
+    Settings, else the main zone of its business country, else London.
     "UTC" counts as not chosen — it's what the Settings list shows by default."""
     hit = _tenant_tz.get(tenant_id)
     if hit and _time.time() - hit[1] < 600:
@@ -245,6 +245,33 @@ def tenant_tz_name(tenant_id: int) -> str:
     name = name or DEFAULT_TZ
     _tenant_tz[tenant_id] = (name, _time.time())
     return name
+
+
+# Time zone pickers (2026-11-02): no country first except the business's own.
+TZ_CHOICES = [("Europe/London", "UK (London)"), ("Europe/Paris", "Central Europe (Paris)"),
+              ("America/New_York", "US East (New York)"), ("America/Chicago", "US Central (Chicago)"),
+              ("America/Los_Angeles", "US West (Los Angeles)"), ("Asia/Dubai", "UAE (Dubai)"),
+              ("Asia/Riyadh", "Saudi Arabia (Riyadh)"), ("Asia/Kolkata", "India (Kolkata)"),
+              ("Asia/Singapore", "Singapore"), ("Australia/Sydney", "Australia (Sydney)"),
+              ("Africa/Lagos", "Nigeria (Lagos)"), ("Africa/Accra", "Ghana (Accra)"),
+              ("Africa/Nairobi", "Kenya (Nairobi)"), ("Africa/Johannesburg", "South Africa (Johannesburg)"),
+              ("UTC", "UTC")]
+
+
+def tz_choices(tenant_id=None) -> list:
+    """TZ_CHOICES with the business's own zone first (added if missing)."""
+    own = tenant_tz_name(tenant_id) if tenant_id else DEFAULT_TZ
+    label = dict(TZ_CHOICES).get(own) or own.split("/")[-1].replace("_", " ")
+    return [(own, label)] + [c for c in TZ_CHOICES if c[0] != own]
+
+
+def valid_tz(name) -> bool:
+    try:
+        from zoneinfo import ZoneInfo
+        ZoneInfo(str(name))
+        return bool(name)
+    except Exception:
+        return False
 
 
 def current_name(default: str = None) -> str:

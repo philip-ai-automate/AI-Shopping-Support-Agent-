@@ -71,7 +71,7 @@ DEFAULT_SETTINGS = {
     "hours_from": 9, "hours_to": 18,
     "days": [1, 2, 3, 4, 5],
     "tz_mode": "customer",       # 'customer' (from their number) or 'business'
-    "business_tz": "Africa/Lagos",
+    "business_tz": None,         # None = the business's own zone (staff_activity.tenant_tz_name)
     "max_wa": 3,
     "send_mode": "auto",         # 'auto' or 'approve'
 }
@@ -194,8 +194,10 @@ def ensure_tables():
 
 # ── Settings + rules ─────────────────────────────────────────────────────────
 
-def _clean_settings(raw: dict) -> dict:
+def _clean_settings(raw: dict, tenant_id: int = None) -> dict:
     s = dict(DEFAULT_SETTINGS)
+    import staff_activity as _sa
+    s["business_tz"] = _sa.tenant_tz_name(tenant_id) if tenant_id else _sa.DEFAULT_TZ
     raw = raw or {}
     for k in s:
         if k in raw and raw[k] is not None:
@@ -224,7 +226,7 @@ def _clean_settings(raw: dict) -> dict:
         from zoneinfo import ZoneInfo
         ZoneInfo(s["business_tz"])
     except Exception:
-        s["business_tz"] = "Africa/Lagos"
+        s["business_tz"] = _sa.tenant_tz_name(tenant_id) if tenant_id else _sa.DEFAULT_TZ
     return s
 
 
@@ -236,7 +238,7 @@ def get_settings(tenant_id: int, cur=None) -> dict:
     try:
         c.execute("SELECT settings FROM followup_settings WHERE tenant_id=%s", (tenant_id,))
         r = c.fetchone()
-        return _clean_settings((r or {}).get("settings") if r else {})
+        return _clean_settings((r or {}).get("settings") if r else {}, tenant_id)
     finally:
         if own:
             c.close(); conn.close()
@@ -244,7 +246,7 @@ def get_settings(tenant_id: int, cur=None) -> dict:
 
 def save_settings(tenant_id: int, data: dict, actor_label: str) -> dict:
     ensure_tables()
-    s = _clean_settings(data)
+    s = _clean_settings(data, tenant_id)
     conn = _conn(); cur = conn.cursor()
     try:
         cur.execute("""INSERT INTO followup_settings (tenant_id, settings, updated_by, updated_at)

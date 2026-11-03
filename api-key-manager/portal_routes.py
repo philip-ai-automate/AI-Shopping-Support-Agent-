@@ -3376,7 +3376,9 @@ def _register_whatsapp_merchant(
                 %s, %s, %s, %s{founder_vals})
         RETURNING id
     """, (business_name, domain or None, free_features, system_prompt_text, is_demo_signup, signup_product,
-          signup_channel, website_platform, selling_currency or "NGN", not selling_currency))
+          signup_channel, website_platform,
+          selling_currency or _selling_currency.default_for_country(business_country or _country_from_phone(phone_number)),
+          not selling_currency))
     row = cur2.fetchone()
     tenant_id      = int(row[0])
     trial_ends_at  = None
@@ -3520,7 +3522,9 @@ def _register_web_merchant(first_name, last_name, email, password, phone_number,
             " COALESCE((SELECT id FROM plans WHERE slug=%s LIMIT 1), 1), %s, %s, %s) RETURNING id",
             (tenant_name, tenant_domain, _json.dumps(free_features), system_prompt_text, ref_code or None,
              _is_presale_test_signup(email), signup_channel, signup_channel is None, free_slug,
-             website_platform, selling_currency or "NGN", not selling_currency)
+             website_platform,
+             selling_currency or _selling_currency.default_for_country(business_country or _country_from_phone(phone_number)),
+             not selling_currency)
         )
         new_tenant_id = cur2.fetchone()[0]
         conn.commit()
@@ -4267,9 +4271,10 @@ def register():
         system_prompt_text = DEFAULT_SYSTEM_PROMPT.replace("{{business_name}}", tenant_name)
         cur2 = conn.cursor()
         cur2.execute(
-            "INSERT INTO tenants (name, domain, status, features, system_prompt, ref_code, is_demo) VALUES (%s, %s, 'pending', %s, %s, %s, %s) RETURNING id",
+            "INSERT INTO tenants (name, domain, status, features, system_prompt, ref_code, is_demo, selling_currency, currency_needs_choice)"
+            " VALUES (%s, %s, 'pending', %s, %s, %s, %s, %s, TRUE) RETURNING id",
             (tenant_name, tenant_domain, _json.dumps(free_features), system_prompt_text, ref_code or None,
-             _is_presale_test_signup(email))
+             _is_presale_test_signup(email), _selling_currency.default_for_country(_country_from_phone(phone_number)))
         )
         new_tenant_id = cur2.fetchone()[0]
         conn.commit()
@@ -5274,7 +5279,7 @@ def team_create():
     alert_reminder = (request.form.get("alert_reminder") == "on") if _may_alerts else True
     alert_phone    = _clean_alert_phone(request.form.get("alert_phone"), request.form.get("alert_phone_country")) if _may_alerts else None
     if alert_phone is False:
-        flash("Nothing saved: that WhatsApp number for alerts has no country code or isn't a real number. Choose the country next to it, or type it starting with + (e.g. +234 803 123 4567).", "danger")
+        flash("Nothing saved: that WhatsApp number for alerts has no country code or isn't a real number. Choose the country next to it, or type it starting with + (e.g. +44 7700 900123).", "danger")
         return redirect(url_for("portal.team_create"))
     name = f"{first_name} {last_name}".strip()
 
@@ -6202,7 +6207,7 @@ def team_update_access(member_id: int):
         phone = _clean_alert_phone(request.form.get("alert_phone"), request.form.get("alert_phone_country"))
         if phone is False:
             cur.close(); conn.close()
-            flash("Nothing saved: that WhatsApp number for alerts has no country code or isn't a real number. Choose the country next to it, or type it starting with + (e.g. +234 803 123 4567).", "danger")
+            flash("Nothing saved: that WhatsApp number for alerts has no country code or isn't a real number. Choose the country next to it, or type it starting with + (e.g. +44 7700 900123).", "danger")
             return redirect(url_for("portal.team_page", open=member_id))
         cur.execute("UPDATE team_members SET alert_enabled=%s, alert_reminder=%s, alert_phone=%s WHERE id=%s",
                     (request.form.get("alert_enabled") == "on", request.form.get("alert_reminder") == "on",
@@ -6252,7 +6257,7 @@ def team_update_alerts(member_id: int):
     reminder = request.form.get("alert_reminder") == "on"
     phone    = _clean_alert_phone(request.form.get("alert_phone"), request.form.get("alert_phone_country"))
     if phone is False:
-        flash("Nothing saved: that WhatsApp number for alerts has no country code or isn't a real number. Choose the country next to it, or type it starting with + (e.g. +234 803 123 4567).", "danger")
+        flash("Nothing saved: that WhatsApp number for alerts has no country code or isn't a real number. Choose the country next to it, or type it starting with + (e.g. +44 7700 900123).", "danger")
         return redirect(url_for("portal.team_page"))
 
     conn = get_db_connection()
@@ -17158,7 +17163,7 @@ except Exception:  # pragma: no cover
     _pn_region_name = None
 
 # Every country (not just Nigeria) — 2026-09-28. Popular ones first in pickers.
-_PHONE_POPULAR = ["NG", "GB", "GH", "US", "KE", "ZA"]
+_PHONE_POPULAR = ["GB", "US", "AE", "IE", "NG", "GH", "KE", "ZA"]   # UK first (2026-11-02, was Nigeria first)
 
 
 def _build_phone_countries():
@@ -17673,7 +17678,7 @@ def _lead_phone_international(raw: str, country: str = None):
         return "", None
     digits = re.sub(r"[^\d]", "", s)
     ask = (f"\"{s}\" isn't a full international number. Type it with its country "
-           f"code, starting with + (for example +234 803 123 4567 or +44 7700 900123).")
+           f"code, starting with + (for example +44 7700 900123 or +1 212 555 0123).")
     if not digits:
         return "", ask
     if s.startswith("+") or digits.startswith("00"):
@@ -17815,7 +17820,7 @@ def _phone_entry(raw: str, country: str = None, allow_special: bool = False,
         c = (country or "").strip().upper()
         if c not in _pn.SUPPORTED_REGIONS:
             return "", (f"\"{s}\" has no country code. Choose the country next to the "
-                        "number, or type it starting with + (for example +234 803 123 4567).")
+                        "number, or type it starting with + (for example +44 7700 900123).")
         try:
             intl = _pn.format_number(_pn.parse(s, c), _pn.PhoneNumberFormat.E164)[1:]
         except Exception:
@@ -21180,7 +21185,7 @@ def whatsapp_campaigns_create():
         _show = ", ".join(_flagged[:5]) + (f" and {len(_flagged) - 5} more" if len(_flagged) > 5 else "")
         flash(f"Campaign not saved. {len(_flagged)} number{'s' if len(_flagged) != 1 else ''} "
               f"without a country code or not real: {_show}. Type each number with its country code, "
-              "starting with + (for example +234 803 123 4567).", "danger")
+              "starting with + (for example +44 7700 900123).", "danger")
         return redirect(url_for("portal.whatsapp_campaigns"))
     if _flagged:
         flash(f"⚠️ {len(_flagged)} of {len(phones)} numbers need checking (no country code or not a real "
@@ -26983,10 +26988,16 @@ def _seq_send_next(person_id: int, due_step=None):
 
 import datetime as _sqdt
 
-_SEQ_TZ_CHOICES = [("Africa/Lagos", "Nigeria (Lagos)"), ("Europe/London", "UK (London)"),
-                   ("Africa/Accra", "Ghana (Accra)"), ("Africa/Nairobi", "Kenya (Nairobi)"),
-                   ("Africa/Johannesburg", "South Africa (Johannesburg)"), ("Asia/Dubai", "UAE (Dubai)"),
-                   ("America/New_York", "US East (New York)"), ("UTC", "UTC")]
+_SEQ_TZ_CHOICES = staff_activity.TZ_CHOICES   # UK first; the business's own zone is put first per page (2026-11-02)
+
+
+def _tid_for_tz():
+    """The signed-in business (for its own time zone in pickers), or None."""
+    try:
+        c = _get_customer(session.get("customer_id")) if session.get("customer_id") else None
+        return int(c["tenant_id"]) if c and c.get("tenant_id") else None
+    except Exception:
+        return None
 
 
 def _seq_schedule(seq):
@@ -26998,7 +27009,6 @@ def _seq_schedule(seq):
     raw = (seq or {}).get("schedule")
     if not isinstance(raw, dict) or not raw.get("on"):
         return None
-    tzs = {t for t, _ in _SEQ_TZ_CHOICES}
     try:
         start = _sqdt.date.fromisoformat(raw.get("start")) if raw.get("start") else None
     except ValueError:
@@ -27012,7 +27022,7 @@ def _seq_schedule(seq):
     per_day = int(raw["per_day"]) if str(raw.get("per_day") or "").isdigit() and int(raw["per_day"]) > 0 else None
     return {"on": True, "start": start, "end": end, "per_day": per_day, "from_h": max(0, min(23, fh)),
             "to_h": max(1, min(24, th)), "days": days or [0, 1, 2, 3, 4, 5, 6],
-            "follow": bool(raw.get("follow", True)), "tz": raw.get("tz") if raw.get("tz") in tzs else "Africa/Lagos"}
+            "follow": bool(raw.get("follow", True)), "tz": raw.get("tz") if staff_activity.valid_tz(raw.get("tz")) else staff_activity.tenant_tz_name((seq or {}).get("tenant_id")) if (seq or {}).get("tenant_id") else staff_activity.DEFAULT_TZ}
 
 
 def _seq_window(sch, now=None):
@@ -27459,7 +27469,7 @@ def email_sequence_wizard(seq_id: int = None):
         categories=categories, segments=segments, labels=labels, sender=sender,
         send_as_choices=_send_as_choices(tenant_id, sender), default_reply_to=_default_reply_to(customer),
         stages=[(s, stage_labels.get(s, s)) for s in PIPELINE_STAGE_ORDER if s != "won"],
-        schedule=sch or {}, tz_choices=_SEQ_TZ_CHOICES)
+        schedule=sch or {}, tz_choices=staff_activity.tz_choices(_tid_for_tz()))
 
 
 @portal_bp.route("/email/sequences/wizard/emails", methods=["POST"])
@@ -27719,7 +27729,7 @@ def email_sequence_detail(seq_id: int):
         page_size=_SEQ_PAGE_SIZE,
         segments=segments, stages=[(s, stage_labels.get(s, s)) for s in PIPELINE_STAGE_ORDER if s != "won"],
         status_words=_SEQ_STATUS_WORDS, sender=_get_email_sender(tenant_id),
-        schedule=_seq_schedule(seq) or {}, schedule_raw=seq.get("schedule") or {}, tz_choices=_SEQ_TZ_CHOICES,
+        schedule=_seq_schedule(seq) or {}, schedule_raw=seq.get("schedule") or {}, tz_choices=staff_activity.tz_choices(_tid_for_tz()),
         labels=labels,
         waiting_first=waiting_first,
         send_as_choices=_send_as_choices(tenant_id, _get_email_sender(tenant_id)),
@@ -27764,7 +27774,7 @@ def email_sequence_schedule_save(seq_id: int):
             return fail("Pick at least one sending day.")
         sch = {"on": True, "start": start.isoformat() if start else None, "end": end.isoformat() if end else None,
                "per_day": None, "from_h": fh, "to_h": th, "days": days, "follow": f.get("follow") == "1",
-               "tz": f.get("tz") if f.get("tz") in {t for t, _ in _SEQ_TZ_CHOICES} else "Africa/Lagos"}
+               "tz": f.get("tz") if staff_activity.valid_tz(f.get("tz")) else staff_activity.DEFAULT_TZ}
     conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         if not _seq_get(cur, tenant_id, seq_id):
@@ -33544,11 +33554,12 @@ def provision_whatsapp_merchant(wa_phone: str, business_name: str) -> dict:
     cur2 = conn.cursor()
     cur2.execute("""
         INSERT INTO tenants (name, domain, status, source_type, features, ai_enabled, plan_id,
-                             currency_needs_choice)
+                             currency_needs_choice, selling_currency)
         VALUES (%s, %s, 'active', 'whatsapp', %s, FALSE,
-                COALESCE((SELECT id FROM plans WHERE slug='connect' LIMIT 1), 1), TRUE)
+                COALESCE((SELECT id FROM plans WHERE slug='connect' LIMIT 1), 1), TRUE, %s)
         RETURNING id
-    """, (business_name or f"WA Business {phone[-4:]}", synth_email, free_features))
+    """, (business_name or f"WA Business {phone[-4:]}", synth_email, free_features,
+          _selling_currency.default_for_country(_country_from_phone(phone))))
     tenant_id = int(cur2.fetchone()[0])
     conn.commit()
     cur2.close()
@@ -41108,7 +41119,7 @@ def _fu_settings_context(customer, tenant_id: int) -> dict:
     return {"fu_rules": _af.list_rules(tenant_id), "fu_settings": _af.get_settings(tenant_id),
             "fu_seqs": seqs, "fu_team": team, "fu_numbers": numbers, "fu_triggers": _af.TRIGGERS,
             "fu_stages": [(k, labels.get(k, k)) for k in PIPELINE_STAGE_ORDER if k not in ("won",)],
-            "fu_days": _af.DAY_NAMES, "fu_tz_choices": _SEQ_TZ_CHOICES, "fu_remind_actions": _af.REMIND_ACTIONS,
+            "fu_days": _af.DAY_NAMES, "fu_tz_choices": staff_activity.tz_choices(_tid_for_tz()), "fu_remind_actions": _af.REMIND_ACTIONS,
             "fu_can_edit": _team_member_has_permission("crm.pipeline_settings_edit"),
             "fu_owner_name": " ".join(x for x in (customer.get("first_name"), customer.get("last_name")) if x) or "Account owner"}
 

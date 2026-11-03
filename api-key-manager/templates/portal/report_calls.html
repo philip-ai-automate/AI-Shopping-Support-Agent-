@@ -89,7 +89,7 @@
       </table></div>
   </div>
   <div>
-    <div class="cr-card"><h3>Busiest times <small>calls in, by day and hour (Nigeria time)</small></h3>
+    <div class="cr-card"><h3>Busiest times <small>calls in, by day and hour ({{ tz_label }} time)</small></h3>
       {% set hrs = range(7, 20) %}
       {% set mx = (d.heat.values()|max) if d.heat else 0 %}
       <div class="heat" role="img" aria-label="Calls by day and hour">

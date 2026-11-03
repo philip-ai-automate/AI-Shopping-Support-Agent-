@@ -321,7 +321,7 @@ var MT = (function () {
     var i = sel.getAttribute('data-btn'), t = sel.value;
     var txt = document.querySelector('input[name="btn' + i + '_text"]'), val = document.querySelector('input[name="btn' + i + '_value"]');
     txt.hidden = !t; val.hidden = !(t === 'URL' || t === 'PHONE_NUMBER');
-    val.placeholder = t === 'URL' ? 'https://…' : t === 'PHONE_NUMBER' ? '+234 803 123 4567' : '';
+    val.placeholder = t === 'URL' ? 'https://…' : t === 'PHONE_NUMBER' ? '+44 7700 900123' : '';
     val.type = t === 'URL' ? 'url' : 'text';
     update();
   }

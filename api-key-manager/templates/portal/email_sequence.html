@@ -637,7 +637,7 @@
               <span>to</span>
               <select name="to_h" id="schTo" aria-label="To">{% for h in range(1,25) %}<option value="{{ h }}" {% if (schedule.to_h if schedule.on else 17) == h %}selected{% endif %}>{{ 'midnight' if h==24 else (h ~ 'am' if h<12 else ('12pm' if h==12 else (h-12) ~ 'pm')) }}</option>{% endfor %}</select>
             </div></div>
-          <label class="fld">Time zone<select name="tz" id="schTz">{% for t, label in tz_choices %}<option value="{{ t }}" {% if (schedule.tz or 'Africa/Lagos') == t %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+          <label class="fld">Time zone<select name="tz" id="schTz">{% for t, label in tz_choices %}<option value="{{ t }}" {% if (schedule.tz or tz_choices[0][0]) == t %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
         </div>
         <div class="sch-quick" id="schQuick">Length:
           <button type="button" class="sch-qp" data-w="7">1 week</button>

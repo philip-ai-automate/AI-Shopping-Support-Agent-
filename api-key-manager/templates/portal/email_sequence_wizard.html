@@ -168,7 +168,7 @@
         {% set on_days = schedule.days if schedule.on else [1,2,3,4,5] %}
         {% for d, l in [(1,'Mon'),(2,'Tue'),(3,'Wed'),(4,'Thu'),(5,'Fri'),(6,'Sat'),(0,'Sun')] %}<button type="button" class="dbtn {% if d in on_days %}on{% endif %}" data-d="{{ d }}">{{ l }}</button>{% endfor %}
       </div></div>
-      <label class="wf" for="wzTz">Time zone<select id="wzTz">{% for t, l in tz_choices %}<option value="{{ t }}" {% if (schedule.tz or 'Africa/Lagos') == t %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
+      <label class="wf" for="wzTz">Time zone<select id="wzTz">{% for t, l in tz_choices %}<option value="{{ t }}" {% if (schedule.tz or tz_choices[0][0]) == t %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
     </div>
     <label class="ck"><input type="checkbox" id="wzFollow" {% if not schedule.on or schedule.follow %}checked{% endif %}><span>Follow-ups keep to these days and hours too<small>Waits between emails count sending days only, at the same time of day as the email before. Wait 3 days after a Wednesday email (Mon–Thu sending) = the next Tuesday.</small></span></label>
     <div class="okline" id="wzPlan"></div>

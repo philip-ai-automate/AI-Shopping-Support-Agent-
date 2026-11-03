@@ -88,7 +88,7 @@ def _in_hours(st: dict) -> bool:
         h = json.loads(h or "{}")
     try:
         from zoneinfo import ZoneInfo
-        now = datetime.now(ZoneInfo(h.get("tz") or "Africa/Lagos"))
+        now = datetime.now(ZoneInfo(h.get("tz") or "Europe/London"))
     except Exception:
         now = datetime.now(timezone.utc)
     if (now.isoweekday() % 7) not in (h.get("days") or [1, 2, 3, 4, 5]):
@@ -116,7 +116,7 @@ def callback_due(st: dict, start: datetime) -> datetime | None:
     h = _hours(st)
     try:
         from zoneinfo import ZoneInfo
-        tz = ZoneInfo(h.get("tz") or "Africa/Lagos")
+        tz = ZoneInfo(h.get("tz") or "Europe/London")
     except Exception:
         tz = timezone.utc
     days = h.get("days") or [1, 2, 3, 4, 5]

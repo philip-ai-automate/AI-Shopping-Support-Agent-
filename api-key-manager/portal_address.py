@@ -79,7 +79,7 @@ _STATE_ALIASES = {
 _STATE_LABELS = {"NG": "State", "US": "State", "GB": "County", "GH": "Region", "KE": "County",
                  "IE": "County", "ZA": "Province", "CA": "Province", "CN": "Province"}
 
-_POPULAR = ["NG", "GB", "GH", "US", "KE", "ZA"]
+_POPULAR = ["GB", "US", "AE", "IE", "NG", "GH", "KE", "ZA"]   # UK first (2026-11-02, was Nigeria first)
 
 
 def _build_countries():

@@ -415,8 +415,9 @@ def amount_for_tenant(tenant_id, amount, from_code=None):
     return conv["amount"] if conv else None
 
 
-# The AI's default instruction (portal DEFAULT_SYSTEM_PROMPT) assumes naira.
-NAIRA_PRICING_BLOCK = (
+# Old standard naira wording (until 2026-11-02). Kept only so instructions
+# that still contain it are recognised and swapped.
+LEGACY_NAIRA_PRICING_BLOCK = (
     "PRICING:\n"
     "- Always quote prices in Nigerian Naira (₦).\n"
     "- If a product price is in GBP (£), convert to Naira at approximately ₦1,850 per £1 "
@@ -425,11 +426,28 @@ NAIRA_PRICING_BLOCK = (
 )
 
 
+# Standard wording when the business hasn't chosen a currency yet (2026-11-02):
+# no country's currency is assumed.
+GENERIC_PRICING_BLOCK = (
+    "PRICING:\n"
+    "- Always quote prices in the business's own currency, exactly as they appear in the store data.\n"
+    "- Never convert a price yourself or switch it to another currency.\n\n"
+)
+
+
+def default_for_country(country) -> str:
+    """Selling currency for a new business that hasn't chosen one
+    (2026-11-02): UK → pounds, Nigeria → naira, anywhere else → US dollars."""
+    code = {"GB": "GBP", "NG": "NGN"}.get((country or "").strip().upper(), "USD")
+    return code if code in currency_codes() else "USD"
+
+
 def pricing_block(code) -> str:
-    """The PRICING part of a business's AI instruction for its currency."""
-    code = (code or DEFAULT_CURRENCY).upper()
-    if code == "NGN":
-        return NAIRA_PRICING_BLOCK
+    """The PRICING part of a business's AI instruction for its currency
+    (no code = the generic wording)."""
+    if not code:
+        return GENERIC_PRICING_BLOCK
+    code = code.upper()
     c = currency_label(code)
     sign = c["prefix"].strip()
     return (
@@ -437,8 +455,16 @@ def pricing_block(code) -> str:
         f"- Always quote prices in {currency_plural(code)} ({sign}).\n"
         f"- Prices in the store data are already in {currency_plural(code)}. Quote them exactly as given; "
         "never convert them yourself.\n"
-        f"- Never quote prices in naira (₦) or any other currency — always use {sign}.\n\n"
+        f"- Never quote prices in any other currency — always use {sign}.\n\n"
     )
+
+
+def _known_pricing_blocks() -> list:
+    """Every standard PRICING wording the system has written (old ones too)."""
+    blocks = [pricing_block(c) for c in currency_codes() + ["NGN"]]
+    # Pre-2026-11-02 wording of the non-naira blocks also said "naira (₦) or".
+    blocks += [b.replace("Never quote prices in any other currency", "Never quote prices in naira (₦) or any other currency") for b in list(blocks)]
+    return blocks + [LEGACY_NAIRA_PRICING_BLOCK, GENERIC_PRICING_BLOCK]
 
 
 def rewrite_prompt_pricing(prompt, code):
@@ -448,8 +474,7 @@ def rewrite_prompt_pricing(prompt, code):
     new prompt, or None when nothing was swapped."""
     if not prompt:
         return None
-    for code_ in currency_codes() + ["NGN"]:
-        block = pricing_block(code_)
+    for block in _known_pricing_blocks():
         if block in prompt:
             new = prompt.replace(block, pricing_block(code))
             return new if new != prompt else None
@@ -468,8 +493,8 @@ def pricing_override(tenant_id) -> str:
     return (
         f"\n\nPRICING (this rule replaces any earlier pricing rule): this business sells in "
         f"{currency_plural(code)} ({sign}). Every product price in the store data is already in {currency_plural(code)} — "
-        "quote it exactly as given and never convert it yourself. Never quote prices in naira (₦) "
-        "unless the store data itself shows that price in naira."
+        "quote it exactly as given and never convert it yourself. Never quote prices in another currency "
+        "unless the store data itself shows that price in it."
     )
 
 
@@ -510,8 +535,8 @@ def _other_currency_words(text, code) -> list[str]:
     the standard pricing paragraph the system itself manages."""
     if not text:
         return []
-    for c in currency_codes() + ["NGN"]:
-        text = text.replace(pricing_block(c), "")
+    for b in _known_pricing_blocks():
+        text = text.replace(b, "")
     return [name for cur, (pat, name) in _CURRENCY_WORDS.items()
             if cur != code and re.search(pat, text, re.I)]
 

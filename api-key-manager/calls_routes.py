@@ -32,6 +32,7 @@ import requests as _req
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_file, url_for
 
 from db import get_db_connection
+import staff_activity
 from feature_access import team_feature
 from portal_routes import (
     _require_login, _customer_id, _get_customer, _require_team_permission, _team_member_has_permission,
@@ -629,9 +630,10 @@ def _report_data(tenant_id: int, start, end, pnid: str, member: str):
         cur.execute(f"""SELECT COALESCE(missed_reason,'no_answer') AS why, count(*) AS n FROM wa_calls c
                          WHERE {W} AND direction='in' AND status IN ('missed','out_of_hours') GROUP BY 1 ORDER BY 2 DESC""", p)
         reasons = cur.fetchall()
-        cur.execute(f"""SELECT EXTRACT(ISODOW FROM c.created_at AT TIME ZONE 'Africa/Lagos')::int AS dow,
-                               EXTRACT(HOUR FROM c.created_at AT TIME ZONE 'Africa/Lagos')::int AS hr, count(*) AS n
-                          FROM wa_calls c WHERE {W} AND direction='in' GROUP BY 1,2""", p)
+        _tz = staff_activity.tenant_tz_name(tenant_id)   # the business's own time (was Lagos until 2026-11-02)
+        cur.execute(f"""SELECT EXTRACT(ISODOW FROM c.created_at AT TIME ZONE %s)::int AS dow,
+                               EXTRACT(HOUR FROM c.created_at AT TIME ZONE %s)::int AS hr, count(*) AS n
+                          FROM wa_calls c WHERE {W} AND direction='in' GROUP BY 1,2""", [_tz, _tz] + p)
         heat = {(r["dow"], r["hr"]): r["n"] for r in cur.fetchall()}
         # What happened after: callers matched to leads, by when the lead was
         # made / became a deal / booked a demo / was won, after their first call.
@@ -687,7 +689,8 @@ def calls_report():
     finally:
         cur.close(); conn.close()
     return render_template("portal/report_calls.html", d=data, days=days, start=start, end=end, pnid=pnid, member=member,
-                           numbers=numbers, members=members)
+                           numbers=numbers, members=members,
+                           tz_label=staff_activity.tenant_tz_name(tenant_id).split("/")[-1].replace("_", " "))
 
 
 @calls_bp.route("/reports/calls/export")
@@ -799,7 +802,7 @@ def calls_settings(pnid: str):
             if not (hfrom.isdigit() and hto.isdigit() and hfrom < hto):
                 flash("The calling hours must end after they start.", "warning")
                 return redirect(url_for("calls.calls_settings", pnid=pnid))
-            tz = f.get("tz") or "Africa/Lagos"
+            tz = f.get("tz") if staff_activity.valid_tz(f.get("tz")) else staff_activity.tenant_tz_name(tenant_id)
             new = {"incoming_on": f.get("incoming_on") == "1", "outgoing_on": f.get("outgoing_on") == "1" and out_country,
                    "ring_first": f.get("ring_first") == "1",
                    "ring_first_secs": min(30, max(5, int(f.get("ring_first_secs") or 15))) if (f.get("ring_first_secs") or "15").isdigit() else 15,
@@ -849,7 +852,7 @@ def calls_settings(pnid: str):
         all_numbers = _numbers(cur, tenant_id)
     finally:
         cur.close(); conn.close()
-    hours = st.get("hours") or {"days": [1, 2, 3, 4, 5], "from": "0900", "to": "1700", "tz": "Africa/Lagos"}
+    hours = st.get("hours") or {"days": [1, 2, 3, 4, 5], "from": "0900", "to": "1700", "tz": staff_activity.tenant_tz_name(tenant_id)}
     if isinstance(hours, str):
         hours = json.loads(hours)
     checks = [
@@ -865,9 +868,7 @@ def calls_settings(pnid: str):
     return render_template("portal/call_settings.html", num=num, st=st, hours=hours, info=info, checks=checks,
                            all_numbers=all_numbers,
                            out_country=out_country, days=DAYS, default_missed=DEFAULT_MISSED,
-                           tz_choices=[("Africa/Lagos", "Nigeria (Lagos)"), ("Europe/London", "UK (London)"),
-                                       ("Africa/Accra", "Ghana (Accra)"), ("Africa/Nairobi", "Kenya (Nairobi)"),
-                                       ("Africa/Johannesburg", "South Africa"), ("Asia/Dubai", "UAE (Dubai)")])
+                           tz_choices=staff_activity.tz_choices(tenant_id))
 
 
 # ── Helpers for other pages ──────────────────────────────────────────────────
