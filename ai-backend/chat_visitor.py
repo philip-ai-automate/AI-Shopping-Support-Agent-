@@ -149,8 +149,58 @@ def _trade_line(t: dict) -> str:
     elif len(t.get("locations") or []) > 1:
         names = ", ".join(l["name"] for l in t["locations"][:8])
         line += f"They buy for several sites ({names}): if they haven't said, ask once which site this order is for. "
-    line += "Prices you have are list prices: their account price is confirmed on the quote."
+    line += ("Prices in the product list are public list prices. If ACCOUNT PRICES are given below, quote those "
+             "to this buyer instead; otherwise say their account price is confirmed on the quote.")
     return line
+
+
+def account_prices_line(tenant_id: int, v: dict, docs: list) -> str:
+    """Shopify Part 5: a logged-in (signed) trade buyer's own Shopify prices
+    for the products in this answer, from the portal. Unit prices only; the
+    AI never gives a quoted total. '' when none apply."""
+    t = shopify_trade(tenant_id, clean(v) if v else {})
+    loc = (t.get("location") or {}).get("id") if t else None
+    ids = [str(d.get("id")) for d in (docs or []) if re.match(r"^product-\d+$", str(d.get("id") or ""))][:6]
+    if not loc or not ids:
+        return ""
+    try:
+        import os, requests
+        r = requests.post(os.getenv("PORTAL_INTERNAL_URL", "http://127.0.0.1:5055") + "/shopify/internal/prices",
+                          json={"tenant_id": int(tenant_id), "location_id": loc, "product_ids": ids},
+                          headers={"Authorization": "Bearer " + os.getenv("PHIXTRA_INTERNAL_TOKEN", "")}, timeout=6)
+        prices = r.json() if r.ok else {}
+    except Exception as e:
+        print("⚠️ chat_visitor.account_prices:", e)
+        return ""
+    rows = []
+    for pid in ids:
+        info = prices.get(pid)
+        if not info:
+            continue
+        if not info.get("published", True):
+            rows.append(f"- {info['title']}: not in {t['company']}'s catalogue (don't offer it; say the team can check).")
+            continue
+        cur = info.get("currency") or ""
+        for var in (info.get("variants") or [])[:6]:
+            if var.get("price") is None:
+                continue
+            name = info["title"] + ("" if var.get("title") in (None, "", "Default Title") else f" ({var['title']})")
+            bits = [f"{cur} {var['price']:.2f} each"]
+            for mn, bp in var.get("breaks") or []:
+                bits.append(f"{cur} {bp:.2f} each from {mn}")
+            rule = []
+            if var.get("min") and var["min"] > 1:
+                rule.append(f"minimum {var['min']}")
+            if var.get("step") and var["step"] > 1:
+                rule.append(f"in multiples of {var['step']}")
+            if var.get("max"):
+                rule.append(f"maximum {var['max']}")
+            rows.append(f"- {name}: " + ", ".join(bits) + (f" ({', '.join(rule)})" if rule else ""))
+    if not rows:
+        return ""
+    return ("\n\nACCOUNT PRICES for " + t["company"] + (f" ({t['location']['name']})" if t.get("location") else "")
+            + " from their store account. Use these, not the list prices, when this buyer asks about price. "
+            "Give unit prices only, never a quoted total (the quotation comes from the sales team):\n" + "\n".join(rows))
 
 
 def prompt(v: dict, tenant_id: int = None) -> str:

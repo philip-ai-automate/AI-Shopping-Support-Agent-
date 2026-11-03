@@ -43550,6 +43550,11 @@ def quotes_quotation(qid: int):
             return redirect(url_for("portal.quotes_quotation", qid=qid))
         if action == "send":
             return redirect(url_for("portal.quotes_quotation_send", qid=qid))
+        if action == "shopify_refresh":
+            # Shopify Part 5: re-read the trade customer's own prices.
+            ok, msg = _qq.refresh_shopify(tenant_id, qid)
+            flash(msg, "success" if ok else "warning")
+            return redirect(url_for("portal.quotes_quotation", qid=qid))
         flash("Draft saved.", "success")
         return redirect(url_for("portal.quotes_quotation", qid=qid) + ("?preview=1" if action == "preview" else ""))
     products = _qr.products_for(tenant_id)

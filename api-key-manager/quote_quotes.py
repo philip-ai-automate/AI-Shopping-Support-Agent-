@@ -176,7 +176,7 @@ def start(tenant_id: int, req: dict, actor: dict, valid_until: date = None) -> i
                             (valid_until.isoformat(), valid_until, r["id"]))
             conn.commit()
             return r["id"]
-        cur.execute("""SELECT number, version, data FROM quotations WHERE tenant_id=%s AND request_id=%s
+        cur.execute("""SELECT number, version, data, currency FROM quotations WHERE tenant_id=%s AND request_id=%s
                         ORDER BY version DESC LIMIT 1""", (tenant_id, req["id"]))
         prev = cur.fetchone()
         s = qd.get(tenant_id)
@@ -203,10 +203,15 @@ def start(tenant_id: int, req: dict, actor: dict, valid_until: date = None) -> i
                     "deliver_place": req.get("deliver_to") or "", "deliver_terms": "",
                     "note": "", "plan": [], "prepared_by": _person(cur, tenant_id, req.get("assigned_key"),
                                                                    req.get("assigned_to") or actor["label"])}
+        currency = req.get("currency")
+        if not prev:
+            # Shopify Part 5: a recognised trade customer's own site prices.
+            currency = apply_shopify(tenant_id, data, req) or currency
         cur.execute("""INSERT INTO quotations (tenant_id, request_id, number, version, status, data, currency,
                                                valid_until, created_by)
                        VALUES (%s,%s,%s,%s,'draft',%s,%s,%s,%s) RETURNING id""",
-                    (tenant_id, req["id"], number, version, psycopg2.extras.Json(data), req.get("currency"),
+                    (tenant_id, req["id"], number, version, psycopg2.extras.Json(data),
+                     currency if not prev else (prev.get("currency") or req.get("currency")),
                      data["valid_until"], actor["label"]))
         qid = cur.fetchone()["id"]
         qr._event(cur, req["id"], f"Quotation {number}{' v%d' % version if version > 1 else ''} started", actor["label"])
@@ -241,7 +246,8 @@ def clean_form(raw: dict) -> dict:
                              "list_price": _num(ln.get("list_price")),
                              "price": _num(ln.get("price")) if str(ln.get("price") or "").strip() != "" else None,
                              "disc": _num(ln.get("disc"), 0, 100) or 0,
-                             "note": re.sub(r"\s+", " ", str(ln.get("note") or "")).strip()[:200]})
+                             "note": re.sub(r"\s+", " ", str(ln.get("note") or "")).strip()[:200],
+                             "variant_id": re.sub(r"\D", "", str(ln.get("variant_id") or ""))[:30] or None})
     for c in (raw.get("charges") or [])[:20]:
         if not isinstance(c, dict):
             continue
@@ -264,6 +270,7 @@ def clean_form(raw: dict) -> dict:
     for k, n in (("deliver_place", 200), ("deliver_terms", 200)):
         out[k] = re.sub(r"\s+", " ", str(raw.get(k) or "")).strip()[:n]
     out["note"] = str(raw.get("note") or "").strip()[:1500]
+    out["payment_terms"] = re.sub(r"\s+", " ", str(raw.get("payment_terms") or "")).strip()[:300]
     return out
 
 
@@ -275,6 +282,7 @@ def save(tenant_id: int, qid: int, raw: dict, actor: dict) -> tuple:
         return False, "This quotation has been sent and can't be changed. Make a new version instead."
     d = clean_form(raw)
     d["prepared_by"] = q["data"].get("prepared_by") or {}
+    keep_shopify(q["data"], d)
     doc = to_doc(tenant_id, {**q, "data": d}, qd.get(tenant_id))
     conn, cur = _db()
     try:
@@ -444,7 +452,7 @@ def to_doc(tenant_id: int, q: dict, s: dict, req: dict = None) -> dict:
                      "email": req.get("buyer_email") or req.get("buyer_phone") or ""},
            "deliver": {"place": d.get("deliver_place") or "", "terms": d.get("deliver_terms") or ""},
            "prepared_by": d.get("prepared_by") or {},
-           "lines": [{"code": ln.get("code") or "", "name": ln["name"], "pack": "", "qty": ln["qty"],
+           "lines": [{"code": ln.get("code") or "", "name": line_name(ln), "pack": "", "qty": ln["qty"],
                       "unit": ln.get("unit") or "", "price": ln["price"] or 0, "disc": ln.get("disc") or 0,
                       "note": ln.get("note") or ("Discount" if ln.get("disc") else "")} for ln in d["lines"]],
            "charges": [dict(c) for c in d.get("charges") or []],
@@ -494,6 +502,7 @@ def checks(tenant_id: int, q: dict, req: dict) -> list:
                          else f"{ln['name']} ({stock} in stock)")
     if short:
         out.append(("warn", "Not enough stock for: " + "; ".join(short) + ". Say when the rest comes, in the note"))
+    out += shopify_checks(d)
     words = (req.get("buyer_words") or "") + "\n" + (req.get("notes") or "")
     if "?" in words and not d.get("note"):
         out.append(("warn", "The buyer asked a question in their request. Answer it in the note"))
@@ -514,13 +523,22 @@ def can_send(chk: list) -> bool:
     return not any(level == "bad" for level, _ in chk)
 
 
+def _design(tenant_id: int, q: dict) -> dict:
+    """The business's design, with this quotation's own payment terms
+    (Shopify Part 5: from the trade customer's site) when it has them."""
+    s = dict(qd.get(tenant_id))
+    if (q.get("data") or {}).get("payment_terms"):
+        s["payment_terms"] = q["data"]["payment_terms"]
+    return s
+
+
 def render(tenant_id: int, q: dict, screen=True, req=None) -> str:
-    s = qd.get(tenant_id)
+    s = _design(tenant_id, q)
     return qd.render_html(tenant_id, s, to_doc(tenant_id, q, s, req), screen=screen)
 
 
 def make_pdf(tenant_id: int, q: dict, req=None) -> bytes:
-    s = qd.get(tenant_id)
+    s = _design(tenant_id, q)
     doc = to_doc(tenant_id, q, s, req)
     prof = qd.profile(tenant_id)
     return qd.render_pdf(qd.render_html(tenant_id, s, doc, screen=False), s.get("footer") or prof["name"], doc["number"])
@@ -780,3 +798,177 @@ def _send_wa_document(tenant_id, num, phone, pdf, fname, caption, actor) -> tupl
     finally:
         cur.close(); conn.close()
     return True, ""
+
+
+# ── Shopify Part 5 (3 Nov 2026): a trade customer's own Shopify prices ────
+# Plan https://claude.ai/artifact/Ev9UoRU1XMbjZ4zGKoZEbX. PhiXtra fills the
+# site's catalogue / volume price and checks the site's rules; the
+# salesperson can still change every price.
+
+def _variant(ln: dict):
+    sh = ln.get("shopify") or {}
+    return next((v for v in sh.get("variants") or [] if v["id"] == ln.get("variant_id")), None)
+
+
+def line_name(ln: dict) -> str:
+    v = _variant(ln)
+    if v and v.get("title") and v["title"] != "Default Title" and len((ln.get("shopify") or {}).get("variants") or []) > 1:
+        return f"{ln['name']} \u2014 {v['title']}"
+    return ln["name"]
+
+
+def apply_shopify(tenant_id: int, data: dict, req: dict):
+    """Fill a draft from the trade customer's site in Shopify. Returns the
+    site's currency, or None (not a recognised trade customer / no site yet /
+    Shopify not reachable: lines keep what they have)."""
+    if not req.get("lead_id"):
+        return None
+    try:
+        import shopify_b2b, shopify_prices as sp
+        card = shopify_b2b.lead_card(tenant_id, req["lead_id"])
+    except Exception as e:
+        print("⚠️ quotation Shopify trade card:", e)
+        return None
+    if not card:
+        data.pop("shopify_site", None)
+        return None
+    loc = card.get("location")
+    if not loc:
+        data["shopify_site"] = {"company": card["company"], "needs_site": True}
+        return None
+    prices = sp.site_prices(tenant_id, loc["location_id"], [ln.get("product_id") for ln in data["lines"]])
+    if not prices and any(sp.is_shopify_product(ln.get("product_id")) for ln in data["lines"]):
+        data["shopify_site"] = {"company": card["company"], "name": loc["name"], "location_id": loc["location_id"],
+                                "unreachable": True}
+        return None
+    currency = next((p["currency"] for p in prices.values() if p.get("currency")), None)
+    data["shopify_site"] = {"company": card["company"], "name": loc["name"], "location_id": loc["location_id"],
+                            "payment_terms": loc.get("payment_terms") or "", "currency": currency}
+    if loc.get("payment_terms") and not data.get("payment_terms"):
+        data["payment_terms"] = loc["payment_terms"]
+    for ln in data["lines"]:
+        info = prices.get(ln.get("product_id"))
+        if not info:
+            continue
+        vs = sp.real_variants(info)
+        old_auto = ln.get("auto_price")
+        ln["shopify"] = {"published": info["published"], "variants": vs}
+        if ln.get("variant_id") not in [v["id"] for v in vs]:
+            ln["variant_id"] = vs[0]["id"] if len(vs) == 1 else None
+        v = _variant(ln)
+        if not v:
+            ln.pop("auto_price", None); ln.pop("price_src", None)
+            continue
+        p, brk = sp.unit_price(v, ln.get("qty"))
+        if v.get("sku"):
+            ln["code"] = v["sku"]
+        if p is not None and (ln.get("price") is None or ln.get("price") == old_auto
+                              or (old_auto is None and ln.get("price") == ln.get("list_price"))):
+            ln["price"] = p
+        ln["auto_price"] = p
+        ln["price_src"] = f"volume price from {brk}" if brk else "catalogue price"
+    return currency
+
+
+def keep_shopify(old: dict, new: dict):
+    """On save: the Shopify facts come from PhiXtra's last read, never from
+    the browser; the chosen variant must be one of the product's variants."""
+    if old.get("shopify_site"):
+        new["shopify_site"] = old["shopify_site"]
+    olds = {}
+    for ln in old.get("lines") or []:
+        if ln.get("shopify") and ln.get("product_id"):
+            olds.setdefault(ln["product_id"], ln)
+    for ln in new["lines"]:
+        o = olds.get(ln.get("product_id"))
+        if not o:
+            ln.pop("variant_id", None)
+            continue
+        ln["shopify"] = o["shopify"]
+        ids = [v["id"] for v in o["shopify"].get("variants") or []]
+        if ln.get("variant_id") not in ids:
+            ln["variant_id"] = o.get("variant_id") if o.get("variant_id") in ids else (ids[0] if len(ids) == 1 else None)
+        v = _variant(ln)
+        if v:
+            import shopify_prices as sp
+            p, brk = sp.unit_price(v, ln.get("qty"))
+            ln["auto_price"] = p
+            ln["price_src"] = f"volume price from {brk}" if brk else "catalogue price"
+
+
+def refresh_shopify(tenant_id: int, qid: int) -> tuple:
+    """'Refresh Shopify prices' on a draft."""
+    q = get(tenant_id, qid)
+    if not q or q["status"] != "draft":
+        return False, "Only a draft can be refreshed."
+    req = qr.get(tenant_id, q["request_id"]) if q.get("request_id") else None
+    d = dict(q["data"])
+    currency = apply_shopify(tenant_id, d, req or {})
+    site = d.get("shopify_site") or {}
+    if site.get("needs_site"):
+        return False, f"Choose which {site['company']} site this is for on the request page first."
+    if site.get("unreachable"):
+        return False, "Shopify couldn't be reached just now. Please try again in a minute."
+    if not site:
+        return False, "This buyer isn't one of your Shopify trade customers."
+    doc = to_doc(tenant_id, {**q, "data": d}, qd.get(tenant_id))
+    conn, cur = _db()
+    try:
+        cur.execute("""UPDATE quotations SET data=%s, total=%s, currency=COALESCE(%s, currency), updated_at=NOW()
+                        WHERE id=%s AND status='draft'""",
+                    (psycopg2.extras.Json(d), doc["total"], currency, qid))
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    return True, f"Prices refreshed from Shopify for {site['company']} ({site['name']})."
+
+
+def shopify_checks(d: dict) -> list:
+    import shopify_prices as sp
+    out = []
+    site = d.get("shopify_site") or {}
+    if site.get("needs_site"):
+        out.append(("warn", f"Choose which {site['company']} site this is for (on the request page), "
+                            "then press Refresh Shopify prices to use their own prices"))
+        return out
+    if site.get("unreachable"):
+        out.append(("warn", "Shopify couldn't be reached for this buyer's own prices. Press Refresh Shopify prices"))
+    novar, rules, notcat, differ, missed = [], [], [], [], []
+    for ln in d.get("lines") or []:
+        sh = ln.get("shopify")
+        if not sh:
+            continue
+        if not sh.get("published", True):
+            notcat.append(ln["name"])
+        v = _variant(ln)
+        if not v:
+            if len(sh.get("variants") or []) > 1:
+                novar.append(ln["name"])
+            continue
+        probs = sp.rule_problems(v, ln.get("qty"))
+        if probs:
+            rules.append(f"{line_name(ln)}: " + ", ".join(probs))
+        auto = ln.get("auto_price")
+        price = ln.get("price")
+        if auto is not None and price is not None and abs(float(price) - float(auto)) > 0.004:
+            differ.append(f"{line_name(ln)} ({'%g' % price} here, {'%g' % auto} in Shopify)")
+        best, _ = sp.unit_price(v, ln.get("qty"))
+        if best is not None and price is not None and auto is not None and best < float(price) - 0.004 \
+                and abs(float(price) - float(auto)) > 0.004 and best == auto:
+            pass  # already reported as a price difference
+        elif best is not None and price is not None and best < float(price) - 0.004 and auto is not None and best < auto:
+            missed.append(line_name(ln))
+    if novar:
+        out.append(("bad", "Choose the variant for: " + ", ".join(novar)))
+    if rules:
+        out.append(("warn", f"{site.get('company', 'Buyer')}'s quantity rules in Shopify: " + "; ".join(rules)))
+    if notcat:
+        out.append(("warn", f"Not in {site.get('company', 'the buyer')}'s Shopify catalogue: " + ", ".join(notcat)))
+    if differ:
+        out.append(("warn", f"Different from {site.get('company', 'the buyer')}'s Shopify price (they see their own price "
+                            "when they log in): " + "; ".join(differ)))
+    if missed:
+        out.append(("warn", "A cheaper volume price applies at this quantity for: " + ", ".join(missed)))
+    if site and not (novar or rules or notcat or differ or missed) and any(ln.get("shopify") for ln in d.get("lines") or []):
+        out.append(("ok", f"Prices and quantities match {site['company']}'s Shopify account ({site.get('name')})"))
+    return out

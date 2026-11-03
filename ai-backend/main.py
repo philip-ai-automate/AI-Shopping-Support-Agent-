@@ -1019,6 +1019,14 @@ def _chat(req: ChatRequest):
     # includes the model's thinking, so at the product limit (600) a long
     # website answer could come back blank (2026-10-01). Product-only
     # answers and greetings keep LLM_MAX_OUTPUT_TOKENS.
+    # Shopify Part 5 (3 Nov 2026): a logged-in trade buyer's own account prices.
+    if req.visitor and isinstance(req.visitor, dict) and req.visitor.get("shopify_signed"):
+        try:
+            import chat_visitor as _cv5
+            _pool = raw_docs or []
+            system_prompt += _cv5.account_prices_line(int(tenant_id), req.visitor, _pool)
+        except Exception as _ap_err:
+            print(f"⚠️ account prices: {_ap_err}")
     _max_out = None
     if _engines is not None and _engines["info_chunks"]:
         _max_out = int(os.getenv("LLM_MAX_OUTPUT_TOKENS_INFO") or os.getenv("LLM_MAX_OUTPUT_TOKENS", "1200"))

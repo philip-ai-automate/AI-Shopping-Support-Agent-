@@ -520,6 +520,25 @@ def webhooks():
     return Response(status=200)
 
 
+@shopify_bp.route("/internal/prices", methods=["POST"])
+@public_route
+def internal_prices():
+    """Part 5: the AI backend asks for a logged-in trade buyer's own prices.
+    Server-to-server only (PHIXTRA_INTERNAL_TOKEN)."""
+    want = os.getenv("PHIXTRA_INTERNAL_TOKEN", "")
+    got = (request.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
+    if not want or not hmac.compare_digest(want, got):
+        abort(401)
+    d = request.get_json(silent=True) or {}
+    try:
+        tenant_id = int(d.get("tenant_id"))
+    except (TypeError, ValueError):
+        abort(400)
+    import shopify_prices as sp
+    ids = [str(x) for x in (d.get("product_ids") or [])][:8]
+    return jsonify(sp.site_prices(tenant_id, re.sub(r"\D", "", str(d.get("location_id") or "")), ids))
+
+
 # ── Step 1 Part 1 screens (approved 1 Nov 2026) ─────────────────────────
 # Welcome (create account, email code) · Link my account (email code) ·
 # Home (set-up steps). Every call carries the App Bridge ID token.
