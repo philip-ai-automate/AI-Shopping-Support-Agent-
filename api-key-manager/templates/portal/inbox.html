@@ -928,6 +928,7 @@ html, body { overflow: hidden; height: 100%; }
         {% endif %}
         </div>
       </div>
+      {% include "portal/_shopify_trade_strip.html" %}
 
       {% macro msg_body(msg) %}
         {% if msg.media_url and msg.message_type == 'image' %}
@@ -1356,6 +1357,7 @@ html, body { overflow: hidden; height: 100%; }
           </div>
           {% endif %}
         </div>
+        {% include "portal/_shopify_trade_strip.html" %}
 
         <div class="chat-messages" id="webchatMessages" data-key="{{ active_phone }}" data-count="{{ webchat_messages|length }}">
           {% if not webchat_messages %}

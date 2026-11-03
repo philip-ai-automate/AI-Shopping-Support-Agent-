@@ -558,3 +558,43 @@ def home_state(shop_row: dict) -> dict:
     return {"status": shop_row.get("b2b_status") or "queued",
             "companies": shop_row.get("b2b_companies") or 0,
             "contacts": shop_row.get("b2b_contacts") or 0}
+
+
+def inbox_card(tenant_id: int, key: str, webchat_conv: dict = None) -> dict:
+    """The Inbox strip for the open conversation: WhatsApp number, or a
+    website chat (signed logged-in Shopify buyer, else the email / number
+    the visitor gave). {} = not a trade customer."""
+    if not key or key.startswith("fb:"):
+        return {}
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("SELECT 1 FROM shopify_shops WHERE tenant_id=%s AND uninstalled_at IS NULL AND b2b_status='done'",
+                    (tenant_id,))
+        if not cur.fetchone():
+            return {}
+        if key.startswith("web:"):
+            sid = key.split(":", 1)[1]
+            v = None
+            cur.execute("SELECT to_regclass('chat_visitors') IS NOT NULL AS ok")
+            if cur.fetchone()["ok"]:
+                cur.execute("SELECT * FROM chat_visitors WHERE tenant_id=%s AND session_id=%s", (tenant_id, sid[:64]))
+                v = cur.fetchone()
+            wc = webchat_conv or {}
+            emails = [e for e in (wc.get("visitor_email"), (v or {}).get("email")) if e]
+            phones = [p for p in (wc.get("whatsapp_number"), (v or {}).get("phone")) if p]
+            signed = bool(v and v.get("shopify_signed") and v.get("email"))
+            m = match(tenant_id, emails, phones, location_id=(v or {}).get("shopify_location_id") if signed else None,
+                      logged_in_email=v["email"] if signed else None, cur=cur)
+        else:
+            digits = re.sub(r"\D", "", key)
+            m = match(tenant_id, (), ["+" + digits] if digits else (), cur=cur)
+    finally:
+        cur.close(); conn.close()
+    if not m:
+        return {}
+    store = m["shop"].replace(".myshopify.com", "")
+    locs = [{"location_id": l["location_id"], "name": l["name"], "payment_terms": l["payment_terms"]} for l in m["locations"]]
+    loc = m.get("location")
+    return {"company": m["company"], "certain": m["certain"], "how": m["how"], "locations": locs,
+            "location": {"name": loc["name"], "payment_terms": loc["payment_terms"]} if loc else None,
+            "admin_url": f"https://admin.shopify.com/store/{store}/companies/{m['company_id']}"}

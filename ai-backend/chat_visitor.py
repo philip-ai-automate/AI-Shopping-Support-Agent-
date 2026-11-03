@@ -138,8 +138,9 @@ def _trade_line(t: dict) -> str:
     if not t:
         return ""
     line = (f"\n\nEXISTING TRADE CUSTOMER: this buyer orders for {t['company']}, an existing business customer "
-            "of this store (their store account says so). Greet them as a returning customer of "
-            f"{t['company']}. Do NOT ask qualifying questions (company, who decides, budget, timeline): "
+            "of this store (their store account says so). In your first reply in this chat, welcome them back "
+            f"by name AND name {t['company']} (e.g. 'Welcome back, <first name>. Good to hear from {t['company']} again.'). "
+            "Never use titles such as Mr or Mrs. Do NOT ask qualifying questions (company, who decides, budget, timeline): "
             "only gather what this order needs (products, quantities, delivery date). ")
     if t.get("location"):
         line += f"They are ordering for the site \"{t['location']['name']}\". "

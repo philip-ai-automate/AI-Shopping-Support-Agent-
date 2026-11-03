@@ -1018,6 +1018,11 @@ def act(tenant_id: int, channel: str, r: dict, ctx: dict, s: dict) -> dict:
 
         qualified = False
         reason = (r.get("reason") or "").strip()
+        if trade:
+            # The AI's reading judges a stranger ("no company…"); for a known
+            # trade customer that would mislead the salesperson.
+            site = (trade.get("location") or {}).get("name")
+            reason = f"Existing Shopify trade customer: {trade['company']}" + (f" ({site})" if site else "") + "."
         if r.get("quote_answer"):
             pass    # an answer to a quotation: Quotations decides (Won / Lost / change), never Not a Fit here
         elif intent == "not_interested" and channel in ("chat", "whatsapp", "web"):

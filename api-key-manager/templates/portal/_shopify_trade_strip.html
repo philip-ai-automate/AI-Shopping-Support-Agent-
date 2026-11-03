@@ -1,0 +1,11 @@
+{# Shopify Part 4 (3 Nov 2026): one line under the Inbox chat header when the buyer is a Shopify B2B trade customer. #}
+{% if shopify_strip %}{% set st = shopify_strip %}
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 16px;background:#f0fdf4;border-bottom:1px solid #bbf7d0;font-size:12.5px;color:#14532d">
+  <span style="background:#15803d;color:#fff;border-radius:999px;padding:2px 9px;font-weight:800;font-size:11.5px">Shopify trade customer</span>
+  <b>{{ st.company }}</b>
+  {% if st.location %}<span>· {{ st.location.name }}{% if st.location.payment_terms %} · {{ st.location.payment_terms }}{% endif %}</span>
+  {% elif st.locations|length > 1 %}<span>· {{ st.locations|length }} sites</span>{% endif %}
+  <span style="color:#166534">· {% if st.certain %}Logged in to the store{% elif st.how == 'phone' %}Matched by phone number{% else %}Matched by email{% endif %}</span>
+  <a href="{{ st.admin_url }}" target="_blank" rel="noopener" style="margin-left:auto;color:#166534;font-weight:700">Open in Shopify →</a>
+</div>
+{% endif %}

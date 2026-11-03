@@ -35061,8 +35061,18 @@ def my_inbox():
             if active_phone:
                 webchat_messages = _get_webchat_messages(tenant_id, active_phone)
 
+    shopify_strip = {}
+    if active_phone and not is_messenger_active:
+        try:
+            import shopify_b2b as _sb2b
+            _wc = next((c for c in (webchat_conversations or []) if c.get("key") == active_phone), None) \
+                if is_webchat_active else None
+            shopify_strip = _sb2b.inbox_card(tenant_id, active_phone, _wc)
+        except Exception as e:
+            print("⚠️ inbox Shopify trade strip:", e)
     return render_template(
         "portal/inbox.html",
+        shopify_strip=shopify_strip,
         customer=customer,
         connection=connection,
         conversations=conversations,
