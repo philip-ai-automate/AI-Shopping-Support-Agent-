@@ -936,7 +936,7 @@
           {% if 'leads.page' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
-        {% if staff_can_open('bookings.demos') %}
+        {% if bookings_connected and staff_can_open('bookings.demos') %}
         <a href="{{ url_for('bookings.demos') }}"
            class="{% if request.endpoint == 'bookings.demos' %}active{% endif %}">
           Demos

@@ -269,6 +269,30 @@ def create_app():
         from portal_routes import SMS_ENABLED
         return {"SMS_ENABLED": SMS_ENABLED}
 
+    @flask_app.context_processor
+    def _inject_bookings_connected():
+        """bookings_connected for the side menu (2026-11-03, user): the CRM
+        "Demos" item shows only once the business has connected Microsoft
+        Bookings (connected, or connected but asked to reconnect)."""
+        from flask import session, g
+        if not hasattr(g, "_bookings_connected"):
+            g._bookings_connected = False
+            cid = session.get("impersonate_customer_id") or session.get("customer_id")
+            if session.get("portal_logged_in") and cid:
+                try:
+                    from db import get_db_connection
+                    conn = get_db_connection(); cur = conn.cursor()
+                    try:
+                        cur.execute("""SELECT EXISTS (SELECT 1 FROM booking_connections b
+                                         JOIN customers c ON c.tenant_id = b.tenant_id
+                                        WHERE c.id = %s AND b.status IN ('active','needs_reconnect'))""", (cid,))
+                        g._bookings_connected = bool(cur.fetchone()[0])
+                    finally:
+                        cur.close(); conn.close()
+                except Exception as e:
+                    print("⚠️ bookings_connected:", e)
+        return {"bookings_connected": g._bookings_connected}
+
     # ── Global template context: inject current customer so every template,
     #    including base.html, can access avatar_data, first_name, etc.
     from flask import session as _session, g as _g
