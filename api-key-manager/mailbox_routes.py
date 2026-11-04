@@ -169,7 +169,8 @@ def page():
         "portal/mailbox_microsoft.html", customer=customer, mine=mine, reply_to=reply_to,
         mismatch=bool(mine and reply_to and mine["email"] and mine["email"].lower() != reply_to),
         is_manager=is_manager, team=team_mailboxes(tenant_id) if is_manager else [],
-        configured=M.configured(), expired=M.secret_expired(), consent_url=M.admin_consent_url(),
+        configured=M.configured(), expired=M.secret_expired(),
+        consent_url=M.admin_consent_url(M.DRAFT_SCOPES if __import__("outreach_drafts").pilot(tenant_id) else M.SCOPES),
         me_key=me_key, followup_days=followup_days(tenant_id, me_key), followup_days_max=FOLLOWUP_DAYS_MAX,
     )
 
@@ -189,7 +190,11 @@ def connect():
         return redirect(url_for("mailbox.page"))
     state = secrets.token_urlsafe(24)
     session["ms_oauth_state"] = state
-    return redirect(M.auth_url(state))
+    # AI outreach drafts pilot (2026-11-04): those businesses also allow saving drafts.
+    import outreach_drafts
+    scopes = M.DRAFT_SCOPES if outreach_drafts.pilot(int(customer["tenant_id"])) else M.SCOPES
+    session["ms_oauth_scopes"] = scopes
+    return redirect(M.auth_url(state, scopes))
 
 
 @mailbox_bp.route("/integrations/microsoft/callback", methods=["GET"])
@@ -226,8 +231,9 @@ def callback():
         else:
             flash("Microsoft didn't connect the mailbox: " + (desc.splitlines()[0][:200] if desc else request.args.get("error")), "danger")
         return redirect(url_for("mailbox.page"))
+    scopes = session.pop("ms_oauth_scopes", None) or M.SCOPES
     try:
-        tok = M.exchange_code(request.args.get("code", ""))
+        tok = M.exchange_code(request.args.get("code", ""), scopes)
         who = M.me(tok["access_token"])
     except M.GraphError as e:
         if e.code == "consent":
@@ -257,6 +263,7 @@ def callback():
             (tenant_id, actor["key"], actor["label"], who["email"], who["name"], who["id"],
              _encrypt_key(tok.get("refresh_token") or ""), _encrypt_key(tok["access_token"]), tok["expires_at"]))
         mb_id = cur.fetchone()["id"]
+        cur.execute("UPDATE mailbox_connections SET scopes=%s WHERE id=%s", (scopes, mb_id))
         conn.commit()
     finally:
         cur.close(); conn.close()
@@ -395,7 +402,7 @@ def _access_token(cur, mb) -> str:
     rt = _decrypt_key(mb["refresh_token_enc"] or "")
     if not rt:
         raise M.GraphError("reconnect", "Microsoft no longer accepts this sign-in. Connect the mailbox again.")
-    t = M.refresh(rt)
+    t = M.refresh(rt, mb.get("scopes") or M.SCOPES)
     cur.execute("""UPDATE mailbox_connections SET access_token_enc=%s, access_expires_at=%s,
                        refresh_token_enc=COALESCE(%s, refresh_token_enc), updated_at=NOW() WHERE id=%s""",
                 (_encrypt_key(t["access_token"]), t["expires_at"],
@@ -418,6 +425,11 @@ def _record_reply(cur, mb, msg, sender: str, received: datetime, token: str):
                    ORDER BY r.sent_at DESC LIMIT 1""",
                 (mb["tenant_id"], sender, received, received - MATCH_WINDOW))
     rec = cur.fetchone()
+    if not rec:
+        # AI outreach pilot (2026-11-04): a reply to an email the team sent
+        # from Outlook to a deal counts as a reply too.
+        import outreach_drafts
+        rec = outreach_drafts.outlook_sent_match(cur, mb["tenant_id"], sender, received, MATCH_WINDOW)
     if not rec:
         return None    # not someone this business emailed: AI Lead Qualification may read it (a new enquiry)
     cur.execute("SELECT 1 FROM email_replies WHERE mailbox_id=%s AND message_id=%s", (mb["id"], msg["id"]))
@@ -442,7 +454,8 @@ def _record_reply(cur, mb, msg, sender: str, received: datetime, token: str):
                  f"Outlook ({mb['owner_label'] or mb['email']})", received))
     event_id = cur.fetchone()["id"]
     cur.execute("UPDATE email_replies SET event_id=%s WHERE id=%s", (event_id, row["id"]))
-    cur.execute("UPDATE email_campaign_recipients SET replied_at=COALESCE(replied_at, %s) WHERE id=%s", (received, rec["id"]))
+    if rec["campaign_id"]:
+        cur.execute("UPDATE email_campaign_recipients SET replied_at=COALESCE(replied_at, %s) WHERE id=%s", (received, rec["id"]))
     _email_lead_contacted(cur, {"lead_id": lead_id, "tenant_id": mb["tenant_id"], "campaign_name": rec["campaign_name"]},
                           "Replied to the email (found in Outlook)")
     _seq_stop_matching(cur, mb["tenant_id"], "Replied", email=sender, lead_id=lead_id)
@@ -569,6 +582,9 @@ def check_mailbox(mb_id: int, force: bool = False) -> dict:
                     if done:
                         sent += len(done)
                         _after_sent(mb, done)
+                        import outreach_drafts   # AI outreach pilot: the next draft's date
+                        for d in done:
+                            outreach_drafts.on_sent(mb, d["lead_id"], msg["id"], received)
                 except Exception as e:
                     conn.rollback()
                     print(f"⚠️ mailbox {mb_id} sent {msg.get('id', '')[:20]} error:", e)
@@ -579,6 +595,9 @@ def check_mailbox(mb_id: int, force: bool = False) -> dict:
                 got = _record_reply(cur, mb, msg, sender, received, token)
                 conn.commit()
                 if got is None:
+                    import outreach_drafts   # AI outreach pilot: a bounce stops that deal's drafts
+                    if outreach_drafts.on_other_mail(mb, msg, sender):
+                        continue
                     # A new enquiry? The AI reads it; anything else is skipped and never stored (30 Oct 2026).
                     import lead_qualify
                     lead_qualify.on_inbox_email(mb, msg, sender, received, token)
@@ -589,6 +608,8 @@ def check_mailbox(mb_id: int, force: bool = False) -> dict:
                     email_reply_actions.on_reply(mb["tenant_id"], got["lead_id"], got["reply_id"],
                                                  mb["owner_key"], mb["owner_label"] or mb["email"],
                                                  got["text"], got["subject"])
+                    import outreach_drafts   # AI outreach pilot: pause drafts, alert the team
+                    outreach_drafts.on_reply(mb["tenant_id"], got["lead_id"], got["reply_id"], got["text"])
             except Exception as e:
                 conn.rollback()
                 print(f"⚠️ mailbox {mb_id} reply {msg.get('id', '')[:20]} error:", e)

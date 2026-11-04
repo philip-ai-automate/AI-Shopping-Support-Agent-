@@ -1,0 +1,80 @@
+{# AI Email Drafts on a deal (PhiXtra pilot; tracker redesign 4 Nov 2026, mock-up board 5). #}
+{% set OB = outreach_box(lead.id) %}
+{% if OB %}
+{% set R = OB.run %}
+<style>
+  .odb{border:1px solid #D6DEEC;background:#fff;border-radius:14px;padding:16px 18px;margin:14px 0;display:flex;flex-direction:column;gap:14px}
+  .odb-top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+  .odb-tl{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .odb-eye{margin:0;font-size:12.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#3B4A63}
+  .odb-pill{font-size:12px;font-weight:700;border-radius:20px;padding:4px 10px;background:#E8EEF8;color:#0B1D40}
+  .odb-pill.amber{background:#FFF4E5;color:#7A3E00}.odb-pill.grey{background:#F2F4F7;color:#475467}
+  .odb-btns{display:flex;gap:8px;flex-wrap:wrap}.odb-btns form{margin:0}
+  .odb-go{text-decoration:none;font-size:13.5px;font-weight:700;background:#0B1D40;color:#fff;border:0;border-radius:10px;padding:10px 14px;min-height:42px;box-sizing:border-box;display:inline-flex;align-items:center;cursor:pointer;font-family:inherit}
+  .odb-go:hover{color:#fff;background:#111E2D}
+  .odb-2{font:inherit;font-size:13.5px;background:#fff;color:#0B1D40;border:1.5px solid #C9D4E8;border-radius:10px;padding:9px 14px;min-height:42px;cursor:pointer}
+  .odb-steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+  .odb-steps li{border-top:4px solid #D6DEEC;padding-top:10px;display:flex;flex-direction:column;gap:3px;min-width:0}
+  .odb-steps li.sent{border-top-color:#0B1D40}.odb-steps li.waiting,.odb-steps li.failed{border-top-color:#D9822B}.odb-steps li.approved{border-top-color:#2E5FC1}
+  .odb-steps b{font-size:14px}.odb-steps li.future b{color:#5A6B85}
+  .odb-steps span{font-size:12.5px;color:#3B4A63}.odb-steps small{font-size:12px;color:#5A6B85}
+  .odb-steps li.waiting span,.odb-steps li.failed span{color:#7A3E00;font-weight:600}
+  .odb-prev{background:#F5F7FB;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+  .odb-prev small{font-size:12px;font-weight:700;color:#5A6B85;text-transform:uppercase}
+  .odb-prev span{font-size:13.5px;color:#3B4A63;line-height:1.5}
+  .odb-help{margin:0;font-size:12.5px;color:#5A6B85;line-height:1.5}
+  .odb-warn{font-size:12.5px;background:#FFFAEB;border:1px solid #FEDF89;color:#7A2E0E;border-radius:10px;padding:8px 10px}
+  @media (max-width:640px){.odb-steps{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+<section class="odb" id="ai-drafts" aria-labelledby="odbH">
+  <div class="odb-top">
+    <div class="odb-tl">
+      <h2 class="odb-eye" id="odbH">AI email drafts</h2>
+      {% if R and R.status == 'running' %}<span class="odb-pill">Running · {{ R.emails_sent }} of {{ OB.max }} sent</span>
+      {% elif R and R.status == 'replied' %}<span class="odb-pill amber">They replied · {{ R.emails_sent }} of {{ OB.max }} sent</span>
+      {% elif R %}<span class="odb-pill grey">{{ 'Finished' if R.status == 'finished' else 'Stopped' }} · {{ R.emails_sent }} of {{ OB.max }} sent</span>
+      {% else %}<span class="odb-pill grey">Not started</span>{% endif %}
+    </div>
+    <div class="odb-btns">
+      {% if OB.current and outreach_can_check() and OB.current.status == 'waiting' %}
+        <a class="odb-go" href="{{ url_for('outreach.page', tab='waiting', d=OB.current.id) }}">Check email {{ OB.current.step }}</a>
+      {% elif OB.current and OB.current.status == 'approved' and OB.current.web_link %}
+        <a class="odb-go" href="{{ OB.current.web_link }}" target="_blank" rel="noopener">Open email {{ OB.current.step }} in Outlook</a>
+      {% endif %}
+      {% if outreach_can_check() %}
+        {% if R and R.status == 'running' %}
+          {% if R.last_error %}<form method="POST" action="{{ url_for('outreach.deal_action', lead_id=lead.id) }}"><input type="hidden" name="action" value="retry"><button class="odb-go" type="submit">Try again now</button></form>{% endif %}
+          <form method="POST" action="{{ url_for('outreach.deal_action', lead_id=lead.id) }}" onsubmit="return confirm('Stop the AI drafts for this deal? Any unsent draft is removed from Outlook.')"><input type="hidden" name="action" value="stop"><button class="odb-2" type="submit">Stop</button></form>
+        {% elif lead_open and lead.email and (not R or R.status in ('stopped', 'finished')) %}
+          <form method="POST" action="{{ url_for('outreach.deal_action', lead_id=lead.id) }}"><input type="hidden" name="action" value="start"><button class="odb-go" type="submit">{{ 'Start again' if R else 'Write AI drafts' }}</button></form>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+
+  {% if R %}
+  <ol class="odb-steps" aria-label="Five emails">
+    {% for st in OB.steps %}{% set d = st.d %}
+    <li class="{{ st.state }}">
+      <b>Email {{ st.n }}</b>
+      {% if st.state == 'sent' %}<span>Sent {{ d.sent_at.strftime('%a %-d %b') if d.sent_at }}</span><small>{% if d.by_hand %}written by hand{% elif d.sent_unchecked %}sent before it was checked{% elif d.checked_by_name %}checked by {{ d.checked_by_name.split()[0] }}{% endif %}</small>
+      {% elif st.state == 'waiting' %}<span>Waiting for check</span><small>written {{ d.created_at.strftime('%a %-d %b') }}</small>
+      {% elif st.state == 'approved' %}<span style="color:#1D3E8A;font-weight:600">Ready to send</span><small>checked by {{ (d.checked_by_name or '').split()[0] }}</small>
+      {% elif st.state == 'writing' %}<span>Being written…</span>
+      {% elif st.state == 'failed' %}<span>Couldn't be written</span><small>tries again tomorrow</small>
+      {% elif R.status == 'running' and st.when %}<span>about {{ st.when.strftime('%a %-d %b') }}</span>
+      {% else %}<span class="muted">—</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% if OB.preview %}
+  <div class="odb-prev"><small>Email {{ OB.current.step }} starts</small><span>“{{ OB.preview }}”</span></div>
+  {% endif %}
+  {% if R.status != 'running' and R.stop_reason %}<p class="odb-help">{{ 'Finished' if R.status == 'finished' else 'Stopped' }}: {{ R.stop_reason }}{% if R.stopped_at %} ({{ R.stopped_at.strftime('%-d %b') }}){% endif %}.</p>{% endif %}
+  {% if R.status == 'running' and R.last_error %}<div class="odb-warn">The last draft couldn't be written: {{ R.last_error }}</div>{% endif %}
+  {% else %}
+  <p class="odb-help" style="font-size:13.5px;color:#3B4A63">The AI writes a personal email to this person and saves it as a draft in the sender's Outlook. Philip or David checks it, the sender presses Send. Up to {{ OB.max }} emails, stopping when they reply.</p>
+  {% endif %}
+  <p class="odb-help">Stops by itself when they reply (the team is emailed; the AI never answers), the email bounces, or the deal is Won, Lost or Not a Fit.</p>
+</section>
+{% endif %}

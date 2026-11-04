@@ -936,6 +936,13 @@
           {% if 'leads.page' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
+        {# AI Email Drafts (2026-11-04, PhiXtra pilot): AI writes Outlook drafts, a person checks + sends #}
+        {% if outreach_on() %}
+        <a href="{{ url_for('outreach.page') }}"
+           class="{% if request.endpoint == 'outreach.page' %}active{% endif %}">
+          AI Email Drafts
+        </a>
+        {% endif %}
         {% if bookings_connected and staff_can_open('bookings.demos') %}
         <a href="{{ url_for('bookings.demos') }}"
            class="{% if request.endpoint == 'bookings.demos' %}active{% endif %}">

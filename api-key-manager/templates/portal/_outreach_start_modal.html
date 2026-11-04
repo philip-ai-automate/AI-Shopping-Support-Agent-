@@ -1,0 +1,108 @@
+{# "Write AI drafts" start window + the AI drafts column chips (PhiXtra pilot, mock-up boards 2 + 3, 4 Nov 2026). #}
+<style>
+  .od-rc{display:inline-block;font-size:12px;font-weight:700;border-radius:20px;padding:4px 10px;text-decoration:none;background:#E8EEF8;color:#0B1D40}
+  a.od-rc:hover{filter:brightness(.96)}
+  .od-rc-waiting{background:#FFF4E5;color:#7A3E00}
+  .od-rc-approved{background:#EAF1FF;color:#1D3E8A}
+  .od-rc-replied{background:#0B1D40;color:#fff}
+  .od-rc-stopped{background:#F2F4F7;color:#475467;font-weight:600}
+  .ods-ovl{position:fixed;inset:0;background:rgba(11,29,64,.45);z-index:2000;display:none;align-items:center;justify-content:center;padding:16px}
+  .ods-ovl.open{display:flex}
+  .ods{width:min(600px,100%);max-height:calc(100vh - 32px);overflow:auto;background:#fff;border-radius:16px;display:flex;flex-direction:column;color:#111E2D}
+  .ods-h{padding:22px 24px 6px}
+  .ods-h h2{margin:0;font-size:20px;color:#0B1D40}
+  .ods-h p{margin:6px 0 0;font-size:14px;color:#5A6B85;line-height:1.5}
+  .ods-b{padding:14px 24px;display:flex;flex-direction:column;gap:14px}
+  .ods-n{display:flex;gap:10px;flex-wrap:wrap}
+  .ods-n div{flex:1 1 150px;border:1px solid #D6DEEC;border-radius:12px;padding:12px 14px}
+  .ods-n b{display:block;font-size:22px;color:#0B1D40}.ods-n b.q{color:#5A6B85}
+  .ods-n span{font-size:13px;color:#3B4A63}
+  .ods-k{font-size:12px;font-weight:700;color:#5A6B85;text-transform:uppercase;letter-spacing:.4px}
+  .ods-line{display:flex;align-items:flex-start;font-size:12.5px}
+  .ods-line .st{display:flex;flex-direction:column;align-items:center;gap:4px;width:84px;flex-shrink:0;text-align:center}
+  .ods-line .dot{width:14px;height:14px;border-radius:50%;border:2px solid #0B1D40;box-sizing:border-box}
+  .ods-line .dot.f{background:#0B1D40}
+  .ods-line .bar{flex:1 1 auto;height:2px;background:#C9D4E8;margin-top:6px}
+  .ods-line span{color:#5A6B85}
+  .ods-info{background:#F5F7FB;border-radius:12px;padding:12px 14px;font-size:13px;color:#3B4A63;line-height:1.55}
+  .ods-f{padding:16px 24px;border-top:1px solid #E8EEF8;display:flex;justify-content:flex-end;gap:10px;background:#FAFBFD;flex-wrap:wrap}
+  .ods-f button,.ods-f a{font:inherit;font-size:14px;border-radius:10px;padding:10px 16px;min-height:44px;box-sizing:border-box;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}
+  .ods-c{background:#fff;color:#0B1D40;border:1.5px solid #C9D4E8}
+  .ods-go{background:#0B1D40;color:#fff;border:0;font-weight:700}
+  .ods-go:hover{color:#fff}
+  .ods-go:disabled{opacity:.55;cursor:wait}
+  .ods-warn{background:#FFFAEB;border:1px solid #FEDF89;color:#7A2E0E;border-radius:12px;padding:12px 14px;font-size:13px}
+  .ods-done{border:1px solid #9DB8E8;background:#E8EEF8;border-radius:12px;padding:12px 14px;font-size:13.5px}
+</style>
+<div class="ods-ovl" id="odsOvl" onclick="if(event.target===this)ODStart.close()">
+  <div class="ods" role="dialog" aria-modal="true" aria-labelledby="odsT">
+    <div class="ods-h"><h2 id="odsT">Write AI drafts</h2><p id="odsLead">Checking the deals you ticked…</p></div>
+    <div class="ods-b" id="odsBody"></div>
+    <div class="ods-f" id="odsFoot">
+      <button type="button" class="ods-c" onclick="ODStart.close()">Cancel</button>
+      <button type="button" class="ods-go" id="odsGo" onclick="ODStart.go()" disabled>Write drafts</button>
+    </div>
+  </div>
+</div>
+<script>
+var ODStart = (function(){
+  var ids = [], pv = null;
+  var esc = function(t){ var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; };
+  function list(names){ return names.length > 3 ? names.slice(0, 3).map(esc).join(', ') + ' and ' + (names.length - 3) + ' more' : names.map(esc).join(', '); }
+  function render(){
+    var go = document.getElementById('odsGo'), b = document.getElementById('odsBody');
+    var skipped = pv.no_email.length + pv.closed.length + pv.running.length + pv.replied.length;
+    document.getElementById('odsT').textContent = 'Write AI drafts for ' + pv.start + ' deal' + (pv.start === 1 ? '' : 's');
+    var who = pv.sender ? pv.sender.name : 'the sender';
+    document.getElementById('odsLead').textContent = 'The AI writes a personal first email to each one and saves it in ' + who + "'s Outlook Drafts. Nothing is sent until Philip or David checks it and " + who.split(' ')[0] + ' presses Send.';
+    var h = '<div class="ods-n"><div><b>' + pv.start + '</b><span>will start</span></div>'
+          + '<div><b class="q">' + skipped + '</b><span>skipped</span></div>'
+          + '<div><b class="q">' + pv.running.length + '</b><span>already running</span></div></div>';
+    h += '<div><div class="ods-k">If they don\'t reply</div><div class="ods-line">';
+    pv.days.forEach(function(d, i){
+      if (i) h += '<span class="bar"></span>';
+      h += '<div class="st"><span class="dot ' + (i ? '' : 'f') + '"></span><b style="color:#111E2D">Email ' + (i + 1) + '</b><span>' + (i ? 'day ' + d : 'today') + '</span></div>';
+    });
+    h += '</div><p style="margin:6px 0 0;font-size:13px;color:#3B4A63">Each one is drafted for checking on its day. A reply, a bounce or a closed deal stops it at once.</p></div>';
+    var info = [];
+    if (pv.sender) info.push('<b style="color:#111E2D">Sending from:</b> ' + esc(pv.sender.name) + ' · ' + esc(pv.sender.email) + ' · ' + (pv.sender.ready ? 'Outlook ready' : '<b style="color:#B54708">needs to reconnect Outlook</b>'));
+    if (pv.no_email.length) info.push('<b style="color:#111E2D">No email address:</b> ' + list(pv.no_email));
+    if (pv.running.length) info.push('<b style="color:#111E2D">Already running:</b> ' + list(pv.running));
+    if (pv.replied.length) info.push('<b style="color:#111E2D">Already replied:</b> ' + list(pv.replied));
+    if (pv.closed.length) info.push('<b style="color:#111E2D">Closed deals:</b> ' + list(pv.closed));
+    h += '<div class="ods-info">' + info.join('<br>') + '</div>';
+    if (!pv.sender || !pv.sender.ready) h += '<div class="ods-warn">Drafts can\'t be written until the sender reconnects Outlook (Settings › Integration › Microsoft 365).</div>';
+    b.innerHTML = h;
+    go.textContent = pv.start ? 'Write ' + pv.start + ' draft' + (pv.start === 1 ? '' : 's') : 'Nothing to start';
+    go.disabled = !pv.start || !pv.sender || !pv.sender.ready;
+  }
+  return {
+    open: function(){
+      ids = getSelectedLeadIds(); if (!ids.length) return;
+      document.getElementById('odsOvl').classList.add('open');
+      document.getElementById('odsBody').innerHTML = '';
+      document.getElementById('odsLead').textContent = 'Checking the ' + ids.length + ' deal' + (ids.length === 1 ? '' : 's') + ' you ticked…';
+      document.getElementById('odsGo').disabled = true;
+      var fd = new FormData(); ids.forEach(function(i){ fd.append('lead_ids', i); });
+      fetch({{ url_for('outreach.preview_route')|tojson }}, {method:'POST', body:fd, credentials:'same-origin'})
+        .then(function(r){ return r.json(); })
+        .then(function(d){ if (d.error) { document.getElementById('odsLead').textContent = d.error; return; } pv = d; render(); })
+        .catch(function(){ document.getElementById('odsLead').textContent = 'Could not reach the server. Nothing was changed.'; });
+    },
+    close: function(){ document.getElementById('odsOvl').classList.remove('open'); },
+    go: function(){
+      var go = document.getElementById('odsGo'); go.disabled = true; go.textContent = 'Starting…';
+      var fd = new FormData(); ids.forEach(function(i){ fd.append('lead_ids', i); });
+      fetch({{ url_for('outreach.start_route')|tojson }}, {method:'POST', body:fd, credentials:'same-origin'})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (d.error) { document.getElementById('odsBody').insertAdjacentHTML('beforeend', '<div class="ods-warn">' + esc(d.error) + '</div>'); go.disabled = false; go.textContent = 'Try again'; return; }
+          document.getElementById('odsBody').insertAdjacentHTML('beforeend', '<div class="ods-done"><b>' + d.started + ' started.</b> The drafts are being written now; the first ones are ready to check in about a minute.</div>');
+          document.getElementById('odsFoot').innerHTML = '<button type="button" class="ods-c" onclick="location.reload()">Close</button><a class="ods-go" href="{{ url_for('outreach.page', tab='waiting') }}">Check drafts</a>';
+        })
+        .catch(function(){ go.disabled = false; go.textContent = 'Try again'; });
+    }
+  };
+})();
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') ODStart.close(); });
+</script>

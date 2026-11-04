@@ -48,6 +48,10 @@ def create_app():
     flask_app.register_blueprint(upload_bp)
     flask_app.register_blueprint(socialcal_bp)
     flask_app.register_blueprint(mailbox_bp)
+    # AI outreach drafts in Outlook (2026-11-04, PhiXtra pilot): CRM › AI Email Drafts.
+    import outreach_drafts
+    flask_app.register_blueprint(outreach_drafts.outreach_bp)
+    outreach_drafts.start_loop()
     # AI Lead Qualification (2026-10-30): reads WhatsApp / website chats once the buyer pauses.
     import lead_qualify
     lead_qualify.start()

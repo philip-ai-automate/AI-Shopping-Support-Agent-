@@ -382,7 +382,7 @@
                        'label': show_label_ids or none, 'hide_sms_segment': hide_sms_segment_ids or none,
                        'hide_wa_segment': hide_wa_segment_ids or none,
                        'tier': tier_filter if tier_filter != 'all' else none,
-                       'assigned': assigned or none} %}
+                       'assigned': assigned or none, 'ai_drafts': ai_drafts or none} %}
 {% set _ = filter_args.update(addr_fargs or {}) %}
 {% if sort_by %}{% set _ = filter_args.update({'sort': sort_by}) %}{% endif %}
 
@@ -478,6 +478,26 @@
     </div>
     {% endif %}
 
+    {% if od_on and view_mode == 'list' %}
+    {% set _odargs = request.args.to_dict(flat=False) %}{% set _ = _odargs.pop('ai_drafts', none) %}{% set _ = _odargs.pop('page', none) %}
+    <div class="spf-asg-wrap">
+      <button type="button" class="spf-btn spf-asg {{ 'on' if ai_drafts }}" id="spfOdBtn" aria-haspopup="true" aria-expanded="false"
+              onclick="event.stopPropagation();var m=document.getElementById('spfOdMenu');var o=m.classList.toggle('open');this.setAttribute('aria-expanded',o)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+        <span class="spf-asg-lbl">AI drafts</span>
+        <strong>{{ od_labels[ai_drafts] if ai_drafts else 'Any' }}</strong>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="spf-asg-menu" id="spfOdMenu" style="min-width:250px">
+        <a href="{{ url_for('portal.sales_pipeline', **_odargs) }}" class="spf-asg-opt {{ 'sel' if not ai_drafts }}"><span class="spf-asg-txt"><b>Any</b><small>No AI drafts filter</small></span></a>
+        {% for k in ['none', 'running', 'waiting', 'approved', 'replied', 'stopped'] %}
+        <a href="{{ url_for('portal.sales_pipeline', ai_drafts=k, **_odargs) }}" class="spf-asg-opt {{ 'sel' if ai_drafts == k }}"><span class="spf-asg-txt"><b>{{ od_labels[k] }}</b><small>{{ "{:,}".format(od_counts.get(k, 0)) }} open deal{{ 's' if od_counts.get(k, 0) != 1 }}</small></span></a>
+        {% endfor %}
+      </div>
+    </div>
+    <script>document.addEventListener('click', function(e){ if (!e.target.closest('#spfOdMenu') && !e.target.closest('#spfOdBtn')) { var m = document.getElementById('spfOdMenu'); if (m) m.classList.remove('open'); } });</script>
+    {% endif %}
+
     {% set _nf = filter_chips | rejectattr('label', 'equalto', 'Search') | map(attribute='label') | unique | list | length %}
     <button type="button" class="spf-btn" onclick="spfOpenDrawer()" aria-haspopup="dialog">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
@@ -516,6 +536,7 @@
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="email">Email</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="deal_value" checked>Deal Value</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="stage" checked>Stage</label>
+          {% if od_on %}<label class="col-picker-item"><input type="checkbox" data-col-toggle="ai_drafts" checked>AI drafts</label>{% endif %}
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="added" checked>Added</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="assigned" checked>Assigned To</label>
         </div>
@@ -563,6 +584,7 @@
   </div>
 
   {% if stage_filter != 'all' and view_mode == 'list' %}<input type="hidden" name="stage" value="{{ stage_filter }}">{% endif %}
+  {% if ai_drafts %}<input type="hidden" name="ai_drafts" value="{{ ai_drafts }}">{% endif %}
   {% if view_mode == 'board' %}<input type="hidden" name="view" value="board">{% endif %}
   {% if biz_state.import %}<input type="hidden" name="import" value="{{ biz_state.import }}">{% endif %}
 
@@ -666,7 +688,7 @@
 
 {% set is_phixtra_support_account = (customer.tenant_id == 19) %}
 {% set sms_cols = SMS_ENABLED and is_phixtra_support_account %}
-{% set empty_colspan = 14 + (1 if is_phixtra_support_account else 0) + (1 if sms_cols else 0) + (lead_cols|length) %}
+{% set empty_colspan = 14 + (1 if is_phixtra_support_account else 0) + (1 if sms_cols else 0) + (lead_cols|length) + (1 if od_on else 0) %}
 
 {% if view_mode == 'list' %}
 <div class="bulk-action-bar" id="bulkActionBar" style="display:none">
@@ -683,8 +705,10 @@
   <button type="button" class="btn btn-sm" onclick="LabelUI.bulk(this, 'remove', bpLabelForm, bpLabelDone)">Remove label</button>{% endif %}
   {% if can_bulk_cols %}<button type="button" class="btn btn-sm" onclick="ColumnUI.bulkFill(this, bpLabelForm, bpLabelDone)">▦ Fill a column</button>{% endif %}
   {% if staff_can('crm.pipeline_board_edit') %}<button type="button" class="btn btn-sm" onclick="openBpCat()">🗂️ Set category</button>{% endif %}
+  {% if od_on and outreach_can_check() %}<button type="button" class="btn btn-sm btn-primary" onclick="ODStart.open()" title="The AI writes a personal email to each one and saves it as a draft in the sender's Outlook. Nothing is sent until a person presses Send.">✉️ Write AI drafts</button>{% endif %}
   <button type="button" class="btn btn-sm" onclick="clearLeadSelection()">Clear</button>
 </div>
+{% if od_on %}{% include 'portal/_outreach_start_modal.html' %}{% endif %}
 
 <!-- Pipeline table -->
 <div class="card" style="padding:0" data-sptour="pipeline-table">
@@ -710,6 +734,7 @@
           <th data-col="email" class="col-hidden">Email</th>
           <th data-col="deal_value">Deal Value</th>
           <th data-col="stage">Stage</th>
+          {% if od_on %}<th data-col="ai_drafts">AI drafts</th>{% endif %}
           <th data-col="added">Added</th>
           <th data-col="assigned">Assigned To</th>
           <th>Actions</th>
@@ -776,6 +801,7 @@
           <td data-col="email" class="col-hidden muted" style="font-size:12px">{{ emails_cell(l.email, l.other_emails) }}</td>
           <td data-m="Value" data-col="deal_value" class="muted">{{ (l.deal_value)|money(l.currency) if l.deal_value else '—' }}</td>
           <td data-m="Stage" data-col="stage"><span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span></td>
+          {% if od_on %}{% set oc = od_chips.get(l.id) %}<td data-m="AI drafts" data-col="ai_drafts" style="white-space:nowrap">{% if oc %}{% if oc.link %}<a href="{{ oc.link }}" class="od-rc od-rc-{{ oc.kind }}">{{ oc.text }}</a>{% else %}<span class="od-rc od-rc-{{ oc.kind }}">{{ oc.text }}</span>{% endif %}{% else %}<span class="muted" style="font-size:12px">Not started</span>{% endif %}</td>{% endif %}
           <td data-col="added" class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
           <td data-m="Assigned" data-col="assigned" class="muted">{{ (l.assigned_to|who(l.assigned_key)) if l.assigned_to else '—' }}</td>
           <td data-mrole="act">

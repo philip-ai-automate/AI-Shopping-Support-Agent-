@@ -1,0 +1,97 @@
+{# One draft, right-hand pane of CRM › AI Email Drafts (UX redesign 4 Nov 2026,
+   mock-up https://claude.ai/artifact/2tigi6cdDMvoiNfkxga88a board 1). Also served
+   alone (?partial=1) so Approve & next swaps it without reloading the page. #}
+<div class="odp" id="odPane" data-id="{{ d.id }}" data-tab="{{ tab }}">
+  <article class="odp-mail">
+    <div class="odp-head">
+      <div class="odp-chips">
+        <span class="odp-chip navy">Email {{ d.step }} of {{ max }}</span>
+        <span class="odp-chip">Angle {{ d.angle }} · {{ 'speed' if d.angle == 1 else 'lost follow-up' }}</span>
+        {% if d.status == 'approved' %}<span class="odp-chip blue">Approved by {{ d.checked_by_name }}</span>{% endif %}
+        {% if d.status == 'failed' %}<span class="odp-chip amber">Couldn't be written</span>{% endif %}
+        <span class="odp-when">Written {{ d.created_at.strftime('%a %-d %b, %H:%M') }}</span>
+      </div>
+      <div class="odp-to"><span class="muted">To</span> <b>{{ d.contact_person or d.customer_name }}</b> <span class="muted">&lt;{{ d.email }}&gt;</span></div>
+      {% if d.status != 'failed' %}
+      <label for="odSubj" class="odp-lbl">Subject{% if d.step > 1 %} (a reply in the same thread){% endif %}</label>
+      <input id="odSubj" class="odp-subj" value="{{ d.subject or '' }}" {% if d.step > 1 or not can_check %}readonly{% endif %}>
+      {% endif %}
+    </div>
+
+    {% if d.status == 'failed' %}
+    <div class="odp-body">
+      <div class="odp-warn">The AI couldn't write this one: {{ d.error or d.last_error }}. PhiXtra tries again tomorrow, or now with the button below.</div>
+    </div>
+    {% else %}
+    <div class="odp-body">
+      {% if d.ai_text is not none %}
+        <p class="odp-fixed">{{ d.greeting }}</p>
+        <div class="odp-ai" id="odAi">
+          <div class="odp-ai-top"><span>Written by the AI</span>{% if can_check %}<button type="button" class="odp-link" onclick="OD.edit()" id="odEditBtn">Edit (E)</button>{% endif %}</div>
+          <div id="odAiView" {% if can_check %}onclick="OD.edit()" title="Click to edit"{% endif %}>
+            {% for p in d.paras %}
+            {% if loop.first and d.step == 1 %}<p class="odp-check"><span>Check this is true</span>{{ p }}</p>{% else %}<p>{{ p }}</p>{% endif %}
+            {% endfor %}
+          </div>
+          <label for="odAiText" class="sr-only">The AI's words</label>
+          <textarea id="odAiText" class="odp-ta" hidden>{{ d.ai_text }}</textarea>
+        </div>
+        <div class="odp-fixed odp-tail">
+          {% for t in d.tail_blocks %}{% if t.text %}<p>{{ t.text }}</p>{% endif %}{% if t.sig %}<img class="odp-sig" src="{{ url_for('outreach.signature_image', mailbox_id=d.mailbox_id) }}?v={{ d.sig_v }}" alt="Signature">{% endif %}{% endfor %}
+          <small>Greyed lines{% if d.has_sig %} and the signature{% endif %} are added to every email from Settings.</small>
+        </div>
+      {% else %}
+        <label for="odBody" class="odp-lbl">Email</label>
+        <textarea id="odBody" class="odp-ta" {% if not can_check %}readonly{% endif %}>{{ d.body_text or '' }}</textarea>
+      {% endif %}
+      {% if d.earlier %}
+      <details class="odp-earlier">
+        <summary>Earlier in this thread ({{ d.earlier|length }})</summary>
+        {% for e in d.earlier %}<div class="odp-earlier-one"><b>Email {{ e.step }}</b> · sent {{ e.sent_at.strftime('%-d %b') if e.sent_at }}<div>{{ e.body_text or '' }}</div></div>{% endfor %}
+      </details>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if can_check %}
+    <div class="odp-acts">
+      {% if d.status == 'failed' %}
+        <form method="POST" action="{{ url_for('outreach.deal_action', lead_id=d.lead_id) }}"><input type="hidden" name="action" value="retry"><button class="btn btn-primary" type="submit">Try again now</button></form>
+        <form method="POST" action="{{ url_for('outreach.deal_action', lead_id=d.lead_id) }}" onsubmit="return confirm('Stop the AI drafts for this deal?')"><input type="hidden" name="action" value="stop"><button class="odp-quiet" type="submit">Stop this deal</button></form>
+      {% else %}
+        <button type="button" class="btn btn-primary odp-go" id="odApprove" onclick="OD.approve()">{{ 'Save changes' if d.status == 'approved' else 'Approve & next' }}</button>
+        <span class="odp-rw-l">Rewrite:</span>
+        <button type="button" class="odp-pill" onclick="OD.rewrite('again')">Fresh</button>
+        <button type="button" class="odp-pill" onclick="OD.rewrite('shorter')">Shorter</button>
+        <button type="button" class="odp-pill" onclick="OD.rewrite('warmer')">Warmer</button>
+        <button type="button" class="odp-pill" onclick="OD.rewrite('formal')">More formal</button>
+        <span class="odp-gap"></span>
+        <button type="button" class="odp-pill" onclick="OD.preview({{ d.id }})">Preview</button>
+        <button type="button" class="odp-quiet" onclick="OD.dontSend()">Don't send</button>
+      {% endif %}
+    </div>
+    {% endif %}
+  </article>
+
+  <aside class="odp-side" aria-label="What the AI used">
+    <div class="odp-card">
+      <h2>What the AI used</h2>
+      <dl>
+        {% if d.job %}<dt>Job title</dt><dd>{{ d.job }}</dd>{% endif %}
+        <dt>Company</dt><dd>{{ d.customer_name }}{% if d.employees %} · {{ d.employees }} staff{% endif %}{% if d.addr_city %} · {{ d.addr_city }}{% endif %}{% if d.addr_country %} · {{ d.addr_country }}{% endif %}</dd>
+        {% if d.business_category %}<dt>Category</dt><dd>{{ d.business_category }}</dd>{% endif %}
+        <dt>From their website</dt>
+        <dd>{% if d.site.description or d.site.text %}“{{ d.site.description or d.site.text }}”{% else %}<span class="muted">Their website couldn't be read, so the AI used only the details above.</span>{% endif %}</dd>
+      </dl>
+      {% if d.website %}<a href="{{ d.website if d.website.startswith('http') else 'https://' ~ d.website }}" target="_blank" rel="noopener">Open {{ d.website|replace('https://','')|replace('http://','')|replace('www.','')|trim('/') }}</a>{% endif %}
+    </div>
+    <div class="odp-card">
+      <h2>This deal</h2>
+      <p>{{ {'new_lead': 'New Opportunity'}.get(d.stage, (d.stage or '')|replace('_',' ')|capitalize) }}{% if d.step < max %} · if no reply, email {{ d.step + 1 }} follows{% endif %}</p>
+      <a href="{{ url_for('portal.opportunity_detail', lead_id=d.lead_id) }}#ai-drafts">Open deal</a>
+      {% if d.status != 'failed' %}<a href="#" onclick="OD.preview({{ d.id }});return false">Preview as the buyer sees it</a>{% endif %}
+      {% if d.web_link %}<a href="{{ d.web_link }}" target="_blank" rel="noopener">Open draft in Outlook</a>{% endif %}
+    </div>
+    {% if can_check %}<p class="odp-keys">Keys: A approve · J next · K previous · E edit</p>{% endif %}
+  </aside>
+</div>

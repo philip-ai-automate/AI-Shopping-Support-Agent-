@@ -39835,6 +39835,14 @@ def sales_pipeline():
     as_clauses, as_params, assigned = _pipeline_assigned_clauses(
         (request.args.get("assigned") or "").strip() if can_filter_assigned else "", actor_key)
     clauses += as_clauses; params += as_params
+    # AI email drafts (2026-11-04, PhiXtra pilot): ?ai_drafts=waiting|approved|running|replied|stopped
+    import outreach_drafts as _od
+    ai_drafts = (request.args.get("ai_drafts") or "").strip()
+    _odc, _odp = _od.pipeline_clause(tenant_id, ai_drafts)
+    if _odc:
+        clauses.append(_odc); params += _odp
+        as_clauses = as_clauses + [_odc]; as_params = as_params + _odp
+    ai_drafts_label = _od.PIPELINE_FILTER_LABELS.get(ai_drafts) if _odc else None
     # Every filter except the stage one: the board, and the counts on the stage row.
     extra_clauses = a_clauses + b_clauses + as_clauses
     extra_params  = a_params + b_params + as_params
@@ -40109,6 +40117,13 @@ def sales_pipeline():
         hide_segment_ids, all_segments, hide_wa_segment_ids, all_wa_segments,
         hide_sms_segment_ids, all_sms_segments,
         pipeline_effective_stage_labels(tenant_id), cols=lead_cols)
+    # AI email drafts (PhiXtra pilot): the filter's chip, its menu counts, a chip per row.
+    if ai_drafts_label:
+        _oa = request.args.to_dict(flat=False); _oa.pop("ai_drafts", None); _oa.pop("page", None)
+        filter_chips.append({"label": "AI drafts", "value": ai_drafts_label, "url": url_for("portal.sales_pipeline", **_oa)})
+    od_on = _od.pilot(tenant_id)
+    od_counts = _od.pipeline_counts(tenant_id) if od_on else {}
+    od_chips = _od.row_chips(tenant_id, [l["id"] for l in leads]) if od_on else {}
     bookings_crm.attach(cur, tenant_id, leads)
     _fu.attach(cur, tenant_id, leads)
 
@@ -40116,6 +40131,12 @@ def sales_pipeline():
 
     return render_template(
         "portal/sales_pipeline.html",
+        ai_drafts_label       = ai_drafts_label,
+        ai_drafts             = ai_drafts if ai_drafts_label else "",
+        od_on                 = od_on,
+        od_counts             = od_counts,
+        od_chips              = od_chips,
+        od_labels             = _od.PIPELINE_FILTER_LABELS,
         lead_cols             = [c for c in lead_cols if not c["hidden"]],
         all_lead_cols         = lead_cols,
         col_filter_state      = biz_state.get("cols", {}),

@@ -25,6 +25,11 @@ TIMEOUT = 20
 AUTHORITY = "https://login.microsoftonline.com/organizations"
 GRAPH = "https://graph.microsoft.com/v1.0"
 SCOPES = "openid email profile offline_access User.Read Mail.Read"
+# AI outreach drafts (2026-11-04, PhiXtra pilot, outreach_drafts.py): the
+# portal may also SAVE drafts in the person's Outlook. It never sends: a
+# person opens Drafts and presses Send. Asked for only by businesses in the
+# pilot; everyone else keeps read-only access.
+DRAFT_SCOPES = "openid email profile offline_access User.Read Mail.ReadWrite"
 # Microsoft Bookings (2026-10-18, bookings_routes.py): a separate sign-in that
 # can only read a business's Bookings appointments, never its mail.
 BOOKINGS_SCOPES = "openid email profile offline_access User.Read Bookings.Read.All"
@@ -196,6 +201,104 @@ def reply_lines(preview: str, limit: int = 400) -> str:
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
     return text[:limit].rstrip() + ("…" if len(text) > limit else "")
+
+
+# ── Drafts (AI outreach pilot, 2026-11-04) — never sends ──────────────────
+
+def _write(token: str, method: str, url: str, body: dict = None) -> dict:
+    try:
+        r = requests.request(method, url, json=body, timeout=TIMEOUT,
+                             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+    except requests.RequestException as e:
+        raise GraphError("temporary", f"Could not reach Microsoft: {e}")
+    if r.status_code == 401:
+        raise GraphError("reconnect", "Microsoft no longer accepts this sign-in. Connect the mailbox again.")
+    if r.status_code == 403:
+        raise GraphError("drafts", "PhiXtra isn't allowed to save drafts in this mailbox yet. "
+                                   "Reconnect it on Settings › Integration › Microsoft 365 and accept the permission.")
+    if r.status_code == 404:
+        raise GraphError("gone", "That draft is no longer in Outlook (it was sent or deleted).")
+    if r.status_code not in (200, 201, 202, 204):
+        raise GraphError("temporary", f"Microsoft returned {r.status_code}: {r.text[:200]}")
+    return r.json() if r.content and r.headers.get("content-type", "").startswith("application/json") else {}
+
+
+def _draft_out(d: dict) -> dict:
+    return {"id": d.get("id"), "web_link": d.get("webLink"), "conversation_id": d.get("conversationId"),
+            "body_html": ((d.get("body") or {}).get("content") or "")}
+
+
+def create_draft(token: str, to_email: str, to_name: str, subject: str, html: str, categories: list) -> dict:
+    """A new email in the person's Drafts folder."""
+    d = _write(token, "POST", f"{GRAPH}/me/messages", {
+        "subject": subject, "body": {"contentType": "HTML", "content": html},
+        "toRecipients": [{"emailAddress": {"address": to_email, "name": to_name or to_email}}],
+        "categories": categories,
+    })
+    return _draft_out(d)
+
+
+def create_reply_draft(token: str, sent_message_id: str, to_email: str, to_name: str, categories: list) -> dict:
+    """A reply draft to an email the person sent (same thread). Outlook adds
+    the quoted earlier email; the caller puts its own words above it.
+    Addressed to the buyer explicitly (a reply to your own sent email would
+    otherwise go back to yourself)."""
+    d = _write(token, "POST", f"{GRAPH}/me/messages/{sent_message_id}/createReply", {})
+    _write(token, "PATCH", f"{GRAPH}/me/messages/{d['id']}", {
+        "toRecipients": [{"emailAddress": {"address": to_email, "name": to_name or to_email}}],
+        "categories": categories,
+    })
+    return _draft_out(d)
+
+
+def update_draft(token: str, message_id: str, html: str = None, subject: str = None, categories: list = None) -> dict:
+    body = {}
+    if html is not None:
+        body["body"] = {"contentType": "HTML", "content": html}
+    if subject is not None:
+        body["subject"] = subject
+    if categories is not None:
+        body["categories"] = categories
+    return _write(token, "PATCH", f"{GRAPH}/me/messages/{message_id}", body) if body else {}
+
+
+def set_inline_image(token: str, message_id: str, data: bytes, mime: str, content_id: str, name: str) -> None:
+    """Put an image inside a draft (shown where the body has <img src="cid:...">),
+    replacing an earlier one with the same content id."""
+    import base64
+    d = _get(token, f"{GRAPH}/me/messages/{message_id}/attachments", {"$select": "id,name,isInline"})
+    d = {"value": [dict(a, contentId=(_get(token, f"{GRAPH}/me/messages/{message_id}/attachments/{a['id']}").get("contentId") or "")) for a in d.get("value", []) if a.get("isInline")]}
+    for a in d.get("value", []):
+        if (a.get("contentId") or "").strip("<>") == content_id:
+            _write(token, "DELETE", f"{GRAPH}/me/messages/{message_id}/attachments/{a['id']}")
+    if data:
+        _write(token, "POST", f"{GRAPH}/me/messages/{message_id}/attachments", {
+            "@odata.type": "#microsoft.graph.fileAttachment", "name": name, "contentType": mime,
+            "contentBytes": base64.b64encode(data).decode(), "isInline": True, "contentId": content_id,
+        })
+
+
+def remove_inline_image(token: str, message_id: str, content_id: str) -> None:
+    set_inline_image(token, message_id, b"", "", content_id, "")
+
+
+def delete_draft(token: str, message_id: str) -> None:
+    """Moves an unsent draft to Deleted Items. Already gone = fine. Checks
+    it is still a draft first, so a sent email is never touched."""
+    try:
+        r = requests.get(f"{GRAPH}/me/messages/{message_id}", params={"$select": "isDraft"},
+                         headers={"Authorization": f"Bearer {token}"}, timeout=TIMEOUT)
+    except requests.RequestException as e:
+        raise GraphError("temporary", f"Could not reach Microsoft: {e}")
+    if r.status_code == 404:
+        return
+    if r.status_code != 200 or not r.json().get("isDraft"):
+        return
+    try:
+        _write(token, "DELETE", f"{GRAPH}/me/messages/{message_id}")
+    except GraphError as e:
+        if e.code != "gone":
+            raise
 
 
 # ── Microsoft Bookings (read only) ─────────────────────────────────────────

@@ -1,0 +1,467 @@
+{% extends "portal/base.html" %}
+{% block title %}AI Email Drafts — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .od{--navy:#0B1D40;--ink:#111E2D;--mut:#5A6B85;--line:#D6DEEC;--tint:#E8EEF8;--tint2:#9DB8E8;--amb:#7A3E00;--ambbg:#FFF4E5;--ambln:#F5C98B}
+  .od-top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:16px}
+  .od-top h1{margin:0;font-size:24px;color:var(--navy)}
+  .od-top p{margin:4px 0 0;font-size:14px;color:var(--mut)}
+  .od-topr{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .od-sender{display:inline-flex;align-items:center;gap:8px;font-size:13px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:7px 12px}
+  .od-dot{width:8px;height:8px;border-radius:50%;background:var(--navy)}
+  .od-dot.warn{background:#D9822B}
+  .od-btn2{font:inherit;font-size:13px;font-weight:600;background:#fff;color:var(--navy);border:1.5px solid #C9D4E8;border-radius:10px;padding:9px 14px;min-height:40px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}
+  .od-note{font-size:13px;line-height:1.55;border-radius:12px;padding:12px 14px;margin-bottom:14px;background:#FFFAEB;border:1px solid #FEDF89;color:#7A2E0E}
+  .od-tiles{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+  .od-tile{text-decoration:none;display:flex;align-items:baseline;gap:7px;background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:9px 13px;min-height:44px;box-sizing:border-box}
+  .od-tile b{font-size:18px}
+  .od-tile span{font-size:13px}
+  .od-tile.on{background:var(--navy);border-color:var(--navy);color:#fff}
+  .od-tile.hot{background:var(--ambbg);border-color:var(--ambln);color:var(--amb)}
+  .od-tile.hot.on{background:var(--amb);border-color:var(--amb);color:#fff}
+  .od-tile.plain{border:0;background:none;color:var(--navy);font-weight:600;font-size:13px;align-items:center;padding:9px 8px}
+  .od-tile.plain.on{background:var(--tint);color:var(--navy)}
+  .od-wrap{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start}
+  .odq{flex:1 1 280px;min-width:0;max-width:360px;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .odq-h{padding:12px 14px;font-size:12px;font-weight:700;color:var(--mut);letter-spacing:.4px;text-transform:uppercase;border-bottom:1px solid var(--tint)}
+  .odq-list{max-height:72vh;overflow:auto}
+  .odq-item{display:flex;flex-direction:column;gap:3px;padding:12px 14px;border-bottom:1px solid var(--tint);text-decoration:none;color:inherit;cursor:pointer}
+  .odq-item:hover{background:#F7F9FC}
+  .odq-item.on{background:var(--tint)}
+  .odq-item .r1{display:flex;justify-content:space-between;gap:8px}
+  .odq-item b{font-size:14px;color:var(--ink)}
+  .odq-item .st{font-size:12px;color:var(--mut);white-space:nowrap}
+  .odq-item .st.due{color:var(--amb);font-weight:600}
+  .odq-item .r2{font-size:12.5px;color:#3B4A63}
+  .od-main{flex:999 1 560px;min-width:0}
+  .odp{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start}
+  .odp-mail{flex:999 1 440px;min-width:0;background:#fff;border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column}
+  .odp-head{padding:16px 20px;border-bottom:1px solid var(--tint);display:flex;flex-direction:column;gap:10px}
+  .odp-chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .odp-chip{font-size:12px;font-weight:600;background:#F2F4F7;color:#3B4A63;border-radius:20px;padding:4px 10px}
+  .odp-chip.navy{background:var(--tint);color:var(--navy);font-weight:700}
+  .odp-chip.blue{background:#EAF1FF;color:#1D3E8A}
+  .odp-chip.amber{background:var(--ambbg);color:var(--amb)}
+  .odp-when{font-size:12px;color:var(--mut)}
+  .odp-to{font-size:13.5px}
+  .odp-lbl{font-size:12px;font-weight:600;color:var(--mut)}
+  .odp-subj{font:inherit;font-size:15px;font-weight:600;color:var(--ink);border:1.5px solid #C9D4E8;border-radius:10px;padding:10px 12px;min-height:44px;box-sizing:border-box;width:100%}
+  .odp-subj[readonly]{background:#F7F9FC}
+  .odp-body{padding:18px 20px;display:flex;flex-direction:column;gap:12px;font-size:14.5px;line-height:1.6}
+  .odp-body p{margin:0}
+  .odp-fixed{color:#7B8AA3}
+  .odp-tail{display:flex;flex-direction:column;gap:8px;font-size:13.5px;white-space:pre-line;overflow-wrap:anywhere}
+  .odp-tail small{font-size:11.5px;color:#8A97AD}
+  .odp-ai{border:1.5px solid var(--tint2);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+  .odp-ai-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .odp-ai-top span{font-size:11.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--navy)}
+  #odAiView{display:flex;flex-direction:column;gap:10px;cursor:text}
+  .odp-check{background:var(--ambbg);border-radius:6px;padding:4px 6px}
+  .odp-check span{font-size:11px;font-weight:700;color:var(--amb);display:block;text-transform:uppercase}
+  .odp-ta{font:inherit;font-size:14.5px;line-height:1.6;border:1.5px solid #C9D4E8;border-radius:10px;padding:10px 12px;min-height:220px;width:100%;box-sizing:border-box}
+  .odp-link{background:none;border:0;color:var(--navy);font:inherit;font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline;padding:4px}
+  .odp-warn{background:var(--ambbg);border:1px solid var(--ambln);color:var(--amb);border-radius:10px;padding:12px 14px;font-size:13.5px}
+  .odp-earlier{border-top:1px solid var(--tint);padding-top:10px;font-size:13px}
+  .odp-earlier summary{cursor:pointer;font-weight:600;color:var(--navy)}
+  .odp-earlier-one{margin-top:10px;color:#3B4A63}
+  .odp-earlier-one div{white-space:pre-wrap;margin-top:4px;background:#F7F9FC;border-radius:8px;padding:10px}
+  .odp-acts{padding:14px 20px;border-top:1px solid var(--tint);display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:#FAFBFD;border-radius:0 0 14px 14px}
+  .odp-acts form{margin:0}
+  .odp-go{min-height:44px;font-weight:700}
+  .odp-rw-l{font-size:12.5px;color:var(--mut)}
+  .odp-pill{font:inherit;font-size:13px;background:#fff;color:var(--navy);border:1.5px solid #C9D4E8;border-radius:20px;padding:7px 12px;min-height:36px;cursor:pointer}
+  .odp-pill:disabled,.odp-go:disabled{opacity:.55;cursor:wait}
+  .odp-gap{flex:1 1 auto}
+  .odp-quiet{font:inherit;font-size:13px;background:transparent;color:var(--mut);border:0;padding:8px 6px;min-height:40px;text-decoration:underline;cursor:pointer}
+  .odp-side{flex:1 1 230px;min-width:0;display:flex;flex-direction:column;gap:14px}
+  .odp-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:8px;font-size:13px;line-height:1.5}
+  .odp-card h2{margin:0;font-size:12.5px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.4px}
+  .odp-card dl{margin:0}.odp-card dt{color:var(--mut);margin-top:6px}.odp-card dd{margin:0}
+  .odp-card p{margin:0;color:#3B4A63}
+  .odp-card a{font-weight:600;color:var(--navy)}
+  .odp-keys{margin:0;font-size:12px;color:var(--mut)}
+  .od-empty{background:#fff;border:1px solid var(--line);border-radius:14px;padding:36px 20px;text-align:center;color:var(--mut)}
+  .od-box{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:16px}
+  .od-box h2{margin:0 0 4px;font-size:15px;color:var(--navy)}
+  .od-box.hot{border:1.5px solid var(--ambln)}.od-box.hot h2{color:var(--amb)}
+  .od-row{display:flex;gap:14px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--tint);padding:12px 0 8px}
+  .od-row .grow{flex:1 1 340px;min-width:0;display:flex;flex-direction:column;gap:3px}
+  .od-row .sub{font-size:13px;color:#3B4A63}
+  .od-num{width:28px;height:28px;border-radius:50%;background:var(--tint);color:var(--navy);font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .od-go{text-decoration:none;font-size:14px;font-weight:700;background:var(--navy);color:#fff;border-radius:10px;padding:11px 16px;min-height:44px;box-sizing:border-box;display:inline-flex;align-items:center}
+  .od-go:hover{color:#fff;background:var(--ink)}
+  .od-two{display:flex;gap:16px;flex-wrap:wrap}.od-two .od-box{flex:1 1 320px;margin:0}
+  .od-table{width:100%;border-collapse:collapse;font-size:13px}
+  .od-table th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);padding:8px 10px;border-bottom:1px solid var(--line)}
+  .od-table td{padding:9px 10px;border-bottom:1px solid var(--tint);vertical-align:top}
+  .od-tw{overflow-x:auto}
+  .od-flag{font-size:11.5px;font-weight:700;color:var(--amb)}
+  .od-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:13.5px;z-index:2000;display:none;max-width:90vw}
+  .od-ovl{position:fixed;inset:0;background:rgba(11,29,64,.35);z-index:1500;display:none}
+  .od-ovl.open{display:block}
+  .od-drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,100vw);background:#fff;z-index:1600;display:none;flex-direction:column;box-shadow:-8px 0 24px rgba(11,29,64,.12)}
+  .od-drawer.open{display:flex}
+  .od-dh{padding:18px 22px;border-bottom:1px solid var(--tint);display:flex;justify-content:space-between;align-items:center}
+  .od-dh h2{margin:0;font-size:19px;color:var(--navy)}
+  .od-x{font:inherit;font-size:22px;background:none;border:0;color:var(--mut);width:44px;height:44px;cursor:pointer}
+  .od-db{padding:16px 22px;overflow:auto;flex:1 1 auto;display:flex;flex-direction:column;gap:22px}
+  .od-db h3{margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--mut)}
+  .od-db label.l{display:block;font-size:13px;font-weight:600;margin:8px 0 5px}
+  .od-in{font:inherit;font-size:13.5px;border:1.5px solid #C9D4E8;border-radius:10px;padding:9px 12px;min-height:42px;box-sizing:border-box;width:100%}
+  textarea.od-in{min-height:0}
+  .od-people{display:flex;gap:8px;flex-wrap:wrap}
+  .od-person{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;border:1.5px solid #C9D4E8;border-radius:20px;padding:7px 12px;cursor:pointer}
+  .od-person:has(input:checked){border-color:var(--tint2);background:var(--tint)}
+  .od-sched{display:flex;align-items:flex-end;gap:6px;flex-wrap:wrap;font-size:13px}
+  .od-sched .e{display:flex;flex-direction:column;align-items:center;gap:4px}
+  .od-sched .e span{color:var(--mut)}
+  .od-sched input{width:52px;text-align:center}
+  .od-df{padding:14px 22px;border-top:1px solid var(--tint);display:flex;justify-content:space-between;align-items:center;gap:10px;background:#FAFBFD}
+  .od-check{display:flex !important;gap:10px;align-items:flex-start;font-size:13.5px;font-weight:400;line-height:1.45;margin:0}
+  .od-check input,.od-person input{width:auto !important;min-width:0;height:auto;margin:3px 0 0;flex:0 0 auto}
+  .od-sl{display:grid;grid-template-columns:auto auto 1fr;gap:8px 12px;align-items:center;font-size:13.5px}
+  .od-sl .d{color:var(--mut);font-size:12.5px}
+  .od-sl input{width:64px;text-align:center}
+  .odp-sig{display:block;max-width:min(100%,600px);height:auto;margin:2px 0 6px;opacity:.85}
+  .odv-ovl{position:fixed;inset:0;background:rgba(11,29,64,.5);z-index:2100;display:none;align-items:center;justify-content:center;padding:16px}
+  .odv-ovl.open{display:flex}
+  .odv{background:#fff;border-radius:16px;width:min(860px,100%);max-height:calc(100vh - 32px);display:flex;flex-direction:column;overflow:hidden}
+  .odv-h{padding:16px 20px;border-bottom:1px solid var(--tint);display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+  .odv-h h2{margin:0 0 6px;font-size:17px;color:var(--navy)}
+  .odv-meta{font-size:13px;color:#3B4A63;line-height:1.6}
+  .odv-meta b{color:var(--ink)}
+  .odv-sw{display:flex;gap:6px;align-items:center}
+  .odv-sw button{font:inherit;font-size:13px;border:1.5px solid #C9D4E8;background:#fff;color:var(--navy);border-radius:20px;padding:6px 12px;min-height:36px;cursor:pointer}
+  .odv-sw button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .odv-b{background:#F2F4F7;padding:16px;overflow:auto;flex:1 1 auto;display:flex;justify-content:center}
+  .odv-b iframe{background:#fff;border:1px solid var(--line);border-radius:10px;width:100%;max-width:820px;height:62vh}
+  .odv-b iframe.phone{width:390px;max-width:100%}
+  .od-sig{display:flex;gap:14px;align-items:center;flex-wrap:wrap;border:1px dashed #C9D4E8;border-radius:12px;padding:12px}
+  .od-sig img{max-width:100%;height:auto;max-height:120px}
+  .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  @media (max-width:760px){.odq{max-width:none}.odq-list{max-height:none}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="od">
+<div class="od-top">
+  <div>
+    <h1>AI Email Drafts</h1>
+    <p>{% if can_check %}Check each email, then {{ sender.owner_label if sender else 'the sender' }} sends it from Outlook.{% else %}Answer replies first, then send the checked emails from Outlook.{% endif %} PhiXtra never sends.</p>
+  </div>
+  <div class="od-topr">
+    {% if sender %}<span class="od-sender"><span class="od-dot {{ '' if sender_ready else 'warn' }}"></span>Sending from <b>{{ sender.owner_label }}</b> · {{ 'Outlook ready' if sender_ready else 'needs to reconnect Outlook' }}</span>{% endif %}
+    {% if can_check %}<button type="button" class="od-btn2" onclick="OD.settings(true)">Settings</button>{% endif %}
+  </div>
+</div>
+
+{% if not sender %}
+<div class="od-note"><b>Pick who sends</b> in Settings. Their Outlook must be connected on Settings › Integration › Microsoft 365.</div>
+{% elif not sender_ready %}
+<div class="od-note"><b>{{ sender.owner_label }} needs to reconnect Outlook once</b> so PhiXtra can save drafts there: Settings › Integration › Microsoft 365 › <b>Reconnect Outlook</b>, then accept. Until then no drafts can be written.</div>
+{% endif %}
+
+<nav class="od-tiles" aria-label="Draft status">
+  {% if can_check %}
+  <a class="od-tile {{ 'on' if tab == 'waiting' }}" href="{{ url_for('outreach.page', tab='waiting') }}"><b id="odCntWaiting">{{ counts.waiting }}</b><span>Waiting for check</span></a>
+  <a class="od-tile {{ 'on' if tab == 'approved' }}" href="{{ url_for('outreach.page', tab='approved') }}"><b id="odCntApproved">{{ counts.approved }}</b><span>Approved, not sent</span></a>
+  {% else %}
+  <a class="od-tile {{ 'on' if tab == 'send' }}" href="{{ url_for('outreach.page', tab='send') }}"><b>{{ counts.approved }}</b><span>Ready to send</span></a>
+  {% endif %}
+  <a class="od-tile hot {{ 'on' if tab == 'replied' }}" href="{{ url_for('outreach.page', tab='replied') }}"><b>{{ counts.replied }}</b><span>Replied, answer now</span></a>
+  <a class="od-tile {{ 'on' if tab == 'sent' }}" href="{{ url_for('outreach.page', tab='sent') }}"><b>{{ counts.sent_week }}</b><span>Sent this week</span></a>
+  {% if can_check %}
+  <a class="od-tile {{ 'on' if tab == 'problems' }}" href="{{ url_for('outreach.page', tab='problems') }}"><b>{{ counts.problems }}</b><span>Problems</span></a>
+  <a class="od-tile plain {{ 'on' if tab == 'send' }}" href="{{ url_for('outreach.page', tab='send') }}">{{ sender.owner_label.split()[0] if sender else 'Sender' }}'s view</a>
+  {% endif %}
+  <a class="od-tile plain {{ 'on' if tab == 'deals' }}" href="{{ url_for('outreach.page', tab='deals') }}">All deals</a>
+</nav>
+
+{% if tab in ('waiting', 'approved', 'problems') %}
+  {% if queue %}
+  <div class="od-wrap">
+    <section class="odq" aria-label="{{ tab_names[tab] }}">
+      <div class="odq-h">{{ tab_names[tab] }} · {{ 'oldest first' if tab == 'waiting' else ('first checked first' if tab == 'approved' else 'newest first') }}</div>
+      <div class="odq-list" id="odQueue">
+        {% for q in queue %}
+        <a class="odq-item {{ 'on' if sel and q.id == sel.id }}" href="{{ url_for('outreach.page', tab=tab, d=q.id) }}" data-id="{{ q.id }}" onclick="return OD.pick(event, {{ q.id }})">
+          <span class="r1"><b>{{ q.customer_name }}</b><span class="st {{ 'due' if q.step > 1 }}">Email {{ q.step }}{% if q.step > 1 %} · follow-up{% endif %}</span></span>
+          <span class="r2">{{ q.contact_person or '' }}{% if q.job %} · {{ q.job }}{% endif %}</span>
+        </a>
+        {% endfor %}
+      </div>
+    </section>
+    <div class="od-main" id="odMain">
+      {% if sel %}{% with d = sel %}{% include "portal/_outreach_draft_pane.html" %}{% endwith %}{% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="od-empty">
+    {% if tab == 'waiting' %}Nothing waiting for a check. {% if counts.approved %}{{ counts.approved }} approved email{{ 's are' if counts.approved != 1 else ' is' }} waiting for {{ sender.owner_label if sender else 'the sender' }} to send. {% endif %}To start more, tick deals on the <a href="{{ url_for('portal.sales_pipeline') }}">Pipeline Board</a> and press <b>Write AI drafts</b>.
+    {% elif tab == 'approved' %}Nothing approved and waiting to be sent.
+    {% else %}No problems.{% endif %}
+  </div>
+  {% endif %}
+
+{% elif tab == 'send' %}
+  {% set V = send %}
+  <div class="od-box hot">
+    <h2>1 · Answer replies first (within the hour)</h2>
+    {% for r in V.replies %}
+    <div class="od-row">
+      <div class="grow"><b>{{ r.customer_name }}{% if r.contact_person %} · {{ r.contact_person }}{% endif %}</b>
+        <span class="sub">“{{ r.snippet }}”</span>
+        <span class="sub muted" style="font-size:12px">Replied {{ r.received_at.strftime('%a %-d %b, %H:%M') }} · AI drafts stopped</span></div>
+      {% if r.web_link %}<a class="od-go" href="{{ r.web_link }}" target="_blank" rel="noopener">Reply in Outlook</a>{% endif %}
+      <a href="{{ url_for('portal.opportunity_detail', lead_id=r.lead_id) }}">Open deal</a>
+    </div>
+    {% else %}<p class="muted" style="margin:6px 0 0;font-size:13.5px">No replies waiting. Well done.</p>{% endfor %}
+  </div>
+  <div class="od-box">
+    <h2>2 · Send these checked emails</h2>
+    <p class="muted" style="margin:0;font-size:12.5px">In Outlook they show “{{ cat_ok }}”.</p>
+    {% for r in V.ready %}
+    <div class="od-row">
+      <span class="od-num">{{ loop.index }}</span>
+      <div class="grow"><b>{{ r.customer_name }}{% if r.contact_person %} · {{ r.contact_person }}{% endif %}</b>
+        <span class="sub">Email {{ r.step }}{% if r.step > 1 %} (reply in thread){% endif %}{% if r.subject and r.step == 1 %} · “{{ r.subject }}”{% endif %} · checked by {{ r.checked_by_name }}{% if r.checked_at %} {{ r.checked_at.strftime('%H:%M') }}{% endif %}</span></div>
+      <button type="button" class="od-btn2" onclick="OD.preview({{ r.id }}, {{ (r.contact_person or r.customer_name)|tojson }}, {{ r.email|tojson }}, {{ (r.subject or '')|tojson }})">Preview</button>
+      {% if r.web_link %}<a class="od-go" href="{{ r.web_link }}" target="_blank" rel="noopener">Open in Outlook to send</a>{% endif %}
+    </div>
+    {% else %}<p class="muted" style="margin:10px 0 0;font-size:13.5px">Nothing checked and ready right now.</p>{% endfor %}
+    {% if V.ready %}<p class="muted" style="margin:8px 0 0;font-size:12.5px">Once you press Send in Outlook, the email drops off this list within 2 minutes and the deal updates by itself.</p>{% endif %}
+  </div>
+  <div class="od-two">
+    <div class="od-box"><h2>Still being checked</h2><p style="margin:0;font-size:13.5px;color:#3B4A63">{{ V.waiting }} draft{{ 's are' if V.waiting != 1 else ' is' }} waiting for Philip or David. Don't send drafts marked “{{ cat_waiting }}”.</p></div>
+    <div class="od-box"><h2>Sent today</h2><p style="margin:0;font-size:13.5px;color:#3B4A63">{{ V.sent_today }} email{{ 's' if V.sent_today != 1 }} · counted on the Daily Target</p></div>
+  </div>
+
+{% elif tab == 'replied' %}
+  <div class="od-box hot">
+    <h2>Replied, answer now</h2>
+    <p class="muted" style="margin:0;font-size:12.5px">Buyers who replied in the last 30 days and haven't been emailed back yet. The AI never answers them.</p>
+    {% for r in replies %}
+    <div class="od-row">
+      <div class="grow"><b>{{ r.customer_name }}{% if r.contact_person %} · {{ r.contact_person }}{% endif %}</b>
+        <span class="sub">“{{ r.snippet }}”</span>
+        <span class="sub muted" style="font-size:12px">Replied {{ r.received_at.strftime('%a %-d %b, %H:%M') }}</span></div>
+      {% if r.web_link %}<a class="od-go" href="{{ r.web_link }}" target="_blank" rel="noopener">Reply in Outlook</a>{% endif %}
+      <a href="{{ url_for('portal.opportunity_detail', lead_id=r.lead_id) }}">Open deal</a>
+    </div>
+    {% else %}<p class="muted" style="margin:10px 0 0;font-size:13.5px">No replies waiting for an answer.</p>{% endfor %}
+  </div>
+
+{% elif tab == 'sent' %}
+  <div class="od-box od-tw">
+    <table class="od-table">
+      <tr><th>Sent</th><th>Deal</th><th>Email</th><th>Checked</th></tr>
+      {% for d in sent %}
+      <tr>
+        <td>{{ d.sent_at.strftime('%a %-d %b, %H:%M') if d.sent_at }}</td>
+        <td><a href="{{ url_for('portal.opportunity_detail', lead_id=d.lead_id) }}#ai-drafts"><b>{{ d.customer_name }}</b></a><div class="muted" style="font-size:12px">{{ d.contact_person or '' }}</div></td>
+        <td>Email {{ d.step }}{% if d.subject %} · {{ d.subject }}{% endif %}</td>
+        <td>{% if d.by_hand %}Written by hand{% elif d.sent_unchecked %}<span class="od-flag">Sent before it was checked</span>{% else %}{{ d.checked_by_name or '' }}{% endif %}</td>
+      </tr>
+      {% else %}<tr><td colspan="4" class="muted" style="text-align:center;padding:30px">No AI emails sent in the last 7 days.</td></tr>{% endfor %}
+    </table>
+  </div>
+
+{% elif tab == 'deals' %}
+  <div class="od-box od-tw">
+    <table class="od-table">
+      <tr><th>Deal</th><th>Status</th><th>Emails sent</th><th>Next draft</th><th>Note</th></tr>
+      {% for r in deals %}
+      <tr>
+        <td><a href="{{ url_for('portal.opportunity_detail', lead_id=r.lead_id) }}#ai-drafts"><b>{{ r.customer_name }}</b></a><div class="muted" style="font-size:12px">{{ r.contact_person or '' }} · {{ r.email }}</div></td>
+        <td>{{ {'running': 'Running', 'replied': 'They replied', 'stopped': 'Stopped', 'finished': 'Finished'}.get(r.status, r.status) }}</td>
+        <td>{{ r.emails_sent }} of {{ max }}</td>
+        <td>{{ r.next_draft_on.strftime('%a %-d %b') if r.status == 'running' and r.next_draft_on and r.emails_sent < max else '—' }}</td>
+        <td class="muted">{{ r.stop_reason or r.last_error or '' }}</td>
+      </tr>
+      {% else %}<tr><td colspan="5" class="muted" style="text-align:center;padding:30px">No deals yet. On the Pipeline Board, tick deals and press <b>Write AI drafts</b>.</td></tr>{% endfor %}
+    </table>
+  </div>
+{% endif %}
+
+{% if can_check %}
+<div class="od-ovl" id="odOvl" onclick="OD.settings(false)"></div>
+<aside class="od-drawer" id="odDrawer" role="dialog" aria-labelledby="odSetH" aria-hidden="true">
+  <form method="POST" action="{{ url_for('outreach.save_settings') }}" style="display:contents">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <div class="od-dh"><h2 id="odSetH">Settings</h2><button type="button" class="od-x" aria-label="Close settings" onclick="OD.settings(false)">×</button></div>
+    <div class="od-db">
+      <section>
+        <h3>Sending</h3>
+        <label class="l" for="odMb">Who sends (their Outlook gets the drafts)</label>
+        <select id="odMb" name="mailbox_id" class="od-in">
+          <option value="">— pick —</option>
+          {% for m in mailboxes %}<option value="{{ m.id }}" {{ 'selected' if m.id == s.mailbox_id }}>{{ m.owner_label }} · {{ m.email }}{% if 'Mail.ReadWrite' not in (m.scopes or '') %} (needs to reconnect){% endif %}</option>{% endfor %}
+        </select>
+        <span class="l" style="display:block;font-size:13px;font-weight:600;margin:12px 0 6px">Email these people when a buyer replies</span>
+        <div class="od-people">
+          {% for p in people %}<label class="od-person"><input type="checkbox" name="alert_keys" value="{{ p.k }}" {{ 'checked' if p.k in (s.alert_keys or []) }}> {{ p.name }}</label>{% endfor %}
+        </div>
+        <label class="od-check" style="margin-top:14px"><input type="checkbox" name="morning_email" value="1" {{ 'checked' if s.morning_email }}> Email {{ sender.owner_label.split()[0] if sender else 'the sender' }} at 9am (Mon–Fri) with what's ready to send and the replies to answer</label>
+      </section>
+      <section>
+        <h3>Schedule if there's no reply</h3>
+        <div class="od-sl">
+          <b>Email 1</b><span></span><span class="d" >day 0, when you start</span>
+          {% for g in s.gaps %}
+          <b>Email {{ loop.index + 1 }}</b>
+          <span style="display:flex;align-items:center;gap:6px"><label for="odG{{ loop.index }}" class="sr-only">Days after email {{ loop.index }}</label><input id="odG{{ loop.index }}" class="od-in od-gap" type="number" min="1" max="60" name="gap{{ loop.index }}" value="{{ g }}" oninput="OD.days()"> days after email {{ loop.index }}</span>
+          <span class="d" id="odDay{{ loop.index + 1 }}">day {{ days[loop.index] }}</span>
+          {% endfor %}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13.5px;flex-wrap:wrap;margin-top:10px"><label for="odFw">After email {{ max }}, wait</label><input id="odFw" class="od-in" style="width:60px;text-align:center" type="number" min="1" max="60" name="final_wait" value="{{ s.final_wait }}"><span>days, then ask the deal owner to decide.</span></div>
+      </section>
+      <section>
+        <h3>Added to every email</h3>
+        <label class="l" for="odBk">Booking link</label>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><input id="odBk" class="od-in" style="flex:1 1 280px" name="booking_link" value="{{ s.booking_link or '' }}"><label class="od-check"><input type="checkbox" name="booking_on" value="1" {{ 'checked' if s.booking_on }}> Include</label></div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div style="flex:1 1 220px"><label class="l" for="odSf">Sign-off, email 1</label><textarea id="odSf" class="od-in" rows="3" name="signoff_first">{{ s.signoff_first or '' }}</textarea></div>
+          <div style="flex:1 1 140px"><label class="l" for="odSu">Sign-off, follow-ups</label><textarea id="odSu" class="od-in" rows="3" name="signoff_followup">{{ s.signoff_followup or '' }}</textarea></div>
+        </div>
+        <label class="l" for="odOo">Opt-out line (needed for UK cold email)</label>
+        <textarea id="odOo" class="od-in" rows="2" name="optout">{{ s.optout or '' }}</textarea>
+      </section>
+      <section>
+        <h3>Email signature{% if sender %} for {{ sender.owner_label }}{% endif %}</h3>
+        {% if sender %}
+        <p style="margin:0 0 10px;font-size:13px;color:#3B4A63">Your PNG or JPG signature is added to every email under the sign-off, inside the email itself, so it shows without "download pictures". Best width under 600 pixels, up to 1 MB.</p>
+        {% if sig %}
+        <div class="od-sig"><img src="{{ url_for('outreach.signature_image', mailbox_id=s.mailbox_id) }}?v={{ sig.v }}" alt="Current signature">
+          <button type="submit" form="odSigForm" name="action" value="remove" class="od-btn2" onclick="return confirm('Remove the signature? Drafts waiting to be sent go back to the typed sign-off.')">Remove</button></div>
+        {% endif %}
+        <label class="l" for="odSigFile">{{ 'Replace with a new image' if sig else 'Upload an image' }}</label>
+        <input id="odSigFile" type="file" name="sig_file" accept="image/png,image/jpeg" form="odSigForm" class="od-in" style="padding:8px">
+        <label class="l" for="odSigLink">Link when someone clicks the signature (optional)</label>
+        <input id="odSigLink" type="text" name="sig_link" form="odSigForm" class="od-in" value="{{ sig.link if sig and sig.link else '' }}" placeholder="https://phixtra.com">
+        <div style="margin-top:10px"><button type="submit" form="odSigForm" name="action" value="save" class="od-btn2">Save signature</button></div>
+        {% else %}
+        <p style="margin:0;font-size:13px;color:#3B4A63">Pick who sends and save the settings first.</p>
+        {% endif %}
+      </section>
+      <section>
+        <h3>What the AI knows</h3>
+        <p style="margin:0 0 8px;font-size:13px;color:#3B4A63">The offer, rules and both angles from the sales plan. Edit it to change what the AI says.</p>
+        <button type="button" class="od-btn2" onclick="var t=document.getElementById('odGd');t.hidden=!t.hidden;if(!t.hidden)t.focus()">Edit the sales guide</button>
+        <label for="odGd" class="sr-only">Sales guide</label>
+        <textarea id="odGd" class="od-in" rows="14" name="guide" hidden style="margin-top:10px">{{ s.guide or '' }}</textarea>
+      </section>
+    </div>
+    <div class="od-df"><span class="muted" style="font-size:12.5px">Applies to drafts written from now on.</span><button class="btn btn-primary" type="submit">Save settings</button></div>
+  </form>
+</aside>
+{% endif %}
+{% if can_check %}<form id="odSigForm" method="POST" enctype="multipart/form-data" action="{{ url_for('outreach.signature_save') }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="mailbox_id" value="{{ s.mailbox_id or '' }}"></form>{% endif %}
+<div class="odv-ovl" id="odvOvl" onclick="if(event.target===this)OD.closePreview()">
+  <div class="odv" role="dialog" aria-modal="true" aria-labelledby="odvT">
+    <div class="odv-h">
+      <div><h2 id="odvT">Preview: as the buyer sees it</h2>
+        <div class="odv-meta"><span><b>From</b> {{ sender.owner_label if sender else '' }}{% if sender %} &lt;{{ sender.email }}&gt;{% endif %}</span><br><span><b>To</b> <span id="odvTo"></span></span><br><span><b>Subject</b> <span id="odvSubj"></span></span></div></div>
+      <div class="odv-sw"><button type="button" id="odvD" class="on" onclick="OD.pv('d')">Desktop</button><button type="button" id="odvP" onclick="OD.pv('p')">Phone</button><button type="button" class="od-x" aria-label="Close preview" onclick="OD.closePreview()">×</button></div>
+    </div>
+    <div class="odv-b"><iframe id="odvF" title="Email preview" sandbox="allow-same-origin allow-popups"></iframe></div>
+  </div>
+</div>
+<div class="od-toast" id="odToast" role="status" aria-live="polite"></div>
+</div>
+
+<script>
+var OD = (function(){
+  var tab = {{ tab|tojson }}, base = {{ url_for('outreach.page')|tojson }};
+  var urls = {approve: {{ url_for('outreach.approve', draft_id=0)|tojson }}, rewrite: {{ url_for('outreach.rewrite', draft_id=0)|tojson }}, stop: {{ url_for('outreach.stop_draft', draft_id=0)|tojson }}};
+  function u(k, id){ return urls[k].replace('/0/', '/' + id + '/'); }
+  function pane(){ return document.getElementById('odPane'); }
+  function cur(){ var p = pane(); return p ? +p.dataset.id : null; }
+  function toast(m){ var t = document.getElementById('odToast'); t.textContent = m; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(function(){ t.style.display = 'none'; }, 3200); }
+  function items(){ return [].slice.call(document.querySelectorAll('#odQueue .odq-item')); }
+  function mark(id){ items().forEach(function(a){ a.classList.toggle('on', +a.dataset.id === id); if (+a.dataset.id === id) a.scrollIntoView({block:'nearest'}); }); }
+  function load(id){
+    if (!id) { var m = document.getElementById('odMain'); m.innerHTML = '<div class="od-empty">All done here. Nothing left in this list.</div>'; return; }
+    fetch(base + '?tab=' + encodeURIComponent(tab) + '&d=' + id + '&partial=1', {credentials:'same-origin'})
+      .then(function(r){ return r.text(); })
+      .then(function(h){ if (!h) { load(null); return; } document.getElementById('odMain').innerHTML = h; mark(id);
+        history.replaceState(null, '', base + '?tab=' + encodeURIComponent(tab) + '&d=' + id); })
+      .catch(function(){ location.href = base + '?tab=' + tab + '&d=' + id; });
+  }
+  function post(url, extra){
+    var fd = new FormData(); fd.append('tab', tab); fd.append('ajax', '1');
+    var s = document.getElementById('odSubj'); if (s) fd.append('subject', s.value);
+    var a = document.getElementById('odAiText'); if (a) fd.append('ai_text', a.value);
+    var b = document.getElementById('odBody'); if (b) fd.append('body', b.value);
+    Object.keys(extra || {}).forEach(function(k){ fd.append(k, extra[k]); });
+    return fetch(url, {method:'POST', body:fd, credentials:'same-origin', headers:{'X-Requested-With':'fetch'}}).then(function(r){ return r.json(); });
+  }
+  function drop(id){
+    var a = document.querySelector('#odQueue .odq-item[data-id="' + id + '"]'); if (a) a.remove();
+    var c = document.getElementById(tab === 'approved' ? 'odCntApproved' : 'odCntWaiting');
+    if (c && tab !== 'problems') c.textContent = Math.max(0, (+c.textContent) - 1);
+  }
+  function busy(on){ document.querySelectorAll('.odp-acts button').forEach(function(b){ b.disabled = on; }); }
+  var api = {
+    pick: function(e, id){ if (e.metaKey || e.ctrlKey) return true; e.preventDefault(); load(id); return false; },
+    edit: function(){ var v = document.getElementById('odAiView'), t = document.getElementById('odAiText'); if (!t) { var b = document.getElementById('odBody'); if (b) b.focus(); return; }
+      if (v) v.hidden = true; t.hidden = false; t.focus(); var e = document.getElementById('odEditBtn'); if (e) e.hidden = true; },
+    approve: function(){
+      var id = cur(); if (!id) return; busy(true);
+      post(u('approve', id)).then(function(d){
+        busy(false); toast(d.message || (d.ok ? 'Done.' : 'Something went wrong.'));
+        if (!d.ok) { if (d.next !== undefined && d.next !== id) { drop(id); load(d.next); } return; }
+        if (tab === 'waiting') { var c2 = document.getElementById('odCntApproved'); if (c2) c2.textContent = (+c2.textContent) + 1; drop(id); load(d.next); }
+        else load(id);
+      }).catch(function(){ busy(false); toast('Could not reach the server. Nothing was changed.'); });
+    },
+    rewrite: function(how){
+      var id = cur(); if (!id) return; busy(true); toast('Rewriting… this takes a few seconds.');
+      post(u('rewrite', id), {how: how}).then(function(d){ busy(false); toast(d.message); if (d.ok) load(id); })
+        .catch(function(){ busy(false); toast('Could not reach the server. Nothing was changed.'); });
+    },
+    dontSend: function(){
+      var id = cur(); if (!id) return;
+      if (!confirm("Don't send this one? The draft is removed from Outlook and no more drafts are written for this deal.")) return;
+      busy(true);
+      post(u('stop', id)).then(function(d){ busy(false); toast(d.message); drop(id); load(d.next); })
+        .catch(function(){ busy(false); toast('Could not reach the server. Nothing was changed.'); });
+    },
+    preview: function(id, toName, toEmail, subject){
+      var fd = new FormData();
+      if (cur() === id) { var a = document.getElementById('odAiText'); if (a) fd.append('ai_text', a.value); var b = document.getElementById('odBody'); if (b) fd.append('body', b.value); }
+      if (toName === undefined) { var t = document.querySelector('#odPane .odp-to'); toName = t ? t.textContent.replace(/^\s*To\s*/, '').trim() : ''; toEmail = ''; var sj = document.getElementById('odSubj'); subject = sj ? sj.value : ''; }
+      document.getElementById('odvTo').textContent = toEmail ? (toName + ' <' + toEmail + '>') : toName;
+      document.getElementById('odvSubj').textContent = subject || '';
+      var f = document.getElementById('odvF'); f.srcdoc = '<p style="font-family:Arial;color:#5A6B85;padding:16px">Loading…</p>';
+      document.getElementById('odvOvl').classList.add('open');
+      fetch(u('approve', id).replace('/approve', '/preview'), {method:'POST', body:fd, credentials:'same-origin'})
+        .then(function(r){ return r.text(); }).then(function(h){ f.srcdoc = h; })
+        .catch(function(){ f.srcdoc = '<p style="font-family:Arial;padding:16px">Could not load the preview.</p>'; });
+    },
+    pv: function(m){ var f = document.getElementById('odvF'); f.classList.toggle('phone', m === 'p');
+      document.getElementById('odvD').classList.toggle('on', m !== 'p'); document.getElementById('odvP').classList.toggle('on', m === 'p'); },
+    closePreview: function(){ document.getElementById('odvOvl').classList.remove('open'); },
+    step: function(dir){ var l = items(), i = l.findIndex(function(a){ return +a.dataset.id === cur(); }); var n = l[i + dir]; if (n) load(+n.dataset.id); },
+    settings: function(open){ var d = document.getElementById('odDrawer'), o = document.getElementById('odOvl'); if (!d) return;
+      d.classList.toggle('open', open); o.classList.toggle('open', open); d.setAttribute('aria-hidden', open ? 'false' : 'true');
+      if (open) { var f = d.querySelector('select,input,textarea'); if (f) f.focus(); } },
+    days: function(){ var t = 0; for (var i = 1; i <= {{ max - 1 }}; i++) { var g = document.getElementById('odG' + i); t += Math.max(0, +g.value || 0);
+      var s = document.getElementById('odDay' + (i + 1)); if (s) s.textContent = 'day ' + t; } }
+  };
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape') { api.settings(false); api.closePreview(); return; }
+    var t = e.target, tag = (t.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || t.isContentEditable || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!pane() || !document.getElementById('odApprove')) return;
+    if (e.key === 'a' || e.key === 'A') { e.preventDefault(); api.approve(); }
+    else if (e.key === 'j' || e.key === 'J') { e.preventDefault(); api.step(1); }
+    else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); api.step(-1); }
+    else if (e.key === 'e' || e.key === 'E') { e.preventDefault(); api.edit(); }
+  });
+  {% if request.args.get('settings') %}document.addEventListener('DOMContentLoaded', function(){ api.settings(true); });{% endif %}
+  return api;
+})();
+</script>
+{% endblock %}

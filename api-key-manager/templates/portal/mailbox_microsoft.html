@@ -73,6 +73,14 @@
   <div class="mb-note warn">Your campaign emails ask people to reply to <b>{{ reply_to }}</b>, but the mailbox connected here is <b>{{ mine.email }}</b>. Replies sent to {{ reply_to }} won't be seen. Connect that mailbox instead, or set "Replies go to" to {{ mine.email }} when you send.</div>
   {% endif %}
 
+  {% if outreach_on() and mine and mine.status == 'active' and 'Mail.ReadWrite' not in (mine.scopes or '') %}
+  <div class="mb-note info"><b>AI Email Drafts:</b> to let PhiXtra save AI-written drafts in your Outlook (it never sends them),
+    connect again once and accept the new permission.
+    <div style="margin-top:8px"><a class="btn btn-sm btn-primary" href="{{ url_for('mailbox.connect') }}">Reconnect Outlook</a></div></div>
+  {% elif outreach_on() and mine and 'Mail.ReadWrite' in (mine.scopes or '') %}
+  <div class="mb-note info"><b>AI Email Drafts:</b> PhiXtra can save drafts in this mailbox. It never sends them; you press Send in Outlook.</div>
+  {% endif %}
+
   {% if session.get('ms_needs_consent') or (mine and mine.last_error and 'IT admin' in mine.last_error) %}
   <div class="mb-note info">
     <b>Your organisation's IT admin needs to approve PhiXtra once.</b> Send them this link. After they approve, press Connect again.
