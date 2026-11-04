@@ -163,6 +163,9 @@ def ensure_tables() -> None:
                 PRIMARY KEY (tenant_id, mailbox_id)
             )""")
         cur.execute("ALTER TABLE outreach_drafts ADD COLUMN IF NOT EXISTS greeting TEXT")
+        cur.execute("ALTER TABLE outreach_drafts ADD COLUMN IF NOT EXISTS quality JSONB")
+        cur.execute("ALTER TABLE outreach_runs ADD COLUMN IF NOT EXISTS brief JSONB")
+        cur.execute("ALTER TABLE outreach_settings ADD COLUMN IF NOT EXISTS sender_title TEXT")
         cur.execute("ALTER TABLE outreach_drafts ADD COLUMN IF NOT EXISTS ai_text TEXT")
         cur.execute("ALTER TABLE outreach_drafts ADD COLUMN IF NOT EXISTS tail TEXT")
         cur.execute("ALTER TABLE outreach_settings ADD COLUMN IF NOT EXISTS booking_on BOOLEAN NOT NULL DEFAULT TRUE")
@@ -354,6 +357,198 @@ def _ask(prompt: str) -> dict:
     return json.loads(resp.choices[0].message.content or "{}")
 
 
+
+
+# ── Writer v2 (user, 4 Nov 2026): research the business, then write as the
+# sender (the CEO) to one specific operational problem; self-check against
+# the user's three tests (feedback-outreach-email-quality). ─────────────────
+from urllib.parse import urljoin, urlparse
+
+UA = {"User-Agent": "Mozilla/5.0 (compatible; PhiXtra/1.0)"}
+KEYS = ["about", "trade", "wholesale", "product", "range", "service", "sector", "industr", "export", "international",
+        "quote", "quotation", "delivery", "distribut", "brand", "solution", "capabilit", "manufactur", "contact"]
+
+
+def _rs_get(url):
+    try:
+        r = requests.get(url, timeout=8, headers=UA, allow_redirects=True, stream=True)
+        raw = r.raw.read(500_000, decode_content=True)
+        if r.status_code != 200 or "html" not in (r.headers.get("content-type") or ""):
+            return None, None
+        return r.url, raw.decode(r.encoding or "utf-8", errors="replace")
+    except Exception:
+        return None, None
+
+
+def _rs_text(page):
+    t = re.search(r"<title[^>]*>(.*?)</title>", page, re.I | re.S)
+    d = re.search(r"<meta[^>]+name=[\"']description[\"'][^>]*content=[\"']([^\"']*)", page, re.I)
+    body = re.sub(r"<(script|style|noscript|svg|head)\b.*?</\1>", " ", page, flags=re.I | re.S)
+    body = re.sub(r"<[^>]+>", " ", body)
+    body = re.sub(r"\s+", " ", _html.unescape(body)).strip()
+    return (_html.unescape(t.group(1)).strip() if t else ""), (_html.unescape(d.group(1)).strip() if d else ""), body
+
+
+SIGNALS = {
+    "quote requests": r"request (a|for a) quot|get a quot|quote request|request quote|free quote|quotation",
+    "trade accounts": r"trade account|trade login|trade customer|open an account|account application|credit account",
+    "online ordering": r"add to (cart|basket)|checkout|woocommerce|shopify|my basket|view basket",
+    "export / overseas buyers": r"\bexport|worldwide|international|overseas|global(ly)? |europe",
+    "made to order / bespoke": r"bespoke|made to order|custom(ised|ized)?\b|tailor(ed)?|to your spec",
+    "large product range": r"[\d,]{3,} (products|lines|items|skus)|product range|full range",
+    "fast delivery promise": r"next[- ]day|same[- ]day|48 ?hour|24 ?hour",
+    "phone/email ordering": r"order by phone|call (our|the) sales|email (your|an) order|sales@|orders@",
+    "branches / depots": r"branches|depots|nationwide network|locations across",
+}
+
+
+def research_pages(website):
+    if not website:
+        return []
+    if not website.startswith("http"):
+        website = "https://" + website
+    url, page = _rs_get(website)
+    if not page and "://www." not in website:
+        url, page = _rs_get(website.replace("://", "://www.", 1))
+    if not page:
+        return []
+    pages = [(url, page)]
+    host = urlparse(url).netloc.replace("www.", "")
+    links = []
+    for href, label in re.findall(r'<a[^>]+href=["\']([^"\'#]+)["\'][^>]*>(.*?)</a>', page, re.I | re.S):
+        full = urljoin(url, href)
+        if urlparse(full).netloc.replace("www.", "") != host or full.rstrip("/") == url.rstrip("/"):
+            continue
+        txt = (re.sub(r"<[^>]+>", " ", label) + " " + full).lower()
+        score = sum(k in txt for k in KEYS)
+        if score and not re.search(r"\.(pdf|jpg|png|zip)$|login|cart|basket|account|privacy|cookie|terms|blog/|news/", full, re.I):
+            links.append((score, full))
+    seen = set()
+    for _, l in sorted(links, key=lambda x: -x[0]):
+        if l in seen:
+            continue
+        seen.add(l)
+        u2, p2 = _rs_get(l)
+        if p2:
+            pages.append((u2, p2))
+        if len(pages) >= 4:
+            break
+    return pages
+
+
+def research_text(website):
+    pages = research_pages(website)
+    out, alltext = [], ""
+    for u, p in pages:
+        t, d, b = _rs_text(p)
+        alltext += " " + b
+        out.append(f"[{u}]\nTitle: {t}\nDescription: {d}\nText: {b[:1600]}")
+    sig = [k for k, rx in SIGNALS.items() if re.search(rx, alltext, re.I)]
+    return "\n\n".join(out)[:7500], sig
+
+
+PHIXTRA = """What PhiXtra does (use ONLY the one capability that fixes the problem you chose; never list several):
+- Answers website and WhatsApp enquiries straight away, day or night, and in the buyer's own language (French, Spanish, Portuguese, Arabic), gathering quantity, delivery and timing.
+- Prepares a quotation from the business's own price list when a buyer asks for prices; a person approves it before it goes; the buyer can accept online.
+- Captures every enquiry from the Outlook sales inbox, website chat and WhatsApp in one place, each with an owner and a follow-up date.
+- Tells the team which enquiries are serious buyers ready to order, so they call those first; small orders below their minimum are flagged for the team to decide (PhiXtra never turns anyone away).
+- Follows up quotes and quiet enquiries by email or WhatsApp until the buyer replies.
+- Works with Shopify, Shopify Plus and WooCommerce stores.
+The offer: a 20-minute look at it working on their own products, from their own website."""
+
+ROLE = """What the recipient is responsible for (use the one that matches their job title):
+- Owner / MD / CEO / Founder: growth, margin, winning more of the demand they already get, not adding headcount.
+- Sales / Commercial Director, Head of Sales: response times, conversion from enquiry to order, what their team spends time on, the pipeline.
+- Purchasing & Sales / Operations: smooth order flow, fewer errors and chasing, the team's workload.
+- Marketing: turning website visitors and enquiries into revenue."""
+
+
+def make_brief(ask, lead, site, signals):
+    p = f"""You are a B2B sales researcher preparing a sales email for PhiXtra. Reply with JSON only.
+
+Company: {lead['customer_name']}. Person: {lead['contact_person']}, {lead['job']}. Staff: {lead.get('employees')}. Country: {lead.get('addr_country')}. Town: {lead.get('addr_city')}.
+Signals found on their website: {', '.join(signals) or 'none'}.
+Their website pages:
+{site or '(could not be read)'}
+
+{PHIXTRA}
+
+{ROLE}
+
+Work out, using ONLY facts from their pages and the details above (never invent):
+{{"sells": "what they sell, in plain words",
+ "buyers": "who buys from them (trade, retailers, contractors, manufacturers, overseas distributors...)",
+ "how_buyers_order": "how enquiries and orders reach them, with the evidence from the site",
+ "insight": "one specific commercial observation about their business that a sharp salesperson would make, grounded in a fact from the site",
+ "problem": "the ONE operational problem that most likely follows from how they sell, that PhiXtra can fix (e.g. trade quote requests waiting for someone to price them; enquiries from overseas buyers in other languages; quotes going quiet without follow-up; enquiries landing out of hours or in several inboxes; time spent on small or unqualified enquiries)",
+ "evidence": "the fact(s) from the site that make this problem likely",
+ "phixtra_fix": "the one PhiXtra capability that fixes that problem, in one plain sentence",
+ "role_angle": "why this matters to this person's own responsibilities",
+ "question": "one easy question for this person, tied to their responsibilities and the problem",
+ "second_problem": "a different, also likely problem for a later follow-up",
+ "confidence": "high | medium | low"}}"""
+    return ask(p)
+
+
+BANNED = ["day or night", "gathers what the buyer needs", "ai agent that replies", "answers trade enquiries, prepares",
+          "in minutes, day", "streamline", "revolutionise", "cutting-edge", "game-changer", "leverage", "synergy",
+          "i hope this email finds you well", "i wanted to reach out", "touch base"]
+
+
+SENDER = {"name": "Philip Ibekwe", "role": "Founder & CEO"}
+
+
+def _v2_write(ask, lead, b, step, earlier, feedback="", sender=None, extra=""):
+    steps = {
+        1: "Email 1 (they don't know us). 70-110 words, 3 or 4 short paragraphs. Order: (1) ONE sharp observation about how their business "
+           "makes money or wins orders, with its consequence (do NOT just describe their catalogue or restate their website); (2) the "
+           "operational problem that follows, as an informed guess from one operator to another; (3) one sentence on how PhiXtra fixes that "
+           "exact problem, in concrete terms; (4) a short offer to show them on their own products, then ONE easy question tied to their "
+           "responsibilities, as its own final sentence. Subject: 3-7 words about their business or the problem, never about PhiXtra or AI.",
+        2: "Email 2, a short reply in the same thread (35-60 words). One new consequence of the SAME problem for their role, and the question "
+           "again in different words.",
+        3: "Email 3 (35-60 words). Use the second_problem, tied to their role, with one sentence on how PhiXtra handles it.",
+        4: "Email 4 (30-55 words). Offer one concrete thing: before a 20-minute call we set it up on their own website, so they see their own "
+           "enquiries handled. One easy question.",
+        5: "Email 5, a polite close (20-40 words). You'll leave it here; they can reply any time if it becomes a priority. No question.",
+    }
+    sender = sender or SENDER
+    p = f"""You are {sender['name']}{(', ' + sender['role'] + ' of PhiXtra') if sender.get('role') else ', at PhiXtra'}, writing personally to another business leader. The email is checked by a person and sent from your Outlook. Reply with JSON only.
+
+Research brief about the recipient (all from their own website; use these facts, add none):
+{json.dumps(b, indent=1)}
+
+Recipient: {lead['contact_person']}, {lead['job']} at {lead['customer_name']}.
+
+THE THREE TESTS every email must pass:
+1. Commercial understanding: it shows you understand how THEIR business sells and wins orders.
+2. One specific operational problem: PhiXtra is connected to that one problem only. No feature lists, no generic description of PhiXtra or AI.
+3. Relevant to their responsibilities: it gives this person a reason to reply because it touches what they are measured on.
+
+Voice: {'a CEO writing to a peer' if 'ceo' in (sender.get('role') or '').lower() or 'founder' in (sender.get('role') or '').lower() else 'a senior salesperson writing to a business leader'}. Direct, confident, short sentences, no flattery, no hype, no "I hope you're well", no "I came across your website", no "I wanted to reach out". Write like a person who has run a sales team, not like marketing.
+
+THIS EMAIL: {steps[step]}
+{('Earlier emails in the thread (do not repeat them): ' + chr(10).join(earlier)) if earlier else ''}
+{('A reviewer rejected the last version: ' + feedback + ' Fix exactly that.') if feedback else ''}
+{('Extra guidance from the team: ' + extra) if extra else ''}
+
+Rules: British English; no em dashes, no exclamation marks, no emojis; exactly one question, never two joined with 'and'; under 110 words; never invent numbers, customers, results or facts; the company name exactly as "{lead['customer_name']}"; no greeting, sign-off, links or opt-out (added separately); never use: {', '.join(BANNED)}, "if useful", "worth a look".
+Return {{"subject": "...", "paragraphs": ["...", ...]}}"""
+    return ask(p)
+
+
+def _v2_check(ask, lead, b, words, sender=None):
+    sender = sender or SENDER
+    p = f"""You are a demanding B2B sales director reviewing a cold email before it is sent. Reply with JSON only.
+Recipient: {lead['contact_person']}, {lead['job']} at {lead['customer_name']}.
+What we know about them: {json.dumps({k: b.get(k) for k in ('sells', 'buyers', 'how_buyers_order', 'problem')})}
+Email subject: {words.get('subject')}
+Email body: {' '.join(words.get('paragraphs') or [])}
+It is written by {sender['name']} ({sender.get('role') or 'PhiXtra'}) to a business leader. Fail anything that restates their website, lists features, sounds like marketing, or runs over 120 words.
+Judge strictly. Return {{"commercial_understanding": {{"pass": true/false, "why": "..."}}, "specific_problem": {{"pass": true/false, "why": "..."}}, "relevant_to_role": {{"pass": true/false, "why": "..."}}, "not_generic": {{"pass": true/false, "why": "pass when it reads as a real person who understands their business; fail when it restates their website, lists features or sounds like marketing"}}, "fix": "one sentence on what to change, or empty"}}"""
+    return ask(p)
+
+
 SIG_TOKEN = "[[signature]]"
 SIG_CID = "phx-signature"
 
@@ -399,23 +594,77 @@ def join_body(greeting: str, ai_text: str, tail: str) -> str:
     return "\n\n".join(x.strip() for x in (greeting, ai_text, tail) if x and x.strip())
 
 
-def write_text(s: dict, lead: dict, site: str, step: int, angle: int, earlier: list, how: str = "") -> tuple:
-    """(subject, ai_text): the AI's own words only. Raises ValueError if unusable."""
+def sender_for(s: dict, mb) -> dict:
+    """Who the email is from: the sending mailbox's person and their title in Settings."""
+    return {"name": (mb or {}).get("owner_label") or (mb or {}).get("display_name") or "the PhiXtra team",
+            "role": (s.get("sender_title") or "").strip()}
+
+
+def ensure_brief(cur, run: dict, lead: dict) -> tuple:
+    """(site_text, brief) for a run: researched once, then reused for every follow-up."""
+    site, b = run.get("site_text"), run.get("brief")
+    if site is None or not b:
+        site, signals = research_text(lead.get("website"))
+        L = dict(lead, job=_job_title(lead.get("notes")) or "unknown role")
+        try:
+            b = make_brief(_ask, L, site, signals)
+            b["signals"] = signals
+        except Exception as e:
+            print("⚠️ outreach brief:", e)
+            b = {"signals": signals}
+        cur.execute("UPDATE outreach_runs SET site_text=%s, brief=%s WHERE id=%s",
+                    (site, psycopg2.extras.Json(b), run["id"]))
+        cur.connection.commit()
+    return site, b
+
+
+_TESTS = ("commercial_understanding", "specific_problem", "relevant_to_role", "not_generic")
+
+
+def write_text(s: dict, lead: dict, site: str, step: int, angle: int, earlier: list, how: str = "",
+               brief: dict = None, sender: dict = None) -> tuple:
+    """(subject, ai_text, quality). Writes from the research brief in the
+    sender's voice, checks it against the three tests and rewrites up to twice.
+    Raises ValueError if the AI gave nothing usable."""
     from email_ai_writer import _drop_invented_numbers
-    words = _ask(_prompt(s, lead, site, step, angle, earlier, how))
-    allowed = " ".join([s.get("guide") or _GUIDE, site or "", json.dumps({k: str(v) for k, v in lead.items()})])
-    paras = _drop_invented_numbers([str(p) for p in (words.get("paragraphs") or [])], allowed)
-    subject = re.sub(r"\s+", " ", str(words.get("subject") or "")).strip()[:150]
-    if _drop_invented_numbers([subject], allowed) != [subject]:
-        subject = ""
-    if not paras or (step == 1 and not subject):
-        raise ValueError("The AI couldn't write a usable email this time.")
-    paras = [p.replace("—", ",").replace("–", "-") for p in paras]
+    lead = dict(lead, job=_job_title(lead.get("notes")) or "unknown role")
+    b = brief or {}
+    allowed = " ".join([site or "", json.dumps(b), json.dumps({k: str(v) for k, v in lead.items()}), "20"])
     meta = re.compile(r"(could ?n[o']t (read|access|load|find)|unable to (read|access)|as an ai|i don't have (access|information)|"
                       r"\[|\{|personal line)", re.I)
-    if any(meta.search(p) for p in paras + [subject]):
-        raise ValueError("The AI wrote a note to itself instead of the email.")
-    return subject, "\n\n".join(p.strip() for p in paras if p.strip())
+    feedback, best = how or "", None
+    for attempt in range(3):
+        words = _v2_write(_ask, lead, b, min(step, 5), earlier, feedback=feedback, sender=sender,
+                          extra=(s.get("guide") or "").strip()[:1500] if s.get("guide") and s.get("guide") != _GUIDE else "")
+        paras = _drop_invented_numbers([str(p) for p in (words.get("paragraphs") or [])], allowed)
+        paras = [p.replace("—", ",").replace("–", "-").strip() for p in paras if p and str(p).strip()]
+        subject = re.sub(r"\s+", " ", str(words.get("subject") or "")).strip()[:150]
+        if _drop_invented_numbers([subject], allowed) != [subject]:
+            subject = ""
+        if not paras or (step == 1 and not subject) or any(meta.search(p) for p in paras + [subject]):
+            feedback = "The last version was unusable (empty, invented numbers, or a note to itself). Write the email properly."
+            continue
+        text = "\n\n".join(paras)
+        problems = [p for p in BANNED + ["if useful", "worth a look"] if p in text.lower()]
+        if len(text.split()) > (125 if step == 1 else 80):
+            problems.append(f"too long ({len(text.split())} words)")
+        try:
+            chk = _v2_check(_ask, lead, b, {"subject": subject, "paragraphs": paras}, sender=sender)
+        except Exception:
+            chk = {}
+        # The user's three tests decide; "not_generic" is the reviewer's extra note only.
+        failed = [k for k in _TESTS[:3] if isinstance(chk.get(k), dict) and not chk[k].get("pass")]
+        quality = {"tests": {k: chk.get(k) for k in _TESTS if isinstance(chk.get(k), dict)}, "attempts": attempt + 1,
+                   "rule_problems": problems}
+        score = len(failed) + len(problems)
+        if best is None or score < best[0]:
+            best = (score, subject, text, quality)
+        if not failed and not problems:
+            break
+        feedback = (chk.get("fix") or "") + (" Also fix: " + ", ".join(problems) if problems else "")
+    if not best:
+        raise ValueError("The AI couldn't write a usable email this time.")
+    return best[1], best[2], best[3]
 
 
 def sig_html(sig: dict | None, src: str = None) -> str:
@@ -511,16 +760,13 @@ def write_next(run_id: int, how: str = "") -> dict:
         if not can_draft(mb):
             raise RuntimeError("The sending mailbox isn't connected with permission to save drafts. "
                                "Reconnect it on Settings › Integration › Microsoft 365.")
-        site = run["site_text"]
-        if site is None:
-            site = _site_text(lead["website"])
-            cur.execute("UPDATE outreach_runs SET site_text=%s WHERE id=%s", (site, run_id))
-            conn.commit()
+        site, b = ensure_brief(cur, run, lead)
         cur.execute("""SELECT step, body_text, subject FROM outreach_drafts WHERE run_id=%s AND status='sent'
                        ORDER BY step""", (run_id,))
         sent = cur.fetchall()
         earlier = [f"Email {d['step']}: {plain(d['body_text'])}"[:1500] for d in sent]
-        subject, ai_text = write_text(s, lead, site, step, run["angle"], earlier, how)
+        subject, ai_text, quality = write_text(s, lead, site, step, run["angle"], earlier, how, brief=b,
+                                               sender=sender_for(s, mb))
         sig = signature(run["tenant_id"], run["mailbox_id"])
         greeting, tail = frame(s, lead, step, sig)
         body = join_body(greeting, ai_text, tail)
@@ -539,9 +785,10 @@ def write_next(run_id: int, how: str = "") -> dict:
         if sig:
             M.set_inline_image(token, d["id"], sig["image"], sig["mime"], SIG_CID, "signature." + sig["mime"].split("/")[-1])
         cur.execute("""UPDATE outreach_drafts SET status='waiting', subject=%s, body_text=%s, quoted_html=%s,
-                           graph_id=%s, web_link=%s, error=NULL, greeting=%s, ai_text=%s, tail=%s, updated_at=NOW()
+                           graph_id=%s, web_link=%s, error=NULL, greeting=%s, ai_text=%s, tail=%s, quality=%s, updated_at=NOW()
                        WHERE id=%s""",
-                    (subject, body, quoted, d["id"], d["web_link"], greeting, ai_text, tail, draft_id))
+                    (subject, body, quoted, d["id"], d["web_link"], greeting, ai_text, tail,
+                     psycopg2.extras.Json(quality), draft_id))
         cur.execute("UPDATE outreach_runs SET last_error=NULL, updated_at=NOW() WHERE id=%s", (run_id,))
         conn.commit()
         return {"ok": True, "draft_id": draft_id}
@@ -769,7 +1016,7 @@ def on_reply(tenant_id: int, lead_id: int, reply_id: int, text: str) -> None:
         short = re.sub(r"\s+", " ", text or "").strip()
         short = short[:300] + ("…" if len(short) > 300 else "")
         _alert(tenant_id, lead_id, f"outreach_reply:{reply_id}",
-               f"{biz or who} replied to Joanna's email",
+               f"{biz or who} replied to your AI-drafted email",
                [f"{who}{' (' + biz + ')' if biz and biz != who else ''} replied:", f"“{short}”",
                 "The AI follow-up drafts for this deal have stopped, and any unsent draft was removed from Outlook. "
                 "The AI has not replied. Please answer them yourselves, within the hour if you can."],
@@ -1095,6 +1342,13 @@ def _pane(cur, tid: int, d: dict) -> dict:
     """Everything the right-hand pane shows for one draft."""
     d = dict(d)
     d["job"] = _job_title(d.get("notes"))
+    cur.execute("SELECT brief FROM outreach_runs WHERE id=%s", (d["run_id"],))
+    d["brief"] = (cur.fetchone() or {}).get("brief") or {}
+    q = d.get("quality") or {}
+    d["tests"] = [(lbl, (q.get("tests") or {}).get(k)) for k, lbl in
+                  (("commercial_understanding", "Shows it understands their business"),
+                   ("specific_problem", "One specific problem, no feature list"),
+                   ("relevant_to_role", "Relevant to their job"))]
     d["site"] = _site_bits(d.get("site_text") or "")
     d["first"] = first_name(d)
     paras = [p for p in re.split(r"\n\s*\n", (d.get("ai_text") or "").strip()) if p.strip()]
@@ -1358,7 +1612,7 @@ def approve(draft_id: int):
     finally:
         cur.close(); conn.close()
     was = d["status"]
-    return _done(True, "Saved." if was == "approved" else "Approved. It's marked as checked in Joanna's Outlook.",
+    return _done(True, "Saved." if was == "approved" else "Approved. It's marked as checked in the sender's Outlook.",
                  tab, draft_id, nxt=_next_in_queue(tid, tab, draft_id) if was == "waiting" else draft_id)
 
 
@@ -1394,8 +1648,11 @@ def rewrite(draft_id: int):
         cur.execute("SELECT step, body_text FROM outreach_drafts WHERE run_id=%s AND status='sent' ORDER BY step", (run["id"],))
         earlier = [f"Email {e['step']}: {plain(e['body_text'])}"[:1500] for e in cur.fetchall()]
         current = (request.form.get("ai_text") or d["ai_text"] or d["body_text"] or "")[:3000]
-        subject, ai_text = write_text(s, lead, run["site_text"] or "", d["step"], run["angle"], earlier,
-                                      f"Current draft (the team may have edited it):\n{current}\n\nRewrite request: {how}")
+        site, b = ensure_brief(cur, dict(run), lead)
+        mbx = _mailbox(cur, d["mailbox_id"])
+        subject, ai_text, quality = write_text(s, lead, site, d["step"], run["angle"], earlier,
+                                               f"Current draft (the team may have edited it):\n{current}\n\nRewrite request: {how}",
+                                               brief=b, sender=sender_for(s, mbx))
         greeting = d["greeting"] if d["greeting"] is not None else frame(s, lead, d["step"])[0]
         tail = d["tail"] if d["tail"] is not None else frame(s, lead, d["step"])[1]
         body = join_body(greeting, ai_text, tail)
@@ -1404,8 +1661,9 @@ def rewrite(draft_id: int):
         M.update_draft(token, d["graph_id"], html=_with_quote(text_to_html(body, signature(tid, d["mailbox_id"])), d["quoted_html"]),
                        subject=subject if d["step"] == 1 else None, categories=[CAT_WAITING])
         cur.execute("""UPDATE outreach_drafts SET status='waiting', body_text=%s, ai_text=%s, greeting=%s, tail=%s, subject=%s,
-                           checked_by_name=NULL, checked_at=NULL, updated_at=NOW() WHERE id=%s""",
-                    (body, ai_text, greeting, tail, subject if d["step"] == 1 else d["subject"], draft_id))
+                           quality=%s, checked_by_name=NULL, checked_at=NULL, updated_at=NOW() WHERE id=%s""",
+                    (body, ai_text, greeting, tail, subject if d["step"] == 1 else d["subject"],
+                     psycopg2.extras.Json(quality), draft_id))
         conn.commit()
     except Exception as e:
         conn.rollback()
@@ -1497,15 +1755,16 @@ def save_settings():
     try:
         cur.execute("""UPDATE outreach_settings SET mailbox_id=%s, gaps=%s, final_wait=%s, guide=%s, signoff_first=%s,
                            signoff_followup=%s, optout=%s, booking_link=%s, booking_on=%s, morning_email=%s,
-                           alert_keys=%s, updated_at=NOW()
+                           alert_keys=%s, sender_title=%s, updated_at=NOW()
                        WHERE tenant_id=%s""",
                     (int(mb_raw) if mb_raw.isdigit() else None, gaps, final,
-                     (request.form.get("guide") or "").strip()[:8000] or _GUIDE,
+                     (request.form.get("guide") or "").strip()[:8000],
                      (request.form.get("signoff_first") or "").replace("\r\n", "\n").strip()[:500],
                      (request.form.get("signoff_followup") or "").replace("\r\n", "\n").strip()[:500],
                      (request.form.get("optout") or "").strip()[:500],
                      (request.form.get("booking_link") or "").strip()[:500],
-                     bool(request.form.get("booking_on")), bool(request.form.get("morning_email")), keys, tid))
+                     bool(request.form.get("booking_on")), bool(request.form.get("morning_email")), keys,
+                     (request.form.get("sender_title") or "").strip()[:80] or None, tid))
         conn.commit()
     finally:
         cur.close(); conn.close()

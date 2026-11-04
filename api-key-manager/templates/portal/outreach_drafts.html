@@ -123,6 +123,11 @@
   .od-sl{display:grid;grid-template-columns:auto auto 1fr;gap:8px 12px;align-items:center;font-size:13.5px}
   .od-sl .d{color:var(--mut);font-size:12.5px}
   .od-sl input{width:64px;text-align:center}
+  .odp-test{display:block;margin:0 0 6px;font-size:13px;line-height:1.45}
+  .odp-test span{display:inline-flex;width:18px;height:18px;border-radius:50%;align-items:center;justify-content:center;font-size:11px;font-weight:800;margin-right:6px;background:#E8EEF8;color:#0B1D40}
+  .odp-test.bad span{background:#FFF4E5;color:#7A3E00}
+  .odp-test.bad b{color:#7A3E00}
+  .odp-test small{color:#5A6B85;display:block;margin:2px 0 0 24px}
   .odp-sig{display:block;max-width:min(100%,600px);height:auto;margin:2px 0 6px;opacity:.85}
   .odv-ovl{position:fixed;inset:0;background:rgba(11,29,64,.5);z-index:2100;display:none;align-items:center;justify-content:center;padding:16px}
   .odv-ovl.open{display:flex}
@@ -299,6 +304,8 @@
           <option value="">— pick —</option>
           {% for m in mailboxes %}<option value="{{ m.id }}" {{ 'selected' if m.id == s.mailbox_id }}>{{ m.owner_label }} · {{ m.email }}{% if 'Mail.ReadWrite' not in (m.scopes or '') %} (needs to reconnect){% endif %}</option>{% endfor %}
         </select>
+        <label class="l" for="odST">Sender's job title (the AI writes in this voice)</label>
+        <input id="odST" class="od-in" name="sender_title" value="{{ s.sender_title or '' }}" placeholder="Founder & CEO">
         <span class="l" style="display:block;font-size:13px;font-weight:600;margin:12px 0 6px">Email these people when a buyer replies</span>
         <div class="od-people">
           {% for p in people %}<label class="od-person"><input type="checkbox" name="alert_keys" value="{{ p.k }}" {{ 'checked' if p.k in (s.alert_keys or []) }}> {{ p.name }}</label>{% endfor %}
@@ -346,9 +353,9 @@
         {% endif %}
       </section>
       <section>
-        <h3>What the AI knows</h3>
-        <p style="margin:0 0 8px;font-size:13px;color:#3B4A63">The offer, rules and both angles from the sales plan. Edit it to change what the AI says.</p>
-        <button type="button" class="od-btn2" onclick="var t=document.getElementById('odGd');t.hidden=!t.hidden;if(!t.hidden)t.focus()">Edit the sales guide</button>
+        <h3>Extra guidance for the AI (optional)</h3>
+        <p style="margin:0 0 8px;font-size:13px;color:#3B4A63">The AI already researches each business and writes to one specific problem in the sender's voice. Add anything it should always know, for example a current offer or a sector to mention.</p>
+        <button type="button" class="od-btn2" onclick="var t=document.getElementById('odGd');t.hidden=!t.hidden;if(!t.hidden)t.focus()">Edit extra guidance</button>
         <label for="odGd" class="sr-only">Sales guide</label>
         <textarea id="odGd" class="od-in" rows="14" name="guide" hidden style="margin-top:10px">{{ s.guide or '' }}</textarea>
       </section>

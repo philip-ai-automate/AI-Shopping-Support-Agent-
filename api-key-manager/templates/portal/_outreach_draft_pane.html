@@ -75,16 +75,28 @@
 
   <aside class="odp-side" aria-label="What the AI used">
     <div class="odp-card">
-      <h2>What the AI used</h2>
+      <h2>What the AI understood</h2>
+      {% set B = d.brief or {} %}
       <dl>
-        {% if d.job %}<dt>Job title</dt><dd>{{ d.job }}</dd>{% endif %}
-        <dt>Company</dt><dd>{{ d.customer_name }}{% if d.employees %} · {{ d.employees }} staff{% endif %}{% if d.addr_city %} · {{ d.addr_city }}{% endif %}{% if d.addr_country %} · {{ d.addr_country }}{% endif %}</dd>
-        {% if d.business_category %}<dt>Category</dt><dd>{{ d.business_category }}</dd>{% endif %}
-        <dt>From their website</dt>
-        <dd>{% if d.site.description or d.site.text %}“{{ d.site.description or d.site.text }}”{% else %}<span class="muted">Their website couldn't be read, so the AI used only the details above.</span>{% endif %}</dd>
+        {% if d.job %}<dt>Writing to</dt><dd>{{ d.contact_person }}, {{ d.job }}</dd>{% endif %}
+        {% if B.sells %}<dt>What they sell</dt><dd>{{ B.sells }}</dd>{% endif %}
+        {% if B.buyers %}<dt>Who buys</dt><dd>{{ B.buyers }}</dd>{% endif %}
+        {% if B.how_buyers_order %}<dt>How orders come in</dt><dd>{{ B.how_buyers_order }}</dd>{% endif %}
+        {% if B.problem %}<dt>The problem it chose</dt><dd><b>{{ B.problem }}</b></dd>{% endif %}
+        {% if B.evidence %}<dt>Why (from their website)</dt><dd>{{ B.evidence }}</dd>{% endif %}
+        {% if not B.sells %}<dt>From their website</dt><dd>{% if d.site.description or d.site.text %}“{{ d.site.description or d.site.text }}”{% else %}<span class="muted">Their website couldn't be read, so the AI used only the deal's details. Check this one closely.</span>{% endif %}</dd>{% endif %}
       </dl>
       {% if d.website %}<a href="{{ d.website if d.website.startswith('http') else 'https://' ~ d.website }}" target="_blank" rel="noopener">Open {{ d.website|replace('https://','')|replace('http://','')|replace('www.','')|trim('/') }}</a>{% endif %}
     </div>
+    {% if d.tests and d.tests|selectattr(1)|list %}
+    <div class="odp-card">
+      <h2>Quality check</h2>
+      {% for lbl, t in d.tests %}{% if t %}
+      <p class="odp-test {{ 'ok' if t.get('pass') else 'bad' }}"><span>{{ '✓' if t.get('pass') else '!' }}</span><b>{{ lbl }}</b>{% if not t.get('pass') and t.get('why') %}<br><small>{{ t.get('why') }}</small>{% endif %}</p>
+      {% endif %}{% endfor %}
+      {% if d.quality and d.quality.rule_problems %}<p class="odp-test bad"><span>!</span><b>{{ d.quality.rule_problems|join(', ') }}</b></p>{% endif %}
+    </div>
+    {% endif %}
     <div class="odp-card">
       <h2>This deal</h2>
       <p>{{ {'new_lead': 'New Opportunity'}.get(d.stage, (d.stage or '')|replace('_',' ')|capitalize) }}{% if d.step < max %} · if no reply, email {{ d.step + 1 }} follows{% endif %}</p>
