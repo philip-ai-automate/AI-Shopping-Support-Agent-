@@ -55,7 +55,7 @@ OPENAI_CHAT_MODEL=gpt-4o-mini
 PG_HOST=localhost
 PG_PORT=5432
 PG_USER=phixtra_pg
-PG_PASSWORD=LLt0ejNgB7EpOtylB4dgEYaMlaE7wrb3
+PG_PASSWORD=<secret: kept only in each .env and /root/phixtra-app/.pg_password; never commit>
 PG_DB=ai_support
 ```
 

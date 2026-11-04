@@ -14,7 +14,7 @@ PG_PASS = open("/root/phixtra-app/.pg_password").read().strip()
 
 MY = mysql.connector.connect(
     host="localhost", user="ai_user",
-    password="./Admin@15365858!", database="ai_support"
+    password=os.environ.get("MYSQL_PASSWORD", ""), database="ai_support"  # MariaDB ai_support retired 4 Nov 2026
 )
 PG = psycopg2.connect(
     host="localhost", port=5432, user="phixtra_pg",

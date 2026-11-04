@@ -30,12 +30,12 @@ This section contains everything needed to resume work immediately without re-re
 ```
 Host:     localhost
 User:     ai_user
-Password: ./Admin@15365858!
+Password: <removed>  (MariaDB ai_support + ai_user RETIRED 4 Nov 2026; PhiXtra uses PostgreSQL, see MIGRATION.md)
 Database: ai_support
 Engine:   MariaDB / MySQL
 ```
 
-Connect: `mysql -u ai_user -p'./Admin@15365858!' ai_support`
+Connect: retired (PostgreSQL: see MIGRATION.md)
 
 ### Key Commands
 
@@ -55,7 +55,7 @@ systemctl is-active phixtra-portal
 cd /root/phixtra-app/api-key-manager && python3 -c "from portal_routes import portal_bp; print('OK')"
 
 # Run a migration
-mysql -u ai_user -p'./Admin@15365858!' ai_support < /root/phixtra-app/docs/migrations/00X_name.sql
+# retired — was: mysql -u ai_user -p<password> ai_support < /root/phixtra-app/docs/migrations/00X_name.sql
 ```
 
 ### Portal Tech Stack
