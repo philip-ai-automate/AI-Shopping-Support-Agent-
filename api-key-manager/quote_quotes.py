@@ -463,6 +463,26 @@ def to_doc(tenant_id: int, q: dict, s: dict, req: dict = None) -> dict:
     return qd.totals(doc, s)
 
 
+_STOP = {"the", "a", "an", "of", "for", "and", "with", "in", "on", "to", "some", "pcs", "pc", "units", "unit", "x"}
+
+
+def _words(text: str) -> set:
+    """Plain words for matching a buyer's typed line to quotation lines
+    (lower case, simple plurals folded: boards/boxes/batteries)."""
+    out = set()
+    for w in re.findall(r"[a-z0-9]+", (text or "").lower()):
+        if w in _STOP or w.isdigit():
+            continue
+        if len(w) > 4 and w.endswith("ies"):
+            w = w[:-3] + "y"
+        elif len(w) > 4 and w.endswith(("ses", "xes", "ches", "shes")):
+            w = w[:-2]
+        elif len(w) > 3 and w.endswith("s") and not w.endswith("ss"):
+            w = w[:-1]
+        out.add(w)
+    return out
+
+
 def checks(tenant_id: int, q: dict, req: dict) -> list:
     """What to look at before sending: [(level ok|warn|bad, text)]. Rules,
     not the AI's guesses: nothing here ever changes a price."""
@@ -470,14 +490,33 @@ def checks(tenant_id: int, q: dict, req: dict) -> list:
     out = []
     asked = {}
     for ln in req.get("lines") or []:
-        asked[(ln.get("product_id") or ln["name"].lower())] = (ln["name"], ln.get("qty"))
+        asked[(ln.get("product_id") or ln["name"].lower())] = (ln["name"], ln.get("qty"), bool(ln.get("product_id")))
     have = {(ln.get("product_id") or ln["name"].lower()): ln for ln in d["lines"]}
-    missing = [n for k, (n, _) in asked.items() if k not in have]
-    changed = [f"{n} ({'%g' % (have[k]['qty'] or 0)} instead of {'%g' % qty})" for k, (n, qty) in asked.items()
+    # A requested product (picked from the list) that's missing blocks sending.
+    # A typed line in the buyer's own words ("snowboards") only warns: the
+    # quotation may cover it with the real products (5 Nov 2026).
+    missing = [n for k, (n, _, linked) in asked.items() if k not in have and linked]
+    changed = [f"{n} ({'%g' % (have[k]['qty'] or 0)} instead of {'%g' % qty})" for k, (n, qty, _) in asked.items()
                if k in have and qty is not None and float(have[k]["qty"] or 0) != float(qty)]
+    typed = []
+    for k, (n, qty, linked) in asked.items():
+        if k in have or linked:
+            continue
+        # The buyer's words match quotation lines ("snowboards" -> "The Complete
+        # Snowboard", every variant): covered; compare the total quantity.
+        want = _words(n)
+        hits = [ln for ln in d["lines"] if want and want <= _words(line_name(ln))]
+        if not hits:
+            typed.append("\u201c" + n + ((" \u00d7 %g" % qty) if qty else "") + "\u201d")
+            continue
+        total = sum(float(ln.get("qty") or 0) for ln in hits)
+        if qty is not None and total != float(qty):
+            changed.append(f"{n} ({'%g' % total} instead of {'%g' % qty})")
     if missing:
         out.append(("bad", "Not on the quotation but the buyer asked for: " + ", ".join(missing)))
-    elif not changed:
+    if typed:
+        out.append(("warn", "The buyer asked for " + ", ".join(typed) + ". Check the quotation covers it"))
+    if not missing and not typed and not changed:
         out.append(("ok", "Every product the buyer asked for is on it, same quantities"))
     if changed:
         out.append(("warn", "Quantity changed from the request: " + "; ".join(changed)))

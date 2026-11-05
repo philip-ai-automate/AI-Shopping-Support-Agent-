@@ -129,7 +129,49 @@
       {% elif r.status == 'won' %}
         <div style="font-size:13px;line-height:1.7"><b style="font-size:16px;color:var(--ok)">Won · {{ qr.money(r.quote_value, r.quote_currency) }}</b><br>
           {{ dt(r.closed_at) }}{% if r.close_reason %} · {{ r.close_reason }}{% endif %}</div>
-        {% if sent_q and orders_on and staff_can_open('portal.quotes_request_order') %}
+        {% if sent_q and shopify_order.on %}
+          {# Shopify Part 6: the order is made in the business's Shopify. #}
+          {% set so = shopify_order %}
+          {% if so.draft %}
+          <div style="font-size:13px;line-height:1.7"><b>Shopify draft order {{ so.draft.name }}</b>
+            <span class="qt-pill {{ 'p-ok' if so.draft.status == 'completed' else 'p-info' }}">{{ so.draft.status_words }}</span><br>
+            {% if so.draft.total %}{{ qr.money(so.draft.total|float, so.draft.currency) }} in Shopify{% endif %}
+            {% if so.draft.po %} · PO {{ so.draft.po }}{% endif %}<br>
+            {% if so.draft.buyer and so.draft.buyer.kind == 'company' %}For {{ so.draft.buyer.company }}{% if so.draft.buyer.site %} ({{ so.draft.buyer.site }}){% endif %}
+            {% elif so.draft.buyer %}For {{ so.draft.buyer.email or so.draft.buyer.phone }}{% endif %}</div>
+          <div class="qt-btns">
+            {% if so.draft.order_url %}<a class="qt-btn dark" href="{{ so.draft.order_url }}" target="_blank" rel="noopener">Open the order in Shopify</a>
+            {% else %}<a class="qt-btn" href="{{ so.draft.admin_url }}" target="_blank" rel="noopener">Open in Shopify</a>{% endif %}
+            {% if so.draft.status == 'open' and staff_can_open('portal.quotes_request_shopify_invoice') %}
+            <form method="post" action="{{ url_for('portal.quotes_request_shopify_invoice', request_id=r.id) }}" style="margin:0">
+              <button class="qt-btn dark">Send Shopify invoice</button></form>
+            {% endif %}
+          </div>
+          {% if so.draft.status == 'open' %}<div class="qt-small">Check the draft in Shopify first if you like. The invoice email has a secure link where the buyer pays{% if so.draft.buyer and so.draft.buyer.kind == 'company' %} or accepts the payment terms{% endif %}.</div>
+          {% elif so.draft.status == 'invoice_sent' %}<div class="qt-small">Waiting for the buyer. This changes to Completed when the order is placed in Shopify.</div>{% endif %}
+          {% elif staff_can_open('portal.quotes_request_shopify_order') %}
+          {% set pv = so.preview or {} %}
+          {% if so.deleted %}<div class="qt-small">Draft order {{ so.deleted.name }} was deleted in Shopify. You can create a new one.</div>{% endif %}
+          <span class="qt-lbl" style="margin-top:6px">Order in Shopify</span>
+          {% if pv.buyer %}<div class="qt-small" style="margin:0">{% if pv.buyer.kind == 'company' %}For {{ pv.buyer.company }}{% if pv.buyer.site %} › {{ pv.buyer.site }}{% endif %} (Shopify company){% else %}For {{ pv.buyer.email or pv.buyer.phone }} as a Shopify customer{% endif %}{% if pv.terms_name %} · {{ pv.terms_name }}{% endif %}</div>{% endif %}
+          {% if pv.rows %}
+          <div class="qt-scroll"><table>
+            <thead><tr><th></th><th class="r">Quotation</th><th class="r">Shopify</th></tr></thead>
+            <tbody>{% for row in pv.rows %}<tr{% if loop.last %} style="font-weight:700"{% endif %}><td>{{ row.label }}</td><td class="r">{{ row.quote }}</td>
+              <td class="r">{{ row.shopify }}{% if row.differs %} <span class="qt-pill p-warn">differs</span>{% endif %}</td></tr>{% endfor %}</tbody>
+          </table></div>
+          {% endif %}
+          {% for b in pv.blocks or [] %}<div class="qt-small" style="color:var(--hot)">✗ {{ b }}</div>{% endfor %}
+          {% for w in pv.warns or [] %}<div class="qt-small">! {{ w }}</div>{% endfor %}
+          {% if not pv.blocks %}
+          <form method="post" action="{{ url_for('portal.quotes_request_shopify_order', request_id=r.id) }}" style="margin:0;display:grid;gap:6px">
+            <label class="qt-small" for="poNumber" style="margin:0">Buyer's PO number (optional)</label>
+            <input id="poNumber" name="po_number" maxlength="100" placeholder="e.g. PO-4471">
+            <button class="qt-btn dark" style="width:100%">Create Shopify draft order</button></form>
+          <div class="qt-small">Every line of {{ sent_q.number }}{{ ' v%d'|format(sent_q.version) if sent_q.version > 1 }} at the quoted prices. Nothing goes to the buyer until you press Send Shopify invoice.</div>
+          {% endif %}
+          {% endif %}
+        {% elif sent_q and orders_on and staff_can_open('portal.quotes_request_order') %}
           {% if sent_q.order_id %}
           <a class="qt-btn dark" href="{{ url_for('portal.order_detail', order_id=sent_q.order_id) }}">Open the order</a>
           {% else %}

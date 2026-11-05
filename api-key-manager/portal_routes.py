@@ -43117,6 +43117,23 @@ def quotes_request_detail(request_id: int):
             shopify_trade = _sb2b.lead_card(tenant_id, lead["id"])
         except Exception as e:
             print("⚠️ quote request Shopify trade card:", e)
+    # Shopify Part 6: a won quotation becomes a Shopify draft order.
+    sent_q = _qq.latest_sent(tenant_id, r["id"])
+    shopify_order = {}
+    try:
+        import shopify_orders as _sord
+        if _sord.is_on(tenant_id):
+            shopify_order = {"on": True}
+            if r["status"] == "won" and sent_q:
+                q6 = _sord.latest_sent(tenant_id, r["id"])
+                made = _sord.state(q6)
+                if made and made.get("status") != "deleted":
+                    shopify_order["draft"] = made
+                else:
+                    shopify_order["deleted"] = made or None
+                    shopify_order["preview"] = _sord.preview(tenant_id, r["id"])
+    except Exception as e:
+        print("⚠️ quote request Shopify order:", e)
     return render_template("portal/quotes_request_detail.html", r=r, lead=lead, clock=_qr.time_left(r, now),
                            shopify_trade=shopify_trade, shopify_trade_lead_id=(lead or {}).get("id"),
                            events=_qr.events(r["id"]), qr=_qr, tz=tz, lines_text=_qr.lines_text(r),
@@ -43124,7 +43141,7 @@ def quotes_request_detail(request_id: int):
                            not_quoted_reasons=_qr.NOT_QUOTED_REASONS, cur=r.get("currency") or _biz_currency(tenant_id),
                            country_name=dict(_addr.ADDRESS_COUNTRIES), today=now.date(), dt=_quote_dt(tz),
                            maker=_qr.settings(tenant_id)["maker"], quotations=_qq.for_request(tenant_id, r["id"]),
-                           sent_q=_qq.latest_sent(tenant_id, r["id"]),
+                           sent_q=sent_q, shopify_order=shopify_order,
                            orders_on=_plan_grants_feature(_get_tenant_plan(tenant_id), "ecom.orders_view"))
 
 
@@ -43326,6 +43343,14 @@ def quotes_request_order(request_id: int):
     if not _qr.get(tenant_id, request_id, _quotes_scope(customer)):
         flash("Request not found.", "danger")
         return redirect(url_for("portal.quotes_requests"))
+    try:
+        import shopify_orders as _sord
+        if _sord.is_on(tenant_id):
+            # Shopify Part 6: Shopify businesses get their orders in Shopify only.
+            flash("Your business is linked to Shopify, so the order is made in Shopify.", "info")
+            return redirect(url_for("portal.quotes_request_detail", request_id=request_id))
+    except Exception as e:
+        print("⚠️ quote order Shopify check:", e)
     r2 = _require_plan_sub_feature(customer, "ecom.orders_view", "Orders")
     if r2: return r2
     ok, msg, order_id = _qq.make_order(tenant_id, request_id, _current_actor(customer))
@@ -43335,6 +43360,42 @@ def quotes_request_order(request_id: int):
     if msg:
         flash(msg + " It's waiting for payment.", "success")
     return redirect(url_for("portal.order_detail", order_id=order_id))
+
+
+@portal_bp.route("/quotations/requests/<int:request_id>/shopify-order", methods=["POST"])
+@team_feature("ecom.orders_manage")
+def quotes_request_shopify_order(request_id: int):
+    """Shopify Part 6: Won → a draft order in the business's Shopify."""
+    _rperm = _require_team_permission("ecom.orders_manage")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    back = redirect(url_for("portal.quotes_request_detail", request_id=request_id))
+    if not _qr.get(tenant_id, request_id, _quotes_scope(customer)):
+        flash("Request not found.", "danger")
+        return redirect(url_for("portal.quotes_requests"))
+    import shopify_orders as _sord
+    ok, msg = _sord.create(tenant_id, request_id, _current_actor(customer), request.form.get("po_number") or "")
+    if msg:
+        flash(msg, "success" if ok else "warning")
+    return back
+
+
+@portal_bp.route("/quotations/requests/<int:request_id>/shopify-invoice", methods=["POST"])
+@team_feature("ecom.orders_manage")
+def quotes_request_shopify_invoice(request_id: int):
+    """Shopify Part 6: Shopify emails the buyer the draft order's invoice."""
+    _rperm = _require_team_permission("ecom.orders_manage")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    if not _qr.get(tenant_id, request_id, _quotes_scope(customer)):
+        flash("Request not found.", "danger")
+        return redirect(url_for("portal.quotes_requests"))
+    import shopify_orders as _sord
+    ok, msg = _sord.send_invoice(tenant_id, request_id, _current_actor(customer))
+    flash(msg, "success" if ok else "warning")
+    return redirect(url_for("portal.quotes_request_detail", request_id=request_id))
 
 
 @portal_bp.route("/quotations/requests/<int:request_id>/lines.xlsx")

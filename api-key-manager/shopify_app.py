@@ -499,6 +499,13 @@ def webhooks():
                 shopify_b2b.forget_customer(shop, cid)
             except Exception as e:
                 print(f"⚠️ shopify forget customer {shop}: {e}")
+        elif topic in ("draft_orders/update", "draft_orders/delete"):
+            # Part 6: the draft order made from a won quotation.
+            try:
+                import shopify_orders
+                shopify_orders.webhook(shop, topic, payload)
+            except Exception as e:
+                print(f"⚠️ shopify draft order webhook {shop}: {e}")
         if topic in ("companies/create", "companies/update", "companies/delete",
                      "company_locations/create", "company_locations/update", "company_locations/delete",
                      "company_contacts/create", "company_contacts/update", "company_contacts/delete",

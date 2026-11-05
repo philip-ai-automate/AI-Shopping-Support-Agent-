@@ -5,7 +5,7 @@ application_url = "https://portal.phixtra.com/shopify/app"
 embedded = true
 
 [access_scopes]
-scopes = "read_products,read_inventory,read_customers,read_companies,read_publications"
+scopes = "read_products,read_inventory,read_customers,read_companies,read_publications,write_draft_orders,write_payment_terms"
 
 [auth]
 redirect_urls = [ "https://portal.phixtra.com/shopify/callback" ]
@@ -28,4 +28,10 @@ uri = "https://portal.phixtra.com/shopify/webhooks"
 # / role change (or a contact's customer details) re-reads the store's companies.
 [[webhooks.subscriptions]]
 topics = [ "companies/create", "companies/update", "companies/delete", "company_locations/create", "company_locations/update", "company_locations/delete", "company_contacts/create", "company_contacts/update", "company_contacts/delete", "company_contact_roles/assign", "company_contact_roles/revoke", "customers/update", "customers/delete" ]
+uri = "https://portal.phixtra.com/shopify/webhooks"
+
+# Part 6 (5 Nov 2026): a won quotation becomes a Shopify draft order;
+# PhiXtra follows it until it is completed or deleted.
+[[webhooks.subscriptions]]
+topics = [ "draft_orders/update", "draft_orders/delete" ]
 uri = "https://portal.phixtra.com/shopify/webhooks"
