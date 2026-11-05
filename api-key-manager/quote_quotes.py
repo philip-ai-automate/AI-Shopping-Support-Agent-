@@ -138,7 +138,7 @@ def for_request(tenant_id: int, request_id: int) -> list:
     ensure_tables()
     conn, cur = _db()
     try:
-        cur.execute("""SELECT id, number, version, status, total, currency, valid_until, sent_at, sent_via, created_at
+        cur.execute("""SELECT id, number, version, status, total, currency, valid_until, sent_at, sent_via, created_at, updated_at
                          FROM quotations WHERE tenant_id=%s AND request_id=%s ORDER BY version DESC, id DESC""",
                     (tenant_id, request_id))
         return cur.fetchall()
@@ -247,7 +247,8 @@ def clean_form(raw: dict) -> dict:
                              "price": _num(ln.get("price")) if str(ln.get("price") or "").strip() != "" else None,
                              "disc": _num(ln.get("disc"), 0, 100) or 0,
                              "note": re.sub(r"\s+", " ", str(ln.get("note") or "")).strip()[:200],
-                             "variant_id": re.sub(r"\D", "", str(ln.get("variant_id") or ""))[:30] or None})
+                             "variant_id": re.sub(r"\D", "", str(ln.get("variant_id") or ""))[:30] or None,
+                             "qty_fixed": re.sub(r"\s+", " ", str(ln.get("qty_fixed") or "")).strip()[:200]})
     for c in (raw.get("charges") or [])[:20]:
         if not isinstance(c, dict):
             continue
@@ -283,6 +284,7 @@ def save(tenant_id: int, qid: int, raw: dict, actor: dict) -> tuple:
     d = clean_form(raw)
     d["prepared_by"] = q["data"].get("prepared_by") or {}
     keep_shopify(q["data"], d)
+    _fill_new_shopify_lines(tenant_id, q, d)
     doc = to_doc(tenant_id, {**q, "data": d}, qd.get(tenant_id))
     conn, cur = _db()
     try:
@@ -859,6 +861,7 @@ def apply_shopify(tenant_id: int, data: dict, req: dict):
         if not v:
             ln.pop("auto_price", None); ln.pop("price_src", None)
             continue
+        _fix_rule_qty(ln, card.get("company") or "")
         p, brk = sp.unit_price(v, ln.get("qty"))
         if v.get("sku"):
             ln["code"] = v["sku"]
@@ -868,6 +871,39 @@ def apply_shopify(tenant_id: int, data: dict, req: dict):
         ln["auto_price"] = p
         ln["price_src"] = f"volume price from {brk}" if brk else "catalogue price"
     return currency
+
+
+def _fix_rule_qty(ln: dict, company: str):
+    """Shopify Part 5: a quantity Shopify would refuse is changed to the
+    nearest allowed one, with the reason shown under the line."""
+    v = _variant(ln)
+    if not v:
+        return
+    import shopify_prices as sp
+    new, why = sp.fix_qty(v, ln.get("qty"), company)
+    if why:
+        ln["qty"] = float(new); ln["qty_fixed"] = why
+    elif not ln.get("qty_fixed"):
+        ln.pop("qty_fixed", None)
+
+
+def _fill_new_shopify_lines(tenant_id: int, q: dict, d: dict):
+    """A Shopify product added to the draft after it was made has no variants
+    or account prices yet: read them now (same as Refresh Shopify prices)."""
+    site = d.get("shopify_site") or {}
+    if not site.get("location_id") or site.get("needs_site"):
+        return
+    try:
+        import shopify_prices as sp
+    except Exception:
+        return
+    if not any(sp.is_shopify_product(ln.get("product_id")) and not ln.get("shopify") for ln in d.get("lines") or []):
+        return
+    req = qr.get(tenant_id, q["request_id"]) if q.get("request_id") else None
+    try:
+        apply_shopify(tenant_id, d, req or {})
+    except Exception as e:
+        print("⚠️ quotation new Shopify lines:", e)
 
 
 def keep_shopify(old: dict, new: dict):
@@ -891,7 +927,13 @@ def keep_shopify(old: dict, new: dict):
         v = _variant(ln)
         if v:
             import shopify_prices as sp
+            _fix_rule_qty(ln, (new.get("shopify_site") or {}).get("company") or "")
             p, brk = sp.unit_price(v, ln.get("qty"))
+            # The price still is the list price or PhiXtra's last fill: use
+            # the buyer's own Shopify price (a price the salesperson typed stays).
+            if p is not None and (ln.get("price") is None or ln.get("price") == ln.get("list_price")
+                                  or (o.get("auto_price") is not None and ln.get("price") == o.get("auto_price"))):
+                ln["price"] = p
             ln["auto_price"] = p
             ln["price_src"] = f"volume price from {brk}" if brk else "catalogue price"
 
@@ -921,6 +963,12 @@ def refresh_shopify(tenant_id: int, qid: int) -> tuple:
     finally:
         cur.close(); conn.close()
     return True, f"Prices refreshed from Shopify for {site['company']} ({site['name']})."
+
+
+def rule_blocked(d: dict) -> bool:
+    """A quantity Shopify would refuse is still on the draft."""
+    import shopify_prices as sp
+    return any(_variant(ln) and sp.rule_problems(_variant(ln), ln.get("qty")) for ln in d.get("lines") or [])
 
 
 def shopify_checks(d: dict) -> list:
@@ -961,7 +1009,8 @@ def shopify_checks(d: dict) -> list:
     if novar:
         out.append(("bad", "Choose the variant for: " + ", ".join(novar)))
     if rules:
-        out.append(("warn", f"{site.get('company', 'Buyer')}'s quantity rules in Shopify: " + "; ".join(rules)))
+        out.append(("bad", f"Fix the quantities for {site.get('company', 'the buyer')}'s Shopify rules first "
+                           "(press Fix quantities): " + "; ".join(rules)))
     if notcat:
         out.append(("warn", f"Not in {site.get('company', 'the buyer')}'s Shopify catalogue: " + ", ".join(notcat)))
     if differ:

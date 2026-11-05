@@ -43569,6 +43569,9 @@ def quotes_quotation(qid: int):
         if not ok:
             flash(msg, "warning")
             return redirect(url_for("portal.quotes_quotation", qid=qid))
+        if action in ("send", "preview") and _qq.rule_blocked((_qq.get(tenant_id, qid) or {}).get("data") or {}):
+            flash("Fix the quantities for the buyer's Shopify rules first: press Fix quantities.", "warning")
+            return redirect(url_for("portal.quotes_quotation", qid=qid))
         if action == "send":
             return redirect(url_for("portal.quotes_quotation_send", qid=qid))
         if action == "shopify_refresh":
@@ -43599,6 +43602,9 @@ def quotes_quotation_pdf(qid: int):
     if not q:
         flash("Quotation not found.", "danger")
         return redirect(url_for("portal.quotes_requests"))
+    if q["status"] == "draft" and _qq.rule_blocked(q.get("data") or {}):
+        flash("Fix the quantities for the buyer's Shopify rules first: press Fix quantities.", "warning")
+        return redirect(url_for("portal.quotes_quotation", qid=qid))
     data = _qq.stored_pdf(tenant_id, qid) if q["status"] != "draft" else None
     if not data:
         try:

@@ -21,7 +21,7 @@
       <h1>Send {{ qq.full_number(q) }} to {{ req.buyer_company or req.buyer_name }}</h1>
       <div class="qt-sub">Total {{ qr.money(doc.total, doc.currency) }} · valid until {{ doc.valid_until.strftime('%d %b %Y') }}. The quotation goes as a PDF, in English; your message is in the buyer's language.</div>
     </div>
-    <a class="qt-btn" href="{{ url_for('portal.quotes_quotation_pdf', qid=q.id) }}" target="_blank" rel="noopener">Open the PDF</a>
+    <a class="qt-btn" href="{{ url_for('portal.quotes_quotation_pdf', qid=q.id, v=(q.updated_at.strftime('%Y%m%d%H%M%S%f') if q.updated_at else '')) }}" target="_blank" rel="noopener">Open the PDF</a>
   </div>
 
   {% if not can %}

@@ -14,6 +14,7 @@
 @media (max-width:1000px){ #qeForm > .qt-grid{grid-template-columns:1fr}}
 .qe input.need{border-color:#B42318;background:#FFF6F5}
 .qe .was{display:block;font-size:11.5px;color:#B54708;font-weight:600;margin-top:2px}
+.qe .fixd{display:block;font-size:11.5px;color:#B54708;font-weight:700;margin-top:2px}
 .qe .meta{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
 .qe .rm,#qePlan .rm{border:0;background:none;color:#B42318;font-size:12px;text-decoration:underline;cursor:pointer;padding:0}
 .qe-tot{display:grid;grid-template-columns:1fr auto;gap:4px 18px;font-size:13.5px;font-variant-numeric:tabular-nums;min-width:260px;justify-self:end}
@@ -24,6 +25,23 @@
 .chk .ok{color:#067647;font-weight:700}.chk .warn{color:#B54708;font-weight:700}.chk .bad{color:#B42318;font-weight:700}
 .qe-bar{position:sticky;bottom:0;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap;box-shadow:0 -4px 16px rgba(11,29,64,.06);z-index:5}
 @media (min-width:700px){.qe-bar{margin-right:190px}}  /* keep Send clear of the Need help button */
+/* PhiXtra's own drop-downs (product + variant): clear, dark scroll bar */
+.pxp{position:fixed;z-index:1000;background:#fff;border:1px solid #98A2B3;border-radius:10px;box-shadow:0 10px 28px rgba(11,29,64,.18);display:none;flex-direction:column;overflow:hidden;font-size:13px}
+.pxp.open{display:flex}
+.pxp-list{max-height:260px;overflow-y:scroll;scrollbar-width:auto;scrollbar-color:#475467 #EAECF0}
+.pxp-list::-webkit-scrollbar{width:12px}
+.pxp-list::-webkit-scrollbar-track{background:#EAECF0}
+.pxp-list::-webkit-scrollbar-thumb{background:#475467;border-radius:6px;border:2px solid #EAECF0}
+.pxp-list::-webkit-scrollbar-thumb:hover{background:#1D2939}
+.pxp-it{padding:7px 10px;cursor:pointer;border-bottom:1px solid #F2F4F7;line-height:1.3}
+.pxp-it .s{display:block;font-size:11.5px;color:var(--muted)}
+.pxp-it.on,.pxp-it:hover{background:#EEF4FF}
+.pxp-it.cur{font-weight:700}
+.pxp-none{padding:9px 10px;color:var(--muted)}
+.pxp-more{padding:6px 10px;font-size:12px;font-weight:700;color:#0B1D40;background:#F2F4F7;border-top:1px solid #D0D5DD}
+.pxv{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;margin-top:4px;min-height:30px;padding:4px 8px;border:1px solid #98A2B3;border-radius:8px;background:#fff;font:inherit;font-size:12.5px;text-align:left;cursor:pointer}
+.pxv.need{border-color:#B42318;background:#FFF6F5}
+.pxv:disabled{cursor:default;opacity:.7}
 </style>
 {% endblock %}
 {% block content %}
@@ -37,14 +55,14 @@
         {% else %}Sent {{ q.sent_at.strftime('%d %b %Y, %H:%M') }} by {{ 'email' if q.sent_via == 'email' else 'WhatsApp' }} to {{ q.sent_to }} · can't be changed{% endif %}</div>
     </div>
     <div class="qt-btns">
-      <a class="qt-btn" href="{{ url_for('portal.quotes_quotation_pdf', qid=q.id) }}" target="_blank" rel="noopener">{{ 'Preview PDF' if draft else 'Open PDF' }}</a>
+      <a class="qt-btn" href="{{ url_for('portal.quotes_quotation_pdf', qid=q.id, v=(q.updated_at.strftime('%Y%m%d%H%M%S%f') if q.updated_at else '')) }}" target="_blank" rel="noopener">{{ 'Preview PDF' if draft else 'Open PDF' }}</a>
       {% if versions|length > 1 %}{% for v in versions %}{% if v.id != q.id %}<a class="qt-btn sm" href="{{ url_for('portal.quotes_quotation', qid=v.id) }}">{{ v.number }}{{ ' v%d'|format(v.version) if v.version > 1 }} · {{ {'draft': 'draft', 'sending': 'sending', 'sent': 'sent', 'superseded': 'replaced'}.get(v.status, v.status) }}</a>{% endif %}{% endfor %}{% endif %}
     </div>
   </div>
 
   {% if open_preview %}<div class="qt-ai" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
     <span><b>Saved.</b> See exactly what the buyer will get.</span>
-    <a class="qt-btn dark sm" href="{{ url_for('portal.quotes_quotation_pdf', qid=q.id) }}" target="_blank" rel="noopener">Open the PDF</a></div>{% endif %}
+    <a class="qt-btn dark sm" href="{{ url_for('portal.quotes_quotation_pdf', qid=q.id, v=(q.updated_at.strftime('%Y%m%d%H%M%S%f') if q.updated_at else '')) }}" target="_blank" rel="noopener">Open the PDF</a></div>{% endif %}
   {% if changes and draft %}<div class="qt-ai"><b>New version of {{ q.number }}</b>Copied from {{ changes.label }}, which the buyer has. Lines you change are marked in orange with what {{ changes.label }} said.</div>{% endif %}
   <form method="post" id="qeForm" class="qt" style="gap:14px">
     <input type="hidden" name="data_json" id="qeData">
@@ -90,7 +108,7 @@
       <div class="qt-card">
         <span class="qt-lbl">Checked before sending</span>
         <div class="chk">
-          {% for level, text in checks %}<div><span class="{{ level }}">{{ '✓' if level == 'ok' else '!' }}</span><span>{{ text }}</span></div>{% endfor %}
+          {% for level, text in checks %}<div><span class="{{ level }}">{{ '✓' if level == 'ok' else ('✗' if level == 'bad' else '!') }}</span><span>{{ text }}{% if draft and text.startswith('Fix the quantities') %}<br><button class="qt-btn sm dark" data-act="save" style="margin-top:6px">Fix quantities</button>{% endif %}</span></div>{% endfor %}
         </div>
         <div class="qt-ai"><b>PhiXtra never sets a price</b>It fills your list prices and checks what's missing. Every price is the salesperson's. Saved checks update when you save.</div>
         <div class="qt-small">The buyer: <b>{{ req.buyer_company or req.buyer_name }}</b>{% if req.buyer_name and req.buyer_company %} · {{ req.buyer_name }}{% endif %}<br>{{ req.buyer_email or '' }} {{ req.buyer_phone or '' }}
@@ -113,6 +131,7 @@
 <script>
 (function () {
   var DRAFT = {{ 'true' if draft else 'false' }};
+  var NEWPICK = true;   // PhiXtra's own product + variant drop-downs (5 Nov 2026)
   var D = {{ q.data|tojson }};
   var PRODUCTS = {{ products_json|tojson }};
   var CUR = {{ cur_sign(cur)|tojson }};
@@ -125,10 +144,78 @@
   var lines = document.getElementById('qeLines'), charges = document.getElementById('qeCharges'), plan = document.getElementById('qePlan');
   var dirty = false;
 
+  // ── PhiXtra's own drop-down: opens under a box, dark scroll bar, "N more" hint.
+  var PX = null;
+  function pxPicker(anchor, items, onPick) {
+    if (!PX) {
+      PX = el('div', { 'class': 'pxp', role: 'listbox' });
+      PX._list = el('div', { 'class': 'pxp-list' }); PX._more = el('div', { 'class': 'pxp-more' });
+      PX.appendChild(PX._list); PX.appendChild(PX._more); document.body.appendChild(PX);
+      PX._list.addEventListener('scroll', pxMore);
+      document.addEventListener('mousedown', function (e) { if (PX._anchor && !PX.contains(e.target) && e.target !== PX._anchor) { pxClose(); } });
+      window.addEventListener('resize', pxPlace); window.addEventListener('scroll', pxPlace, true);
+    }
+    PX._anchor = anchor; PX._pick = onPick; PX._items = items; PX._on = -1;
+    PX._list.innerHTML = '';
+    if (!items.length) { var n = el('div', { 'class': 'pxp-none' }); n.textContent = 'Nothing matches. You can still type your own wording.'; PX._list.appendChild(n); }
+    items.forEach(function (it, i) {
+      var d = el('div', { 'class': 'pxp-it' + (it.cur ? ' cur' : ''), role: 'option' });
+      d.appendChild(document.createTextNode(it.label));
+      if (it.sub) { var sb = el('span', { 'class': 's' }); sb.textContent = it.sub; d.appendChild(sb); }
+      d.addEventListener('mousedown', function (e) { e.preventDefault(); pxChoose(i); });
+      PX._list.appendChild(d);
+    });
+    PX.classList.add('open'); pxPlace(); PX._list.scrollTop = 0; pxMore();
+  }
+  function pxPlace() {
+    if (!PX || !PX._anchor || !PX.classList.contains('open')) { return; }
+    var r = PX._anchor.getBoundingClientRect();
+    PX.style.left = r.left + 'px'; PX.style.width = Math.max(r.width, 280) + 'px';
+    var below = window.innerHeight - r.bottom;
+    if (below < 200 && r.top > below) { PX.style.top = ''; PX.style.bottom = (window.innerHeight - r.top + 2) + 'px'; }
+    else { PX.style.bottom = ''; PX.style.top = (r.bottom + 2) + 'px'; }
+  }
+  function pxMore() {
+    var L = PX._list, hidden = 0, edge = L.scrollTop + L.clientHeight;
+    Array.prototype.forEach.call(L.children, function (c) { if (c.offsetTop + c.offsetHeight / 2 > edge) { hidden++; } });
+    PX._more.style.display = hidden ? '' : 'none';
+    PX._more.textContent = '▼ ' + hidden + ' more, scroll down';
+  }
+  function pxClose() { if (PX) { PX.classList.remove('open'); PX._anchor = null; } }
+  function pxChoose(i) { var it = PX._items[i], f = PX._pick; pxClose(); if (it && f) { f(it); } }
+  function pxKey(e) {
+    if (!PX || !PX.classList.contains('open') || PX._anchor !== e.target) { return false; }
+    var rows = PX._list.querySelectorAll('.pxp-it');
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault(); if (!rows.length) { return true; }
+      PX._on = Math.max(0, Math.min(rows.length - 1, PX._on + (e.key === 'ArrowDown' ? 1 : -1)));
+      rows.forEach(function (r, i) { r.classList.toggle('on', i === PX._on); });
+      rows[PX._on].scrollIntoView({ block: 'nearest' }); return true;
+    }
+    if (e.key === 'Enter' && PX._on >= 0) { e.preventDefault(); pxChoose(PX._on); return true; }
+    if (e.key === 'Escape') { pxClose(); return true; }
+    return false;
+  }
+
   function lineRow(ln) {
     var tr = el('tr');
-    var name = input(ln.name, { list: 'prodList', maxlength: '300', 'aria-label': 'Product' });
+    var name = input(ln.name, NEWPICK ? { maxlength: '300', 'aria-label': 'Product', autocomplete: 'off', placeholder: 'Click to choose a product' } : { list: 'prodList', maxlength: '300', 'aria-label': 'Product' });
+    if (NEWPICK && DRAFT) {
+      var openProducts = function () {
+        var t = name.value.trim().toLowerCase(), all = PRODUCTS;
+        var hit = byName[t] ? all : all.filter(function (p) { return !t || p.name.toLowerCase().indexOf(t) >= 0 || (p.sku && p.sku.toLowerCase().indexOf(t) >= 0); });
+        pxPicker(name, hit.map(function (p) {
+          var sub = []; if (p.price !== null) { sub.push('List ' + money(p.price)); } if (p.sku) { sub.push('SKU ' + p.sku); }
+          if (p.stock === 0) { sub.push('Out of stock'); } else if (p.stock !== null && p.stock !== undefined) { sub.push(p.stock + ' in stock'); }
+          return { label: p.name, sub: sub.join(' · '), p: p, cur: p.id === tr._pid };
+        }), function (it) { name.value = it.p.name; name.dispatchEvent(new Event('change')); dirty = true; });
+      };
+      name.addEventListener('focus', openProducts); name.addEventListener('click', openProducts);
+      name.addEventListener('input', openProducts);
+      name.addEventListener('keydown', function (e) { pxKey(e); });
+    }
     var meta = el('span', { 'class': 'meta' }), was = el('span', { 'class': 'was' });
+    var fixd = el('span', { 'class': 'fixd' }); fixd.textContent = ln.qty_fixed || '';
     var qty = input(ln.qty, { type: 'number', min: '0', step: 'any', 'aria-label': 'Quantity' });
     var unit = input(ln.unit, { maxlength: '40', placeholder: 'cases', 'aria-label': 'Unit' });
     var price = input(ln.price, { type: 'number', min: '0', step: 'any', 'aria-label': 'Your price' });
@@ -142,6 +229,22 @@
     function vPrice(v) { var q = parseFloat(qty.value) || 0, best = v.price, from = null;
       (v.breaks || []).forEach(function (b) { if (q >= b[0] && b[1] !== null && b[1] < best) { best = b[1]; from = b[0]; } });
       return [best, from]; }
+    // Shopify Part 5: a quantity Shopify would refuse is changed at once.
+    function fixRule() {
+      var v = vOf(); if (!v || !DRAFT) { return; }
+      var q = parseFloat(qty.value); if (isNaN(q) || q <= 0) { return; }
+      var mn = v.min || 1, mx = v.max || null, st = v.step || 1, n = q, why = [];
+      if (n !== Math.floor(n)) { n = Math.ceil(n); why.push('whole units'); }
+      if (n < mn) { n = mn; why.push('minimum ' + mn); }
+      if (st > 1 && n % st) { n = Math.ceil(n / st) * st; why.push('steps of ' + st); }
+      if (mx && n > mx) { n = st > 1 ? Math.floor(mx / st) * st : mx; why = ['maximum ' + mx]; }
+      if (n === q) { return; }
+      var co = (D.shopify_site || {}).company;
+      qty.value = n;
+      fixd.textContent = 'Changed ' + q + ' \u2192 ' + n + ' to match ' + (co ? co + "'s" : "the buyer's") + ' Shopify rules (' + why.join(', ') + ')';
+      var r = vPrice(v); if (parseFloat(price.value) === tr._auto || price.value.trim() === '') { price.value = r[0]; } tr._auto = r[0];
+      dirty = true;
+    }
     if (SH && SH.variants.length > 1) {
       vsel = el('select', { 'aria-label': 'Variant', style: 'margin-top:4px;max-width:100%;font:inherit;font-size:12.5px' });
       var o0 = el('option', { value: '' }); o0.textContent = 'Choose the variant…'; vsel.appendChild(o0);
@@ -149,9 +252,31 @@
       if (!DRAFT) { vsel.disabled = true; }
       vsel.addEventListener('change', function () {
         tr._vid = vsel.value || null; var v = vOf();
-        if (v) { var r = vPrice(v); if (price.value.trim() === '' || parseFloat(price.value) === tr._auto) { price.value = r[0]; } tr._auto = r[0]; if (v.sku) { tr._code = v.sku; } }
+        if (v) { var r = vPrice(v); if (price.value.trim() === '' || parseFloat(price.value) === tr._auto || (tr._auto === null && tr._list !== null && parseFloat(price.value) === Number(tr._list))) { price.value = r[0]; } tr._auto = r[0]; if (v.sku) { tr._code = v.sku; } }
+        fixd.textContent = ''; fixRule();
         describe(); total(); dirty = true;
       });
+      if (NEWPICK) {
+        var vbtn = el('button', { type: 'button', 'class': 'pxv', 'aria-label': 'Variant' });
+        var vlab = el('span'), vcar = el('span'); vcar.textContent = '▾'; vbtn.appendChild(vlab); vbtn.appendChild(vcar);
+        if (!DRAFT) { vbtn.disabled = true; }
+        var vShow = function () { var v = vOf(); vlab.textContent = v ? v.title + (v.price !== null ? ' · ' + money(v.price) : '') : 'Choose the variant…'; vbtn.classList.toggle('need', !v); };
+        var vRule = function (v) {
+          var b = [];
+          if (v.price !== null) { b.push('Their price ' + money(v.price)); }
+          (v.breaks || []).forEach(function (k) { b.push(money(k[1]) + ' from ' + k[0]); });
+          if (v.min && v.min > 1) { b.push('min ' + v.min); } if (v.max) { b.push('max ' + v.max); } if (v.step && v.step > 1) { b.push('steps of ' + v.step); }
+          if (v.sku) { b.push('SKU ' + v.sku); }
+          return b.join(' · ');
+        };
+        var vOpen = function () {
+          pxPicker(vbtn, SH.variants.map(function (v) { return { label: v.title, sub: vRule(v), v: v, cur: v.id === tr._vid }; }),
+            function (it) { vsel.value = it.v.id; vsel.dispatchEvent(new Event('change')); vShow(); vbtn.focus(); });
+        };
+        vbtn.addEventListener('click', function () { if (PX && PX._anchor === vbtn) { pxClose(); } else { vOpen(); } });
+        vbtn.addEventListener('keydown', function (e) { if (!pxKey(e) && (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); vOpen(); } });
+        vsel.style.display = 'none'; vsel._btn = vbtn; vShow();
+      }
     }
     function describe() {
       var p = tr._pid && byId[tr._pid];
@@ -186,13 +311,21 @@
       tr._pid = p ? p.id : null; tr._list = p ? p.price : null; tr._code = p ? (p.sku || '') : '';
       if (p && price.value.trim() === '' && p.price !== null) { price.value = p.price; }
       describe(); total();
+      // A Shopify product for a Shopify trade customer: save now so the page
+      // comes back with its variants and the buyer's own prices.
+      var ss = D.shopify_site || {};
+      if (DRAFT && p && !SH && ss.location_id && !ss.needs_site && /^product-\d+$/.test(String(p.id))) {
+        meta.textContent = 'Getting ' + (ss.company || 'their') + ' prices from Shopify…';
+        var sb = document.querySelector('[data-act="save"]'); if (sb) { sb.click(); }
+      }
     });
     qty.addEventListener('input', function () {
       var v = vOf();   // a volume price can change with the quantity
       if (v) { var r = vPrice(v); if (parseFloat(price.value) === tr._auto) { price.value = r[0]; } tr._auto = r[0]; }
     });
+    qty.addEventListener('change', function () { fixd.textContent = ''; fixRule(); describe(); total(); });
     [qty, price, disc].forEach(function (i) { i.addEventListener('input', function () { describe(); total(); }); });
-    var c1 = el('td', { 'class': 'nm' }); c1.appendChild(name); if (vsel) { c1.appendChild(vsel); } c1.appendChild(meta); c1.appendChild(was);
+    var c1 = el('td', { 'class': 'nm' }); c1.appendChild(name); if (vsel) { c1.appendChild(vsel); if (vsel._btn) { c1.appendChild(vsel._btn); } } c1.appendChild(fixd); c1.appendChild(meta); c1.appendChild(was);
     var c2 = el('td', { 'class': 'qty' }); c2.appendChild(qty);
     var c3 = el('td', { 'class': 'un' }); c3.appendChild(unit);
     var c4 = el('td', { 'class': 'num' }); c4.appendChild(price);
@@ -200,7 +333,7 @@
     var c7 = el('td');
     if (DRAFT) { var rm = el('button', { type: 'button', 'class': 'rm' }); rm.textContent = 'Remove'; rm.addEventListener('click', function () { tr.remove(); total(); dirty = true; }); c7.appendChild(rm); }
     [c1, c2, c3, c4, c5, amt, c7].forEach(function (c) { tr.appendChild(c); });
-    tr._get = function () { return { product_id: tr._pid, name: name.value, code: tr._code, qty: qty.value, unit: unit.value, list_price: tr._list, price: price.value, disc: disc.value, note: tr._note, variant_id: tr._vid }; };
+    tr._get = function () { return { product_id: tr._pid, name: name.value, code: tr._code, qty: qty.value, unit: unit.value, list_price: tr._list, price: price.value, disc: disc.value, note: tr._note, variant_id: tr._vid, qty_fixed: fixd.textContent }; };
     tr._amount = function () { var p = parseFloat(price.value), q = parseFloat(qty.value), d = parseFloat(disc.value) || 0; return (isNaN(p) || isNaN(q)) ? 0 : Math.round(p * (1 - d / 100) * q * 100) / 100; };
     tr._amt = amt;
     describe();

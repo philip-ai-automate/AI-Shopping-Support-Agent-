@@ -313,6 +313,10 @@ _PRODUCT_REC_INSTRUCTION = (
     "- The tag must always be at the very END — never in the middle.\n"
     "- The tag is stripped automatically before the customer sees your message.\n"
     "- If you are NOT recommending a specific product, omit the tag entirely.\n"
+    "- EXCEPTION, one option's price: a product whose options (colour, size, pack…) have different "
+    "prices shows only a price RANGE on its card. When the customer asks the price of ONE option, "
+    "say that option's price in one short sentence (e.g. 'The Dawn option is $699.95.') and still add "
+    "the tag. Never say you are giving a price without writing the price.\n"
     "- CONSISTENCY: never say things like 'we have several options' or describe more products "
     "than you put in the tag. If you mention a number or range of options, the tag must contain "
     "that many (up to 6) — do not undercount. Customers can only tap what's in the tag, so anything "
@@ -1020,11 +1024,12 @@ def _chat(req: ChatRequest):
     # website answer could come back blank (2026-10-01). Product-only
     # answers and greetings keep LLM_MAX_OUTPUT_TOKENS.
     # Shopify Part 5 (3 Nov 2026): a logged-in trade buyer's own account prices.
+    _acct5 = {}
     if req.visitor and isinstance(req.visitor, dict) and req.visitor.get("shopify_signed"):
         try:
             import chat_visitor as _cv5
             _pool = raw_docs or []
-            system_prompt += _cv5.account_prices_line(int(tenant_id), req.visitor, _pool)
+            system_prompt += _cv5.account_prices_line(int(tenant_id), req.visitor, _pool, out=_acct5)
         except Exception as _ap_err:
             print(f"⚠️ account prices: {_ap_err}")
     _max_out = None
@@ -1352,6 +1357,25 @@ def _chat(req: ChatRequest):
             _c.commit(); _k.close(); _c.close()
         except Exception as _e:
             print("⚠️ no-card product lines:", _e)
+    # Shopify Part 5 (5 Nov 2026): a logged-in trade buyer's cards show their
+    # own account price, the same the AI quotes, not the list price.
+    if product_recommendations and _acct5.get("prices"):
+        try:
+            from search import _fmt_currency_val as _fcv
+            for _r in product_recommendations:
+                _info = _acct5["prices"].get(str(_r.get("id") or ""))
+                if not _info or not _info.get("published", True):
+                    continue
+                _ps = [float(_v["price"]) for _v in (_info.get("variants") or []) if _v.get("price") is not None]
+                if not _ps:
+                    continue
+                _cur = _info.get("currency") or ""
+                _lo, _hi = min(_ps), max(_ps)
+                _txt = _fcv(_lo, _cur, tenant_id) + ("" if abs(_hi - _lo) < 0.01 else " – " + _fcv(_hi, _cur, tenant_id))
+                _r["list_price_text"] = _r.get("price") or ""
+                _r["price"] = "Your price " + _txt
+        except Exception as _ap_card_err:
+            print(f"⚠️ account price cards: {_ap_card_err}")
     if product_recommendations:
         # Every photo of each product, with its label (2026-10-25) — added
         # after the answer, so no AI tokens; website gallery + WhatsApp MORE.

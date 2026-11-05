@@ -154,7 +154,7 @@ def _trade_line(t: dict) -> str:
     return line
 
 
-def account_prices_line(tenant_id: int, v: dict, docs: list) -> str:
+def account_prices_line(tenant_id: int, v: dict, docs: list, out: dict = None) -> str:
     """Shopify Part 5: a logged-in (signed) trade buyer's own Shopify prices
     for the products in this answer, from the portal. Unit prices only; the
     AI never gives a quoted total. '' when none apply."""
@@ -172,6 +172,8 @@ def account_prices_line(tenant_id: int, v: dict, docs: list) -> str:
     except Exception as e:
         print("⚠️ chat_visitor.account_prices:", e)
         return ""
+    if out is not None:     # for the product cards (5 Nov 2026)
+        out["prices"] = prices; out["company"] = t.get("company") or ""
     rows = []
     for pid in ids:
         info = prices.get(pid)

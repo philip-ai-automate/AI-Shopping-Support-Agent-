@@ -160,7 +160,7 @@
             {% if v.sent_at %}<span class="s">{{ dt(v.sent_at) }} · {{ 'email' if v.sent_via == 'email' else 'WhatsApp' }}</span>{% endif %}</td>
           <td class="r">{{ qr.money(v.total, v.currency) if v.total is not none else '—' }}</td>
           <td>{{ v.valid_until.strftime('%d %b %Y') if v.valid_until else '' }}</td>
-          <td><a class="qt-small" href="{{ url_for('portal.quotes_quotation_pdf', qid=v.id) }}" target="_blank" rel="noopener">PDF</a></td></tr>
+          <td><a class="qt-small" href="{{ url_for('portal.quotes_quotation_pdf', qid=v.id, v=(v.updated_at.strftime('%Y%m%d%H%M%S%f') if v.updated_at else '')) }}" target="_blank" rel="noopener">PDF</a></td></tr>
       {% endfor %}</tbody></table></div>
   </div>
   {% endif %}

@@ -161,7 +161,10 @@ def poll(tenant_id: int, session_id: str, after: int, business_name: str, histor
                 ) x ORDER BY created_at, id LIMIT 200
             """, (tenant_id, session_id, tenant_id, session_id))
             for r in cur.fetchall() or []:
-                item = {"kind": r["kind"], "text": r["content"]}
+                txt = r["content"] or ""
+                if r["kind"] == "ai":     # the hidden product-card tag is never shown (5 Nov 2026)
+                    txt = re.sub(r"<<<PHIXTRA_PRODUCTS:.*?>>>", "", txt, flags=re.DOTALL).strip()
+                item = {"kind": r["kind"], "text": txt}
                 if r["kind"] == "staff":
                     item["by"] = _who(r["label"])
                     out["last_id"] = max(out["last_id"], int(r["id"]))

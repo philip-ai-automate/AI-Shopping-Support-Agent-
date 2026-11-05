@@ -573,6 +573,21 @@ def create_app():
             print("⚠️ inject_campaign_review_pending error:", e)
             return {'_campaign_review_pending_count': 0}
 
+    @flask_app.after_request
+    def _no_shared_cache(resp):
+        # Logged-in pages and downloads (quotation PDFs, exports…) must never
+        # be kept by Cloudflare or any other shared cache: it caches .pdf etc.
+        # by file type and would hand them to anyone with the link.
+        # /static and /vault (public product photos) keep their own caching.
+        try:
+            from flask import request as _rq
+            path = _rq.path or ""
+            if not (path.startswith("/static/") or path.startswith("/vault")) and not resp.headers.get("Cache-Control"):
+                resp.headers["Cache-Control"] = "private, no-store"
+        except Exception:
+            pass
+        return resp
+
     return flask_app
 
 

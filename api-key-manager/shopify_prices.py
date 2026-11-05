@@ -149,6 +149,34 @@ def rule_text(v: dict) -> str:
     return " · ".join(bits)
 
 
+def fix_qty(v: dict, qty, company: str = "") -> tuple:
+    """(allowed quantity, why it changed or "") under the variant's Shopify
+    quantity rules: up to the minimum, up to the next step, down to the maximum."""
+    import math
+    try:
+        q = float(qty or 0)
+    except (TypeError, ValueError):
+        return qty, ""
+    if not v or q <= 0:
+        return qty, ""
+    mn, mx, st = int(v.get("min") or 1), (int(v["max"]) if v.get("max") else None), int(v.get("step") or 1)
+    new, why = q, []
+    if new != int(new):
+        new = math.ceil(new); why.append("whole units")
+    if new < mn:
+        new = mn; why.append(f"minimum {mn}")
+    if st > 1 and new % st:
+        new = math.ceil(new / st) * st; why.append(f"steps of {st}")
+    if mx and new > mx:
+        new = (mx // st) * st if st > 1 else mx
+        why = [f"maximum {mx}"]
+    new = int(new)
+    if new == q:
+        return qty, ""
+    who = f"{company}'s" if company else "the buyer's"
+    return new, f"Changed {'%g' % q} \u2192 {new} to match {who} Shopify rules ({', '.join(why)})"
+
+
 def rule_problems(v: dict, qty) -> list:
     """Quantity-rule warnings for a line (Part 5 checks)."""
     out = []
