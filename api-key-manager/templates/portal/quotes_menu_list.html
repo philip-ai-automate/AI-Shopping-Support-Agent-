@@ -1,0 +1,100 @@
+{% extends "portal/base.html" %}
+{# Quote Sent / Quote Won pages from the Quotations side menu (2026-11-05).
+   The same requests as the Requests tabs, already filtered, with their own numbers. #}
+{% block title %}{{ 'Quote Sent' if view == 'sent' else 'Quote Won' }} — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-wide{% endblock %}
+{% block head %}{% include "portal/_quotes_css.html" %}
+<style>
+  .qm-kpis{grid-template-columns:repeat(3,1fr)}
+  @media (max-width:640px){.qm-kpis{grid-template-columns:1fr 1fr}}
+  .qm-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .qm-tools select,.qm-tools input{font:inherit;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-height:38px;margin:0;max-width:100%}
+</style>
+{% endblock %}
+{% block content %}
+{% set this_page = 'portal.quotes_sent' if view == 'sent' else 'portal.quotes_won' %}
+<div class="qt">
+  <div class="qt-top">
+    <div>
+      <h1>{{ 'Quote Sent' if view == 'sent' else 'Quote Won' }}</h1>
+      <div class="qt-sub">{% if view == 'sent' %}Quotes waiting for the buyer's answer. Open one to mark it Won or Lost.{% else %}Quotes the buyer accepted.{% endif %}</div>
+    </div>
+  </div>
+
+  <div class="qt-kpis qm-kpis">
+    {% if view == 'sent' %}
+    <div class="qt-kpi"><span class="qt-kl">Quotes waiting</span><span class="qt-kv">{{ k.n }}</span>
+      <span class="qt-small">for the buyer's answer</span></div>
+    <div class="qt-kpi"><span class="qt-kl">Total value waiting</span><span class="qt-kv">{{ k.v|money_total }}</span>
+      <span class="qt-small">in your currency</span></div>
+    <div class="qt-kpi"><span class="qt-kl">Expiring in 3 days</span><span class="qt-kv">{{ k.expiring }}</span>
+      <span class="qt-small">{% if k.expired %}{{ k.expired }} already expired{% else %}none expired{% endif %}</span></div>
+    {% else %}
+    <div class="qt-kpi"><span class="qt-kl">Won {{ 'this month' if period == 'month' else 'in total' }}</span><span class="qt-kv">{{ k.n }}</span>
+      <span class="qt-small">quotes accepted</span></div>
+    <div class="qt-kpi"><span class="qt-kl">Won value {{ 'this month' if period == 'month' else 'in total' }}</span><span class="qt-kv">{{ k.v|money_total }}</span>
+      <span class="qt-small">in your currency</span></div>
+    <div class="qt-kpi"><span class="qt-kl">Order made</span><span class="qt-kv">{{ k.orders }}</span>
+      <span class="qt-small">of {{ rows|length }} won{{ ' shown' if q }}</span></div>
+    {% endif %}
+  </div>
+
+  <div class="qt-card">
+    <form method="get" class="qm-tools" style="margin-bottom:10px">
+      {% if view == 'won' %}
+      <select name="period" aria-label="Period" onchange="this.form.submit()">
+        <option value="month" {% if period == 'month' %}selected{% endif %}>This month</option>
+        <option value="all" {% if period == 'all' %}selected{% endif %}>All time</option>
+      </select>
+      {% endif %}
+      {% if see_all %}
+      <select name="who" aria-label="Salesperson" onchange="this.form.submit()">
+        <option value="">All salespeople</option>
+        {% for p in people %}<option value="{{ p.key }}" {% if who == p.key %}selected{% endif %}>{{ p.display }}</option>{% endfor %}
+      </select>
+      {% endif %}
+      <input type="search" name="q" value="{{ q }}" placeholder="Buyer, email, R-1001 or quote no." aria-label="Search" style="width:250px">
+    </form>
+
+    {% if rows %}
+    <div class="qt-scroll"><table>
+      <thead><tr><th>Request</th><th>Buyer</th><th>Quote</th><th class="r">Value</th>
+        {% if view == 'sent' %}<th>Sent</th><th>Valid until</th>{% else %}<th>Won on</th><th>Order</th>{% endif %}
+        <th>Salesperson</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr class="link" onclick="location.href='{{ url_for('portal.quotes_request_detail', request_id=r.id) }}'">
+          <td><a class="rowlink" href="{{ url_for('portal.quotes_request_detail', request_id=r.id) }}">R-{{ r.ref_no }}</a>
+            <span class="s">{{ qr.CHANNEL_WORDS.get(r.channel, r.channel) }}</span></td>
+          <td><b>{{ r.buyer_company or r.buyer_name or '—' }}</b>
+            <span class="s">{% if r.buyer_company and r.buyer_name %}{{ r.buyer_name }}{% endif %}</span></td>
+          <td>{{ r.quote_number or '—' }}</td>
+          <td class="r">{{ qr.money(r.quote_value, r.quote_currency) if r.quote_value is not none else '—' }}</td>
+          {% if view == 'sent' %}
+          <td>{{ dt(r.quote_sent_at) if r.quote_sent_at else '—' }}{% if r.quote_sent_via %}<span class="s">by {{ r.quote_sent_via|lower }}</span>{% endif %}</td>
+          <td>{% if r.quote_valid_until %}
+              {% set dl = r.days_left %}
+              <span class="qt-pill {{ 'p-bad' if dl < 0 else ('p-warn' if dl <= 3 else 'p-ok') }}">{{ r.quote_valid_until.strftime('%d %b %Y') }}</span>
+              <span class="s">{% if dl < 0 %}expired{% elif dl == 0 %}last day{% elif dl <= 3 %}{{ dl }} day{{ 's' if dl != 1 }} left{% endif %}</span>
+            {% else %}—{% endif %}</td>
+          {% else %}
+          <td>{{ dt(r.closed_at) if r.closed_at else '—' }}</td>
+          <td>{% set o = orders.get(r.id) %}
+            {% if o and o.kind == 'phixtra' %}<a href="{{ url_for('portal.order_detail', order_id=o.order_id) }}" onclick="event.stopPropagation()"><span class="qt-pill p-ok">Order made</span></a>
+            {% elif o and o.kind == 'shopify' %}<span class="qt-pill {{ 'p-ok' if o.placed else 'p-warn' }}">Shopify {{ o.name }}</span><span class="s">{{ o.status }}</span>
+            {% else %}<span class="qt-pill p-warn">No order yet</span>{% endif %}</td>
+          {% endif %}
+          <td>{{ r.assigned_to|who(r.assigned_key) if r.assigned_to else '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody></table></div>
+    {% elif q %}
+    <div class="qt-empty">Nothing matches "{{ q }}" here. Clear the search to see them all.</div>
+    {% elif view == 'sent' %}
+    <div class="qt-empty">No quotes waiting for an answer. When you send a quotation, it shows here until you mark it Won or Lost.</div>
+    {% else %}
+    <div class="qt-empty">No won quotes {{ 'this month' if period == 'month' else 'yet' }}.{% if period == 'month' %} Choose <b>All time</b> to see earlier ones.{% endif %}</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -402,11 +402,13 @@ def ref(r) -> str:
 
 
 def list_requests(tenant_id: int, status: str = "to_quote", scope_key: str = None, q: str = "",
-                  limit: int = 500) -> list:
+                  limit: int = 500, closed_since=None) -> list:
     ensure_tables()
     where, params = ["tenant_id=%s"], [tenant_id]
     if status in STATUS_WORDS:
         where.append("status=%s"); params.append(status)
+    if closed_since is not None:
+        where.append("closed_at >= %s"); params.append(closed_since)
     if scope_key:
         where.append("assigned_key=%s"); params.append(scope_key)
     q = (q or "").strip()
@@ -417,7 +419,9 @@ def list_requests(tenant_id: int, status: str = "to_quote", scope_key: str = Non
                           OR lower(COALESCE(buyer_email,'')) LIKE %s OR lower(COALESCE(quote_number,'')) LIKE %s
                           OR ref_no = %s)""")
         params += [like, like, like, like, int(m.group(1)) if m else -1]
-    order = "due_at ASC NULLS LAST, id" if status == "to_quote" else "COALESCE(quote_sent_at, created_at) DESC, id DESC"
+    order = ("due_at ASC NULLS LAST, id" if status == "to_quote"
+             else "COALESCE(closed_at, created_at) DESC, id DESC" if status in ("won", "lost")
+             else "COALESCE(quote_sent_at, created_at) DESC, id DESC")
     conn, cur = _db()
     try:
         cur.execute(f"SELECT {_LIST_COLS} FROM quote_requests WHERE {' AND '.join(where)} ORDER BY {order} LIMIT %s",
@@ -435,6 +439,71 @@ def counts(tenant_id: int, scope_key: str = None) -> dict:
                           AND (%s::text IS NULL OR assigned_key=%s) GROUP BY status""", (tenant_id, scope_key, scope_key))
         c = {r["status"]: r["n"] for r in cur.fetchall()}
         return {k: c.get(k, 0) for k, _ in STATUSES}
+    finally:
+        cur.close(); conn.close()
+
+
+def sent_kpis(tenant_id: int, today, scope_key: str = None) -> dict:
+    """Quote Sent page: quotes waiting for the buyer, their value in the
+    business's currency, and how many run out within 3 days / already have."""
+    conn, cur = _db()
+    try:
+        cur.execute("""SELECT COUNT(*) AS n,
+                              COALESCE(SUM(fx_to_selling(quote_value, quote_currency, tenant_id)), 0) AS v,
+                              COUNT(*) FILTER (WHERE quote_valid_until >= %s AND quote_valid_until <= %s + 3) AS expiring,
+                              COUNT(*) FILTER (WHERE quote_valid_until < %s) AS expired
+                         FROM quote_requests WHERE tenant_id=%s AND status='quote_sent'
+                          AND (%s::text IS NULL OR assigned_key=%s)""",
+                    (today, today, today, tenant_id, scope_key, scope_key))
+        r = cur.fetchone()
+        return {"n": r["n"], "v": float(r["v"] or 0), "expiring": r["expiring"], "expired": r["expired"]}
+    finally:
+        cur.close(); conn.close()
+
+
+def won_value(tenant_id: int, since=None, scope_key: str = None) -> dict:
+    """Quote Won page: how many won (since a date, or ever) and their value."""
+    conn, cur = _db()
+    try:
+        cur.execute("""SELECT COUNT(*) AS n,
+                              COALESCE(SUM(fx_to_selling(quote_value, quote_currency, tenant_id)), 0) AS v
+                         FROM quote_requests WHERE tenant_id=%s AND status='won'
+                          AND (%s::timestamptz IS NULL OR closed_at >= %s)
+                          AND (%s::text IS NULL OR assigned_key=%s)""",
+                    (tenant_id, since, since, scope_key, scope_key))
+        r = cur.fetchone()
+        return {"n": r["n"], "v": float(r["v"] or 0)}
+    finally:
+        cur.close(); conn.close()
+
+
+def order_info(tenant_id: int, request_ids: list) -> dict:
+    """{request_id: {...}} from each request's latest quotation: a PhiXtra
+    order (kind 'phixtra', order_id) or, for Shopify-linked businesses only,
+    the Shopify draft order (kind 'shopify', name, status). No entry = no
+    order yet."""
+    if not request_ids:
+        return {}
+    conn, cur = _db()
+    try:
+        # shopify_draft only exists once the Shopify add-on has run.
+        cur.execute("""SELECT 1 FROM information_schema.columns
+                        WHERE table_name='quotations' AND column_name='shopify_draft'""")
+        draft_col = "shopify_draft" if cur.fetchone() else "NULL::jsonb AS shopify_draft"
+        cur.execute(f"""SELECT DISTINCT ON (request_id) request_id, order_id, {draft_col}
+                          FROM quotations WHERE tenant_id=%s AND request_id = ANY(%s)
+                         ORDER BY request_id, version DESC, id DESC""", (tenant_id, list(request_ids)))
+        out = {}
+        for r in cur.fetchall():
+            dr = r.get("shopify_draft") or {}
+            if r.get("order_id"):
+                out[r["request_id"]] = {"kind": "phixtra", "order_id": r["order_id"]}
+            elif dr.get("name") and dr.get("status") != "deleted":
+                out[r["request_id"]] = {"kind": "shopify", "name": dr["name"],
+                                        "placed": dr.get("status") == "completed",
+                                        "status": {"completed": "order placed", "invoice_sent": "invoice sent"}
+                                                  .get(dr.get("status"), "draft")}
+        return out
     finally:
         cur.close(); conn.close()
 

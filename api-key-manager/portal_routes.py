@@ -42942,7 +42942,27 @@ def _inject_quotes_menu():
             except Exception:
                 g._aiq_dash_on = False
         return g._aiq_dash_on
-    return {"quotes_on": quotes_on}
+
+    def quotes_menu_counts():
+        """Numbers beside Requests / Quote Sent / Quote Won in the side menu
+        (2026-11-05). Same scope as the pages: staff without "See all leads"
+        count only their own."""
+        if "_quotes_menu_counts" not in g:
+            g._quotes_menu_counts = {}
+            try:
+                if quotes_on():
+                    cust = _get_customer(_customer_id())
+                    tid, scope = int(cust["tenant_id"]), _quotes_scope(cust)
+                    c = _qr.counts(tid, scope)
+                    # Quote Won opens on "This month", so its number matches that.
+                    now = _tp.now_local(_tp.tz_for(tid))
+                    c["won"] = _qr.won_value(tid, now.replace(day=1, hour=0, minute=0, second=0, microsecond=0),
+                                             scope)["n"]
+                    g._quotes_menu_counts = c
+            except Exception as e:
+                print(f"⚠️ quotes menu counts: {e}")
+        return g._quotes_menu_counts
+    return {"quotes_on": quotes_on, "quotes_menu_counts": quotes_menu_counts}
 
 
 def _quotes_guard():
@@ -43048,6 +43068,62 @@ def quotes_requests():
                            target_words=dict(_qr.TARGETS), dt=_quote_dt(tz))
 
 
+def _quotes_menu_list(view: str):
+    """Quote Sent / Quote Won pages (side menu, 2026-11-05): the request list
+    already filtered, with its own numbers. Works for every business; the
+    Shopify order name only shows for Shopify-linked ones."""
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    scope = _quotes_scope(customer)
+    see_all = scope is None
+    people = _lead_assignees(tenant_id, customer) if see_all else []
+    who = (request.args.get("who") or "").strip()
+    if see_all and who and any(p["key"] == who for p in people):
+        scope = who
+    else:
+        who = ""
+    q = (request.args.get("q") or "").strip()[:100]
+    _qr.sync_from_deals(tenant_id)
+    tz = _tp.tz_for(tenant_id)
+    now = _tp.now_local(tz)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    period = ""
+    if view == "sent":
+        rows = _qr.list_requests(tenant_id, "quote_sent", scope, q)
+        k = _qr.sent_kpis(tenant_id, now.date(), scope)
+        orders = {}
+    else:
+        period = "all" if request.args.get("period") == "all" else "month"
+        since = month_start if period == "month" else None
+        rows = _qr.list_requests(tenant_id, "won", scope, q, closed_since=since)
+        orders = _qr.order_info(tenant_id, [r["id"] for r in rows])
+        k = _qr.won_value(tenant_id, since, scope)
+        k["orders"] = sum(1 for r in rows if r["id"] in orders)
+    today = now.date()
+    for r in rows:
+        vu = r.get("quote_valid_until")
+        r["days_left"] = (vu - today).days if vu else None
+    return render_template("portal/quotes_menu_list.html", view=view, rows=rows, k=k, q=q, who=who,
+                           people=people, see_all=see_all, period=period, orders=orders,
+                           qr=_qr, dt=_quote_dt(tz))
+
+
+@portal_bp.route("/quotations/sent")
+@team_feature("leads.page")
+def quotes_sent():
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    return _quotes_menu_list("sent")
+
+
+@portal_bp.route("/quotations/won")
+@team_feature("leads.page")
+def quotes_won():
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    return _quotes_menu_list("won")
+
+
 @portal_bp.route("/quotations/requests/new", methods=["GET", "POST"])
 @team_feature("leads.page")
 def quotes_request_new():
@@ -43135,6 +43211,7 @@ def quotes_request_detail(request_id: int):
     except Exception as e:
         print("⚠️ quote request Shopify order:", e)
     return render_template("portal/quotes_request_detail.html", r=r, lead=lead, clock=_qr.time_left(r, now),
+                           now_month_start=now.replace(day=1, hour=0, minute=0, second=0, microsecond=0),
                            shopify_trade=shopify_trade, shopify_trade_lead_id=(lead or {}).get("id"),
                            events=_qr.events(r["id"]), qr=_qr, tz=tz, lines_text=_qr.lines_text(r),
                            sent_by=_qr.SENT_BY, lost_reasons=_qr.LOST_REASONS,
