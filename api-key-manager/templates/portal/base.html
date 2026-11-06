@@ -1538,17 +1538,13 @@
             <span class="sb-arrow" aria-hidden="true">▾</span>
           </button>
           <div class="sb-sub2 {% if _bill_group %}open{% endif %}">
-            {% if staff_can_open('portal.billing_subscribe') %}
-            <a href="{{ url_for('portal.billing_subscribe') }}"
-               class="{% if request.endpoint in ('portal.billing_subscribe', 'portal.billing_subscribe_checkout') %}active{% endif %}">
-              Subscription Plans
-              {% if 'billing.subscription_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-            </a>
-            {% endif %}
+            {# One plans item (2026-11-06): "Subscription Plans" only forwarded to
+               this page since 2026-09-23 and "WhatsApp Plan" opened it directly,
+               so the two duplicated each other. #}
             {% if staff_can_open('portal.billing_plans') %}
             <a href="{{ url_for('portal.billing_plans') }}"
-               class="{% if request.endpoint == 'portal.billing_plans' %}active{% endif %}">
-              WhatsApp Plan
+               class="{% if request.endpoint in ('portal.billing_plans', 'portal.billing_subscribe', 'portal.billing_subscribe_checkout') %}active{% endif %}">
+              Subscription Plans
               {% if 'billing.subscription_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
               {% set _tp = _tenant_plan if _tenant_plan is defined else none %}
               {% if _tp and _tp.is_over_quota %}
@@ -2240,7 +2236,7 @@
     {% if customer is defined and customer and customer.tenant_source_type != 'whatsapp' %}
     { icon:'✅', title:'Verified Specs',         desc:'Product specs the AI can confirm accurately',  url:'{{ url_for("portal.verified_specs_settings") }}',    tags:'verified specs product guarantee confirm accuracy' },
     {% endif %}
-    { icon:'📋', title:'Subscription Plans',     desc:'View and manage your subscription',            url:'{{ url_for("portal.billing_subscribe") }}',          tags:'subscription plan monthly upgrade downgrade' },
+    { icon:'📋', title:'Subscription Plans',     desc:'View and manage your subscription',            url:'{{ url_for("portal.billing_plans") }}',          tags:'subscription plan monthly upgrade downgrade' },
     { icon:'💳', title:'Buy AI Credit',          desc:'Top up your AI credit balance',               url:'{{ url_for("portal.billing") }}',                    tags:'credits buy top up balance tokens recharge ai designs' },
     { icon:'🧾', title:'Invoices',               desc:'Download your billing receipts',               url:'{{ url_for("portal.invoices") }}',                   tags:'invoice receipt billing history download pdf payment' },
     { icon:'📚', title:'How-To Guides',          desc:'Help & Tutorials: step-by-step guides, e.g. the full CRM guide',         url:'{{ url_for("portal.tutorials") }}',                  tags:'help guide tutorial support how to faq learn' },
