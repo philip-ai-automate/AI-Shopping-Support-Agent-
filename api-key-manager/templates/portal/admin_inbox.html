@@ -140,14 +140,9 @@
         <div class="ib-row"><span class="ib-note">You can write freely: they messaged in the last 24 hours.</span>
           <button type="button" class="btn btn-primary btn-sm" id="waTextPreview">Preview</button></div>
       </form>
-      {% elif checkin_ready %}
-      <form method="POST" action="{{ url_for('portal_admin.am_inbox_send', tenant_id=a.tenant_id) }}" id="waTplForm">
-        <input type="hidden" name="mode" value="template">
-        <div class="ib-row" style="margin:0"><span class="ib-note">More than 24 hours since their last message, so WhatsApp only allows the approved check-in message.</span>
-          <button type="button" class="btn btn-primary btn-sm" id="waTplPreview">Preview the check-in message</button></div>
-      </form>
       {% else %}
-      <div class="ib-warn">More than 24 hours since their last message, and the check-in message isn't approved yet. Call them or email from their Account page.</div>
+      {% set tpl_action = url_for('portal_admin.am_inbox_send', tenant_id=a.tenant_id) %}
+      {% include "portal/_am_tpl_picker.html" %}
       {% endif %}
     </div>
     {% endif %}
@@ -169,10 +164,7 @@
     amPreview({ title: 'Check before sending', text: v, note: 'Sent from PhiXtra\'s WhatsApp number.',
                 send: function(){ document.getElementById('waTextForm').submit() } })
   }
-  var p = document.getElementById('waTplPreview')
-  if (p) p.onclick = function(){ amPreview({ title: 'Check before sending', text: {{ (checkin_preview or '')|tojson }},
-      note: 'Meta-approved wording, so it can\'t be changed. When they reply you can write freely for 24 hours.',
-      send: function(){ document.getElementById('waTplForm').submit() } }) }
+
   var ct = document.getElementById('callToggle'), dr = document.getElementById('callDrawer')
   if (ct) ct.onclick = function(){ var open = dr.style.display === 'block'; dr.style.display = open ? 'none' : 'block'; if (!open && window.amCallCheck) amCallCheck() }
   window.amAfterCall = function(){ setTimeout(function(){ location.reload() }, 1200) }

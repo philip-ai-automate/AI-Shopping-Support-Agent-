@@ -78,23 +78,71 @@ def help_template_definition() -> dict:
     }
 
 
-def checkin_text(first_name: str, stuck=None) -> str:
+# All Account Manager check-in templates (2026-11-06). The picker on the
+# account page / Inbox / bulk bar offers the APPROVED ones, Utility first.
+# Only these: other templates on PhiXtra's number (login codes, staff
+# alerts, sales campaigns) must never be sent from Accounts.
+STATUS_TEMPLATE = "phixtra_setup_status"
+AM_TEMPLATES = [
+    {"name": STATUS_TEMPLATE, "label": "Account set-up status", "header": "Your PhiXtra account set-up",
+     "body": ("Hi {{1}},\n\nI'm Kelvin, your Account Manager at PhiXtra.\n\n"
+              "Your account set-up isn't complete yet. It stopped at this step: *{{2}}*\n\n"
+              "Did something get in the way, or was a step unclear? Tap an option below or reply here, and I'll help you complete it."),
+     "footer": HELP_FOOTER, "buttons": True},
+    {"name": HELP_TEMPLATE, "label": "Let's get your account live", "header": HELP_HEADER, "body": HELP_BODY,
+     "footer": HELP_FOOTER, "buttons": True},
+    {"name": CHECKIN_TEMPLATE, "label": "Plain check-in (no buttons)", "header": None,
+     "body": ("Hi {{1}}, this is Kelvin from PhiXtra. I noticed you started setting up your PhiXtra account but didn't "
+              "finish. Did anything get in the way, or was something unclear? Just reply and let me know, and I'll be "
+              "happy to help you complete it."),
+     "footer": None, "buttons": False},
+]
+AM_TPL = {t["name"]: t for t in AM_TEMPLATES}
+
+
+def _fill(t, first_name, stuck):
+    return t["body"].replace("{{1}}", first_name or "there").replace("{{2}}", step_phrase(stuck))
+
+
+def _tpl(name=None):
+    return AM_TPL.get(name or "") or AM_TPL.get(active_template() or "") or AM_TEMPLATES[-1]
+
+
+def checkin_text(first_name: str, stuck=None, name=None) -> str:
     """The check-in message as sent (and logged), filled in."""
-    if active_template() == HELP_TEMPLATE:
-        body = HELP_BODY.replace("{{1}}", first_name or "there").replace("{{2}}", step_phrase(stuck))
-        return (f"*{HELP_HEADER}*\n\n{body}\n\n{HELP_FOOTER}\n"
-                + "  ".join(f"[{t}]" for _, t in HELP_BUTTONS))
-    return (f"Hi {first_name or 'there'}, this is {AM_NAME} from PhiXtra. I noticed you started setting up your "
-            "PhiXtra account but didn't finish. Did anything get in the way, or was something unclear? Just reply "
-            "and let me know, and I'll be happy to help you complete it.")
+    t = _tpl(name)
+    out = _fill(t, first_name, stuck)
+    if t["header"]:
+        out = f"*{t['header']}*\n\n" + out
+    if t["footer"]:
+        out += f"\n\n{t['footer']}"
+    if t["buttons"]:
+        out += "\n" + "  ".join(f"[{x}]" for _, x in HELP_BUTTONS)
+    return out
 
 
-def checkin_look(first_name: str, stuck=None) -> dict:
-    """Preview pieces: header / body / footer / buttons."""
-    if active_template() == HELP_TEMPLATE:
-        return {"header": HELP_HEADER, "footer": HELP_FOOTER, "buttons": [t for _, t in HELP_BUTTONS],
-                "text": HELP_BODY.replace("{{1}}", first_name or "there").replace("{{2}}", step_phrase(stuck))}
-    return {"text": checkin_text(first_name)}
+def checkin_look(first_name: str, stuck=None, name=None) -> dict:
+    """Preview pieces: header / text / footer / buttons."""
+    t = _tpl(name)
+    return {"header": t["header"], "footer": t["footer"], "text": _fill(t, first_name, stuck),
+            "buttons": [x for _, x in HELP_BUTTONS] if t["buttons"] else []}
+
+
+def templates_for(first_name: str, stuck=None) -> list:
+    """The picker: every Account Manager template with its live Meta status
+    and category, approved Utility first, then approved Marketing, then waiting."""
+    st = template_statuses()
+    out = []
+    for t in AM_TEMPLATES:
+        s = st.get(t["name"])
+        if not s or s["status"] in ("DELETED", "DISABLED"):
+            continue
+        look = checkin_look(first_name, stuck, t["name"])
+        out.append({"name": t["name"], "label": t["label"], "status": s["status"], "category": s["category"],
+                    "approved": s["status"] == "APPROVED", "look": look,
+                    "first_line": " ".join(look["text"].split())[:110]})
+    rank = lambda x: (0 if x["approved"] else 1, 0 if x["category"] == "UTILITY" else 1)
+    return sorted(out, key=rank)
 
 
 def call_ask_text(first_name: str) -> str:
@@ -846,30 +894,40 @@ def wa_window_open(phone: str) -> bool:
         cur.close(); conn.close()
 
 
-_tpl_cache = {"at": None, "name": None}
+_tpl_cache = {"at": None, "st": {}}
 
 
-def active_template():
-    """The approved check-in template to use: the new one with buttons once
-    Meta approves it, else the older plain one, else None. (cached 10 min)"""
+def template_statuses() -> dict:
+    """{name: {"status", "category"}} for the Account Manager templates, live
+    from Meta (cached 10 min)."""
     now = datetime.now(timezone.utc)
     if _tpl_cache["at"] and now - _tpl_cache["at"] < timedelta(minutes=10):
-        return _tpl_cache["name"]
-    name = None
+        return _tpl_cache["st"]
+    st = {}
     nums = platform_numbers()
     if nums:
         try:
-            approved = set()
-            for n in (HELP_TEMPLATE, CHECKIN_TEMPLATE):
-                r = requests.get(f"{GRAPH}/{nums[0]['waba_id']}/message_templates",
-                                 params={"name": n, "fields": "name,status"},
-                                 headers={"Authorization": f"Bearer {nums[0]['access_token']}"}, timeout=8).json()
-                approved |= {t.get("name") for t in r.get("data", []) if t.get("status") == "APPROVED"}
-            name = HELP_TEMPLATE if HELP_TEMPLATE in approved else (CHECKIN_TEMPLATE if CHECKIN_TEMPLATE in approved else None)
+            r = requests.get(f"{GRAPH}/{nums[0]['waba_id']}/message_templates",
+                             params={"fields": "name,status,category", "limit": 200},
+                             headers={"Authorization": f"Bearer {nums[0]['access_token']}"}, timeout=8).json()
+            for t in r.get("data", []):
+                if t.get("name") in AM_TPL:
+                    st[t["name"]] = {"status": t.get("status"), "category": t.get("category")}
         except Exception as e:
             print("⚠️ admin_accounts template check:", e)
-    _tpl_cache.update(at=now, name=name)
-    return name
+            return _tpl_cache["st"]
+    _tpl_cache.update(at=now, st=st)
+    return st
+
+
+def approved_templates() -> list:
+    return [t["name"] for t in templates_for("", None) if t["approved"]]
+
+
+def active_template():
+    """The default check-in: the first approved one (Utility first), or None."""
+    a = approved_templates()
+    return a[0] if a else None
 
 
 def checkin_template_ready() -> bool:
@@ -878,7 +936,7 @@ def checkin_template_ready() -> bool:
 
 
 def send_whatsapp(tenant_id: int, phone: str, text: str, by: str, use_template=False, first_name="", manager="",
-                  stuck=None):
+                  stuck=None, template_name=None):
     """Send from PhiXtra's first WhatsApp number; log it where the Inbox reads it too."""
     nums = platform_numbers()
     if not nums:
@@ -887,20 +945,21 @@ def send_whatsapp(tenant_id: int, phone: str, text: str, by: str, use_template=F
     to = digits(phone)
     if len(to) < 8:
         return False, "This customer has no valid phone number."
-    if use_template and active_template() == HELP_TEMPLATE:
-        comps = [{"type": "body", "parameters": [{"type": "text", "text": first_name or "there"},
-                                                 {"type": "text", "text": step_phrase(stuck)}]}]
-        comps += [{"type": "button", "sub_type": "quick_reply", "index": str(i),
-                   "parameters": [{"type": "payload", "payload": key}]} for i, (key, _) in enumerate(HELP_BUTTONS)]
+    if use_template:
+        name = template_name or active_template()
+        if name not in approved_templates():
+            return False, "That WhatsApp template isn't approved by Meta."
+        t = AM_TPL[name]
+        params = [{"type": "text", "text": first_name or "there"}]
+        if "{{2}}" in t["body"]:
+            params.append({"type": "text", "text": step_phrase(stuck)})
+        comps = [{"type": "body", "parameters": params}]
+        if t["buttons"]:
+            comps += [{"type": "button", "sub_type": "quick_reply", "index": str(i),
+                       "parameters": [{"type": "payload", "payload": key}]} for i, (key, _) in enumerate(HELP_BUTTONS)]
         payload = {"messaging_product": "whatsapp", "to": to, "type": "template",
-                   "template": {"name": HELP_TEMPLATE, "language": {"code": "en"}, "components": comps}}
-        logged = checkin_text(first_name, stuck)
-    elif use_template:
-        payload = {"messaging_product": "whatsapp", "to": to, "type": "template",
-                   "template": {"name": CHECKIN_TEMPLATE, "language": {"code": "en"},
-                                "components": [{"type": "body", "parameters": [
-                                    {"type": "text", "text": first_name or "there"}]}]}}
-        logged = checkin_text(first_name)
+                   "template": {"name": name, "language": {"code": "en"}, "components": comps}}
+        logged = checkin_text(first_name, stuck, name)
     else:
         payload = {"messaging_product": "whatsapp", "recipient_type": "individual", "to": to,
                    "type": "text", "text": {"body": text}}
@@ -1043,7 +1102,8 @@ def register(bp, require_admin, admin_user):
         return render_template("portal/admin_accounts.html", L=L, rows=L["rows"][:limit], more=len(L["rows"]) > limit,
                                limit=limit, keep=keep, me=me, today=date.today(), sorts=SORTS,
                                admins=[u for u in admin_users() if "@" in u["username"]], manager_name=manager_name,
-                               checkin_ready=tpl_ready, can_modify=(require_admin("accounts", "modify") is None))
+                               checkin_ready=tpl_ready, bulk_templates=[t for t in templates_for("", None) if t["approved"]],
+                               can_modify=(require_admin("accounts", "modify") is None))
 
     @bp.route("/accounts/bulk", methods=["POST"])
     def am_bulk():
@@ -1099,7 +1159,8 @@ def register(bp, require_admin, admin_user):
                     skipped.append(a["business"]); continue
                 ok, err = send_whatsapp(tid, a["phone_number"], "", me, use_template=True,
                                         first_name=(a["first_name"] or "").strip(), manager=AM_NAME,
-                                        stuck=(a.get("setup") or {}).get("stuck"))
+                                        stuck=(a.get("setup") or {}).get("stuck"),
+                                        template_name=f.get("template") or None)
                 if ok: sent += 1
                 else: failed.append(f"{a['business']} ({err})")
             insert_audit_log(admin_username=me, action="am_bulk_checkin",
@@ -1143,6 +1204,7 @@ def register(bp, require_admin, admin_user):
             wa_window=window, checkin_ready=(not window and checkin_template_ready()),
             wa_numbers=platform_numbers(),
             checkin_preview=checkin_look((a["first_name"] or "").strip(), (a.get("setup") or {}).get("stuck")),
+            wa_templates=templates_for((a["first_name"] or "").strip(), (a.get("setup") or {}).get("stuck")),
             call_ask_preview=call_ask_text((a["first_name"] or "").strip()),
             today=date.today(), can_modify=(require_admin("accounts", "modify") is None),
             call_outcome_label=CALL_OUTCOME_LABEL, reason_label=REASON_LABEL, status_label=STATUS_LABEL,
@@ -1262,12 +1324,13 @@ def register(bp, require_admin, admin_user):
             flash("WhatsApp only allows a free message within 24 hours of the customer's last message. "
                   "Use the check-in template, email or a WhatsApp call.", "warning")
             return _back(tenant_id)
-        if use_tpl and not checkin_template_ready():
-            flash("The WhatsApp check-in template isn't approved by Meta yet.", "warning")
+        if use_tpl and (request.form.get("template") or active_template()) not in approved_templates():
+            flash("That WhatsApp template isn't approved by Meta yet.", "warning")
             return _back(tenant_id)
         ok, err = send_whatsapp(tenant_id, a["phone_number"], text, me, use_template=use_tpl,
                                 first_name=(a["first_name"] or "").strip(), manager=manager_name(me),
-                                stuck=(a.get("setup") or {}).get("stuck"))
+                                stuck=(a.get("setup") or {}).get("stuck"),
+                                template_name=request.form.get("template") or None)
         insert_audit_log(admin_username=me, action="am_whatsapp_sent" if ok else "am_whatsapp_failed",
                          tenant_id=tenant_id, details={"template": use_tpl, "error": err or None})
         flash("WhatsApp message sent." if ok else f"WhatsApp didn't send: {err}", "success" if ok else "danger")
@@ -1624,6 +1687,7 @@ def register_inbox(bp, require_admin, admin_user):
             ctx = dict(items=thread(a["phone_number"]), wa_window=window,
                        checkin_ready=(not window and checkin_template_ready()),
                        checkin_preview=checkin_look((a["first_name"] or "").strip(), (a.get("setup") or {}).get("stuck")),
+                       wa_templates=templates_for((a["first_name"] or "").strip(), (a.get("setup") or {}).get("stuck")),
                        call_ask_preview=call_ask_text((a["first_name"] or "").strip()),
                        quiet=is_quiet(a["phone_number"]), wa_numbers=platform_numbers())
         latest = max([c["last_at"] for c in convs], default=None)
@@ -1665,12 +1729,13 @@ def register_inbox(bp, require_admin, admin_user):
         if not use_tpl and not wa_window_open(a["phone_number"]):
             flash("More than 24 hours since their last message: send the check-in message instead.", "warning")
             return back
-        if use_tpl and not checkin_template_ready():
-            flash("The check-in message isn't approved by Meta yet.", "warning")
+        if use_tpl and (request.form.get("template") or active_template()) not in approved_templates():
+            flash("That WhatsApp template isn't approved by Meta yet.", "warning")
             return back
         ok, err = send_whatsapp(tenant_id, a["phone_number"], text, me, use_template=use_tpl,
                                 first_name=(a["first_name"] or "").strip(), manager=AM_NAME,
-                                stuck=(a.get("setup") or {}).get("stuck"))
+                                stuck=(a.get("setup") or {}).get("stuck"),
+                                template_name=request.form.get("template") or None)
         insert_audit_log(admin_username=me, action="am_whatsapp_sent" if ok else "am_whatsapp_failed",
                          tenant_id=tenant_id, details={"template": use_tpl, "error": err or None, "from": "inbox"})
         if not ok:

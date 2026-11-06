@@ -178,16 +178,9 @@
             <div class="ap-fu"><button type="button" class="ap-save" id="waTextPreview">Preview</button></div>
           </form>
           <p class="ac-note">They messaged in the last 24 hours, so you can write freely. Their replies show here and in Admin › Inbox.</p>
-          {% elif checkin_ready %}
-          <form method="POST" action="{{ url_for('portal_admin.am_whatsapp', tenant_id=a.tenant_id) }}" id="waTplForm">
-            <input type="hidden" name="mode" value="template">
-            <div class="ac-warn">They haven't messaged us in the last 24 hours, so WhatsApp only allows the approved check-in message first.</div>
-            <button type="button" class="ap-save" style="margin-left:0" id="waTplPreview">Preview the check-in message</button>
-          </form>
-          <p class="ac-note">When they reply or tap a button, you can write freely for 24 hours.</p>
           {% else %}
-          <div class="ac-warn">They haven't messaged us in the last 24 hours. WhatsApp only allows a Meta-approved message first, and the check-in message isn't approved yet. Use a WhatsApp call or email for now.</div>
-          <button type="button" class="ap-q" id="waTplLook">See the check-in message</button>
+          {% set tpl_action = url_for('portal_admin.am_whatsapp', tenant_id=a.tenant_id) %}
+          {% include "portal/_am_tpl_picker.html" %}
           {% endif %}
         </div>
 
@@ -360,14 +353,6 @@
     amPreview({ title: 'Check before sending', text: v, note: 'Sent from PhiXtra\'s WhatsApp number. It also shows in Admin › Inbox.',
                 send: function(){ document.getElementById('waTextForm').submit() } })
   }
-  var CHECKIN = {{ checkin_preview|tojson }}
-  var p = document.getElementById('waTplPreview')
-  if (p) p.onclick = function(){ amPreview({ title: 'Check before sending', text: CHECKIN,
-      note: 'Meta-approved wording, so it can\'t be changed. When they reply you can write freely for 24 hours.',
-      send: function(){ document.getElementById('waTplForm').submit() } }) }
-  var l = document.getElementById('waTplLook')
-  if (l) l.onclick = function(){ amPreview({ title: 'The check-in message (waiting for Meta)', text: CHECKIN,
-      note: 'This is what will be sent once Meta approves it.' }) }
 })();
 (function(){
   var acts = [].slice.call(document.querySelectorAll('.ac-act'))
@@ -396,7 +381,7 @@
     var g = b.dataset.go
     if (g === 'followup') { fd.scrollIntoView({ block: 'center', behavior: 'smooth' }); fd.focus(); try { fd.showPicker && fd.showPicker() } catch (e) {} return }
     show(g); if (card) card.scrollIntoView({ block: 'start', behavior: 'smooth' })
-    if (g === 'wa') { var pv = document.getElementById('waTplPreview'); if (pv) pv.click(); else { var tx = document.getElementById('waText'); if (tx) tx.focus() } }
+    if (g === 'wa') { var tx = document.getElementById('waText'); if (tx) tx.focus() }
   }) })
 
   // which tab opens first: ?p= (from All accounts), #email, else the suggested one
