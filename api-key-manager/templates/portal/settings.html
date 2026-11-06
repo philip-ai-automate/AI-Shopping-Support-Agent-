@@ -313,13 +313,16 @@
         <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line)">
           <div style="font-size:12px;font-weight:700;color:var(--muted);
                       text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">
-            WhatsApp Reports
+            Daily Summary
           </div>
         </div>
         <div class="toggle-row" id="dailyReportToggleRow">
           <div class="toggle-info">
-            <strong>Daily WhatsApp Summary</strong>
-            <span>Receive yesterday's orders, revenue, and AI stats every morning at 8 AM.</span>
+            <strong>Daily Summary</strong>
+            <span>Every morning: yesterday's website chats, WhatsApp conversations and orders.
+              {% if report_has_wa %}Sent on WhatsApp at 07:00 UTC to the number below. If WhatsApp can't deliver it, it comes by email to <strong>{{ report_owner_email or 'the account owner' }}</strong> at 8 AM{% if report_tz %} {{ report_tz }} time{% endif %}.
+              {% else %}Your WhatsApp isn't connected, so it comes by email to <strong>{{ report_owner_email or 'the account owner' }}</strong> at 8 AM{% if report_tz %} {{ report_tz }} time{% endif %}.{% endif %}
+              The email is skipped on days when nothing happened.</span>
           </div>
           <label class="switch">
             <input type="checkbox" name="daily_report_enabled" id="dailyReportToggle"
@@ -331,7 +334,7 @@
         <div id="reportPhoneRow"
              style="margin-top:12px;{% if not daily_report_enabled %}display:none;{% endif %}">
           <div class="form-group" style="margin-bottom:4px">
-            <label style="font-size:13px;font-weight:650">Send the daily summary to this WhatsApp number</label>
+            <label style="font-size:13px;font-weight:650">WhatsApp number for the daily summary{% if not report_has_wa %} (used once your WhatsApp is connected){% endif %}</label>
             {{ phone_box('report_phone', report_phone, cls='', style='max-width:420px') }}
             <p class="muted" style="font-size:12px;margin-top:6px;line-height:1.5">
               📱 Your <strong>personal</strong> WhatsApp number (not your business number).

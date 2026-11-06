@@ -13649,6 +13649,23 @@ def settings():
         report_fallback_phone = (_fr[0] or "").strip() if _fr else ""
     except Exception:
         pass
+    # Daily Summary wording (2026-11-06): owner email for the email version,
+    # whether WhatsApp is connected, and the business's own time zone.
+    report_owner_email, report_has_wa, report_tz = "", False, ""
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("""SELECT email FROM customers WHERE tenant_id=%s AND is_active
+                       ORDER BY id ASC LIMIT 1""", (tenant_id,))
+        _fr = cur.fetchone()
+        report_owner_email = (_fr[0] or "").strip() if _fr else ""
+        cur.execute("""SELECT 1 FROM wa_tenants WHERE tenant_id=%s AND active
+                         AND access_token LIKE 'EAA%%' LIMIT 1""", (tenant_id,))
+        report_has_wa = cur.fetchone() is not None
+        cur.close(); conn.close()
+        import team_performance as _tpf
+        report_tz = _tpf.tz_label(_tpf.tz_for(tenant_id))
+    except Exception:
+        pass
 
     return render_template("portal/settings.html",
                            customer=customer,
@@ -13659,7 +13676,7 @@ def settings():
                            plan_features=plan_features,
                            current_plan=_get_tenant_plan(tenant_id),
                            daily_report_enabled=daily_report_enabled,
-                           report_phone=report_phone, report_fallback_phone=report_fallback_phone,
+                           report_phone=report_phone, report_fallback_phone=report_fallback_phone, report_owner_email=report_owner_email, report_has_wa=report_has_wa, report_tz=report_tz,
                            active_sub=_get_active_subscription(int(customer["id"])),
                            saved_methods=_get_saved_payment_methods(int(customer["id"])),
                            chat_tr=_chat_tr_settings_ctx(tenant_id))
