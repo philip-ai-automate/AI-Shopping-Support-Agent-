@@ -308,10 +308,7 @@
        href="{{ url_for('portal_admin.admin_plans') }}">
       <span class="asb-icon">📋</span> Plans
     </a>
-    <a class="asb-link {% if request.endpoint in ('portal_admin.admin_school_plans','portal_admin.admin_school_plans_assign') %}active{% endif %}"
-       href="{{ url_for('portal_admin.admin_school_plans') }}">
-      <span class="asb-icon">🏫</span> School Plans
-    </a>
+    {# School Plans deactivated 2026-11-06 (user): menu item removed; data + code kept. #}
     <a class="asb-link {% if request.endpoint=='portal_admin.wa_diagnostics' %}active{% endif %}"
        href="{{ url_for('portal_admin.wa_diagnostics') }}">
       <span class="asb-icon">📡</span> WA Diagnostics
@@ -412,7 +409,6 @@
     { icon:'🔌', title:'Plugins',            desc:'Manage downloadable WooCommerce plugins',   url:'{{ url_for("portal_admin.plugins") }}',             tags:'plugins woocommerce download wordpress' },
     { icon:'🧩', title:'Modules',            desc:'Every module/feature the app knows about — read-only', url:'{{ url_for("portal_admin.admin_modules_catalog") }}', tags:'modules features catalog permissions roles plans reference' },
     { icon:'📋', title:'Plans',              desc:'Manage WhatsApp subscription plans',        url:'{{ url_for("portal_admin.admin_plans") }}',         tags:'plans subscription whatsapp quota limits assign' },
-    { icon:'🏫', title:'School Plans',       desc:'Manage school.phixtra.com subscription plans', url:'{{ url_for("portal_admin.admin_school_plans") }}', tags:'school plans subscription quota limits assign termly' },
     { icon:'📡', title:'WA Diagnostics',     desc:'Debug WhatsApp connection issues',          url:'{{ url_for("portal_admin.wa_diagnostics") }}',      tags:'whatsapp diagnostics debug connection status check' },
     { icon:'⚙️', title:'Settings',           desc:'Trial days, password and admin config',     url:'{{ url_for("portal_admin.admin_settings") }}',      tags:'settings admin password trial days config' },
     {% if session.get('portal_admin_role','owner') == 'owner' %}

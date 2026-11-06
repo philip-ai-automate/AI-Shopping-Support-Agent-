@@ -53,7 +53,7 @@ ADMIN_MODULES = {
     "credit_packages":           {"label": "Credit Top-ups",         "actions": ["view", "create", "modify", "delete"]},
     "plugins":                   {"label": "Plugins",               "actions": ["view", "create", "delete"]},
     "plans":                     {"label": "Plans",                 "actions": ["view", "modify", "delete"]},
-    "school_plans":              {"label": "School Plans",          "actions": ["view", "modify"]},
+    # "school_plans" deactivated 2026-11-06 (user): no admin page any more.
     "wa_diagnostics":            {"label": "WA Diagnostics",        "actions": ["view"]},
     "recovery_queue":            {"label": "Recovery Queue",        "actions": ["view"]},
     "video_tutorials":           {"label": "Video Tutorials",       "actions": ["view", "modify"]},
@@ -5589,6 +5589,12 @@ def customer_email_sender_save(customer_id: int):
 
 @portal_admin_bp.route("/school-plans")
 def admin_school_plans():
+    # Deactivated 2026-11-06 (user: "School Plans deactivated from the admin").
+    # Page, assign action, menu and role tick are off; school_plans data kept.
+    r = _require_admin()
+    if r: return r
+    flash("School Plans has been switched off.", "info")
+    return redirect(url_for("portal_admin.customers"))
     r = _require_admin("school_plans", "view")
     if r: return r
     conn = get_db_connection()
@@ -5621,6 +5627,9 @@ def admin_school_plans():
 
 @portal_admin_bp.route("/school-plans/assign/<int:school_id>", methods=["POST"])
 def admin_school_plans_assign(school_id: int):
+    r = _require_admin()
+    if r: return r
+    return redirect(url_for("portal_admin.customers"))  # deactivated 2026-11-06
     r = _require_admin("school_plans", "modify")
     if r: return r
     plan_id       = int(request.form.get("plan_id") or 1)

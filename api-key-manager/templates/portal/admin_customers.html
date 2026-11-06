@@ -297,7 +297,6 @@
          class="btn btn-sm" style="color:var(--warn);border-color:rgba(247,144,9,0.30)"
          onclick="return confirm('View portal as this customer?')">Impersonate</a>
       {% elif c.product == 'school' %}
-      <a href="{{ url_for('portal_admin.admin_school_plans') }}" class="btn btn-sm">School Plans</a>
       <span class="muted">No impersonate for School yet</span>
       {% else %}
       <span class="muted">No detail page for Estate accounts yet</span>
@@ -375,7 +374,7 @@
                class="btn btn-sm" style="color:var(--warn);border-color:rgba(247,144,9,0.30)"
                onclick="return confirm('View portal as this customer?')">Impersonate</a>
             {% elif c.product == 'school' %}
-            <a href="{{ url_for('portal_admin.admin_school_plans') }}" class="btn btn-sm">School Plans</a>
+            <span class="muted">—</span>
             {% else %}
             <span class="muted">—</span>
             {% endif %}
