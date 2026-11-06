@@ -13638,6 +13638,17 @@ def settings():
     except Exception:
         daily_report_enabled = 1
         report_phone         = ""
+    # Where the summary really goes when the box is empty (2026-11-06): the
+    # gateway falls back to the first active login's phone of the business.
+    report_fallback_phone = ""
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("""SELECT phone_number FROM customers WHERE tenant_id=%s AND is_active = TRUE
+                         AND phone_number IS NOT NULL ORDER BY id ASC LIMIT 1""", (tenant_id,))
+        _fr = cur.fetchone(); cur.close(); conn.close()
+        report_fallback_phone = (_fr[0] or "").strip() if _fr else ""
+    except Exception:
+        pass
 
     return render_template("portal/settings.html",
                            customer=customer,
@@ -13648,7 +13659,7 @@ def settings():
                            plan_features=plan_features,
                            current_plan=_get_tenant_plan(tenant_id),
                            daily_report_enabled=daily_report_enabled,
-                           report_phone=report_phone,
+                           report_phone=report_phone, report_fallback_phone=report_fallback_phone,
                            active_sub=_get_active_subscription(int(customer["id"])),
                            saved_methods=_get_saved_payment_methods(int(customer["id"])),
                            chat_tr=_chat_tr_settings_ctx(tenant_id))
