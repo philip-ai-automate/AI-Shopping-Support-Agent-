@@ -64,8 +64,12 @@ def _get_active_wa_tenants() -> list[dict]:
         return []
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
+        # One report per BUSINESS (2026-11-06): a business with several
+        # WhatsApp numbers used to get the same report once per number, and
+        # the "already sent today" guard read a list loaded before sending.
+        # DISTINCT ON keeps the business's first connected number as sender.
         cur.execute("""
-            SELECT
+            SELECT DISTINCT ON (wt.tenant_id)
                 wt.tenant_id,
                 wt.phone_number_id,
                 wt.access_token,
@@ -78,6 +82,7 @@ def _get_active_wa_tenants() -> list[dict]:
               AND wt.access_token LIKE 'EAA%%'
               AND t.daily_report_enabled = TRUE
               AND t.status != 'cancelled'
+            ORDER BY wt.tenant_id, wt.id ASC
         """)
         return cur.fetchall() or []
     except Exception as e:
@@ -190,7 +195,45 @@ def _get_daily_stats(tenant_id: int, report_date: date) -> dict:
             row = cur.fetchone() or {}
             stats["tokens"] = int(row.get("tokens") or 0)
         except Exception:
+            conn.rollback()       # 2026-11-06: without this every later query failed
             stats["tokens"] = 0   # table may not exist on some installs
+
+        # ── Website chat (2026-11-06) ────────────────────────────────────────
+        try:
+            cur.execute("""SELECT 1 FROM api_keys WHERE tenant_id=%s AND key_type IN ('paid','trial')
+                             AND is_active = TRUE LIMIT 1""", (tenant_id,))
+            stats["has_site"] = cur.fetchone() is not None
+            cur.execute("""SELECT COUNT(DISTINCT session_id) AS n FROM chat_messages
+                            WHERE tenant_id=%s AND role='user' AND DATE(created_at)=%s""", (tenant_id, dt))
+            stats["web_chats"] = int((cur.fetchone() or {}).get("n") or 0)
+            cur.execute("""
+                SELECT COUNT(DISTINCT s) AS n FROM (
+                    SELECT v.session_id AS s FROM chat_visitors v
+                     WHERE v.tenant_id=%s
+                       AND (COALESCE(v.email,'')<>'' OR COALESCE(v.phone,'')<>'' OR COALESCE(v.name,'')<>'')
+                       AND v.session_id IN (SELECT session_id FROM chat_messages
+                                             WHERE tenant_id=%s AND role='user' AND DATE(created_at)=%s)
+                    UNION
+                    SELECT h.session_id FROM handoff_requests h
+                     WHERE h.tenant_id=%s AND DATE(h.created_at)=%s
+                       AND (COALESCE(h.visitor_email,'')<>'' OR COALESCE(h.visitor_name,'')<>'')
+                ) x""", (tenant_id, tenant_id, dt, tenant_id, dt))
+            stats["web_details"] = int((cur.fetchone() or {}).get("n") or 0)
+            cur.execute("""SELECT COUNT(*) AS n FROM handoff_requests
+                            WHERE tenant_id=%s AND DATE(created_at)=%s""", (tenant_id, dt))
+            stats["web_handoffs"] = int((cur.fetchone() or {}).get("n") or 0)
+        except Exception as e:
+            conn.rollback()
+            print(f"⚠️ [DAILY] website stats tenant={tenant_id}:", e)
+            stats.setdefault("has_site", False)
+        # Order lines only for businesses that take orders (any in 90 days).
+        try:
+            cur.execute("""SELECT 1 FROM orders WHERE tenant_id=%s
+                             AND created_at > NOW() - INTERVAL '90 days' LIMIT 1""", (tenant_id,))
+            stats["takes_orders"] = cur.fetchone() is not None
+        except Exception:
+            conn.rollback()
+            stats["takes_orders"] = True
 
         # ── Low-stock products ───────────────────────────────────────────────
         try:
@@ -207,6 +250,7 @@ def _get_daily_stats(tenant_id: int, report_date: date) -> dict:
             """, (tenant_id, _LOW_STOCK_THRESHOLD))
             stats["low_stock"] = cur.fetchall() or []
         except Exception:
+            conn.rollback()
             stats["low_stock"] = []
 
     except Exception as e:
@@ -230,13 +274,29 @@ def _format_report(tenant_name: str, report_date: date, stats: dict, tenant_id: 
         f"📊 *Daily Report — {tenant_name}*",
         f"🗓 {date_str}",
         "",
-        f"📦 Orders placed:  {stats.get('total_orders', 0)}",
-        f"✅ Orders paid:    {stats.get('paid_orders', 0)}",
-        f"💰 Revenue:        {rev_str}",
-        "",
-        f"👥 New customers:  {stats.get('new_customers', 0)}",
-        f"💬 Conversations:  {stats.get('conversations', 0)}",
-        f"🤝 Handoffs:       {stats.get('handoffs', 0)}",
+    ]
+    # 2026-11-06: orders only for businesses that take orders; website chat
+    # for businesses with a website; WhatsApp grouped under its own heading.
+    if stats.get("takes_orders", True) or stats.get("total_orders"):
+        lines += [
+            f"📦 Orders placed:  {stats.get('total_orders', 0)}",
+            f"✅ Orders paid:    {stats.get('paid_orders', 0)}",
+            f"💰 Revenue:        {rev_str}",
+            "",
+        ]
+    if stats.get("has_site"):
+        lines += [
+            "🌐 *Website chat*",
+            f"   Visitors who chatted:  {stats.get('web_chats', 0)}",
+            f"   Left their details:    {stats.get('web_details', 0)}",
+            f"   Passed to your team:   {stats.get('web_handoffs', 0)}",
+            "",
+        ]
+    lines += [
+        "💬 *WhatsApp*",
+        f"   Conversations:         {stats.get('conversations', 0)}",
+        f"   New customers:         {stats.get('new_customers', 0)}",
+        f"   Passed to your team:   {stats.get('handoffs', 0)}",
     ]
 
     low = stats.get("low_stock", [])
@@ -617,7 +677,7 @@ async def send_daily_report_for_tenant(
         event_type="daily_report",
         template_name=template_used,
         status=status,
-        notes=f"date={report_date} orders={stats.get('total_orders',0)} revenue={stats.get('revenue',0):.0f}",
+        notes=f"date={report_date} orders={stats.get('total_orders',0)} revenue={stats.get('revenue',0):.0f} web={stats.get('web_chats',0)}",
     )
 
     icon = "✅" if ok else "⚠️"
