@@ -275,6 +275,35 @@
   <div class="plan-divider"></div>
 
   <ul class="plan-features">
+    {% if (plan.slug or '').startswith('b2b') %}
+    {# B2B cards (2026-11-06): what really differs between Starter / Growth /
+       Scale (team size, Sell in their language, cart recovery for WooCommerce
+       shops) plus the B2B features. Was a generic list showing "10 agents"
+       (AI profiles) and the same support line on all three. #}
+    {% set _yes = [
+        (True, '<strong>Unlimited</strong> AI replies (fair use)'),
+        (plan.staff_limit, '<strong>' ~ (plan.staff_limit if plan.staff_limit != -1 else 'Unlimited') ~ '</strong> team members and WhatsApp numbers'),
+        (True, 'Quotes in minutes'),
+        ('crm.ai_qualification' in f, 'AI lead qualification'),
+        (True, 'Automatic follow-up until they buy'),
+    ] %}
+    {% for on, label in _yes %}{% if on %}<li><span class="feat-yes">✓</span><span class="feat-lbl">{{ label|safe }}</span></li>{% endif %}{% endfor %}
+    {% if 'inbox.translate' in f %}<li><span class="feat-yes">✓</span><span class="feat-lbl">Sell in their language</span></li>
+    {% else %}<li><span class="feat-no">✗</span><span class="feat-lbl muted">Sell in their language</span></li>{% endif %}
+    {% if _has_woocommerce %}
+    {% if 'woo.cart_recovery' in f %}<li><span class="feat-yes">✓</span><span class="feat-lbl">Win back abandoned carts</span></li>
+    {% else %}<li><span class="feat-no">✗</span><span class="feat-lbl muted">Win back abandoned carts</span></li>{% endif %}
+    {% endif %}
+    {% for on, label in [
+        (plan.channel_mode == 'dual', '<strong>WhatsApp + Website</strong> AI Sales Agent'),
+        ('voice.calls' in f, 'WhatsApp calls'),
+        ('campaigns_email.all_view' in f, 'Full CRM, email campaigns and sequences'),
+        (plan.feat_broadcasts, (('Unlimited' if plan.broadcasts_limit == -1 else "{:,}".format(plan.broadcasts_limit or 0)) ~ ' WhatsApp broadcasts/mo')),
+        ('social.posts_view' in f, 'Social media posts'),
+        (plan.feat_visual_match, 'Shop by sending a photo'),
+        (plan.support_line, plan.support_line),
+    ] %}{% if on %}<li><span class="feat-yes">✓</span><span class="feat-lbl">{{ label|safe }}</span></li>{% endif %}{% endfor %}
+    {% else %}
     {% set _no_ai = plan.ai_messages_limit == 0 %}
     {% if 'wa.connect_manage' in f %}
     <li>
@@ -332,7 +361,7 @@
         (crm_keys and _crm_on|length == crm_keys|length, 'Full CRM'),
         ('campaigns_email.all_view' in f, 'Email Marketing'),
         ('social.posts_view' in f,        'Social Media'),
-        ('voice.calls' in f,              'Voice Calls'),
+        ('voice.calls' in f,              'WhatsApp calls'),
         (plan.feat_advanced_ai,           'Custom AI personality'),
         (plan.feat_integrations,          'Integrations'),
         (plan.feat_visual_match,          'Shop by sending a photo'),
@@ -349,6 +378,7 @@
       <span class="feat-lbl">Overage: {{ overage(plan) }}</span>
     </li>
     {% endif %}
+      {% endif %}
   </ul>
   {% endif %}
 
