@@ -1,0 +1,257 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Accounts Dashboard — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .ad{display:flex;flex-direction:column;gap:20px;max-width:1240px}
+  .ad-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+  .ad-head p{margin:0 0 4px;font-size:13px;color:var(--muted)}
+  .ad-head h1{margin:0}
+  .ad-flt{display:flex;gap:10px;flex-wrap:wrap}
+  .ad-flt label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+  .ad-flt select{font:inherit;font-size:13px;padding:8px 10px;border-radius:9px;border:1px solid rgba(3,12,24,.15);background:#fff;color:var(--ink)}
+  .ad-h2{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:750}
+
+  .ad-today{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  .ad-act{display:flex;flex-direction:column;gap:6px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;
+          text-decoration:none;color:var(--ink);transition:box-shadow .15s,border-color .15s}
+  .ad-act:hover{text-decoration:none;box-shadow:0 6px 18px rgba(3,12,24,.08);border-color:rgba(3,12,24,.22)}
+  .ad-act .l{font-size:13px;font-weight:650;color:#3B4552}
+  .ad-act .n{font-size:32px;font-weight:800;line-height:1}
+  .ad-act .s{font-size:12.5px;font-weight:650;color:var(--muted)}
+  .ad-act.red{border-color:rgba(217,45,32,.35)} .ad-act.red .n,.ad-act.red .s{color:#B42318}
+  .ad-act.org{border-color:rgba(181,71,8,.35)} .ad-act.org .n,.ad-act.org .s{color:#93370D}
+  .ad-act.ok .s{color:#067647}
+  .ad-act.blu .s{color:#175CD3}
+
+  .ad-kpis{background:#fff;border:1px solid var(--line);border-radius:14px;display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
+  .ad-kpis div{padding:16px 18px;border-left:1px solid rgba(3,12,24,.08)}
+  .ad-kpis div:first-child{border-left:0}
+  .ad-kpis .l{font-size:12.5px;color:var(--muted);font-weight:650}
+  .ad-kpis .v{font-size:24px;font-weight:800;margin:6px 0 2px}
+  .ad-kpis .s{font-size:12px;color:var(--muted)}
+
+  .ad-g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+  .ad-g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+  .ad-span2{grid-column:span 2}
+  .ad-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px;min-width:0}
+  .ad-card h2{margin:0 0 2px;font-size:15.5px;font-weight:750}
+  .ad-card .sub{margin:0 0 14px;font-size:12.5px;color:var(--muted)}
+
+  .ad-bar{height:12px;background:#EEF0F3;border-radius:6px;overflow:hidden}
+  .ad-bar i{display:block;height:100%;background:#2E5AAC;border-radius:inherit}
+  .ad-bar.thin{height:8px} .ad-bar.org i{background:#E8833A}
+  .ad-fn{display:flex;flex-direction:column;gap:12px}
+  .ad-fn .row{display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px}
+  .ad-fn .row span:first-child{font-weight:650}
+  .ad-tip{margin:16px 0 0;padding:10px 12px;background:#FFF6ED;border-radius:10px;font-size:12.5px;color:#93370D}
+
+  .ad-leg{display:flex;gap:16px;font-size:12px;color:#3B4552;margin-bottom:8px}
+  .ad-leg span{display:flex;align-items:center;gap:6px}
+  .ad-leg i{width:10px;height:10px;border-radius:3px;display:inline-block}
+  .ad-chart{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:10px;align-items:end;height:180px;border-bottom:1px solid rgba(3,12,24,.15)}
+  .ad-chart .c{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:4px}
+  .ad-chart .c b{font-size:12px}
+  .ad-chart .bars{display:flex;gap:3px;align-items:flex-end;width:100%;justify-content:center}
+  .ad-chart .bars i{width:36%;border-radius:4px 4px 0 0;display:block}
+  .ad-xl{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:10px;margin-top:6px}
+  .ad-xl span{font-size:11.5px;color:var(--muted);text-align:center}
+
+  .ad-first{padding:0;overflow:hidden}
+  .ad-first .hd{padding:18px 20px 10px;display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+  .ad-p{display:flex;gap:14px;align-items:center;padding:12px 20px;border-top:1px solid rgba(3,12,24,.08);flex-wrap:wrap}
+  .ad-av{width:36px;height:36px;border-radius:50%;background:#E6ECF7;color:#2E5AAC;display:grid;place-items:center;font-weight:800;font-size:14px;flex-shrink:0}
+  .ad-p .who{flex:1 1 260px;min-width:0}
+  .ad-p .who a{font-size:14px;font-weight:750;color:var(--ink)}
+  .ad-p .who small{font-weight:500;color:var(--muted);font-size:13px}
+  .ad-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
+  .ad-tag{font-size:11.5px;font-weight:650;padding:3px 9px;border-radius:999px;background:#F2F4F7;color:#3B4552}
+  .ad-tag.warn{background:#FFF6ED;color:#93370D} .ad-tag.paid{background:#EEF4FF;color:#2E5AAC} .ad-tag.good{background:#ECFDF3;color:#067647}
+  .ad-p .mgr{font-size:12px;color:var(--muted);width:110px}
+  .ad-p .btns{display:flex;gap:6px}
+  .ad-btn{font-size:12.5px;font-weight:650;padding:8px 12px;border-radius:9px;border:1px solid rgba(3,12,24,.15);background:#fff;color:var(--ink);text-decoration:none;display:inline-flex;align-items:center;min-height:20px}
+  .ad-btn:hover{text-decoration:none;background:#F7F8FA}
+  .ad-btn.dark{background:var(--ink);color:#fff;border-color:var(--ink)} .ad-btn.dark:hover{background:#1c2633}
+
+  .ad-stops{display:flex;flex-direction:column;gap:12px}
+  .ad-stops .row{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px}
+
+  .ad-team{width:100%;border-collapse:collapse;font-size:13px}
+  .ad-team th{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;text-align:right;padding:0 0 8px;font-weight:700}
+  .ad-team th:first-child,.ad-team td:first-child{text-align:left}
+  .ad-team td{padding:10px 0;text-align:right;border-top:1px solid rgba(3,12,24,.08)}
+  .ad-team td a{font-weight:650;color:var(--ink)}
+  .ad-team .bad{color:#B42318;font-weight:750} .ad-team .org{color:#93370D;font-weight:750}
+  .ad-empty{border:1px dashed rgba(3,12,24,.18);border-radius:12px;padding:18px;text-align:center}
+  .ad-empty b{display:block;font-size:13.5px;margin-bottom:6px}
+  .ad-empty p{margin:0;font-size:12.5px;color:var(--muted);line-height:1.5}
+  .ad-src{display:grid;grid-template-columns:120px minmax(0,1fr) 28px;gap:8px;align-items:center;font-size:12.5px;margin-bottom:8px}
+  .ad-src b{text-align:right}
+
+  .ad-gaps{display:flex;gap:12px;flex-wrap:wrap}
+  .ad-gaps div{flex:1 1 300px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 16px;font-size:13px}
+  .ad-gaps span{color:var(--muted)}
+
+  @media (max-width:1100px){ .ad-today{grid-template-columns:repeat(2,minmax(0,1fr))} .ad-kpis{grid-template-columns:repeat(3,minmax(0,1fr))} .ad-g3{grid-template-columns:repeat(2,minmax(0,1fr))} }
+  @media (max-width:760px){ .ad-g2,.ad-g3{grid-template-columns:1fr} .ad-span2{grid-column:auto} .ad-kpis{grid-template-columns:repeat(2,minmax(0,1fr))} .ad-kpis div{border-left:0;border-top:1px solid rgba(3,12,24,.08)} }
+  @media (max-width:480px){ .ad-today{grid-template-columns:1fr} }
+</style>
+
+<div class="ad">
+  <div class="ad-head">
+    <div>
+      <p>{{ today.strftime('%A %-d %B') }} · {{ me_name }}</p>
+      <h1 class="page-title">📊 Accounts Dashboard</h1>
+    </div>
+    <form class="ad-flt" method="get">
+      <label>Manager
+        <select name="who" onchange="this.form.submit()">
+          <option value="all" {% if who=='all' %}selected{% endif %}>Everyone</option>
+          <option value="me" {% if who=='me' %}selected{% endif %}>Me</option>
+          {% for u, n in managers %}<option value="{{ u }}" {% if who==u %}selected{% endif %}>{{ n }}</option>{% endfor %}
+          <option value="none" {% if who=='none' %}selected{% endif %}>Unassigned</option>
+        </select>
+      </label>
+      <label>Period
+        <select name="period" onchange="this.form.submit()">
+          {% for p in [7, 30, 90] %}<option value="{{ p }}" {% if period==p %}selected{% endif %}>Last {{ p }} days</option>{% endfor %}
+        </select>
+      </label>
+      <noscript><button class="btn btn-sm" type="submit">Show</button></noscript>
+    </form>
+  </div>
+
+  <section aria-labelledby="ad-today">
+    <h2 class="ad-h2" id="ad-today">To do today</h2>
+    <div class="ad-today">
+      <a class="ad-act {{ 'ok' if not d.replies else 'red' }}" href="{{ url_for('portal_admin.am_inbox', show='reply') }}">
+        <span class="l">Replies waiting</span><span class="n">{{ d.replies }}</span>
+        <span class="s">{% if d.replies %}Answer in Inbox →{% else %}All caught up{% endif %}</span></a>
+      <a class="ad-act {{ 'red' if d.due }}" href="{{ url_for('portal_admin.am_accounts', tab='due', who=who) }}">
+        <span class="l">Follow-ups due</span><span class="n">{{ d.due }}</span>
+        <span class="s">{% if d.overdue %}{{ d.overdue }} overdue · {% endif %}{% if d.due %}open list →{% else %}Nothing due{% endif %}</span></a>
+      <a class="ad-act {{ 'org' if d.never }}" href="{{ url_for('portal_admin.am_accounts', tab='new', who=who) }}">
+        <span class="l">Never contacted</span><span class="n">{{ d.never }}</span>
+        <span class="s">{% if d.never_week %}{{ d.never_week }} signed up this week · {% endif %}{% if d.never %}start with these →{% else %}Everyone contacted{% endif %}</span></a>
+      <a class="ad-act blu" href="{{ url_for('portal_admin.am_accounts', tab='trials', who=who) }}">
+        <span class="l">Paid trials ending in 7 days</span><span class="n">{{ d.trials }}</span>
+        <span class="s">{% if d.trials %}Not set up yet · call before it ends →{% else %}None ending soon{% endif %}</span></a>
+    </div>
+  </section>
+
+  <section class="ad-kpis" aria-label="Key numbers">
+    {% for k in d.kpis %}<div><div class="l">{{ k.label }}</div><div class="v">{{ k.value }}</div><div class="s">{{ k.sub }}</div></div>{% endfor %}
+  </section>
+
+  <div class="ad-g2">
+    <section class="ad-card" aria-labelledby="ad-fn">
+      <h2 id="ad-fn">Set-up funnel</h2>
+      <p class="sub">All {{ d.total }} businesses that signed up, by how far they got.</p>
+      <div class="ad-fn">
+        {% for f in d.funnel %}
+        <div><div class="row"><span>{{ f.label }}</span><span><b>{{ f.n }}</b> · {{ f.pct }}%</span></div>
+          <div class="ad-bar"><i style="width:{{ [f.pct, 1.5 if f.n else 0]|max }}%"></i></div></div>
+        {% endfor %}
+      </div>
+      {% if d.stuck %}<p class="ad-tip"><b>Biggest drop:</b> {{ d.stuck[0][1] }} of {{ d.total }} stopped at {{ d.stuck[0][0] }}. Help with this one step moves the most accounts.</p>{% endif %}
+    </section>
+
+    <section class="ad-card" aria-labelledby="ad-wk">
+      <h2 id="ad-wk">Sign-ups and finished set-ups, by week</h2>
+      <p class="sub">Last 8 weeks. Week starting:</p>
+      <div class="ad-leg"><span><i style="background:#2E5AAC"></i>Signed up</span><span><i style="background:#E8833A"></i>Finished set-up (so far)</span></div>
+      <div class="ad-chart" role="img" aria-label="Weekly sign-ups: {% for w in d.weeks %}{{ w.label }} {{ w.n }}{{ ', ' if not loop.last }}{% endfor %}. Finished set-ups: {{ d.w_done }} in total.">
+        {% for w in d.weeks %}
+        <div class="c"><b>{{ w.n }}</b>
+          <div class="bars"><i style="height:{{ (w.n / d.wmax * 140)|round|int }}px;background:#2E5AAC"></i><i style="height:{{ [(w.done / d.wmax * 140)|round|int, 2]|max }}px;background:#E8833A"></i></div></div>
+        {% endfor %}
+      </div>
+      <div class="ad-xl">{% for w in d.weeks %}<span>{{ w.label }}</span>{% endfor %}</div>
+      <p style="margin:14px 0 0;font-size:12.5px;color:#3B4552">{{ d.w_signups }} sign-ups in 8 weeks, {% if d.w_done %}<b>{{ d.w_done }} finished set-up</b>{% else %}<b>none finished set-up</b>{% endif %}.</p>
+    </section>
+  </div>
+
+  <div class="ad-g3">
+    <section class="ad-card ad-first ad-span2" aria-labelledby="ad-first">
+      <div class="hd">
+        <div><h2 id="ad-first">Contact these first</h2>
+          <p class="sub" style="margin:0">Ranked by replies, paid trials ending, follow-ups due, recent log-ins and how long they've waited.</p></div>
+        <a href="{{ url_for('portal_admin.am_accounts', who=who) }}" style="font-size:13px;font-weight:650;white-space:nowrap">All accounts →</a>
+      </div>
+      {% for x in d.first %}
+      <div class="ad-p">
+        <div class="ad-av" aria-hidden="true">{{ (x.business or '?')[:1]|upper }}</div>
+        <div class="who">
+          <a href="{{ url_for('portal_admin.am_account', tenant_id=x.tenant_id) }}">{{ x.business }}</a>
+          <small>· {{ x.contact or '—' }}{% if x.country %}, {{ x.country }}{% endif %}</small>
+          <div class="ad-tags">{% for t, kind in x.tags %}<span class="ad-tag {{ kind }}">{{ t }}</span>{% endfor %}</div>
+        </div>
+        <div class="mgr">{{ x.manager or 'Unassigned' }}</div>
+        <div class="btns">
+          {% if x.phone_digits and x.phone_digits|length >= 8 %}<a class="ad-btn" href="{{ url_for('portal_admin.am_inbox', tenant_id=x.tenant_id) }}">WhatsApp</a>{% endif %}
+          <a class="ad-btn dark" href="{{ url_for('portal_admin.am_account', tenant_id=x.tenant_id) }}">Open</a>
+        </div>
+      </div>
+      {% else %}
+      <div class="ad-p"><span style="color:var(--muted);font-size:13px">Nobody waiting. Nice work.</span></div>
+      {% endfor %}
+    </section>
+
+    <section class="ad-card" aria-labelledby="ad-stop">
+      <h2 id="ad-stop">Where they stop</h2>
+      <p class="sub">The step each unfinished account is on.</p>
+      <div class="ad-stops">
+        {% for s, n in d.stuck %}
+        <div><div class="row"><span>{{ s }}</span><b>{{ n }}</b></div>
+          <div class="ad-bar thin org"><i style="width:{{ (n / d.stuck_max * 100)|round|int }}%"></i></div></div>
+        {% else %}<p class="sub">Every account is set up.</p>{% endfor %}
+      </div>
+    </section>
+  </div>
+
+  <div class="ad-g3">
+    <section class="ad-card" aria-labelledby="ad-team">
+      <h2 id="ad-team" style="margin-bottom:12px">Team workload</h2>
+      <table class="ad-team">
+        <thead><tr><th scope="col">Manager</th><th scope="col">Accounts</th><th scope="col">Contacted</th><th scope="col">Due</th></tr></thead>
+        <tbody>
+          {% for t in d.team %}
+          <tr><td><a href="{{ url_for('portal_admin.am_accounts', who=(t.username or 'none')) }}" {% if not t.username %}style="color:#93370D"{% endif %}>{{ t.name }}</a></td>
+            <td class="{{ 'org' if not t.username and t.n }}">{{ t.n }}</td>
+            <td class="{{ 'bad' if t.n and not t.contacted }}">{{ t.contacted }}</td>
+            <td class="{{ 'bad' if t.due }}">{{ t.due }}</td></tr>
+          {% else %}<tr><td colspan="4" style="color:var(--muted)">No open accounts.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+      {% set un = (d.team|selectattr('username', 'equalto', '')|list) %}
+      {% if un and un[0].n and can_modify %}<a class="ad-btn" style="margin-top:12px" href="{{ url_for('portal_admin.am_accounts', who='none') }}">Assign the {{ un[0].n }} unassigned</a>{% endif %}
+    </section>
+
+    <section class="ad-card" aria-labelledby="ad-why">
+      <h2 id="ad-why" style="margin-bottom:12px">Why they stopped</h2>
+      {% if d.reasons %}
+        {% set rmax = d.reasons[0][1] %}
+        {% for r, n in d.reasons %}
+        <div class="ad-src"><span>{{ r.replace('Stuck at: ', 'Stuck: ') }}</span><div class="ad-bar thin org"><i style="width:{{ (n / rmax * 100)|round|int }}%"></i></div><b>{{ n }}</b></div>
+        {% endfor %}
+      {% else %}
+      <div class="ad-empty"><b>No reasons recorded yet</b>
+        <p>Filled in from the check-in buttons (“I got stuck” → which part), call outcomes and the reason on each account.</p></div>
+      {% endif %}
+    </section>
+
+    <section class="ad-card" aria-labelledby="ad-src">
+      <h2 id="ad-src" style="margin-bottom:12px">Where sign-ups come from</h2>
+      {% for s, n in d.sources %}
+      <div class="ad-src"><span>{{ s }}</span><div class="ad-bar thin"><i style="width:{{ (n / d.src_max * 100)|round|int }}%"></i></div><b>{{ n }}</b></div>
+      {% endfor %}
+    </section>
+  </div>
+
+  {% if d.nophone or d.nologin_open %}
+  <section class="ad-gaps" aria-label="Missing details">
+    {% if d.nophone %}<div><b>{{ d.nophone }} account{{ 's have' if d.nophone != 1 else ' has' }} no phone number</b> <span>— email is the only way to reach them.</span> <a href="{{ url_for('portal_admin.am_accounts', tab='nophone', who=who) }}">See them</a></div>{% endif %}
+    {% if d.nologin_open %}<div><b>{{ d.nologin_open }} never logged in after sign-up</b> <span>— a set-up call works better than a message.</span> <a href="{{ url_for('portal_admin.am_accounts', tab='nologin', who=who) }}">See them</a></div>{% endif %}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

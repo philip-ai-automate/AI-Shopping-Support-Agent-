@@ -1,213 +1,417 @@
 {% extends "portal/admin_base.html" %}
 {% block title %}{{ a.business or 'Account' }} — Accounts — PhiXtra Admin{% endblock %}
 {% block content %}
+{% set first = (a.first_name or '').strip() or a.contact or 'them' %}
+{% set has_phone = a.phone_digits and a.phone_digits|length >= 8 %}
 <style>
-  .ac-grid{display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:16px;align-items:start}
-  @media(max-width:900px){.ac-grid{grid-template-columns:1fr}}
-  .ac-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:14px}
-  .ac-h{font-size:13px;font-weight:800;margin:0 0 10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
-  .ac-dl{display:grid;grid-template-columns:110px 1fr;gap:6px 10px;font-size:13px;margin:0}
-  .ac-dl dt{color:var(--muted)} .ac-dl dd{margin:0;word-break:break-word}
-  .ac-step{display:flex;gap:8px;align-items:center;font-size:13px;margin:4px 0}
-  .ac-step span{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;background:rgba(3,12,24,.08)}
-  .ac-step.d span{background:var(--good);color:#fff}
-  .ac-step.stuck{font-weight:750;color:#93370D}
-  .ac-form label{display:block;font-size:12px;font-weight:700;margin:10px 0 4px}
-  .ac-form select,.ac-form input,.ac-form textarea{width:100%;padding:8px 10px;border:1px solid rgba(3,12,24,.18);border-radius:9px;font:inherit;font-size:13px;background:#fff}
-  .ac-form textarea{min-height:90px;resize:vertical}
-  .ac-acts{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
-  .ac-act{padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:#fff;font:inherit;font-size:13px;font-weight:750;cursor:pointer}
-  .ac-act.on{background:var(--ink);color:#fff;border-color:var(--ink)}
-  .ac-panel{display:none}.ac-panel.on{display:block}
-  .ac-note{font-size:12.5px;color:var(--muted);margin:6px 0 0;line-height:1.5}
-  .ac-warn{background:rgba(247,144,9,.1);border:1px solid rgba(247,144,9,.35);color:#93370D;border-radius:10px;padding:9px 12px;font-size:13px;margin-bottom:10px}
-  .ac-tl{list-style:none;margin:0;padding:0}
-  .ac-tl li{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--line);font-size:13px}
-  .ac-tl li:first-child{border-top:none}
-  .ac-ic{width:30px;height:30px;border-radius:9px;background:rgba(3,12,24,.06);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-  .ac-ic.in{background:rgba(18,183,106,.12)}
+  .ap{display:flex;flex-direction:column;gap:16px;max-width:1240px}
+  .ap-crumb{margin:0;font-size:13px;color:var(--muted)}
+  .ap-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px 20px;min-width:0}
+  .ap-card h2{margin:0 0 10px;font-size:15.5px;font-weight:750}
+
+  .ap-head{display:flex;flex-direction:column;gap:18px}
+  .ap-top{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-start}
+  .ap-id{display:flex;gap:14px;align-items:center;min-width:0}
+  .ap-logo{width:52px;height:52px;border-radius:14px;background:#E6ECF7;color:#2E5AAC;display:grid;place-items:center;font-weight:800;font-size:22px;flex-shrink:0}
+  .ap-id h1{margin:0;font-size:22px;font-weight:800}
+  .ap-id p{margin:3px 0 0;font-size:13px;color:#3B4552}
+  .ap-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .ap-chip{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;background:#F2F4F7;color:#3B4552}
+  .ap-chip.paid{background:#EEF4FF;color:#2E5AAC} .ap-chip.warn{background:#FFF6ED;color:#93370D} .ap-chip.good{background:#ECFDF3;color:#067647}
+  .ap-chip.not_contacted{background:#FFF6ED;color:#93370D} .ap-chip.contacted{background:#EEF4FF;color:#2E5AAC}
+  .ap-chip.replied,.ap-chip.helping{background:#F4F3FF;color:#5925DC} .ap-chip.set_up{background:#ECFDF3;color:#067647} .ap-chip.lost{background:#F2F4F7;color:#475467}
+  .ap-sel{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .ap-sel label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:650}
+  .ap-in{font:inherit;font-size:13px;padding:8px 10px;border-radius:9px;border:1px solid rgba(3,12,24,.15);background:#fff;color:var(--ink);min-width:150px}
+
+  .ap-steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat({{ a.setup.total or 1 }},minmax(0,1fr));gap:8px}
+  .ap-step{display:flex;gap:10px;align-items:center;padding:12px;border-radius:12px;background:#F7F8FA}
+  .ap-step .dot{width:26px;height:26px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:13px;font-weight:800;background:#E4E7EC;color:#5D6673}
+  .ap-step b{display:block;font-size:13px} .ap-step small{display:block;font-size:12px;color:var(--muted)}
+  .ap-step.done{background:#ECFDF3} .ap-step.done .dot{background:#12B76A;color:#fff}
+  .ap-step.now{background:#FFF6ED;box-shadow:inset 0 0 0 1.5px #E8833A} .ap-step.now .dot{background:#E8833A;color:#fff}
+
+  .ap-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
+  .ap-main{grid-column:span 2;display:flex;flex-direction:column;gap:16px;min-width:0}
+  .ap-side{display:flex;flex-direction:column;gap:16px;min-width:0}
+
+  .ap-next{background:var(--ink);color:#fff;border-radius:16px;padding:20px 22px}
+  .ap-next.good{background:#05603A} .ap-next.plain{background:#344054}
+  .ap-next .eb{margin:0 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.7);font-weight:750}
+  .ap-next h2{margin:0 0 6px;font-size:18px;font-weight:750;color:#fff}
+  .ap-next p{margin:0 0 16px;font-size:13.5px;color:rgba(255,255,255,.85);line-height:1.55}
+  .ap-next .row{display:flex;gap:8px;flex-wrap:wrap}
+  .ap-go{font:inherit;font-size:13.5px;font-weight:700;padding:10px 16px;min-height:44px;border-radius:10px;border:0;background:#12B76A;color:#fff;cursor:pointer}
+  .ap-go.ghost{background:transparent;border:1px solid rgba(255,255,255,.35);font-weight:600}
+  .ap-go:hover{filter:brightness(1.06)}
+
+  .ap-rec{padding:0;overflow:hidden}
+  .ap-tabs{display:flex;gap:2px;padding:8px 12px 0;border-bottom:1px solid rgba(3,12,24,.08);flex-wrap:wrap}
+  .ac-act{font:inherit;font-size:13px;font-weight:650;padding:10px 12px;border:0;background:transparent;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .ac-act:hover{color:var(--ink)}
+  .ac-act.on{color:var(--ink);font-weight:750;border-bottom-color:var(--ink)}
+  .ac-panel{display:none;padding:16px 18px}.ac-panel.on{display:block}
+  .ap-f label.l{display:block;font-size:12.5px;font-weight:650;color:#3B4552;margin:12px 0 6px}
+  .ap-f input:not([type=radio]):not([type=checkbox]),.ap-f select,.ap-f textarea{width:100%;box-sizing:border-box;font:inherit;font-size:13.5px;padding:9px 12px;border-radius:10px;border:1px solid rgba(3,12,24,.15);background:#fff;color:var(--ink)}
+  .ap-f textarea{min-height:90px;resize:vertical}
+  .ap-f input:focus,.ap-f select:focus,.ap-f textarea:focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 3px rgba(3,12,24,.08)}
+  .ap-outs{display:flex;gap:8px;flex-wrap:wrap}
+  .ap-out{position:relative}
+  .ap-out input{position:absolute;opacity:0;width:1px;height:1px}
+  .ap-out span{display:inline-block;font-size:12.5px;font-weight:650;padding:8px 12px;border-radius:999px;border:1px solid rgba(3,12,24,.15);cursor:pointer;background:#fff}
+  .ap-out input:checked + span{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .ap-out input:focus-visible + span{outline:2px solid var(--ink);outline-offset:2px}
+  .ap-fu{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-top:12px}
+  .ap-fu .d{display:flex;flex-direction:column;gap:6px;font-size:12.5px;font-weight:650;color:#3B4552}
+  .ap-f .ap-fu .d input{width:auto}
+  .ap-q{font:inherit;font-size:12px;font-weight:650;padding:8px 10px;min-height:36px;border-radius:8px;border:1px solid rgba(3,12,24,.15);background:#fff;cursor:pointer;color:var(--ink)}
+  .ap-q:hover{background:#F5F6F8}
+  .ap-save{margin-left:auto;font:inherit;font-size:13.5px;font-weight:700;padding:10px 18px;min-height:42px;border-radius:10px;border:0;background:var(--ink);color:#fff;cursor:pointer}
+  .ac-note{font-size:12.5px;color:var(--muted);margin:8px 0 0;line-height:1.5}
+  .ac-warn{background:#FFF6ED;border:1px solid rgba(247,144,9,.35);color:#93370D;border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:10px}
   .ac-meta{font-size:11.5px;color:var(--muted)}
-  .ac-body{white-space:pre-wrap;margin-top:3px}
-  .ac-bad{color:#B42318;font-weight:700}
-  .am-pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:750;background:rgba(3,12,24,.07)}
-  .am-pill.not_contacted{background:rgba(247,144,9,.12);color:#93370D}.am-pill.contacted{background:rgba(46,144,250,.12);color:#175CD3}
-  .am-pill.replied,.am-pill.helping{background:rgba(122,90,248,.12);color:#5925DC}.am-pill.set_up{background:rgba(18,183,106,.14);color:#067647}
-  .am-pill.lost{background:rgba(3,12,24,.08);color:#475467}
+
+  .ap-tl{list-style:none;margin:0;padding:0}
+  .ap-tl li{display:grid;grid-template-columns:70px 22px minmax(0,1fr);gap:10px;padding:0 0 16px;position:relative}
+  .ap-tl li:not(:last-child)::before{content:"";position:absolute;left:91px;top:18px;bottom:0;width:2px;background:#EEF0F3}
+  .ap-tl .w{font-size:12px;color:var(--muted);padding-top:1px;line-height:1.35}
+  .ap-tl .dot{width:12px;height:12px;border-radius:50%;margin:3px 5px;background:#98A2B3;position:relative;z-index:1}
+  .ap-tl .dot.in{background:#12B76A} .ap-tl .dot.out{background:#2E5AAC} .ap-tl .dot.st{background:#E8833A} .ap-tl .dot.bad{background:#D92D20}
+  .ap-tl .t{display:block;font-size:13.5px;font-weight:650}
+  .ap-tl .s{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}
+  .ap-tl .b{display:block;font-size:13px;white-space:pre-wrap;margin-top:4px;background:#F7F8FA;border-radius:10px;padding:8px 10px;color:#1D2939}
+  .ap-tl .b.in{background:#ECFDF3}
+  .ap-tl .bad{color:#B42318;font-weight:700}
+
+  .ap-dl{margin:0;display:grid;grid-template-columns:110px minmax(0,1fr);gap:9px 10px;font-size:13px}
+  .ap-dl dt{color:var(--muted)} .ap-dl dd{margin:0;font-weight:600;word-break:break-word}
+  .ap-dl dd small{font-weight:500;color:var(--muted)}
+  .ap-warnline{margin:0 0 10px;font-size:13px;color:#B42318;font-weight:650}
+  .ap-okline{margin:0 0 10px;font-size:13px;color:#067647;font-weight:650}
+
+  @media (max-width:980px){ .ap-grid{grid-template-columns:1fr} .ap-main{grid-column:auto} }
+  @media (max-width:700px){ .ap-steps{grid-template-columns:repeat(2,minmax(0,1fr))} }
 </style>
 
-<div class="page-header" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
-  <div>
-    <a href="{{ url_for('portal_admin.am_accounts') }}" class="muted" style="font-size:12.5px">← Accounts</a>
-    <h1 class="page-title" style="margin-top:4px">{{ a.business or '—' }} <span class="am-pill {{ a.status }}" style="vertical-align:middle">{{ a.status_label }}</span></h1>
-    <p class="muted" style="margin:4px 0 0">{{ a.contact or '—' }}{% if a.country %} · {{ a.country }}{% endif %} · signed up {{ a.signed_up.strftime('%-d %b %Y') if a.signed_up }}{% if a.manager %} · Account manager: <b>{{ a.manager }}</b>{% endif %}</p>
-  </div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap">
-    <a class="btn btn-sm" href="{{ url_for('portal_admin.customer_detail', customer_id=a.customer_id) }}">Customer record</a>
-  </div>
-</div>
+{# one form for status / manager / reason / follow-up; its inputs sit around the page (form="stateForm") #}
+<form method="POST" action="{{ url_for('portal_admin.am_state', tenant_id=a.tenant_id) }}" id="stateForm"></form>
 
-<div class="ac-grid">
-<div>
-  <div class="ac-card">
-    <div class="ac-h">Customer</div>
-    <dl class="ac-dl">
-      <dt>Contact</dt><dd>{{ a.contact or '—' }}</dd>
-      <dt>Phone</dt><dd>{{ a.phone_number or '—' }}{% if a.phone_number and not a.phone_verified %} <span class="ac-meta">(not verified)</span>{% endif %}</dd>
-      <dt>Email</dt><dd>{{ a.email or '—' }}{% if a.email and not a.email_verified %} <span class="ac-meta">(not verified)</span>{% endif %}</dd>
-      <dt>Company</dt><dd>{{ a.company_name or a.business or '—' }}</dd>
-      <dt>Country</dt><dd>{{ a.country or '—' }}</dd>
-      {% if a.address %}<dt>Address</dt><dd>{{ a.address }}</dd>{% endif %}
-      <dt>Website</dt><dd>{{ a.domain or '—' }}{% if a.website_platform %} <span class="ac-meta">({{ a.website_platform }})</span>{% endif %}</dd>
-      <dt>Signed up as</dt><dd>{{ a.setup.type or '—' }}</dd>
-      <dt>Plan</dt><dd>{{ a.plan_name }}{% if a.trial_ends_at %} <span class="ac-meta">· trial ends {{ a.trial_ends_at.strftime('%-d %b') }}</span>{% endif %}</dd>
-      <dt>Last login</dt><dd>{{ a.last_login_at.strftime('%-d %b %Y, %H:%M') if a.last_login_at else 'Never' }}</dd>
-      <dt>Heard of us</dt><dd>{{ (a.hear_about_us or '—')|replace('_',' ') }}</dd>
-    </dl>
-  </div>
+<div class="ap">
+  <p class="ap-crumb"><a href="{{ url_for('portal_admin.am_accounts') }}">All accounts</a> › {{ a.business or 'Account' }}</p>
 
-  <div class="ac-card">
-    <div class="ac-h">Set-up {{ a.setup.done }} of {{ a.setup.total }}</div>
-    {% for s in a.setup.steps %}
-    <div class="ac-step {{ 'd' if s.done }} {{ 'stuck' if (not s.done and s.title == a.setup.stuck) }}"><span>{{ '✓' if s.done else loop.index }}</span>{{ s.title }}{% if not s.done and s.title == a.setup.stuck %} · stopped here{% endif %}</div>
-    {% endfor %}
-  </div>
-
-  <div class="ac-card ac-form">
-    <div class="ac-h">Status and follow-up</div>
-    <form method="POST" action="{{ url_for('portal_admin.am_state', tenant_id=a.tenant_id) }}">
-      <label>Status</label>
-      <select name="status">{% for k, l in statuses %}<option value="{{ k }}" {{ 'selected' if a.status==k }}>{{ l }}</option>{% endfor %}</select>
-      <label>Why they stopped</label>
-      <select name="reason"><option value="">— Not known yet —</option>{% for k, l in reasons %}<option value="{{ k }}" {{ 'selected' if a.reason==k }}>{{ l }}</option>{% endfor %}</select>
-      <input name="reason_note" placeholder="In their words (optional)" value="{{ a.reason_note or '' }}" style="margin-top:6px">
-      <label>Next follow-up</label>
-      <input type="date" name="next_follow_up" value="{{ a.next_follow_up.isoformat() if a.next_follow_up }}">
-      <label>Account manager</label>
-      <select name="assigned_admin"><option value="">— Unassigned —</option>{% for u in admins %}<option value="{{ u.username }}" {{ 'selected' if a.assigned_admin==u.username }}>{{ manager_name(u.username) }} ({{ u.username }})</option>{% endfor %}</select>
-      {% if can_modify %}<button class="btn btn-primary btn-sm" style="margin-top:12px">Save</button>{% endif %}
-    </form>
-  </div>
-</div>
-
-<div>
-  {% if can_modify %}
-  <div class="ac-card ac-form">
-    <div class="ac-acts">
-      <button type="button" class="ac-act on" data-p="wa">💬 WhatsApp</button>
-      <button type="button" class="ac-act" data-p="call">📞 WhatsApp call</button>
-      <button type="button" class="ac-act" data-p="email">✉️ Email</button>
-      <button type="button" class="ac-act" data-p="logcall">☎️ Log a call</button>
-      <button type="button" class="ac-act" data-p="note">📝 Note</button>
+  <section class="ap-card ap-head">
+    <div class="ap-top">
+      <div class="ap-id">
+        <div class="ap-logo" aria-hidden="true">{{ (a.business or '?')[:1]|upper }}</div>
+        <div>
+          <h1>{{ a.business or '—' }}</h1>
+          <p>{{ a.contact or '—' }}{% if a.country %} · {{ a.country }}{% endif %}{% if a.signed_up %} · signed up {{ a.signed_up.strftime('%-d %b') }} ({% if a.days_since_signup == 0 %}today{% elif a.days_since_signup == 1 %}yesterday{% else %}{{ a.days_since_signup }} days ago{% endif %}){% endif %}</p>
+          <div class="ap-chips">
+            {% if a.plan_slug and a.plan_slug not in ('connect', 'web_free') %}
+              <span class="ap-chip paid">{{ a.plan_name.split(' ·')[0] }}{% if a.trial_ends_at %} trial · ends {{ a.trial_ends_at.strftime('%a %-d %b') }}{% endif %}</span>
+            {% else %}<span class="ap-chip">Free plan</span>{% endif %}
+            <span class="ap-chip {{ a.status }}">{{ a.status_label }}</span>
+            {% if replied %}<span class="ap-chip good">Replied: waiting for you</span>{% endif %}
+            {% if not a.last_login_at %}<span class="ap-chip warn">Never logged in</span>{% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="ap-sel">
+        <label>Status
+          <select class="ap-in" name="status" form="stateForm" data-auto {% if not can_modify %}disabled{% endif %}>{% for k, l in statuses %}<option value="{{ k }}" {{ 'selected' if a.status==k }}>{{ l }}</option>{% endfor %}</select>
+        </label>
+        <label>Account Manager
+          <select class="ap-in" name="assigned_admin" form="stateForm" data-auto {% if not can_modify %}disabled{% endif %}><option value="">Unassigned</option>{% for u in admins %}<option value="{{ u.username }}" {{ 'selected' if a.assigned_admin==u.username }}>{{ manager_name(u.username) }}{{ ' (me)' if u.username == me }}</option>{% endfor %}</select>
+        </label>
+      </div>
     </div>
 
-    <div class="ac-panel on" id="p-wa">
-      {% if not a.phone_digits %}<div class="ac-warn">This customer has no phone number.</div>
-      {% elif not wa_numbers %}<div class="ac-warn">PhiXtra's WhatsApp number isn't connected.</div>
-      {% elif wa_window %}
-      <form method="POST" action="{{ url_for('portal_admin.am_whatsapp', tenant_id=a.tenant_id) }}">
-        <input type="hidden" name="mode" value="text">
-        <label>Message to {{ a.phone_number }} from {{ wa_numbers[0].display_phone_number }}</label>
-        <textarea name="text" placeholder="Write your message"></textarea>
-        <button class="btn btn-primary btn-sm" style="margin-top:8px">Send on WhatsApp</button>
-      </form>
-      <p class="ac-note">They messaged in the last 24 hours, so you can write freely. Their replies show below and in PhiXtra's Inbox.</p>
-      {% elif checkin_ready %}
-      <form method="POST" action="{{ url_for('portal_admin.am_whatsapp', tenant_id=a.tenant_id) }}">
-        <input type="hidden" name="mode" value="template">
-        <div class="ac-warn">They haven't messaged PhiXtra in the last 24 hours, so WhatsApp only allows the approved check-in message first.</div>
-        <button class="btn btn-primary btn-sm">Send the check-in message</button>
-      </form>
-      <p class="ac-note">When they reply, you can write freely for 24 hours.</p>
-      {% else %}
-      <div class="ac-warn">They haven't messaged PhiXtra in the last 24 hours. WhatsApp only allows a Meta-approved message first, and the check-in message isn't approved yet. Use a WhatsApp call or email for now.</div>
-      {% endif %}
-    </div>
-
-    <div class="ac-panel" id="p-call">
-      {% if a.phone_digits %}
-      <p style="margin:0 0 10px;font-size:13.5px">The call is made from PhiXtra's Inbox, where the call button works. It opens this customer's chat in a new tab: press <b>📞 Call</b> there. If they haven't agreed to calls yet, send "Can we call you?" first.</p>
-      <a class="btn btn-primary btn-sm" href="{{ inbox_url }}" target="_blank" rel="noopener">Open chat in PhiXtra Inbox ↗</a>
-      <p class="ac-note">You need your PhiXtra staff login. The call shows in the log below by itself; afterwards use <b>Log a call</b> to record how it went.</p>
-      {% else %}<div class="ac-warn">This customer has no phone number.</div>{% endif %}
-    </div>
-
-    <div class="ac-panel" id="p-email">
-      {% if a.email %}
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">{% for k, s, b in email_templates %}<a class="btn btn-sm" href="{{ url_for('portal_admin.am_account', tenant_id=a.tenant_id, tpl=k) }}#email">{{ s or 'Blank' }}</a>{% endfor %}</div>
-      <form method="POST" action="{{ url_for('portal_admin.am_email', tenant_id=a.tenant_id) }}">
-        <label>To</label><input value="{{ a.email }}" disabled>
-        <label>Replies go to</label><input name="reply_to" value="{{ reply_to }}">
-        <label>Subject</label><input name="subject" value="{{ email_subject }}" required>
-        <label>Message</label><textarea name="body" style="min-height:220px" required>{{ email_body }}</textarea>
-        <label>Follow up on (optional)</label><input type="date" name="follow_up_on">
-        <button class="btn btn-primary btn-sm" style="margin-top:10px">Send email</button>
-      </form>
-      {% else %}<div class="ac-warn">This customer has no email address.</div>{% endif %}
-    </div>
-
-    <div class="ac-panel" id="p-logcall">
-      <form method="POST" action="{{ url_for('portal_admin.am_call', tenant_id=a.tenant_id) }}">
-        <label>Call type</label>
-        <select name="channel"><option value="whatsapp_call">WhatsApp call</option><option value="phone">Phone call</option></select>
-        <label>How did it go?</label>
-        <select name="outcome" required><option value="">— Choose —</option>{% for k, l in outcomes %}<option value="{{ k }}">{{ l }}</option>{% endfor %}</select>
-        <label>What was said</label><textarea name="note" placeholder="What they told you, what you agreed"></textarea>
-        <label>Follow up on (optional)</label><input type="date" name="follow_up_on">
-        <button class="btn btn-primary btn-sm" style="margin-top:10px">Save call</button>
-      </form>
-    </div>
-
-    <div class="ac-panel" id="p-note">
-      <form method="POST" action="{{ url_for('portal_admin.am_note', tenant_id=a.tenant_id) }}">
-        <label>Note</label><textarea name="note"></textarea>
-        <label>Follow up on (optional)</label><input type="date" name="follow_up_on">
-        <button class="btn btn-primary btn-sm" style="margin-top:10px">Save note</button>
-      </form>
-    </div>
-  </div>
-  {% endif %}
-
-  <div class="ac-card" id="log">
-    <div class="ac-h">Everything with this customer</div>
-    {% if items %}
-    <ul class="ac-tl">
-    {% for i in items %}
-      <li>
-      {% if i.src == 'wa' %}
-        <div class="ac-ic {{ 'in' if i.direction=='inbound' }}">💬</div>
-        <div><div class="ac-meta">{{ i.at.strftime('%-d %b %Y, %H:%M') }} · WhatsApp {{ 'from customer' if i.direction=='inbound' else 'to customer' }}{% if i.sent_by_label and i.direction!='inbound' %} · {{ i.sent_by_label }}{% elif i.direction!='inbound' %} · AI{% endif %}</div>
-          <div class="ac-body">{{ i.content }}</div></div>
-      {% elif i.src == 'wacall' %}
-        <div class="ac-ic {{ 'in' if i.direction=='in' }}">📞</div>
-        <div><div class="ac-meta">{{ i.at.strftime('%-d %b %Y, %H:%M') }} · WhatsApp call {{ 'from customer' if i.direction=='in' else 'to customer' }}</div>
-          <div>{{ (i.status or '')|replace('_',' ')|capitalize }}{% if i.duration %} · {{ (i.duration // 60) }} min {{ i.duration % 60 }} s{% endif %}{% if i.answered_by_name %} · answered by {{ i.answered_by_name }}{% elif i.started_by_name %} · by {{ i.started_by_name }}{% endif %}{% if i.missed_reason %} · {{ i.missed_reason|replace('_',' ') }}{% endif %}</div></div>
-      {% else %}
-        <div class="ac-ic">{{ {'call':'☎️','whatsapp':'💬','email':'✉️','note':'📝','status':'🏷️'}.get(i.kind, '•') }}</div>
-        <div><div class="ac-meta">{{ i.at.strftime('%-d %b %Y, %H:%M') }} · {{ manager_name(i.by_admin) if i.by_admin and '@' in i.by_admin else (i.by_admin or '') }}
-            {% if i.kind=='call' %} · {{ 'WhatsApp call' if i.channel=='whatsapp_call' else 'Phone call' }}: <b>{{ call_outcome_label.get(i.outcome, i.outcome) }}</b>{% endif %}
-            {% if i.kind=='email' %} · Email{% if i.ok == false %} <span class="ac-bad">not sent</span>{% endif %}{% endif %}
-            {% if i.kind=='whatsapp' %} · WhatsApp sent{% if i.ok == false %} <span class="ac-bad">failed</span>{% endif %}{% endif %}
-            {% if i.follow_up_on %} · follow up {{ i.follow_up_on.strftime('%-d %b') }}{% endif %}</div>
-          {% if i.subject %}<div><b>{{ i.subject }}</b></div>{% endif %}
-          {% if i.body %}<div class="ac-body">{{ i.body }}</div>{% endif %}</div>
-      {% endif %}
+    <ol class="ap-steps" aria-label="Set-up progress">
+      {% for s in a.setup.steps %}
+      {% set now = (not s.done and s.title == a.setup.stuck) %}
+      <li class="ap-step {{ 'done' if s.done else ('now' if now) }}">
+        <span class="dot" aria-hidden="true">{{ '✓' if s.done else ('!' if now else loop.index) }}</span>
+        <span><b>{{ s.title }}</b><small>
+          {%- if s.title == 'AI trial' and a.trial_ends_at -%}{{ 'Started · ' if s.done }}ends {{ a.trial_ends_at.strftime('%-d %b') }}
+          {%- elif s.done -%}Done
+          {%- elif now -%}Stopped here
+          {%- else -%}Not yet{%- endif -%}</small></span>
       </li>
-    {% endfor %}
-    </ul>
-    {% else %}<p class="muted" style="margin:0">No contact yet.</p>{% endif %}
+      {% endfor %}
+    </ol>
+  </section>
+
+  <div class="ap-grid">
+    <div class="ap-main">
+      <section class="ap-next {{ nb.tone if nb.tone in ('good', 'plain') }}" aria-labelledby="nb-h">
+        <p class="eb">Next best step</p>
+        <h2 id="nb-h">{{ nb.title }}</h2>
+        <p>{{ nb.why }}</p>
+        {% if can_modify and nb.primary != 'none' %}
+        <div class="row">
+          <button type="button" class="ap-go" data-go="{{ nb.primary }}">{{ nb.label }}</button>
+          {% for p, l in [('wa', 'WhatsApp'), ('call', 'Call on WhatsApp'), ('email', 'Email'), ('logcall', 'Log a call')] if p != nb.primary and (p not in ('wa', 'call') or has_phone) and (p != 'email' or a.email) %}
+          <button type="button" class="ap-go ghost" data-go="{{ p }}">{{ l }}</button>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </section>
+
+      {% if can_modify %}
+      <section class="ap-card ap-rec" id="log" aria-label="Contact and record">
+        <div class="ap-tabs" role="tablist">
+          <button type="button" class="ac-act" data-p="wa" role="tab">WhatsApp</button>
+          <button type="button" class="ac-act" data-p="call" role="tab">WhatsApp call</button>
+          <button type="button" class="ac-act" data-p="email" role="tab">Email</button>
+          <button type="button" class="ac-act" data-p="logcall" role="tab">Log a call</button>
+          <button type="button" class="ac-act" data-p="note" role="tab">Note</button>
+        </div>
+
+        <div class="ac-panel ap-f" id="p-wa">
+          {% if not a.phone_digits %}<div class="ac-warn">This customer has no phone number.</div>
+          {% elif not wa_numbers %}<div class="ac-warn">PhiXtra's WhatsApp number isn't connected.</div>
+          {% elif wa_window %}
+          <form method="POST" action="{{ url_for('portal_admin.am_whatsapp', tenant_id=a.tenant_id) }}" id="waTextForm">
+            <input type="hidden" name="mode" value="text">
+            <label class="l" for="waText">Message to {{ a.phone_number }} from {{ wa_numbers[0].display_phone_number }}</label>
+            <textarea name="text" id="waText" placeholder="Write your message"></textarea>
+            <div class="ap-fu"><button type="button" class="ap-save" id="waTextPreview">Preview</button></div>
+          </form>
+          <p class="ac-note">They messaged in the last 24 hours, so you can write freely. Their replies show here and in Admin › Inbox.</p>
+          {% elif checkin_ready %}
+          <form method="POST" action="{{ url_for('portal_admin.am_whatsapp', tenant_id=a.tenant_id) }}" id="waTplForm">
+            <input type="hidden" name="mode" value="template">
+            <div class="ac-warn">They haven't messaged us in the last 24 hours, so WhatsApp only allows the approved check-in message first.</div>
+            <button type="button" class="ap-save" style="margin-left:0" id="waTplPreview">Preview the check-in message</button>
+          </form>
+          <p class="ac-note">When they reply or tap a button, you can write freely for 24 hours.</p>
+          {% else %}
+          <div class="ac-warn">They haven't messaged us in the last 24 hours. WhatsApp only allows a Meta-approved message first, and the check-in message isn't approved yet. Use a WhatsApp call or email for now.</div>
+          <button type="button" class="ap-q" id="waTplLook">See the check-in message</button>
+          {% endif %}
+        </div>
+
+        <div class="ac-panel" id="p-call">
+          {% if a.phone_digits %}
+          <div id="callBox" data-tid="{{ a.tenant_id }}" data-name="{{ a.contact or a.business }}" data-ask="{{ call_ask_preview }}">
+            <p class="ac-note" id="callMsg" style="margin:0">Checking whether we can call {{ a.contact or 'them' }}…</p>
+            <div id="callBtns" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"></div>
+            <div id="onCall" style="display:none;margin-top:10px;border:1.5px solid #0B1D40;border-radius:12px;padding:12px 14px">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+                <div><b id="onCallName">{{ a.contact or a.business }}</b><div class="ac-meta" id="onCallState">Calling…</div></div>
+                <div style="display:flex;gap:8px">
+                  <button type="button" class="btn btn-sm" id="muteBtn">Mute</button>
+                  <button type="button" class="btn btn-sm" id="endBtn" style="background:#B42318;color:#fff;border-color:#B42318">Hang up</button>
+                </div>
+              </div>
+            </div>
+            <audio id="callAudio" autoplay></audio>
+          </div>
+          <p class="ac-note">The call is made from PhiXtra's WhatsApp number, right here in your browser (allow the microphone when asked). After it ends, record how it went.</p>
+          {% else %}<div class="ac-warn">This customer has no phone number.</div>{% endif %}
+        </div>
+
+        <div class="ac-panel ap-f" id="p-email">
+          {% if a.email %}
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">{% for k, s, b in email_templates %}<a class="ap-q" style="text-decoration:none;{{ 'border-color:var(--ink);font-weight:750' if etpl[0] == k }}" href="{{ url_for('portal_admin.am_account', tenant_id=a.tenant_id, tpl=k, p='email') }}">{{ s or 'Blank' }}</a>{% endfor %}</div>
+          <form method="POST" action="{{ url_for('portal_admin.am_email', tenant_id=a.tenant_id) }}">
+            <label class="l">To</label><input value="{{ a.email }}" disabled>
+            <label class="l" for="em_rt">Replies go to</label><input id="em_rt" name="reply_to" value="{{ reply_to }}">
+            <label class="l" for="em_s">Subject</label><input id="em_s" name="subject" value="{{ email_subject }}" required>
+            <label class="l" for="em_b">Message</label><textarea id="em_b" name="body" style="min-height:220px" required>{{ email_body }}</textarea>
+            <div class="ap-fu">
+              <label class="d">Follow up on<input type="date" name="follow_up_on" min="{{ today.isoformat() }}"></label>
+              <button type="button" class="ap-q" data-days="1">Tomorrow</button><button type="button" class="ap-q" data-days="3">In 3 days</button><button type="button" class="ap-q" data-days="7">Next week</button>
+              <button class="ap-save">Send email</button>
+            </div>
+          </form>
+          {% else %}<div class="ac-warn">This customer has no email address.</div>{% endif %}
+        </div>
+
+        <div class="ac-panel ap-f" id="p-logcall">
+          <form method="POST" action="{{ url_for('portal_admin.am_call', tenant_id=a.tenant_id) }}">
+            <fieldset style="border:0;margin:0;padding:0">
+              <legend style="font-size:12.5px;font-weight:650;color:#3B4552;margin-bottom:8px;padding:0">How did it go?</legend>
+              <div class="ap-outs">{% for k, l in outcomes %}<label class="ap-out"><input type="radio" name="outcome" value="{{ k }}" required><span>{{ l }}</span></label>{% endfor %}</div>
+            </fieldset>
+            <label class="l" for="lc_ch">Call type</label>
+            <select id="lc_ch" name="channel" style="max-width:240px"><option value="whatsapp_call">WhatsApp call</option><option value="phone">Phone call</option></select>
+            <label class="l" for="lc_n">What happened</label><textarea id="lc_n" name="note" placeholder="e.g. Connected WhatsApp together, will add products tomorrow"></textarea>
+            <div class="ap-fu">
+              <label class="d">Follow up on<input type="date" name="follow_up_on" min="{{ today.isoformat() }}"></label>
+              <button type="button" class="ap-q" data-days="1">Tomorrow</button><button type="button" class="ap-q" data-days="3">In 3 days</button><button type="button" class="ap-q" data-days="7">Next week</button>
+              <button class="ap-save">Save call</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="ac-panel ap-f" id="p-note">
+          <form method="POST" action="{{ url_for('portal_admin.am_note', tenant_id=a.tenant_id) }}">
+            <label class="l" for="nt">Note</label><textarea id="nt" name="note" required placeholder="Anything worth remembering about this account"></textarea>
+            <div class="ap-fu">
+              <label class="d">Follow up on<input type="date" name="follow_up_on" min="{{ today.isoformat() }}"></label>
+              <button type="button" class="ap-q" data-days="1">Tomorrow</button><button type="button" class="ap-q" data-days="3">In 3 days</button><button type="button" class="ap-q" data-days="7">Next week</button>
+              <button class="ap-save">Save note</button>
+            </div>
+          </form>
+        </div>
+      </section>
+      {% endif %}
+
+      <section class="ap-card" aria-labelledby="tl-h">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+          <h2 id="tl-h" style="margin:0">Timeline</h2>
+          <span class="ac-meta">Calls, WhatsApp, emails, notes and what they did in PhiXtra</span>
+        </div>
+        <ol class="ap-tl">
+          {% if a.status == 'not_contacted' and not (items|rejectattr('src', 'equalto', 'event')|list) %}
+          <li><span class="w">Now</span><span class="dot bad"></span><span><span class="t">No contact yet</span><span class="s">{{ a.days_since_signup }} day{{ 's' if a.days_since_signup != 1 }} since sign-up.</span></span></li>
+          {% endif %}
+          {% for i in items %}
+          <li>
+            <span class="w">{{ i.at.strftime('%-d %b') }}{% if i.src != 'event' or i.kind == 'login' %}<br>{{ i.at.strftime('%H:%M') }}{% endif %}</span>
+            {% if i.src == 'wa' %}
+              <span class="dot {{ 'in' if i.direction == 'inbound' else 'out' }}"></span>
+              <span><span class="t">WhatsApp {{ 'from' if i.direction == 'inbound' else 'to' }} {{ first }}</span>
+                {% if i.direction != 'inbound' %}<span class="s">{{ i.sent_by_label or 'PhiXtra (automatic)' }}</span>{% endif %}
+                <span class="b {{ 'in' if i.direction == 'inbound' }}">{{ i.content }}</span></span>
+            {% elif i.src == 'wacall' %}
+              <span class="dot {{ 'in' if i.direction == 'in' else 'out' }}"></span>
+              <span><span class="t">WhatsApp call {{ 'from' if i.direction == 'in' else 'to' }} {{ first }}</span>
+                <span class="s">{{ (i.status or '')|replace('_',' ')|capitalize }}{% if i.duration %} · {{ (i.duration // 60) }} min {{ i.duration % 60 }} s{% endif %}{% if i.answered_by_name %} · answered by {{ i.answered_by_name }}{% elif i.started_by_name %} · by {{ i.started_by_name }}{% endif %}{% if i.missed_reason %} · {{ i.missed_reason|replace('_',' ') }}{% endif %}</span></span>
+            {% elif i.src == 'event' %}
+              <span class="dot"></span>
+              <span><span class="t">{{ i.title }}</span>{% if i.sub %}<span class="s">{{ i.sub }}</span>{% endif %}</span>
+            {% else %}
+              <span class="dot {{ 'st' if i.kind == 'status' else 'out' }}"></span>
+              <span><span class="t">
+                {%- if i.kind == 'call' %}{{ 'WhatsApp call' if i.channel == 'whatsapp_call' else 'Phone call' }}: {{ call_outcome_label.get(i.outcome, i.outcome) }}
+                {%- elif i.kind == 'email' %}Email{% if i.subject %}: {{ i.subject }}{% endif %}{% if i.ok == false %} <span class="bad">not sent</span>{% endif %}
+                {%- elif i.kind == 'whatsapp' %}WhatsApp sent{% if i.ok == false %} <span class="bad">failed</span>{% endif %}
+                {%- elif i.kind == 'status' %}{{ i.body }}
+                {%- else %}Note{% endif -%}</span>
+                <span class="s">{{ manager_name(i.by_admin) if i.by_admin and '@' in i.by_admin else (i.by_admin or '') }}{% if i.follow_up_on %} · follow up {{ i.follow_up_on.strftime('%-d %b') }}{% endif %}</span>
+                {% if i.body and i.kind != 'status' %}<span class="b">{{ i.body }}</span>{% endif %}</span>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ol>
+      </section>
+    </div>
+
+    <div class="ap-side">
+      <section class="ap-card" aria-labelledby="fu-h">
+        <h2 id="fu-h">Follow-up</h2>
+        {% if a.next_follow_up %}
+          {% if a.follow_up_overdue %}<p class="ap-warnline">Overdue since {{ a.next_follow_up.strftime('%a %-d %b') }}</p>
+          {% elif a.follow_up_due %}<p class="ap-warnline">Due today</p>
+          {% else %}<p class="ap-okline">{{ a.next_follow_up.strftime('%A %-d %B') }}</p>{% endif %}
+        {% elif a.status not in ('set_up', 'lost') %}<p class="ap-warnline">None set: this account can be forgotten.</p>
+        {% else %}<p class="ac-meta" style="margin:0 0 10px">None needed.</p>{% endif %}
+        <div class="ap-f">
+          <input type="date" id="fuDate" name="next_follow_up" form="stateForm" value="{{ a.next_follow_up.isoformat() if a.next_follow_up }}" aria-label="Follow-up date" data-auto {% if not can_modify %}disabled{% endif %}>
+        </div>
+        {% if can_modify %}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+          <button type="button" class="ap-q" data-fu="1">Tomorrow</button><button type="button" class="ap-q" data-fu="3">In 3 days</button><button type="button" class="ap-q" data-fu="7">Next week</button>
+          {% if a.next_follow_up %}<button type="button" class="ap-q" data-fu="clear">Clear</button>{% endif %}
+        </div>
+        {% endif %}
+      </section>
+
+      <section class="ap-card ap-f" aria-labelledby="why-h">
+        <h2 id="why-h" style="margin-bottom:4px">Why they stopped</h2>
+        <p class="ac-meta" style="margin:0 0 10px">Ask, then record it. It feeds the dashboard.</p>
+        <select name="reason" form="stateForm" aria-label="Reason" data-auto {% if not can_modify %}disabled{% endif %}><option value="">Not asked yet</option>{% for k, l in reasons %}<option value="{{ k }}" {{ 'selected' if a.reason==k }}>{{ l }}</option>{% endfor %}</select>
+        <input name="reason_note" form="stateForm" placeholder="In their words (optional)" value="{{ a.reason_note or '' }}" style="margin-top:8px" aria-label="Reason in their words" data-auto {% if not can_modify %}disabled{% endif %}>
+      </section>
+
+      <section class="ap-card" aria-labelledby="acc-h">
+        <h2 id="acc-h">Account</h2>
+        <dl class="ap-dl">
+          <dt>Contact</dt><dd>{{ a.contact or '—' }}</dd>
+          <dt>Phone</dt><dd>{{ a.phone_number or '—' }}{% if a.phone_number and not a.phone_verified %} <small>(not verified)</small>{% endif %}</dd>
+          <dt>Email</dt><dd>{{ a.email or '—' }}{% if a.email and not a.email_verified %} <small>(not verified)</small>{% endif %}</dd>
+          {% if a.company_name and a.company_name != a.business %}<dt>Company</dt><dd>{{ a.company_name }}</dd>{% endif %}
+          <dt>Country</dt><dd>{{ a.country or '—' }}</dd>
+          {% if a.address %}<dt>Address</dt><dd>{{ a.address }}</dd>{% endif %}
+          <dt>Plan</dt><dd>{{ a.plan_name }}</dd>
+          {% if a.trial_ends_at %}<dt>Trial ends</dt><dd>{{ a.trial_ends_at.strftime('%a %-d %b %Y') }}</dd>{% endif %}
+          <dt>Signed up as</dt><dd>{{ a.setup.type or '—' }}</dd>
+          <dt>Website</dt><dd>{{ a.domain or 'None' }}{% if a.website_platform %} <small>({{ a.website_platform }})</small>{% endif %}</dd>
+          <dt>Last log-in</dt><dd>{{ a.last_login_at.strftime('%-d %b %Y, %H:%M') if a.last_login_at else 'Never' }}</dd>
+          <dt>Came from</dt><dd>{{ (a.hear_about_us or 'Not given')|replace('_',' ')|capitalize }}</dd>
+        </dl>
+        <p style="margin:14px 0 0"><a href="{{ url_for('portal_admin.customer_detail', customer_id=a.customer_id) }}" style="font-size:13px;font-weight:650">Open customer record →</a></p>
+      </section>
+    </div>
   </div>
 </div>
-</div>
 
+{% include "portal/_am_preview.html" %}
+<script src="{{ url_for('static', filename='portal/admin-calls.js') }}?v=1" defer></script>
 <script>
 (function(){
-  var acts = document.querySelectorAll('.ac-act');
-  function show(p){
-    acts.forEach(function(b){ b.classList.toggle('on', b.dataset.p === p); });
-    document.querySelectorAll('.ac-panel').forEach(function(x){ x.classList.toggle('on', x.id === 'p-' + p); });
+  // WhatsApp previews
+  var t = document.getElementById('waTextPreview')
+  if (t) t.onclick = function(){
+    var v = (document.getElementById('waText').value || '').trim()
+    if (!v) { document.getElementById('waText').focus(); return }
+    amPreview({ title: 'Check before sending', text: v, note: 'Sent from PhiXtra\'s WhatsApp number. It also shows in Admin › Inbox.',
+                send: function(){ document.getElementById('waTextForm').submit() } })
   }
-  acts.forEach(function(b){ b.addEventListener('click', function(){ show(b.dataset.p); }); });
-  if (location.hash === '#email') show('email');
+  var CHECKIN = {{ checkin_preview|tojson }}
+  var p = document.getElementById('waTplPreview')
+  if (p) p.onclick = function(){ amPreview({ title: 'Check before sending', text: CHECKIN,
+      note: 'Meta-approved wording, so it can\'t be changed. When they reply you can write freely for 24 hours.',
+      send: function(){ document.getElementById('waTplForm').submit() } }) }
+  var l = document.getElementById('waTplLook')
+  if (l) l.onclick = function(){ amPreview({ title: 'The check-in message (waiting for Meta)', text: CHECKIN,
+      note: 'This is what will be sent once Meta approves it.' }) }
+})();
+(function(){
+  var acts = [].slice.call(document.querySelectorAll('.ac-act'))
+  function show(p){
+    acts.forEach(function(b){ var on = b.dataset.p === p; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false') })
+    document.querySelectorAll('.ac-panel').forEach(function(x){ x.classList.toggle('on', x.id === 'p-' + p) })
+    if (p === 'call' && window.amCallCheck) amCallCheck()
+  }
+  acts.forEach(function(b){ b.addEventListener('click', function(){ show(b.dataset.p) }) })
+
+  function iso(days){ var d = new Date(); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10) }
+  document.querySelectorAll('[data-days]').forEach(function(b){ b.addEventListener('click', function(){
+    var f = b.closest('form').querySelector('input[name=follow_up_on]'); f.value = iso(parseInt(b.dataset.days, 10)); f.focus()
+  }) })
+
+  // status / manager / reason / follow-up save as soon as they change
+  var sf = document.getElementById('stateForm'), fd = document.getElementById('fuDate')
+  document.querySelectorAll('[data-auto]').forEach(function(el){ el.addEventListener('change', function(){ sf.submit() }) })
+  document.querySelectorAll('[data-fu]').forEach(function(b){ b.addEventListener('click', function(){
+    fd.value = b.dataset.fu === 'clear' ? '' : iso(parseInt(b.dataset.fu, 10)); sf.submit()
+  }) })
+
+  // Next best step buttons
+  var card = document.getElementById('log')
+  document.querySelectorAll('[data-go]').forEach(function(b){ b.addEventListener('click', function(){
+    var g = b.dataset.go
+    if (g === 'followup') { fd.scrollIntoView({ block: 'center', behavior: 'smooth' }); fd.focus(); try { fd.showPicker && fd.showPicker() } catch (e) {} return }
+    show(g); if (card) card.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    if (g === 'wa') { var pv = document.getElementById('waTplPreview'); if (pv) pv.click(); else { var tx = document.getElementById('waText'); if (tx) tx.focus() } }
+  }) })
+
+  // which tab opens first: ?p= (from All accounts), #email, else the suggested one
+  var qp = new URLSearchParams(location.search).get('p')
+  var want = qp || (location.hash === '#email' ? 'email' : '') || {{ nb.primary|tojson }}
+  if (!document.querySelector('.ac-act[data-p="' + want + '"]')) want = {{ ('wa' if has_phone else 'email')|tojson }}
+  document.addEventListener('DOMContentLoaded', function(){   // after admin-calls.js (deferred) is ready
+    show(want)
+    if ((qp || location.hash === '#log') && card) card.scrollIntoView({ block: 'start' })
+  })
+
+  window.amAfterCall = function(){
+    show('logcall')
+    var ch = document.querySelector('#p-logcall select[name=channel]'); if (ch) ch.value = 'whatsapp_call'
+  }
 })();
 </script>
 {% endblock %}

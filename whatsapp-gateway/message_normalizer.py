@@ -123,7 +123,12 @@ def normalize(payload: dict) -> Optional[dict]:
                 list_reply = interactive.get("list_reply") or {}
                 selected_title = list_reply.get("title", "").strip()
                 selected_id_raw = (list_reply.get("id") or "")
-                if selected_id_raw.startswith("elst_"):
+                if selected_id_raw.startswith("am_stuck_"):
+                    # Account Manager "Which part was the problem?" list (2026-11-06)
+                    action_type = "am_button"
+                    action_product_id = selected_id_raw
+                    text = selected_title or selected_id_raw
+                elif selected_id_raw.startswith("elst_"):
                     # Estate property list selection
                     action_product_id = selected_id_raw.replace("elst_", "")
                     action_type = "estate_select"
@@ -139,6 +144,18 @@ def normalize(payload: dict) -> Optional[dict]:
                     action_type = "list_select"
                     action_product_id = selected_id
                     text = f"I'm interested in {selected_title} (product id: {selected_id})"
+
+        elif msg_type == "button":
+            # A tap on a template's quick-reply button (2026-11-06). Before this
+            # it fell through to "unknown type" and the tap was lost.
+            btn = msg.get("button") or {}
+            payload_ = (btn.get("payload") or "").strip()
+            # Every business: the tap reaches the Inbox, the AI and campaign
+            # reply tracking as if the customer had typed the button's words.
+            text = (btn.get("text") or "").strip() or payload_
+            if payload_.startswith("am_"):
+                action_type = "am_button"   # PhiXtra Account Manager check-in
+                action_product_id = payload_
 
         elif msg_type in ("image", "video", "document", "audio"):
             media = msg.get(msg_type) or {}

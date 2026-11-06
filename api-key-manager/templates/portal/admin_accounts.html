@@ -1,83 +1,310 @@
 {% extends "portal/admin_base.html" %}
-{% block title %}Accounts — PhiXtra Admin{% endblock %}
+{% block title %}All accounts — PhiXtra Admin{% endblock %}
 {% block content %}
+{% macro url_with(drop=(), add=()) -%}
+{%- set parts = [] -%}
+{%- for k, v in keep if k not in drop -%}{%- set _ = parts.append(k ~ '=' ~ (v|urlencode)) -%}{%- endfor -%}
+{%- for k, v in add -%}{%- set _ = parts.append(k ~ '=' ~ (v|urlencode)) -%}{%- endfor -%}
+{{ url_for('portal_admin.am_accounts') }}{{ ('?' ~ parts|join('&')) if parts }}
+{%- endmacro %}
+{% macro url_minus(key, value) -%}
+{%- set parts = [] -%}
+{%- for k, v in keep if not (k == key and v == value) -%}{%- set _ = parts.append(k ~ '=' ~ (v|urlencode)) -%}{%- endfor -%}
+{{ url_for('portal_admin.am_accounts') }}{{ ('?' ~ parts|join('&')) if parts }}
+{%- endmacro %}
 <style>
-  .am-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
-  .am-tab{padding:7px 14px;border-radius:999px;font-size:13px;font-weight:750;text-decoration:none;color:var(--ink);
-          background:#fff;border:1px solid var(--line)}
-  .am-tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
-  .am-tab.warn:not(.on){color:#B42318;border-color:rgba(240,68,56,.4)}
-  .am-who{display:flex;gap:4px;margin:0 0 14px;font-size:12px}
-  .am-who a{padding:3px 10px;border-radius:999px;text-decoration:none;color:var(--muted);border:1px solid var(--line);background:#fff;font-weight:700}
-  .am-who a.on{color:#fff;background:var(--ink);border-color:var(--ink)}
-  .am-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;font-size:13px}
-  .am-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:9px 10px;background:#fafafa;border-bottom:1px solid var(--line)}
-  .am-table td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
-  .am-table tr:last-child td{border-bottom:none}
-  .am-sub{font-size:11.5px;color:var(--muted)}
-  .am-pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:750;background:rgba(3,12,24,.07);white-space:nowrap}
-  .am-pill.not_contacted{background:rgba(247,144,9,.12);color:#93370D}
-  .am-pill.contacted{background:rgba(46,144,250,.12);color:#175CD3}
-  .am-pill.replied,.am-pill.helping{background:rgba(122,90,248,.12);color:#5925DC}
-  .am-pill.set_up{background:rgba(18,183,106,.14);color:#067647}
-  .am-pill.lost{background:rgba(3,12,24,.08);color:#475467}
-  .am-due{color:#B42318;font-weight:750}
-  .am-steps{display:flex;gap:3px;margin-top:4px}
-  .am-steps i{width:16px;height:5px;border-radius:3px;background:rgba(3,12,24,.12)}
-  .am-steps i.d{background:var(--good)}
-  .am-insight{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 14px}
-  .am-insight div{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:12.5px;min-width:220px}
-  .am-insight b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:4px}
+  .al{display:flex;flex-direction:column;gap:14px;max-width:1240px}
+  .al-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+  .al-head h1{margin:0 0 4px}
+  .al-head p{margin:0;font-size:13px;color:var(--muted)}
+  .al-search{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid rgba(3,12,24,.15);border-radius:10px;padding:0 12px;min-width:min(320px,100%)}
+  .al-search input{border:0;outline:0;font:inherit;font-size:13.5px;padding:10px 0;flex:1;background:transparent;min-width:0}
+  .al-search:focus-within{border-color:var(--ink);box-shadow:0 0 0 3px rgba(3,12,24,.08)}
+
+  .al-views{display:flex;gap:6px;flex-wrap:wrap}
+  .al-view{font-size:13px;font-weight:650;padding:8px 14px;border-radius:999px;display:inline-flex;align-items:center;gap:8px;
+           background:#fff;color:var(--ink);border:1px solid rgba(3,12,24,.15);text-decoration:none}
+  .al-view:hover{text-decoration:none;border-color:rgba(3,12,24,.35)}
+  .al-view span{font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:999px;background:#F2F4F7;color:#3B4552}
+  .al-view.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .al-view.on span{background:rgba(255,255,255,.2);color:#fff}
+  .al-view.warn:not(.on){color:#B42318;border-color:rgba(217,45,32,.4)}
+
+  .al-flt{display:flex;gap:8px;flex-wrap:wrap;align-items:center;position:relative;z-index:20}
+  .al-flt > .lbl{font-size:12.5px;font-weight:750;color:var(--muted);margin-right:2px}
+  .al-dd{position:relative}
+  .al-ddb{font:inherit;font-size:13px;display:inline-flex;align-items:center;gap:6px;padding:8px 12px;min-height:38px;border-radius:10px;
+          cursor:pointer;background:#fff;color:var(--ink);border:1px solid rgba(3,12,24,.15)}
+  .al-ddb:hover{border-color:rgba(3,12,24,.35)}
+  .al-ddb .k{color:var(--muted);font-weight:600}
+  .al-ddb .v{font-weight:700;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .al-ddb svg{transition:transform .15s}
+  .al-dd.active .al-ddb{background:#F5F8FF;border-color:#2E5AAC}
+  .al-dd.active .al-ddb .v{color:#2E5AAC}
+  .al-dd.open .al-ddb{border-color:var(--ink);box-shadow:0 0 0 3px rgba(3,12,24,.08)}
+  .al-dd.open .al-ddb svg{transform:rotate(180deg)}
+  .al-panel{display:none;position:absolute;top:calc(100% + 6px);left:0;width:290px;background:#fff;border:1px solid rgba(3,12,24,.12);
+            border-radius:14px;box-shadow:0 14px 36px rgba(3,12,24,.18);overflow:hidden}
+  .al-dd.open .al-panel{display:block}
+  .al-panel .ph{padding:12px 14px 8px;display:flex;justify-content:space-between;align-items:center}
+  .al-panel .ph b{font-size:13.5px} .al-panel .ph span{font-size:11.5px;color:var(--muted)}
+  .al-panel .ps{padding:0 14px 8px}
+  .al-panel .ps label{display:flex;align-items:center;gap:8px;border:1px solid rgba(3,12,24,.15);border-radius:9px;padding:0 10px}
+  .al-panel .ps input{border:0;outline:0;font:inherit;font-size:13px;padding:8px 0;flex:1;min-width:0}
+  .al-opts{max-height:270px;overflow-y:auto;padding:2px 6px 6px}
+  .al-opt{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:8px;font-size:13px;cursor:pointer}
+  .al-opt:hover{background:#F5F6F8}
+  .al-opt input{width:16px;height:16px;accent-color:var(--ink);margin:0;flex-shrink:0}
+  .al-opt .t{flex:1}
+  .al-opt .n{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .al-opt.zero{color:#98A2B3}
+  .al-panel .pf{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid rgba(3,12,24,.08);background:#FAFAFB}
+  .al-link{font:inherit;font-size:12.5px;font-weight:650;border:0;background:transparent;color:#175CD3;cursor:pointer;padding:8px 4px;text-decoration:none}
+  .al-apply{font:inherit;font-size:13px;font-weight:700;padding:8px 14px;min-height:36px;border-radius:9px;border:0;background:var(--ink);color:#fff;cursor:pointer}
+  .al-sort{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+  .al-sort select{font:inherit;font-size:13px;font-weight:650;padding:7px 10px;border-radius:9px;border:1px solid rgba(3,12,24,.15);background:#fff;color:var(--ink)}
+
+  .al-chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--muted)}
+  .al-chip{display:inline-flex;align-items:center;gap:4px;background:#EEF4FF;color:#2E5AAC;font-weight:650;padding:4px 4px 4px 10px;border-radius:999px}
+  .al-chip a{color:#2E5AAC;text-decoration:none;font-size:15px;line-height:1;padding:0 6px;border-radius:999px}
+  .al-chip a:hover{background:rgba(46,90,172,.12);text-decoration:none}
+
+  .al-bulk{display:none;align-items:center;gap:10px;background:var(--ink);color:#fff;border-radius:12px;padding:8px 10px 8px 16px;font-size:13px;flex-wrap:wrap;position:sticky;top:8px;z-index:15;margin-bottom:12px}
+  .al-bulk.show{display:flex}
+  .al-bulk .bb{font:inherit;font-size:12.5px;font-weight:650;padding:7px 12px;min-height:34px;border-radius:8px;border:1px solid rgba(255,255,255,.3);background:transparent;color:#fff;cursor:pointer}
+  .al-bulk .bb:hover{background:rgba(255,255,255,.1)}
+  .al-bulk select,.al-bulk input[type=date]{font:inherit;font-size:12.5px;padding:6px 8px;border-radius:8px;border:0}
+  .al-bulk .grp{display:none;align-items:center;gap:6px}
+  .al-bulk .grp.on{display:inline-flex}
+
+  .al-tbl-wrap{background:#fff;border:1px solid var(--line);border-radius:14px;overflow-x:auto}
+  .al-tbl{width:100%;min-width:1000px;border-collapse:collapse;font-size:13px}
+  .al-tbl th{background:#FAFAFB;color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;text-align:left;padding:10px 8px;font-weight:700}
+  .al-tbl th:first-child,.al-tbl td:first-child{padding-left:14px;width:28px}
+  .al-tbl td{border-top:1px solid rgba(3,12,24,.08);padding:12px 8px;vertical-align:top}
+  .al-tbl tr:hover td{background:#FCFCFD}
+  .al-tbl tr.sel td{background:#F5F8FF}
+  .al-biz a{font-weight:750;color:var(--ink)}
+  .al-sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .al-dots{display:flex;gap:3px;margin:3px 0 5px}
+  .al-dots i{display:block;width:20px;height:6px;border-radius:3px;background:#E4E7EC}
+  .al-dots i.d{background:#12B76A}
+  .al-stop{font-size:12px;color:#93370D;font-weight:650}
+  .al-pill{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;background:rgba(3,12,24,.07)}
+  .al-pill.not_contacted{background:#FFF6ED;color:#93370D} .al-pill.contacted{background:#EEF4FF;color:#2E5AAC}
+  .al-pill.replied,.al-pill.helping{background:#F4F3FF;color:#5925DC} .al-pill.set_up{background:#ECFDF3;color:#067647} .al-pill.lost{background:#F2F4F7;color:#475467}
+  .al-next{font-size:12.5px}
+  .al-next.due{color:#B42318;font-weight:750} .al-next.todo{color:#93370D;font-weight:650} .al-next.plain{color:#3B4552}
+  .al-ic{width:34px;height:34px;border-radius:9px;border:1px solid rgba(3,12,24,.15);background:#fff;display:inline-grid;place-items:center;vertical-align:middle}
+  .al-ic:hover{background:#F5F6F8}
+  .al-ic.off{opacity:.35;pointer-events:none}
+  .al-more{font-size:12.5px;color:var(--muted);margin:12px 0 0}
+
+  @media (max-width:640px){ .al-panel{position:fixed;left:16px;right:16px;top:auto;bottom:16px;width:auto} .al-sort{margin-left:0} }
 </style>
 
-<div class="page-header">
+<div class="al">
+  <div class="al-head">
+    <div>
+      <h1 class="page-title">All accounts</h1>
+      <p>{{ L.total }} businesses signed up. Pick a view, filter, then work down the list.</p>
+    </div>
+  </div>
+
+  <form method="get" id="alForm" action="{{ url_for('portal_admin.am_accounts') }}">
+    <input type="hidden" name="view" value="{{ L.view }}">
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      <label class="al-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5D6673" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input type="search" name="q" value="{{ L.q }}" placeholder="Search business, name, email or phone" aria-label="Search accounts">
+      </label>
+    </div>
+
+    <nav class="al-views" aria-label="Views" style="margin-bottom:14px">
+      {% for v in L.views %}
+      <a class="al-view {{ 'on' if v.on }} {{ 'warn' if v.key == 'due' and v.n }}" href="{{ url_with(drop=('view',), add=(('view', v.key),)) }}" {% if v.on %}aria-current="page"{% endif %}>{{ v.label }} <span>{{ v.n }}</span></a>
+      {% endfor %}
+      {% if L.hidden_view %}<span class="al-view on">{{ L.view_label }} <span>{{ L.rows|length }}</span></span>{% endif %}
+    </nav>
+
+    <div class="al-flt">
+      <span class="lbl">Filter</span>
+      {% for f in L.filters %}
+      <div class="al-dd {{ 'active' if f.active }}" data-dd>
+        <button type="button" class="al-ddb" aria-haspopup="true" aria-expanded="false">
+          <span class="k">{{ f.label }}</span><span class="v">{{ f.value }}</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="al-panel" role="dialog" aria-label="{{ f.label }} filter">
+          <div class="ph"><b>{{ f.title }}</b><span>{{ 'pick one' if f.kind == 'radio' else 'pick any' }}</span></div>
+          {% if f.search %}
+          <div class="ps"><label><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5D6673" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input type="search" placeholder="Search {{ f.label|lower }}" aria-label="Search {{ f.label|lower }}" data-find></label></div>
+          {% endif %}
+          <div class="al-opts">
+            {% for o in f.options %}
+            <label class="al-opt {{ 'zero' if not o.n and not o.on }}" data-opt="{{ o.label|lower }}">
+              <input type="{{ f.kind }}" name="{{ f.key }}" value="{{ o.value }}" {% if o.on %}checked{% endif %}>
+              <span class="t">{{ o.label }}</span><span class="n">{{ o.n }}</span>
+            </label>
+            {% else %}<p class="al-sub" style="padding:8px">Nothing to pick.</p>{% endfor %}
+          </div>
+          <div class="pf">
+            <button type="button" class="al-link" data-clear>Clear</button>
+            <button type="submit" class="al-apply">Apply</button>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+      {% if L.filters|selectattr('active')|list or L.q %}<a class="al-link" href="{{ url_for('portal_admin.am_accounts', view=L.view) }}">Clear all</a>{% endif %}
+      <label class="al-sort">Sort
+        <select name="sort" onchange="this.form.submit()">
+          {% for k, l in sorts %}<option value="{{ k }}" {% if L.sort == k %}selected{% endif %}>{{ l }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+  </form>
+
+  {% set act = L.filters|selectattr('active')|list %}
+  {% if act or L.q %}
+  <div class="al-chips">Showing:
+    {% if L.q %}<span class="al-chip">Search: “{{ L.q }}” <a href="{{ url_minus('q', L.q) }}" aria-label="Remove search">×</a></span>{% endif %}
+    {% for f in act %}
+      {% if f.kind == 'radio' %}
+        <span class="al-chip">{{ f.label }}: {{ f.value }} <a href="{{ url_minus(f.key, L.sel[f.key]) }}" aria-label="Remove {{ f.label }} filter">×</a></span>
+      {% else %}
+        {% for o in f.options if o.on %}<span class="al-chip">{{ f.label }}: {{ o.label }} <a href="{{ url_minus(f.key, o.value) }}" aria-label="Remove {{ o.label }}">×</a></span>{% endfor %}
+      {% endif %}
+    {% endfor %}
+    <span>→ <b style="color:var(--ink)">{{ L.rows|length }} account{{ 's' if L.rows|length != 1 }}</b></span>
+  </div>
+  {% endif %}
+
   <div>
-    <h1 class="page-title">🤝 Accounts</h1>
-    <p class="muted" style="margin:4px 0 0">Every business that signed up. Help the ones that didn't finish setting up, record each contact, and why they stopped.</p>
+  {% if can_modify %}
+  <form method="post" action="{{ url_for('portal_admin.am_bulk') }}" id="bulkForm">
+    <input type="hidden" name="back" value="{{ request.full_path }}">
+    <div class="al-bulk" id="bulk" role="region" aria-label="Bulk actions">
+      <b id="bulkN">0 selected</b>
+      <button type="button" class="bb" data-grp="assign">Assign to…</button>
+      <span class="grp" data-g="assign">
+        <select name="assigned_admin" aria-label="Account Manager"><option value="">Nobody</option>{% for u in admins %}<option value="{{ u.username }}">{{ manager_name(u.username) }}</option>{% endfor %}</select>
+        <button type="submit" class="bb" name="action" value="assign">Assign</button>
+      </span>
+      <button type="button" class="bb" data-grp="followup">Set follow-up date</button>
+      <span class="grp" data-g="followup">
+        <input type="date" name="follow_up" aria-label="Follow-up date" min="{{ today.isoformat() }}">
+        <button type="submit" class="bb" name="action" value="followup">Set</button>
+      </span>
+      {% if checkin_ready %}
+      <button type="submit" class="bb" name="action" value="checkin" id="bulkCheckin">Send check-in on WhatsApp</button>
+      {% endif %}
+      <button type="button" class="bb" id="bulkClear" style="margin-left:auto;border:0">Clear</button>
+    </div>
+  </form>
+  {% endif %}
+
+  {% if rows %}
+  <div class="al-tbl-wrap">
+    <table class="al-tbl">
+      <thead><tr>
+        <th scope="col">{% if can_modify %}<input type="checkbox" id="selAll" aria-label="Select all shown">{% endif %}</th>
+        <th scope="col">Business</th><th scope="col">Set-up</th><th scope="col">Status</th>
+        <th scope="col">Last contact</th><th scope="col">Next step</th><th scope="col">Manager</th>
+        <th scope="col" style="text-align:right;padding-right:14px">Contact</th>
+      </tr></thead>
+      <tbody>
+      {% for x in rows %}
+      {% set has_phone = x.phone_digits and x.phone_digits|length >= 8 %}
+      <tr>
+        <td>{% if can_modify %}<input type="checkbox" name="ids" value="{{ x.tenant_id }}" form="bulkForm" class="sel" aria-label="Select {{ x.business }}">{% endif %}</td>
+        <td class="al-biz">
+          <a href="{{ url_for('portal_admin.am_account', tenant_id=x.tenant_id) }}">{{ x.business or '—' }}</a>
+          <div class="al-sub">{{ x.contact or x.email }}{% if x.country %} · {{ x.country }}{% endif %} · {{ x.plan_name.replace('PhiXtra Connect (Free)', 'Free') }}</div>
+          <div class="al-sub">Signed up {% if x.days_since_signup == 0 %}today{% elif x.days_since_signup == 1 %}yesterday{% else %}{{ x.days_since_signup }} days ago{% endif %} · {% if x.last_login_at %}last log-in {{ x.last_login_at.strftime('%-d %b') }}{% else %}never logged in{% endif %}</div>
+        </td>
+        <td style="width:150px">
+          <div class="al-dots" title="{{ x.setup.done }} of {{ x.setup.total }} steps">{% for s in x.setup.steps %}<i class="{{ 'd' if s.done }}" title="{{ s.title }}{{ ' ✓' if s.done }}"></i>{% endfor %}</div>
+          {% if x.setup.complete %}<div class="al-sub" style="color:#067647;font-weight:650">All steps done</div>{% else %}<div class="al-stop">Stopped at {{ x.setup.stuck }}</div>{% endif %}
+        </td>
+        <td><span class="al-pill {{ x.status }}">{{ x.status_label }}</span>{% if x.reason_label %}<div class="al-sub">{{ x.reason_label }}</div>{% endif %}</td>
+        <td style="font-size:12.5px;color:#3B4552">{% if x.last_contact %}{{ {'call':'Call','whatsapp':'WhatsApp','email':'Email'}[x.last_contact.kind] }}<div class="al-sub">{{ x.last_contact.created_at.strftime('%-d %b, %H:%M') }}</div>{% else %}<span class="al-sub">Never</span>{% endif %}</td>
+        <td><span class="al-next {{ x.next[1] }}">{{ x.next[0] }}</span></td>
+        <td style="font-size:12.5px;color:#3B4552">{{ x.manager or 'Unassigned' }}</td>
+        <td style="text-align:right;white-space:nowrap;padding-right:14px">
+          <a class="al-ic {{ 'off' if not has_phone }}" href="{{ url_for('portal_admin.am_inbox', tenant_id=x.tenant_id) }}" aria-label="WhatsApp {{ x.business }}" title="{{ 'WhatsApp' if has_phone else 'No phone number' }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#067647" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 0 1-13.5 7.8L3 21l1.2-4.4A9 9 0 1 1 21 12z"/></svg></a>
+          <a class="al-ic {{ 'off' if not has_phone }}" href="{{ url_for('portal_admin.am_account', tenant_id=x.tenant_id) }}?p=call" aria-label="Call {{ x.business }}" title="{{ 'WhatsApp call' if has_phone else 'No phone number' }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#030C18" stroke-width="2" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg></a>
+          <a class="al-ic {{ 'off' if not x.email }}" href="{{ url_for('portal_admin.am_account', tenant_id=x.tenant_id) }}?p=email" aria-label="Email {{ x.business }}" title="Email"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#030C18" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></a>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="al-more">Showing {{ rows|length }} of {{ L.rows|length }}{% if more %} · <a href="{{ url_with(drop=('limit',), add=(('limit', limit + 50),)) }}">Show more</a>{% endif %}</p>
+  {% else %}
+  <div class="al-tbl-wrap" style="padding:40px;text-align:center">
+    <b style="display:block;margin-bottom:6px">No accounts match</b>
+    <span class="al-sub">Try another view or <a href="{{ url_for('portal_admin.am_accounts') }}">clear the filters</a>.</span>
+  </div>
+  {% endif %}
   </div>
 </div>
 
-<div class="am-insight">
-  <div><b>Where they stop</b>{% for s, n in stuck[:4] %}{{ s }}: <strong>{{ n }}</strong>{% if not loop.last %} · {% endif %}{% else %}—{% endfor %}</div>
-  <div><b>Why they left (Lost)</b>{% for s, n in reasons[:4] %}{{ s }}: <strong>{{ n }}</strong>{% if not loop.last %} · {% endif %}{% else %}No reasons recorded yet{% endfor %}</div>
-</div>
+<script>
+(function(){
+  var form = document.getElementById('alForm')
+  var dds = [].slice.call(document.querySelectorAll('[data-dd]'))
+  function closeAll(except){ dds.forEach(function(d){ if (d !== except) { d.classList.remove('open'); d.querySelector('.al-ddb').setAttribute('aria-expanded','false') } }) }
+  dds.forEach(function(d){
+    var b = d.querySelector('.al-ddb')
+    b.addEventListener('click', function(e){
+      e.stopPropagation()
+      var open = !d.classList.contains('open'); closeAll(d)
+      d.classList.toggle('open', open); b.setAttribute('aria-expanded', open ? 'true' : 'false')
+      if (open) { var s = d.querySelector('[data-find]'); if (s) s.focus() }
+    })
+    d.querySelector('.al-panel').addEventListener('click', function(e){ e.stopPropagation() })
+    d.querySelector('[data-clear]').addEventListener('click', function(){
+      var ins = d.querySelectorAll('.al-opts input')
+      ins.forEach(function(i){ i.checked = false })
+      if (ins.length && ins[0].type === 'radio') ins[0].checked = true   // radio: first = Everyone / Any
+      form.submit()
+    })
+    var find = d.querySelector('[data-find]')
+    if (find) find.addEventListener('input', function(){
+      var q = find.value.trim().toLowerCase()
+      d.querySelectorAll('[data-opt]').forEach(function(o){ o.style.display = !q || o.dataset.opt.indexOf(q) > -1 ? '' : 'none' })
+    })
+    // pick-one filters apply straight away
+    d.querySelectorAll('.al-opts input[type=radio]').forEach(function(r){ r.addEventListener('change', function(){ form.submit() }) })
+  })
+  document.addEventListener('click', function(){ closeAll() })
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeAll() })
 
-<div class="am-tabs">
-  {% for k, label in [('todo','Not set up'),('due','Follow-ups due'),('set_up','Set up'),('lost','Lost'),('all','All')] %}
-  <a class="am-tab {{ 'on' if tab==k }} {{ 'warn' if k=='due' and counts.due }}" href="{{ url_for('portal_admin.am_accounts', tab=k, who=who) }}">{{ label }} ({{ counts[k] }})</a>
-  {% endfor %}
-</div>
-<div class="am-who">
-  {% for k, label in [('all','Everyone'),('me','Assigned to me'),('none','Unassigned')] %}
-  <a class="{{ 'on' if who==k }}" href="{{ url_for('portal_admin.am_accounts', tab=tab, who=k) }}">{{ label }}</a>
-  {% endfor %}
-</div>
-
-{% if rows %}
-<div style="overflow-x:auto">
-<table class="am-table">
-  <thead><tr><th>Business</th><th>Stopped at</th><th>Status</th><th>Last contact</th><th>Follow-up</th><th>Account manager</th><th></th></tr></thead>
-  <tbody>
-  {% for x in rows %}
-  <tr>
-    <td><a href="{{ url_for('portal_admin.am_account', tenant_id=x.tenant_id) }}"><b>{{ x.business or '—' }}</b></a>
-      <div class="am-sub">{{ x.contact or x.email }}{% if x.country %} · {{ x.country }}{% endif %}</div>
-      <div class="am-sub">Signed up {{ x.signed_up.strftime('%-d %b %Y') if x.signed_up }}{% if x.days_since_signup is not none %} ({{ x.days_since_signup }} days ago){% endif %}</div></td>
-    <td>{% if x.setup.complete %}<span class="am-sub">All steps done</span>{% else %}{{ x.setup.stuck or '—' }}{% endif %}
-      <div class="am-steps">{% for s in x.setup.steps %}<i class="{{ 'd' if s.done }}" title="{{ s.title }}"></i>{% endfor %}</div>
-      <div class="am-sub">{{ x.setup.type }}{% if x.setup.total %} · {{ x.setup.done }}/{{ x.setup.total }}{% endif %}</div></td>
-    <td><span class="am-pill {{ x.status }}">{{ x.status_label }}</span>{% if x.reason_label %}<div class="am-sub">{{ x.reason_label }}</div>{% endif %}</td>
-    <td>{% if x.last_contact %}{{ {'call':'Call','whatsapp':'WhatsApp','email':'Email'}[x.last_contact.kind] }}
-      <div class="am-sub">{{ x.last_contact.created_at.strftime('%-d %b, %H:%M') }}</div>{% else %}<span class="am-sub">Never</span>{% endif %}</td>
-    <td>{% if x.next_follow_up %}<span class="{{ 'am-due' if x.follow_up_due }}">{{ 'Overdue · ' if x.follow_up_overdue }}{{ 'Today' if x.next_follow_up == today else x.next_follow_up.strftime('%-d %b') }}</span>{% else %}<span class="am-sub">—</span>{% endif %}</td>
-    <td>{{ x.manager or '—' }}</td>
-    <td><a class="btn btn-sm" href="{{ url_for('portal_admin.am_account', tenant_id=x.tenant_id) }}">Open</a></td>
-  </tr>
-  {% endfor %}
-  </tbody>
-</table>
-</div>
-{% else %}
-<p class="muted">Nothing here.</p>
-{% endif %}
+  var bulk = document.getElementById('bulk'); if (!bulk) return
+  var boxes = [].slice.call(document.querySelectorAll('input.sel')), all = document.getElementById('selAll')
+  function upd(){
+    var n = boxes.filter(function(b){ return b.checked }).length
+    document.getElementById('bulkN').textContent = n + ' selected'
+    bulk.classList.toggle('show', n > 0)
+    boxes.forEach(function(b){ b.closest('tr').classList.toggle('sel', b.checked) })
+    if (all) all.checked = n > 0 && n === boxes.length
+  }
+  boxes.forEach(function(b){ b.addEventListener('change', upd) })
+  if (all) all.addEventListener('change', function(){ boxes.forEach(function(b){ b.checked = all.checked }); upd() })
+  document.getElementById('bulkClear').onclick = function(){ boxes.forEach(function(b){ b.checked = false }); upd() }
+  bulk.querySelectorAll('[data-grp]').forEach(function(b){ b.addEventListener('click', function(){
+    var g = bulk.querySelector('[data-g="' + b.dataset.grp + '"]'); var on = !g.classList.contains('on')
+    bulk.querySelectorAll('.grp').forEach(function(x){ x.classList.remove('on') }); g.classList.toggle('on', on)
+  }) })
+  var ci = document.getElementById('bulkCheckin')
+  if (ci) ci.addEventListener('click', function(e){
+    var n = boxes.filter(function(b){ return b.checked }).length
+    if (!confirm('Send Kelvin\'s WhatsApp check-in message to ' + n + ' account' + (n === 1 ? '' : 's') + '?\n\nAccounts without a phone number are skipped. Up to 50 at a time.')) e.preventDefault()
+  })
+  upd()
+})();
+</script>
 {% endblock %}

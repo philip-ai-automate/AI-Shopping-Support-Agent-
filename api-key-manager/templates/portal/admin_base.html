@@ -251,12 +251,28 @@
        href="{{ url_for('portal_admin.customers') }}">
       <span class="asb-icon">👥</span> Customers
     </a>
-    {% set _am_due = am_due_count() if am_due_count is defined else 0 %}
-    <a class="asb-link {% if (request.endpoint or '').startswith('portal_admin.am_') %}active{% endif %}"
-       href="{{ url_for('portal_admin.am_accounts') }}">
-      <span class="asb-icon">🤝</span> Accounts
-      {% if _am_due %}<span style="margin-left:auto;background:#F04438;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px" title="Follow-ups due">{{ _am_due }}</span>{% endif %}
+    {% set _am_inb = am_inbox_count() if am_inbox_count is defined else 0 %}
+    <a class="asb-link {% if (request.endpoint or '').startswith('portal_admin.am_inbox') %}active{% endif %}"
+       href="{{ url_for('portal_admin.am_inbox') }}">
+      <span class="asb-icon">💬</span> Inbox
+      {% if _am_inb %}<span style="margin-left:auto;background:#25D366;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px" title="Customers waiting for a reply">{{ _am_inb }}</span>{% endif %}
     </a>
+    {% set _am_due = am_due_count() if am_due_count is defined else 0 %}
+    {% set _am_ep = request.endpoint or '' %}
+    {% set _am_group = _am_ep.startswith('portal_admin.am_') and not _am_ep.startswith('portal_admin.am_inbox') %}
+    <div class="asb-group-toggle {% if _am_group %}open{% endif %}" onclick="asbGroupToggle(this)">
+      <span class="asb-gtitle"><span class="asb-icon">🤝</span> Accounts
+        {% if _am_due %}<span style="background:#F04438;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px" title="Follow-ups due">{{ _am_due }}</span>{% endif %}</span>
+      <span class="asb-arrow">▾</span>
+    </div>
+    <div class="asb-sub {% if _am_group %}open{% endif %}">
+      <a href="{{ url_for('portal_admin.am_dashboard') }}"
+         class="{% if _am_ep == 'portal_admin.am_dashboard' %}active{% endif %}">Dashboard</a>
+      <a href="{{ url_for('portal_admin.am_accounts') }}"
+         class="{% if _am_group and _am_ep not in ('portal_admin.am_settings', 'portal_admin.am_dashboard') %}active{% endif %}">All accounts</a>
+      <a href="{{ url_for('portal_admin.am_settings') }}"
+         class="{% if _am_ep == 'portal_admin.am_settings' %}active{% endif %}">Settings</a>
+    </div>
     <a class="asb-link {% if 'inactive_accounts' in (request.endpoint or '') %}active{% endif %}"
        href="{{ url_for('portal_admin.inactive_accounts') }}">
       <span class="asb-icon">⏳</span> Inactive Accounts
@@ -407,7 +423,10 @@
 (function(){
   var INDEX = [
     { icon:'👥', title:'Customers',          desc:'View and manage all merchant accounts',      url:'{{ url_for("portal_admin.customers") }}',           tags:'customers users merchants tenants accounts list find' },
+    { icon:'💬', title:'Inbox',              desc:'WhatsApp chats with customers who signed up', url:'{{ url_for("portal_admin.am_inbox") }}',            tags:'inbox whatsapp chat reply customer account manager messages' },
     { icon:'🤝', title:'Accounts',           desc:'Follow up sign-ups that did not finish set-up', url:'{{ url_for("portal_admin.am_accounts") }}',        tags:'accounts account manager onboarding churn follow up stalled sign ups whatsapp call email' },
+    { icon:'📊', title:'Accounts Dashboard', desc:'What needs doing today, set-up funnel, where sign-ups stop', url:'{{ url_for("portal_admin.am_dashboard") }}', tags:'accounts dashboard account manager funnel trials follow ups never contacted' },
+    { icon:'⚙️', title:'Accounts Settings',  desc:'Reply alerts and check-in button settings', url:'{{ url_for("portal_admin.am_settings") }}',          tags:'accounts settings reply alerts email account manager follow up days' },
     { icon:'📱', title:'Onboard WhatsApp',   desc:'Set up a new merchant WhatsApp account',    url:'{{ url_for("portal_admin.onboard_wa") }}',          tags:'onboard new merchant whatsapp setup register' },
     { icon:'📂', title:'Catalogue',          desc:'Manage product catalogue and categories',   url:'{{ url_for("portal_admin.catalogue_dashboard") }}', tags:'catalogue products categories inventory' },
     { icon:'🔑', title:'API Keys',           desc:'View and manage all API keys',              url:'{{ url_for("portal_admin.api_keys") }}',            tags:'api keys access developer integration' },

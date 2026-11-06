@@ -6489,6 +6489,8 @@ def inactive_accounts_delay(tenant_id: int):
 # Admin › Accounts — Account Manager workspace (2026-11-06)
 import admin_accounts as _admin_accounts
 _admin_accounts.register(portal_admin_bp, _require_admin, _admin_user)
+_admin_accounts.register_calls(portal_admin_bp, _require_admin, _admin_user)
+_admin_accounts.register_inbox(portal_admin_bp, _require_admin, _admin_user)
 
 
 def _am_assignments(tenant_ids) -> dict:

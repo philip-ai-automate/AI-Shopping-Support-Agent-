@@ -1,0 +1,191 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Inbox — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .ib{display:grid;grid-template-columns:340px 1fr;gap:0;background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;height:calc(100vh - 150px);min-height:520px}
+  @media(max-width:900px){.ib{grid-template-columns:1fr;height:auto}.ib-list{max-height:320px}}
+  .ib-side{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+  .ib-tools{padding:12px;border-bottom:1px solid var(--line)}
+  .ib-tools input{width:100%;padding:8px 10px;border:1px solid rgba(3,12,24,.18);border-radius:9px;font:inherit;font-size:13px}
+  .ib-tabs{display:flex;gap:4px;margin-top:8px}
+  .ib-tabs a{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;text-decoration:none;color:var(--muted);border:1px solid var(--line)}
+  .ib-tabs a.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .ib-list{overflow-y:auto;flex:1}
+  .ib-item{display:flex;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line);text-decoration:none;color:var(--ink)}
+  .ib-item:hover{background:#fafafa;text-decoration:none}
+  .ib-item.on{background:rgba(3,12,24,.06)}
+  .ib-av{width:38px;height:38px;border-radius:50%;background:#075E54;color:#fff;display:grid;place-items:center;font-weight:800;flex:none}
+  .ib-mid{min-width:0;flex:1}
+  .ib-name{display:flex;justify-content:space-between;gap:6px;font-size:13.5px;font-weight:750}
+  .ib-name small{font-weight:500;color:var(--muted);font-size:11px;white-space:nowrap}
+  .ib-snip{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ib-dot{width:9px;height:9px;border-radius:50%;background:#25D366;display:inline-block;margin-left:4px}
+  .ib-main{display:flex;flex-direction:column;min-height:0}
+  .ib-head{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .ib-head b{font-size:15px}.ib-head small{display:block;color:var(--muted);font-size:12px}
+  .ib-chat{flex:1;overflow-y:auto;background:#ECE5DD;padding:16px;display:flex;flex-direction:column;gap:6px}
+  .ib-b{max-width:72%;padding:7px 10px 4px;border-radius:10px;font-size:14px;line-height:1.45;word-break:break-word;box-shadow:0 1px 1px rgba(0,0,0,.1)}
+  .ib-txt{white-space:pre-wrap}
+  .ib-b.in{background:#fff;align-self:flex-start;border-top-left-radius:2px}
+  .ib-b.out{background:#DCF8C6;align-self:flex-end;border-top-right-radius:2px}
+  .ib-meta{font-size:10.5px;color:#667781;text-align:right;margin-top:3px}
+  .ib-tick{font-weight:700;letter-spacing:-2px}.ib-tick.read{color:#34B7F1}
+  .ib-sys{align-self:center;background:rgba(255,255,255,.85);border-radius:8px;padding:4px 10px;font-size:12px;color:#54656F}
+  .ib-day{align-self:center;background:#E1F2FB;border-radius:8px;padding:3px 10px;font-size:11.5px;color:#54656F;margin:6px 0}
+  .ib-comp{border-top:1px solid var(--line);padding:10px 12px;background:#F0F2F5}
+  .ib-comp textarea{width:100%;min-height:44px;max-height:160px;padding:9px 11px;border:1px solid rgba(3,12,24,.15);border-radius:10px;font:inherit;font-size:14px;resize:vertical}
+  .ib-row{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:6px;flex-wrap:wrap}
+  .ib-note{font-size:12px;color:var(--muted)}
+  .ib-warn{background:rgba(247,144,9,.1);border:1px solid rgba(247,144,9,.35);color:#93370D;border-radius:10px;padding:8px 12px;font-size:13px}
+  .ib-empty{flex:1;display:grid;place-items:center;color:var(--muted);font-size:14px;padding:30px;text-align:center}
+  .ib-ai{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:#fff;cursor:pointer}
+  .ib-ai.off{background:#ECFDF3;color:#067647;border-color:#A6F4C5}
+  .am-pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:750;background:rgba(3,12,24,.07)}
+  .am-pill.not_contacted{background:rgba(247,144,9,.12);color:#93370D}.am-pill.contacted{background:rgba(46,144,250,.12);color:#175CD3}
+  .am-pill.replied,.am-pill.helping{background:rgba(122,90,248,.12);color:#5925DC}.am-pill.set_up{background:rgba(18,183,106,.14);color:#067647}
+  .am-pill.lost{background:rgba(3,12,24,.08);color:#475467}
+  #callDrawer{display:none;border-bottom:1px solid var(--line);padding:10px 16px;background:#fff}
+  .ac-note{font-size:12.5px;color:var(--muted);margin:6px 0 0;line-height:1.5}
+  .ac-meta{font-size:11.5px;color:var(--muted)} .ac-bad{color:#B42318;font-weight:700}
+</style>
+
+<div class="page-header" style="margin-bottom:12px">
+  <div><h1 class="page-title">💬 Inbox</h1>
+  <p class="muted" style="margin:4px 0 0">WhatsApp conversations with customers who signed up, on PhiXtra's numbers. Replies from customers land here.</p></div>
+</div>
+
+<div class="ib">
+  <div class="ib-side">
+    <form class="ib-tools" method="GET" action="{{ url_for('portal_admin.am_inbox') }}">
+      <input type="hidden" name="show" value="{{ show }}">
+      <input name="q" value="{{ q }}" placeholder="Search name, business, phone, email">
+      <div class="ib-tabs">
+        {% for k, l in [('all','All'),('reply','Needs reply'),('mine','Mine')] %}
+        <a class="{{ 'on' if show==k }}" href="{{ url_for('portal_admin.am_inbox', show=k, q=q or None) }}">{{ l }} ({{ counts[k] }})</a>
+        {% endfor %}
+      </div>
+    </form>
+    <div class="ib-list">
+      {% for c in convs %}
+      <a class="ib-item {{ 'on' if a and a.tenant_id==c.tenant_id }}" href="{{ url_for('portal_admin.am_inbox', tenant_id=c.tenant_id, show=show, q=q or None) }}">
+        <div class="ib-av">{{ ((c.contact or c.business or '?')[:1])|upper }}</div>
+        <div class="ib-mid">
+          <div class="ib-name"><span>{{ c.contact or c.business }}{% if c.needs_reply %}<span class="ib-dot" title="Needs reply"></span>{% endif %}</span>
+            <small>{{ c.last_at.strftime('%-d %b, %H:%M') }}</small></div>
+          <div class="ib-snip">{{ c.business }}</div>
+          <div class="ib-snip">{{ 'You: ' if c.last_dir != 'inbound' }}{{ c.last_text }}</div>
+        </div>
+      </a>
+      {% else %}
+      <div class="ib-empty">No conversations yet.<br>Start one from an account's page in Accounts.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="ib-main">
+  {% if a %}
+    <div class="ib-head">
+      <div><b>{{ a.contact or a.business }}</b> <span class="am-pill {{ a.status }}">{{ a.status_label }}</span>
+        <small>{{ a.business }} · {{ a.phone_number }}{% if a.country %} · {{ a.country }}{% endif %}{% if a.setup.stuck %} · stopped at {{ a.setup.stuck }}{% endif %}{% if a.manager %} · {{ a.manager }}{% endif %}</small></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        {% if can_modify %}
+        <form method="POST" action="{{ url_for('portal_admin.am_inbox_ai', tenant_id=a.tenant_id) }}" style="margin:0">
+          {% if quiet %}<button class="ib-ai off" name="ai" value="on" title="PhiXtra's AI doesn't answer this customer; you do. Click to let the AI answer again.">AI off for this chat</button>
+          {% else %}<button class="ib-ai" name="ai" value="off" title="PhiXtra's AI may answer this customer. Click to stop it.">AI may answer · stop</button>{% endif %}
+        </form>
+        <button type="button" class="btn btn-sm" id="callToggle">📞 Call</button>
+        {% endif %}
+        <a class="btn btn-sm" href="{{ url_for('portal_admin.am_account', tenant_id=a.tenant_id) }}">Account</a>
+      </div>
+    </div>
+    {% if can_modify %}
+    <div id="callDrawer">
+      <div id="callBox" data-tid="{{ a.tenant_id }}" data-name="{{ a.contact or a.business }}" data-ask="{{ call_ask_preview }}">
+        <p class="ac-note" id="callMsg" style="margin:0">Checking whether we can call…</p>
+        <div id="callBtns" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"></div>
+        <div id="onCall" style="display:none;margin-top:10px;border:1.5px solid #0B1D40;border-radius:12px;padding:10px 12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+            <div><b>{{ a.contact or a.business }}</b><div class="ac-meta" id="onCallState">Calling…</div></div>
+            <div style="display:flex;gap:8px"><button type="button" class="btn btn-sm" id="muteBtn">🔇 Mute</button>
+              <button type="button" class="btn btn-sm" id="endBtn" style="background:#B42318;color:#fff;border-color:#B42318">Hang up</button></div>
+          </div>
+        </div>
+        <audio id="callAudio" autoplay></audio>
+      </div>
+    </div>
+    {% endif %}
+    <div class="ib-chat" id="ibChat">
+      {% set ns = namespace(day=None) %}
+      {% for i in items %}
+        {% set d = i.created_at.strftime('%-d %B %Y') %}
+        {% if d != ns.day %}<div class="ib-day">{{ d }}</div>{% set ns.day = d %}{% endif %}
+        {% if i.src == 'call' %}
+          <div class="ib-sys">📞 WhatsApp call {{ 'from customer' if i.direction=='in' else 'to customer' }} · {{ (i.status or '')|replace('_',' ') }}{% if i.duration %} · {{ i.duration // 60 }} min {{ i.duration % 60 }} s{% endif %}{% if i.started_by_name %} · {{ i.started_by_name }}{% endif %} · {{ i.created_at.strftime('%H:%M') }}</div>
+        {% else %}
+          <div class="ib-b {{ 'in' if i.direction=='inbound' else 'out' }}"><div class="ib-txt">{{ i.content }}</div><div class="ib-meta">{% if i.direction!='inbound' %}{{ i.sent_by_label or 'PhiXtra AI' }} · {% endif %}{{ i.created_at.strftime('%H:%M') }}
+              {% if i.direction!='inbound' and i.wa_status %}<span class="ib-tick {{ 'read' if i.wa_status=='read' }}" title="{{ i.wa_status|capitalize }}{{ ' ' ~ i.status_at.strftime('%-d %b %H:%M') if i.status_at }}">{{ '✓' if i.wa_status=='sent' else ('!' if i.wa_status=='failed' else '✓✓') }}</span>{% endif %}</div>
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="ib-sys">No WhatsApp messages yet.</div>
+      {% endfor %}
+    </div>
+    {% if can_modify %}
+    <div class="ib-comp">
+      {% if not wa_numbers %}<div class="ib-warn">PhiXtra's WhatsApp number isn't connected.</div>
+      {% elif wa_window %}
+      <form method="POST" action="{{ url_for('portal_admin.am_inbox_send', tenant_id=a.tenant_id) }}" id="waTextForm">
+        <input type="hidden" name="mode" value="text">
+        <textarea name="text" id="waText" placeholder="Type a message"></textarea>
+        <div class="ib-row"><span class="ib-note">You can write freely: they messaged in the last 24 hours.</span>
+          <button type="button" class="btn btn-primary btn-sm" id="waTextPreview">Preview</button></div>
+      </form>
+      {% elif checkin_ready %}
+      <form method="POST" action="{{ url_for('portal_admin.am_inbox_send', tenant_id=a.tenant_id) }}" id="waTplForm">
+        <input type="hidden" name="mode" value="template">
+        <div class="ib-row" style="margin:0"><span class="ib-note">More than 24 hours since their last message, so WhatsApp only allows the approved check-in message.</span>
+          <button type="button" class="btn btn-primary btn-sm" id="waTplPreview">Preview the check-in message</button></div>
+      </form>
+      {% else %}
+      <div class="ib-warn">More than 24 hours since their last message, and the check-in message isn't approved yet. Call them or email from their Account page.</div>
+      {% endif %}
+    </div>
+    {% endif %}
+  {% else %}
+    <div class="ib-empty">Choose a conversation.</div>
+  {% endif %}
+  </div>
+</div>
+
+{% include "portal/_am_preview.html" %}
+<script src="{{ url_for('static', filename='portal/admin-calls.js') }}?v=1" defer></script>
+<script>
+(function(){
+  var chat = document.getElementById('ibChat'); if (chat) chat.scrollTop = chat.scrollHeight
+  var t = document.getElementById('waTextPreview')
+  if (t) t.onclick = function(){
+    var v = (document.getElementById('waText').value || '').trim()
+    if (!v) { document.getElementById('waText').focus(); return }
+    amPreview({ title: 'Check before sending', text: v, note: 'Sent from PhiXtra\'s WhatsApp number.',
+                send: function(){ document.getElementById('waTextForm').submit() } })
+  }
+  var p = document.getElementById('waTplPreview')
+  if (p) p.onclick = function(){ amPreview({ title: 'Check before sending', text: {{ (checkin_preview or '')|tojson }},
+      note: 'Meta-approved wording, so it can\'t be changed. When they reply you can write freely for 24 hours.',
+      send: function(){ document.getElementById('waTplForm').submit() } }) }
+  var ct = document.getElementById('callToggle'), dr = document.getElementById('callDrawer')
+  if (ct) ct.onclick = function(){ var open = dr.style.display === 'block'; dr.style.display = open ? 'none' : 'block'; if (!open && window.amCallCheck) amCallCheck() }
+  window.amAfterCall = function(){ setTimeout(function(){ location.reload() }, 1200) }
+  // New messages or ticks: refresh when nothing is being typed.
+  var latest = {{ latest|tojson }}, st = null
+  setInterval(function(){
+    fetch('{{ url_for("portal_admin.am_inbox_poll") }}', {credentials:'same-origin', cache:'no-store'}).then(function(r){ return r.json() }).then(function(d){
+      if (st === null) { st = d.status; latest = d.latest; return }
+      var typing = (document.getElementById('waText') || {}).value
+      var busy = typing || !document.getElementById('pv').hidden || (document.getElementById('onCall') || {}).style && document.getElementById('onCall').style.display === 'block'
+      if ((d.latest && d.latest !== latest) || (d.status && d.status !== st)) { if (!busy) location.reload() }
+    }).catch(function(){})
+  }, 8000)
+})();
+</script>
+{% endblock %}

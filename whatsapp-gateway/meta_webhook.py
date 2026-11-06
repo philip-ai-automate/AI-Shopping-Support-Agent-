@@ -69,6 +69,7 @@ _DISCOUNT_KEYWORDS = frozenset({
 _OPT_OUT_KEYWORDS = frozenset({
     "stop", "unsubscribe", "cancel", "opt out", "optout",
     "stop messages", "remove me", "unsub",
+    "stop promotions",   # Meta's built-in marketing opt-out button
 })
 
 
@@ -604,6 +605,7 @@ async def receive_webhook(
                     s["meta_message_id"], s["status"],
                     s.get("error_code"), s.get("error_title"), s.get("error_message"),
                 )
+                _store_msg_status(s)
         return {"status": "ok", "reason": "status_update"}
 
     msg = normalize(payload)
@@ -693,6 +695,17 @@ async def receive_webhook(
 
     print(f"✅ [META] session={session_id} from={customer_phone} action={action_type or 'text'}: {text[:80]}")
 
+    # ── Account Manager check-in buttons (2026-11-06): only for a customer
+    # Kelvin is handling (am_wa_quiet). The tap is already logged above. ──
+    if action_type == "am_button" and _am_quiet(tenant_id, customer_phone):
+        try:
+            import am_flow
+            await am_flow.handle(tenant_id, phone_number_id, access_token, customer_phone,
+                                 action_product_id or "", text)
+        except Exception as e:
+            print("⚠️ [AM] button handler:", e)
+        return {"status": "ok", "reason": "account_manager_button"}
+
     # ── A team member answering a staff alert on the PhiXtra alert-sender
     # number: kept in the log, but never answered by the AI and never
     # alerted on (see staff_alerts.py). ───────────────────────────────────
@@ -762,8 +775,15 @@ async def receive_webhook(
     # classification). Fire-and-forget so it never delays the customer's
     # actual reply or the staff Inbox. ───────────────────────────────────
     _is_campaign_reply = is_campaign_recipient(tenant_id, customer_phone)
-    if _is_campaign_reply and msg.get("message_type") == "text":
+    if _is_campaign_reply and msg.get("message_type") in ("text", "button"):
         asyncio.create_task(_handle_campaign_reply_flag(tenant, tenant_id, customer_phone, text))
+
+    # ── Account Manager gate (2026-11-06): a signed-up customer that PhiXtra's
+    # Account Manager is talking to from Admin › Inbox — the AI stays quiet,
+    # the message is already logged above and shows in the admin Inbox. ────
+    if _am_quiet(tenant_id, customer_phone):
+        print(f"   [META] Account Manager chat {customer_phone} — AI skipped")
+        return {"status": "ok", "reason": "account_manager"}
 
     # ── Handoff gate ──────────────────────────────────────────────────────────
     if is_handoff_active(session_id):
@@ -1112,3 +1132,46 @@ async def receive_webhook(
         await notify_merchant_handoff(tenant_id, phone_number_id, access_token, customer_phone, text)
 
     return {"status": "ok", "handoff_triggered": handoff_triggered}
+
+
+
+# ── Admin › Inbox helpers (2026-11-06) ────────────────────────────────────────
+_STATUS_RANK = {"sent": 1, "delivered": 2, "read": 3, "failed": 4}
+
+
+def _store_msg_status(s: dict):
+    """Keep the latest delivery status of every message (sent/delivered/read/failed),
+    not only campaign ones, so the admin Inbox can show ticks."""
+    try:
+        from wa_db import get_db_connection as _gdc
+        conn = _gdc(); cur = conn.cursor()
+        try:
+            st = (s.get("status") or "")[:20]
+            cur.execute("""INSERT INTO wa_msg_status (meta_message_id, status, error) VALUES (%s,%s,%s)
+                           ON CONFLICT (meta_message_id) DO UPDATE SET status=EXCLUDED.status, status_at=NOW(),
+                               error=COALESCE(EXCLUDED.error, wa_msg_status.error)
+                           WHERE (CASE wa_msg_status.status WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2
+                                  WHEN 'read' THEN 3 WHEN 'failed' THEN 4 ELSE 0 END) < %s""",
+                        (s["meta_message_id"][:128], st, (s.get("error_title") or s.get("error_message") or None),
+                         _STATUS_RANK.get(st, 0)))
+            conn.commit()
+        finally:
+            cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _store_msg_status:", e)
+
+
+def _am_quiet(tenant_id, customer_phone) -> bool:
+    try:
+        from wa_db import get_db_connection as _gdc
+        import re as _re
+        conn = _gdc(); cur = conn.cursor()
+        try:
+            cur.execute("SELECT 1 FROM am_wa_quiet WHERE tenant_id=%s AND phone=%s",
+                        (int(tenant_id), _re.sub(r"\D", "", customer_phone or "")))
+            return cur.fetchone() is not None
+        finally:
+            cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _am_quiet:", e)
+        return False

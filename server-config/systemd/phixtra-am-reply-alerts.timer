@@ -1,0 +1,10 @@
+[Unit]
+Description=Wake the Account Manager reply alerts every minute (real interval is in Admin › Accounts › Settings)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

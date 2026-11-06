@@ -1,0 +1,63 @@
+<div id="pv" class="pv-back" hidden>
+  <div class="pv-card" role="dialog" aria-modal="true" aria-labelledby="pvTitle">
+    <div class="pv-top"><b id="pvTitle">Preview</b><button type="button" class="pv-x" id="pvClose" aria-label="Close">✕</button></div>
+    <div class="pv-phone">
+      <div class="pv-head"><div class="pv-av">{{ ((a.contact or a.business or '?')[:1])|upper }}</div>
+        <div><b>{{ a.contact or a.business }}</b><small>{{ a.phone_number }}</small></div></div>
+      <div class="pv-chat">
+        <div class="pv-bubble"><div id="pvHead" class="pv-h"></div><div id="pvText"></div><div id="pvFoot" class="pv-f"></div><div class="pv-time">{{ wa_numbers[0].display_phone_number if wa_numbers else '' }} · now</div></div>
+        <div class="pv-btns" id="pvBtns" hidden></div>
+      </div>
+    </div>
+    <p class="ac-note" id="pvNote"></p>
+    <div class="pv-acts"><button type="button" class="btn btn-sm" id="pvEdit">✏️ Edit</button><button type="button" class="btn btn-primary btn-sm" id="pvSend">Send on WhatsApp</button></div>
+  </div>
+</div>
+<style>
+  .pv-back{position:fixed;inset:0;background:rgba(3,12,24,.45);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px}
+  .pv-back[hidden]{display:none}
+  .pv-card{background:#fff;border-radius:16px;width:min(440px,100%);padding:16px;box-shadow:0 20px 50px rgba(3,12,24,.3)}
+  .pv-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  .pv-x{border:0;background:none;font-size:16px;cursor:pointer;color:var(--muted)}
+  .pv-phone{border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+  .pv-head{background:#075E54;color:#fff;display:flex;gap:10px;align-items:center;padding:10px 12px}
+  .pv-head small{display:block;opacity:.8;font-size:11.5px}
+  .pv-av{width:34px;height:34px;border-radius:50%;background:#25D366;display:grid;place-items:center;font-weight:800}
+  .pv-chat{background:#ECE5DD;padding:16px 12px;min-height:120px;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .pv-bubble{background:#DCF8C6;border-radius:10px 2px 10px 10px;padding:8px 10px 4px;max-width:88%;font-size:14px;line-height:1.45;color:#111;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 1px rgba(0,0,0,.12)}
+  .pv-time{font-size:10.5px;color:#667781;text-align:right;margin-top:3px}
+  .pv-h{font-weight:700;margin-bottom:6px}
+  .pv-f{font-size:12px;color:#667781;margin-top:6px}
+  .pv-h:empty,.pv-f:empty{display:none}
+  .pv-btns{display:flex;flex-wrap:wrap;gap:6px;width:88%}
+  .pv-btns span{min-width:40%}
+  .pv-btns span{flex:1;background:#fff;border-radius:8px;text-align:center;padding:7px;font-size:13px;color:#027EB5;font-weight:600}
+  .pv-acts{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+</style>
+<script>
+window.amPreview = (function(){
+  var back = document.getElementById('pv'), onSend = null
+  function close(){ back.hidden = true; onSend = null }
+  document.getElementById('pvClose').onclick = close
+  document.getElementById('pvEdit').onclick = close
+  back.addEventListener('click', function(e){ if (e.target === back) close() })
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !back.hidden) close() })
+  document.getElementById('pvSend').onclick = function(){ var f = onSend; if (!f) return; this.disabled = true; this.textContent = 'Sending…'; f() }
+  return function(o){
+    document.getElementById('pvTitle').textContent = o.title || 'Preview'
+    if (typeof o.text === 'object' && o.text) { var t = o.text; o.text = t.text; o.header = o.header || t.header; o.footer = o.footer || t.footer; if (t.buttons) o.buttons = t.buttons }
+    // WhatsApp shows *text* as bold
+    var esc = String(o.text || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    document.getElementById('pvText').innerHTML = esc.replace(/\*([^*\n]+)\*/g, '<b>$1</b>')
+    document.getElementById('pvHead').textContent = o.header || ''
+    document.getElementById('pvFoot').textContent = o.footer || ''
+    document.getElementById('pvNote').textContent = o.note || ''
+    var bl = o.buttons === true ? ['Allow calls', 'Not now'] : (o.buttons || []), bx = document.getElementById('pvBtns')
+    bx.innerHTML = ''; bl.forEach(function(b){ var s = document.createElement('span'); s.textContent = b; bx.appendChild(s) })
+    bx.style.display = bl.length ? 'flex' : 'none'
+    var send = document.getElementById('pvSend'); send.disabled = false; send.textContent = 'Send on WhatsApp'
+    send.style.display = o.send ? '' : 'none'; document.getElementById('pvEdit').textContent = o.send ? '✏️ Edit' : 'Close'
+    onSend = o.send || null; back.hidden = false; send.focus()
+  }
+})();
+</script>

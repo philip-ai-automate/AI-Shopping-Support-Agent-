@@ -1,0 +1,7 @@
+[Unit]
+Description=PhiXtra Account Manager reply alerts (settings in Admin › Accounts › Settings)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/phixtra-app/api-key-manager
+ExecStart=/root/phixtra-app/api-key-manager/venv/bin/python /root/phixtra-app/api-key-manager/am_reply_alerts.py

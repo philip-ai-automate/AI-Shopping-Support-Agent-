@@ -1,0 +1,229 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Accounts Settings — PhiXtra Admin{% endblock %}
+{% block content %}
+{% set on = st.alerts_on == '1' %}
+{% set ro = not can_modify %}
+{% macro seg(name, current, presets, unit) -%}
+  {%- set cur = current|int -%}
+  {%- set opts = (presets + ([cur] if cur not in presets else []))|sort -%}
+  <div class="as-seg" role="radiogroup">
+    {%- for v in opts %}
+    <label><input type="radio" name="{{ name }}" value="{{ v }}" {% if v == cur %}checked{% endif %} {% if ro %}disabled{% endif %}><span>{{ v }} {{ unit if v == 1 else unit ~ 's' }}</span></label>
+    {%- endfor %}
+  </div>
+{%- endmacro %}
+<style>
+  .as-wrap{max-width:760px}
+  .as-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+  .as-status{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:999px;font-size:12.5px;font-weight:650;
+             background:#fff;border:1px solid var(--line);color:var(--muted)}
+  .as-status i{width:8px;height:8px;border-radius:50%;background:#98A2B3}
+  .as-status.on{color:#067647;border-color:rgba(18,183,106,.35);background:rgba(18,183,106,.06)}
+  .as-status.on i{background:var(--good);box-shadow:0 0 0 3px rgba(18,183,106,.18)}
+
+  .as-card{background:#fff;border:1px solid var(--line);border-radius:16px;margin:0 0 16px;overflow:hidden}
+  .as-card-h{display:flex;gap:14px;align-items:flex-start;padding:18px 20px}
+  .as-ico{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font-size:18px;background:rgba(3,12,24,.05);flex-shrink:0}
+  .as-card-h h2{font-size:15.5px;margin:0 0 3px}
+  .as-card-h p{margin:0;font-size:13px;color:var(--muted);line-height:1.5}
+  .as-card-h .as-grow{flex:1}
+
+  .as-body{border-top:1px solid var(--line);transition:opacity .2s}
+  .as-body.off{opacity:.45;pointer-events:none}
+  .as-field{padding:16px 20px;border-top:1px solid var(--line)}
+  .as-field:first-child{border-top:none}
+  .as-q{font-weight:650;font-size:13.5px;margin:0 0 3px}
+  .as-hint{font-size:12.5px;color:var(--muted);margin:0 0 10px}
+  .as-eg{font-size:12.5px;color:var(--muted);margin:8px 0 0}
+  .as-eg b{color:var(--ink)}
+
+  /* switch */
+  .as-sw{position:relative;width:46px;height:26px;flex-shrink:0;margin-top:6px}
+  .as-sw input{opacity:0;width:0;height:0;position:absolute}
+  .as-sw span{position:absolute;inset:0;border-radius:999px;background:rgba(3,12,24,.18);transition:.2s;cursor:pointer}
+  .as-sw span:after{content:"";position:absolute;width:20px;height:20px;left:3px;top:3px;border-radius:50%;background:#fff;
+                    box-shadow:0 1px 3px rgba(0,0,0,.25);transition:.2s}
+  .as-sw input:checked + span{background:var(--good)}
+  .as-sw input:checked + span:after{transform:translateX(20px)}
+  .as-sw input:focus-visible + span{outline:2px solid var(--ink);outline-offset:2px}
+  .as-sw input:disabled + span{cursor:not-allowed}
+
+  /* segmented choice */
+  .as-seg{display:inline-flex;flex-wrap:wrap;background:rgba(3,12,24,.05);border-radius:10px;padding:3px;gap:2px}
+  .as-seg label{position:relative}
+  .as-seg input{position:absolute;opacity:0}
+  .as-seg span{display:block;padding:6px 12px;border-radius:8px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap}
+  .as-seg input:checked + span{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(3,12,24,.14)}
+  .as-seg input:focus-visible + span{outline:2px solid var(--ink)}
+
+  /* people */
+  .as-people{display:flex;flex-wrap:wrap;gap:8px}
+  .as-chip{position:relative}
+  .as-chip input{position:absolute;opacity:0}
+  .as-chip span{display:inline-flex;align-items:center;gap:8px;padding:5px 12px 5px 5px;border-radius:999px;border:1px solid var(--line);
+                font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:var(--ink)}
+  .as-chip em{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:800;
+              background:rgba(3,12,24,.07);color:var(--ink)}
+  .as-chip input:checked + span{border-color:var(--ink);background:rgba(3,12,24,.04)}
+  .as-chip input:checked + span em{background:var(--ink);color:#fff}
+  .as-chip input:focus-visible + span{outline:2px solid var(--ink);outline-offset:1px}
+  .as-chip small{font-weight:500;color:var(--muted)}
+
+  /* button rows */
+  .as-btnrow{display:grid;grid-template-columns:170px 1fr;gap:14px;align-items:start;padding:14px 20px;border-top:1px solid var(--line)}
+  .as-wabtn{background:#fff;border:1px solid rgba(3,12,24,.12);border-radius:9px;padding:8px 10px;text-align:center;font-size:13px;
+            font-weight:600;color:#027EB5;box-shadow:0 1px 1px rgba(0,0,0,.06)}
+  .as-btnrow .as-q{margin-bottom:2px}
+  .as-btnrow p{margin:0;font-size:12.5px;color:var(--muted);line-height:1.5}
+  .as-btnrow .as-seg{margin-top:8px}
+
+  .as-foot{font-size:12px;color:var(--muted);margin:4px 2px 90px}
+
+  /* save bar */
+  .as-bar{position:fixed;left:50%;bottom:18px;transform:translate(-50%,140%);transition:transform .25s ease;z-index:50;
+          background:var(--ink);color:#fff;border-radius:14px;padding:10px 10px 10px 18px;display:flex;align-items:center;gap:14px;
+          box-shadow:0 12px 32px rgba(3,12,24,.3);font-size:13.5px;max-width:calc(100% - 32px)}
+  .as-bar.show{transform:translate(-50%,0)}
+  .as-bar .btn{margin:0}
+  .as-bar .as-discard{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.3)}
+  .as-bar .as-save{background:#fff;color:var(--ink);border-color:#fff;font-weight:700}
+
+  @media (max-width:560px){
+    .as-btnrow{grid-template-columns:1fr}
+    .as-wabtn{max-width:220px}
+  }
+</style>
+
+<div class="as-wrap">
+  <div class="as-head">
+    <div>
+      <h1 class="page-title">⚙️ Accounts Settings</h1>
+      <p class="muted" style="margin:4px 0 0">How Account Managers hear about replies, and what the check-in message buttons do.</p>
+    </div>
+    <span class="as-status {% if on %}on{% endif %}" id="asStatus"><i></i>
+      {% if on %}Reply alerts on{% if last_run %} · checked {{ ((now - last_run).total_seconds() // 60)|int }} min ago{% endif %}{% else %}Reply alerts off{% endif %}
+    </span>
+  </div>
+
+  <form method="post" id="asForm">
+    <!-- Reply alerts -->
+    <section class="as-card">
+      <div class="as-card-h">
+        <div class="as-ico">✉️</div>
+        <div class="as-grow">
+          <h2>Reply alerts</h2>
+          <p>When a customer replies on WhatsApp, their Account Manager gets an email with a button straight to the chat.
+            {% if sent7 %}<b>{{ sent7 }}</b> alert{{ '' if sent7 == 1 else 's' }} sent in the last 7 days.{% endif %}</p>
+        </div>
+        <label class="as-sw" title="Reply alerts on/off">
+          <input type="checkbox" name="alerts_on" value="1" id="alertsOn" {% if on %}checked{% endif %} {% if ro %}disabled{% endif %} aria-label="Send reply alerts">
+          <span></span>
+        </label>
+      </div>
+
+      <div class="as-body {% if not on %}off{% endif %}" id="alertBody">
+        <div class="as-field">
+          <p class="as-q">How fast should the email arrive?</p>
+          <p class="as-hint">We check for new replies this often.</p>
+          {{ seg("alert_every_min", st.alert_every_min, [1, 2, 5, 10, 15, 30], "min") }}
+          <p class="as-eg" id="egEvery"></p>
+        </div>
+        <div class="as-field">
+          <p class="as-q">Skip replies older than</p>
+          <p class="as-hint">Stops old conversations flooding anyone's inbox, e.g. after alerts were switched off for a while.</p>
+          {{ seg("alert_window_hours", st.alert_window_hours, [1, 2, 4, 8, 24], "hour") }}
+        </div>
+        <div class="as-field">
+          <p class="as-q">If no Account Manager is assigned, email</p>
+          <p class="as-hint">Accounts with a manager always email that manager.</p>
+          <div class="as-people" id="people">
+            <label class="as-chip"><input type="checkbox" id="pEveryone" {% if not fallback %}checked{% endif %} {% if ro %}disabled{% endif %}>
+              <span><em>★</em>Everyone <small>({{ admins|length }})</small></span></label>
+            {% for u in admins %}
+            <label class="as-chip" title="{{ u.username }}"><input type="checkbox" name="alert_fallback" value="{{ u.username }}" class="pOne"
+                   {% if u.username in fallback %}checked{% endif %} {% if ro %}disabled{% endif %}>
+              <span><em>{{ (u.name or u.username)[:1]|upper }}</em>{{ u.name or u.username }}</span></label>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Check-in buttons -->
+    <section class="as-card">
+      <div class="as-card-h">
+        <div class="as-ico">💬</div>
+        <div class="as-grow">
+          <h2>Check-in message buttons</h2>
+          <p>What happens when a customer taps a button on Kelvin's WhatsApp check-in message. The AI never answers these chats.</p>
+        </div>
+      </div>
+      <div class="as-btnrow">
+        <div class="as-wabtn">↩ I got stuck</div>
+        <div><p class="as-q">Asks which part was the problem</p>
+          <p>Sends a list (Connecting WhatsApp, Meta verification, Adding my products…). Their choice is saved as the reason on the account.</p></div>
+      </div>
+      <div class="as-btnrow">
+        <div class="as-wabtn">↩ I have a question</div>
+        <div><p class="as-q">Invites them to type it</p>
+          <p>"What would you like to know? Just type your question here and I'll reply personally."</p></div>
+      </div>
+      <div class="as-btnrow">
+        <div class="as-wabtn">↩ Not right now</div>
+        <div><p class="as-q">No message. Sets a follow-up after</p>
+          {{ seg("later_days", st.later_days, [3, 7, 14, 30], "day") }}
+          <p class="as-eg" id="egLater"></p></div>
+      </div>
+    </section>
+
+    <p class="as-foot">{% if saved and saved.updated_by and saved.updated_by != 'reply-alerts timer' %}Last changed by {{ saved.updated_by }}, {{ saved.updated_at.strftime('%-d %b %Y, %H:%M') }}.{% else %}Using the default settings.{% endif %}
+      {% if ro %} You can view these settings; changing them needs the Accounts “modify” permission.{% endif %}</p>
+
+    {% if can_modify %}
+    <div class="as-bar" id="asBar" role="status">
+      <span>You have unsaved changes</span>
+      <button type="button" class="btn btn-sm as-discard" id="asDiscard">Discard</button>
+      <button type="submit" class="btn btn-sm as-save">Save changes</button>
+    </div>
+    {% endif %}
+  </form>
+</div>
+
+<script>
+(function(){
+  var f = document.getElementById('asForm'); if (!f) return
+  var initial = new URLSearchParams(new FormData(f)).toString()
+  var bar = document.getElementById('asBar')
+  var on = document.getElementById('alertsOn'), body = document.getElementById('alertBody')
+  var every = document.getElementById('pEveryone'), ones = [].slice.call(document.querySelectorAll('.pOne'))
+
+  function val(n){ var x = f.querySelector('input[name="' + n + '"]:checked'); return x ? parseInt(x.value, 10) : 0 }
+  function examples(){
+    var m = val('alert_every_min'), t = new Date(2026, 0, 1, 10, 0)
+    var by = new Date(t.getTime() + m * 60000)
+    document.getElementById('egEvery').innerHTML = 'A reply at <b>10:00</b> is emailed by about <b>' +
+      by.toTimeString().slice(0, 5) + '</b>.'
+    var d = val('later_days'), fu = new Date(); fu.setDate(fu.getDate() + d)
+    document.getElementById('egLater').innerHTML = 'Tapped today → follow up on <b>' +
+      fu.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + '</b>, shown under Follow-ups due.'
+  }
+  function dirty(){
+    body.classList.toggle('off', !on.checked)
+    examples()
+    if (bar) bar.classList.toggle('show', new URLSearchParams(new FormData(f)).toString() !== initial)
+  }
+  // Everyone ↔ named people
+  if (every) every.addEventListener('change', function(){ if (every.checked) ones.forEach(function(o){ o.checked = false }); else if (!ones.some(function(o){ return o.checked })) every.checked = true })
+  ones.forEach(function(o){ o.addEventListener('change', function(){ every.checked = !ones.some(function(x){ return x.checked }) }) })
+
+  f.addEventListener('change', dirty)
+  var disc = document.getElementById('asDiscard')
+  if (disc) disc.onclick = function(){ location.reload() }
+  f.addEventListener('submit', function(){ initial = new URLSearchParams(new FormData(f)).toString() })
+  window.addEventListener('beforeunload', function(e){
+    if (new URLSearchParams(new FormData(f)).toString() !== initial) { e.preventDefault(); e.returnValue = '' }
+  })
+  examples()
+})();
+</script>
+{% endblock %}
