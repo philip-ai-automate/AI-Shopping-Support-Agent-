@@ -309,44 +309,7 @@
           </label>
         </div>
 
-        <!-- ── Daily WhatsApp Report ──────────────────────────────────── -->
-        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line)">
-          <div style="font-size:12px;font-weight:700;color:var(--muted);
-                      text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">
-            Daily Summary
-          </div>
-        </div>
-        <div class="toggle-row" id="dailyReportToggleRow">
-          <div class="toggle-info">
-            <strong>Daily Summary</strong>
-            <span>Every morning: yesterday's website chats, WhatsApp conversations and orders.
-              {% if report_has_wa %}Sent on WhatsApp at 8 AM{% if report_tz %} {{ report_tz }} time{% endif %} to the number below. If WhatsApp can't deliver it, it comes by email to <strong>{{ report_owner_email or 'the account owner' }}</strong> instead.
-              {% else %}Your WhatsApp isn't connected, so it comes by email to <strong>{{ report_owner_email or 'the account owner' }}</strong> at 8 AM{% if report_tz %} {{ report_tz }} time{% endif %}.{% endif %}
-              The email is skipped on days when nothing happened.</span>
-          </div>
-          <label class="switch">
-            <input type="checkbox" name="daily_report_enabled" id="dailyReportToggle"
-                   {% if daily_report_enabled %}checked{% endif %}
-                   onchange="document.getElementById('reportPhoneRow').style.display=this.checked?'':'none'"/>
-            <span class="slider"></span>
-          </label>
-        </div>
-        <div id="reportPhoneRow"
-             style="margin-top:12px;{% if not daily_report_enabled %}display:none;{% endif %}">
-          <div class="form-group" style="margin-bottom:4px">
-            <label style="font-size:13px;font-weight:650">WhatsApp number for the daily summary{% if not report_has_wa %} (used once your WhatsApp is connected){% endif %}</label>
-            {{ phone_box('report_phone', report_phone, cls='', style='max-width:420px') }}
-            <p class="muted" style="font-size:12px;margin-top:6px;line-height:1.5">
-              📱 Your <strong>personal</strong> WhatsApp number (not your business number).
-            </p>
-            {% if not report_phone %}
-            <p class="muted" style="font-size:12.5px;margin-top:4px;line-height:1.5">
-              {% if report_fallback_phone %}Left empty, so it goes to your account phone: <strong>{{ report_fallback_phone }}</strong>. Type another number to send it there instead.
-              {% else %}Left empty, and there's no phone number on your account, so the summary isn't sent. Type a number to receive it.{% endif %}
-            </p>
-            {% endif %}
-          </div>
-        </div>
+        {# Daily Summary section removed 2026-11-06 (user): no morning report; businesses build their own in Reports. #}
 
         <div style="margin-top:18px">
           <button type="submit" class="btn btn-primary">Save Preferences</button>

@@ -10,12 +10,7 @@ from apscheduler.triggers.cron import CronTrigger
 from wa_db import init_wa_tables, auto_close_stale_handoffs
 from meta_webhook import router as meta_router
 from wa_proactive import router as proactive_router
-from wa_daily_report import (
-    router as daily_report_router,
-    run_daily_reports,
-    ensure_templates_submitted,
-    poll_and_activate_templates,
-)
+# Daily report scrapped 2026-11-06 (user): businesses build their own reports in Reports.
 from wa_plan_reset import router as plan_reset_router, run_plan_resets
 
 from push_notify import router as push_router
@@ -92,15 +87,6 @@ _scheduler.add_job(
     max_instances=1,
 )
 
-# Daily reports (2026-11-06): every hour; each business gets it at 08:00
-# in its own time zone (run_daily_reports picks who is at 8 am now).
-_scheduler.add_job(
-    run_daily_reports,
-    CronTrigger(minute=0, timezone="UTC"),
-    id="daily_reports",
-    replace_existing=True,
-    misfire_grace_time=3600,
-)
 
 # Billing period reset: 00:05 UTC daily (just after midnight)
 _scheduler.add_job(
@@ -122,27 +108,7 @@ _scheduler.add_job(
     misfire_grace_time=600,
 )
 
-# Template approval polling: every 2 hours
-# Checks Meta API for any pending daily-report templates and activates them
-# in the DB as soon as Meta approves them — no manual intervention needed.
-_scheduler.add_job(
-    poll_and_activate_templates,
-    CronTrigger(minute=30, hour="*/2", timezone="UTC"),
-    id="template_approval_poll",
-    replace_existing=True,
-    misfire_grace_time=3600,
-)
 
-# Template submission sweep: every 4 hours
-# Submits the daily report template to any tenant that connected their
-# WhatsApp Business number since the last sweep — no manual steps needed.
-_scheduler.add_job(
-    ensure_templates_submitted,
-    CronTrigger(minute=0, hour="*/4", timezone="UTC"),
-    id="template_submission_sweep",
-    replace_existing=True,
-    misfire_grace_time=3600,
-)
 
 
 @asynccontextmanager
@@ -151,8 +117,7 @@ async def lifespan(app: FastAPI):
     init_wa_tables()
     init_staff_alert_tables()
     _scheduler.start()
-    print("✅ [SCHEDULER] Daily reports: hourly, 08:00 each business time zone | Plan resets: 00:05 UTC | Auto-close handoffs: every hour | Template poll: every 2 h", flush=True)
-    asyncio.create_task(ensure_templates_submitted())
+    print("✅ [SCHEDULER] Plan resets: 00:05 UTC | Auto-close handoffs: every hour", flush=True)
     yield
     _scheduler.shutdown(wait=False)
     print("🛑 [SCHEDULER] Scheduler stopped", flush=True)
@@ -162,7 +127,6 @@ app = FastAPI(title="Phixtra WhatsApp Gateway", lifespan=lifespan)
 
 app.include_router(meta_router)
 app.include_router(proactive_router)
-app.include_router(daily_report_router)
 app.include_router(plan_reset_router)
 app.include_router(push_router)   # phone notifications test (2026-10-11)
 app.include_router(keyland_alerts_router)   # KeyLand staff alerts: WhatsApp + phone notifications (2026-10-22)

@@ -14006,28 +14006,7 @@ def settings_notifications():
         conn.commit()
         cur.close(); conn.close()
 
-        # ── Tenant-level report settings ─────────────────────────────────
-        customer2     = _get_customer(cid)
-        tenant_id2    = int(customer2["tenant_id"])
-        daily_enabled = bool(request.form.get("daily_report_enabled"))
-        report_phone2, _rerr = _phone_entry(request.form.get("report_phone"),
-                                            request.form.get("report_phone_country"), plus=True)
-        report_phone2 = report_phone2 or None
-        if _rerr:
-            flash(f"Daily summary number not saved. {_rerr}", "danger")
-            return redirect(url_for("portal.settings"))
-        try:
-            conn2 = get_db_connection()
-            cur2  = conn2.cursor()
-            cur2.execute("""
-                UPDATE tenants
-                SET daily_report_enabled = %s, report_phone = %s
-                WHERE id = %s
-            """, (daily_enabled, report_phone2, tenant_id2))
-            conn2.commit()
-            cur2.close(); conn2.close()
-        except Exception as e2:
-            print("⚠️ settings_notifications tenant update error:", e2)
+        # Daily Summary settings removed 2026-11-06 (report scrapped).
 
         flash("Notification preferences saved ✅", "success")
     except Exception as e:
