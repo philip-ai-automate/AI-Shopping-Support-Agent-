@@ -1780,6 +1780,7 @@
          'portal.sales_pipeline': 'crm-board',
          'portal.opportunity_detail': 'crm-board',
          'portal.lead_scoring_explainer': 'lead-score',
+         'portal.shopify_store': 'shp-page',
          'portal.lead_detail': 'lead-lead',
          'portal.follow_ups_page': 'lead-fu-page',
          'portal.leads_page': 'lead-page',
@@ -1849,7 +1850,7 @@
        }.get(request.endpoint) %}
     {% if _help_anchor %}
     <div style="display:flex;justify-content:flex-end;margin:0 0 8px">
-      <a href="{{ url_for('portal.tutorials', topic=('social' if _help_anchor.startswith('soc-') else 'team' if _help_anchor.startswith('team-') else 'leads' if _help_anchor.startswith('lead-') else 'email' if _help_anchor.startswith('eml-') else 'ai' if _help_anchor.startswith('aig-') else 'crm')) }}#{{ _help_anchor }}"
+      <a href="{{ url_for('portal.tutorials', topic=('social' if _help_anchor.startswith('soc-') else 'team' if _help_anchor.startswith('team-') else 'leads' if _help_anchor.startswith('lead-') else 'shopify' if _help_anchor.startswith('shp-') else 'email' if _help_anchor.startswith('eml-') else 'ai' if _help_anchor.startswith('aig-') else 'crm')) }}#{{ _help_anchor }}"
          style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--ink);padding:5px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;text-decoration:none">
         📚 How to use this page
       </a>
@@ -2245,6 +2246,10 @@
     { icon:'📚', title:'How-To Guides',          desc:'Help & Tutorials: step-by-step guides, e.g. the full CRM guide',         url:'{{ url_for("portal.tutorials") }}',                  tags:'help guide tutorial support how to faq learn' },
     { icon:'🎬', title:'Video Tutorials',        desc:'Help & Tutorials: short walkthrough videos',    url:'{{ url_for("portal.video_tutorials") }}',            tags:'video tutorial watch walkthrough demo guide' },
     { icon:'⚙️', title:'Account Settings',       desc:'Update profile, password and preferences',    url:'{{ url_for("portal.settings") }}',                   tags:'settings account profile password email notification preferences' },
+    {% if _store_platform == 'shopify' %}
+    { icon:'🛍️', title:'Shopify Store',          desc:'Your Shopify store: products, chat box, buyers, quote orders', url:'{{ url_for("portal.shopify_store") }}', tags:'shopify store products sync chat box theme buyers b2b companies draft order' },
+    { icon:'📘', title:'Shopify Guide',          desc:'Help & Tutorials: how PhiXtra works with Shopify', url:'{{ url_for("portal.tutorials", topic="shopify") }}', tags:'shopify help guide tutorial how to' },
+    {% endif %}
     {% if _has_woocommerce %}
     { icon:'🔄', title:'WooCommerce Sync',       desc:'Sync products from your WordPress store',     url:'{{ url_for("portal.woo_sync") }}',                   tags:'woocommerce sync wordpress products import plugin' },
     { icon:'🛒', title:'Cart Recovery',          desc:'Recover abandoned shopping carts',             url:'{{ url_for("portal.cart_recovery_dashboard") }}',    tags:'abandoned cart recovery settings whatsapp' },

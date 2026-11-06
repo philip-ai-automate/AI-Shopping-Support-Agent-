@@ -1,0 +1,246 @@
+{# Shopify How-To Guide (2026-11-06): for businesses whose store is on
+   Shopify. ids prefixed shp-, CSS scoped .shpg, pictures in
+   static/portal/tutorial/shopify/ (Phixtra Test Store, test data). Shown in
+   Help & Tutorials only when the store platform is Shopify. #}
+<style>
+.shpg{
+  --g-ink:#030C18; --g-navy:#0E2240; --g-gold:#B8860B; --g-gold-soft:#FBF3DE;
+  --g-card:#FFFFFF; --g-txt:#1A2433; --g-muted:#5B6678; --g-line:#DDE3EB;
+  --g-chip:#EEF2F7; --g-good:#0F9F5F; --g-good-soft:#E7F7EF; --g-bad:#D92D20; --g-bad-soft:#FDECEA;
+  --g-link:#1D4ED8; --g-shadow:0 1px 2px rgba(3,12,24,.06);
+  color:var(--g-txt); font-size:15px; line-height:1.65;
+}
+.shpg *{box-sizing:border-box}
+.shpg a{color:var(--g-link)}
+.shpg .g-head{margin:0 0 18px}
+.shpg .g-lede{max-width:72ch;color:var(--g-muted);margin:0 0 6px;font-size:14px}
+.shpg .g-meta{font-size:12px;color:var(--g-muted)}
+.shpg nav.toc{background:var(--g-card);border:1px solid var(--g-line);border-radius:12px;padding:6px 14px;margin:0 0 26px;font-size:13.5px}
+.shpg nav.toc summary{cursor:pointer;font-weight:750;color:var(--g-ink);padding:8px 0;list-style-position:inside}
+.shpg nav.toc ol{list-style:none;margin:0;padding:0 0 8px;columns:2 240px;column-gap:18px}
+.shpg nav.toc li{break-inside:avoid;margin:0}
+.shpg nav.toc a{display:block;padding:4px 8px;border-radius:6px;color:var(--g-txt);text-decoration:none}
+.shpg nav.toc a:hover{background:var(--g-chip)}
+.shpg section.part{padding-top:8px;margin-bottom:48px;max-width:860px}
+.shpg h2{font-size:23px;line-height:1.25;color:var(--g-ink);margin:0 0 6px;scroll-margin-top:80px;font-weight:800}
+.shpg h2 .num{color:var(--g-gold);font-weight:800;margin-right:8px}
+.shpg .where{font-size:13px;color:var(--g-muted);margin:0 0 16px}
+.shpg h3{font-size:18px;color:var(--g-ink);margin:28px 0 8px;scroll-margin-top:80px;font-weight:750}
+.shpg p,.shpg li{max-width:72ch}
+.shpg p{margin:0 0 12px}
+.shpg ul,.shpg ol{padding-left:22px;margin:0 0 12px}
+.shpg li{margin:4px 0}
+.shpg .ui{display:inline-block;font-size:.88em;font-weight:650;padding:1px 7px;border:1px solid var(--g-line);border-radius:5px;background:var(--g-card);color:var(--g-ink);white-space:nowrap;box-shadow:var(--g-shadow)}
+.shpg .m{font-family:ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums;font-weight:650;color:var(--g-ink);white-space:nowrap}
+.shpg figure{margin:16px 0 24px}
+.shpg figure img{display:block;width:100%;max-width:100%;height:auto;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card)}
+.shpg figure.narrow img{max-width:660px}
+.shpg figcaption{font-size:13px;color:var(--g-muted);margin-top:8px;max-width:72ch}
+.shpg .box{border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px;border:1px solid var(--g-line);background:var(--g-card);max-width:72ch}
+.shpg .box > :first-child{margin-top:0}.shpg .box > :last-child{margin-bottom:0}
+.shpg .box b.t{display:block;font-size:12px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px}
+.shpg .tip{background:var(--g-good-soft);border-color:transparent}.shpg .tip b.t{color:var(--g-good)}
+.shpg .careful{background:var(--g-bad-soft);border-color:transparent}.shpg .careful b.t{color:var(--g-bad)}
+.shpg .know{background:var(--g-gold-soft);border-color:transparent}.shpg .know b.t{color:var(--g-gold)}
+.shpg .tbl{overflow-x:auto;margin:14px 0 22px;border:1px solid var(--g-line);border-radius:8px;background:var(--g-card);max-width:860px}
+.shpg table{border-collapse:collapse;width:100%;font-size:13.5px}
+.shpg th,.shpg td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--g-line)}
+.shpg th{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--g-muted);background:var(--g-chip);font-weight:700}
+.shpg tr:last-child td{border-bottom:0}
+.shpg td:first-child{font-weight:650;color:var(--g-ink)}
+.shpg ol.steps{counter-reset:s;list-style:none;padding-left:0}
+.shpg ol.steps > li{counter-increment:s;position:relative;padding-left:36px;margin:10px 0}
+.shpg ol.steps > li::before{content:counter(s);position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:50%;background:var(--g-navy);color:#fff;font-size:12.5px;font-weight:700;display:grid;place-items:center}
+/* the three currencies */
+.shpg .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px 0 20px;max-width:660px}
+@media (max-width:560px){.shpg .cards{grid-template-columns:1fr}}
+.shpg .cards div{background:var(--g-card);border:1px solid var(--g-line);border-radius:10px;padding:12px 14px}
+.shpg .cards b{display:block;font-size:22px;color:var(--g-ink);line-height:1.2}
+.shpg .cards span{font-size:13px;color:var(--g-muted)}
+/* drawn: how a price reaches a customer */
+.shpg .pflow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:stretch;gap:8px;margin:18px 0 8px;max-width:860px}
+.shpg .pflow .st{background:var(--g-card);border:1px solid var(--g-line);border-radius:10px;padding:12px 14px}
+.shpg .pflow .st .k{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--g-muted);font-weight:700;margin:0 0 4px}
+.shpg .pflow .st .v{font-size:20px;font-weight:800;color:var(--g-ink);margin:0;font-variant-numeric:tabular-nums}
+.shpg .pflow .st .s{font-size:12.5px;color:var(--g-muted);margin:4px 0 0}
+.shpg .pflow .st.end{border-color:var(--g-navy);box-shadow:0 0 0 1px var(--g-navy) inset}
+.shpg .pflow .ar{align-self:center;color:var(--g-gold);font-size:22px;font-weight:800}
+@media (max-width:700px){.shpg .pflow{grid-template-columns:1fr}.shpg .pflow .ar{transform:rotate(90deg);justify-self:center}}
+/* drawn: what the customer sees */
+.shpg .chat{background:#EEF1F6;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;max-width:520px;margin:16px 0 8px}
+.shpg .chat .b{max-width:85%;padding:9px 12px;border-radius:12px;font-size:14px;line-height:1.45;background:#fff;color:var(--g-txt);box-shadow:var(--g-shadow)}
+.shpg .chat .b.me{align-self:flex-end;background:#DDE5F3}
+.shpg .chat .who{font-size:11px;color:var(--g-muted);font-weight:700;margin-bottom:2px}
+.shpg .qa dt{font-weight:750;color:var(--g-ink);margin:16px 0 4px;max-width:72ch}
+.shpg .qa dd{margin:0 0 8px;max-width:72ch}
+.shpg .g-top{float:right;font-size:12px;font-weight:700;text-decoration:none;color:var(--g-muted)}
+</style>
+
+<div class="shpg" id="shp-top">
+<div class="g-head">
+  <p class="g-lede">How PhiXtra works with your Shopify store: connecting it, your products, the chat box on your store, business buyers, turning won quotations into Shopify orders, and the Shopify Store page in your portal. Pictures are from the live portal, using a test store.</p>
+  <div class="g-meta">Last checked against the live portal: 6 November 2026</div>
+</div>
+
+<nav class="toc" aria-label="Contents"><details open><summary>Contents</summary>
+  <ol>
+    <li><a href="#shp-connect">1. Connecting your Shopify store</a></li>
+    <li><a href="#shp-page">2. The Shopify Store page</a></li>
+    <li><a href="#shp-products">3. Your products</a></li>
+    <li><a href="#shp-chat">4. The chat box on your store</a></li>
+    <li><a href="#shp-buyers">5. Business buyers (B2B plan)</a></li>
+    <li><a href="#shp-orders">6. From won quotation to Shopify order (B2B plan)</a></li>
+    <li><a href="#shp-not">7. What isn't used on Shopify</a></li>
+    <li><a href="#shp-roles">8. Who can do what</a></li>
+    <li><a href="#shp-remove">9. Disconnecting</a></li>
+    <li><a href="#shp-faq">10. Questions and problems</a></li>
+  </ol>
+</details></nav>
+
+<!-- 1 -->
+<section class="part" id="shp-connect">
+<h2><span class="num">1</span>Connecting your Shopify store</h2>
+<p class="where">Shopify admin › Apps › PhiXtra</p>
+<p>You connect your store from inside Shopify, with the PhiXtra app. There's no plugin and no code to paste.</p>
+<ol class="steps">
+  <li>Install the PhiXtra app in your Shopify store and open it.</li>
+  <li>New to PhiXtra: choose who you sell to (<b>Shoppers (Retail)</b> or <b>Businesses (B2B)</b>), type your name and email, and press <span class="ui">Create my PhiXtra account</span>.<br>Already use PhiXtra: press <span class="ui">Link my account</span> and use the email you log in to PhiXtra with.</li>
+  <li>Type the 6-digit code we email you. It works for 10 minutes.</li>
+  <li>You'll see "Your store is connected to PhiXtra ✓". PhiXtra starts reading your products straight away.</li>
+</ol>
+<p>From then on, the portal knows your store is on Shopify and shows you the Shopify Store page instead of the WooCommerce pages.</p>
+<a class="g-top" href="#shp-top">↑ Back to top</a>
+</section>
+
+<!-- 2 -->
+<section class="part" id="shp-page">
+<h2><span class="num">2</span>The Shopify Store page</h2>
+<p class="where">Products &amp; Orders › Shopify Store</p>
+<p>Everything about your connected store in one place. It shows the same things as the PhiXtra app Home screen in Shopify, so you don't need to open Shopify to check them.</p>
+<figure class="narrow"><img src="/static/portal/tutorial/shopify/shp00_menu.jpg" width="420" height="685" alt="The Products and Orders menu with Shopify Store." loading="lazy"><figcaption>Shopify Store in the Products &amp; Orders menu.</figcaption></figure>
+<figure><img src="/static/portal/tutorial/shopify/shp01_store_page.jpg" width="1050" height="850" alt="The Shopify Store page: the store, Products, Chat box on your store, Business buyers and Orders from your quotations." loading="lazy"><figcaption>The Shopify Store page, on a test store.</figcaption></figure>
+<div class="tbl"><table>
+<thead><tr><th>Part</th><th>What it shows</th></tr></thead>
+<tbody>
+<tr><td>Your store</td><td>The store name, its Shopify address, currency and when it was connected. <span class="ui">Open in Shopify</span> opens your Shopify admin.</td></tr>
+<tr><td>1. Products</td><td>How many products your AI agent has, how many you switched off, and when they were last read. See <a href="#shp-products">section 3</a>.</td></tr>
+<tr><td>2. Chat box on your store</td><td>Whether the chat box has been seen on your store. See <a href="#shp-chat">section 4</a>.</td></tr>
+<tr><td>3. Business buyers</td><td>B2B plan only: how many Shopify companies and buyers PhiXtra has read. See <a href="#shp-buyers">section 5</a>.</td></tr>
+<tr><td>Orders from your quotations</td><td>Only the Shopify orders PhiXtra made from your won quotations, with their status. See <a href="#shp-orders">section 6</a>.</td></tr>
+</tbody></table></div>
+<a class="g-top" href="#shp-top">↑ Back to top</a>
+</section>
+
+<!-- 3 -->
+<section class="part" id="shp-products">
+<h2><span class="num">3</span>Your products</h2>
+<p class="where">Products &amp; Orders › Shopify Store › 1. Products</p>
+<p>PhiXtra reads the products that are on sale in your online store: names, prices, stock and pictures. Changes you make in Shopify reach your AI agent by themselves, and PhiXtra checks everything again each night.</p>
+<ul>
+  <li>Drafts, archived products and products hidden from your online store are left out, so the AI won't offer them.</li>
+  <li>To stop the AI offering one product, switch it off in Products &amp; Orders › My Products &amp; Services. It stays in Shopify.</li>
+  <li><span class="ui">Read products again</span> reads everything from Shopify now. Use it if something looks out of date. It takes a few minutes.</li>
+</ul>
+<div class="box careful"><b class="t">Using a product list from Excel?</b>
+<p>If you uploaded a product list in Add products from Excel, the AI uses that list and your Shopify products aren't added. The page tells you when this happens. To use your Shopify products, remove the uploaded list.</p></div>
+<div class="box know"><b class="t">Password-protected store</b>
+<p>While your store has a password (for example before you launch), the AI can read your products but not your store pages, such as delivery and returns. Remove the password in Shopify › Online Store › Preferences and the pages are read on the next check.</p></div>
+<a class="g-top" href="#shp-top">↑ Back to top</a>
+</section>
+
+<!-- 4 -->
+<section class="part" id="shp-chat">
+<h2><span class="num">4</span>The chat box on your store</h2>
+<p class="where">Products &amp; Orders › Shopify Store › 2. Chat box on your store</p>
+<p>The chat box lets buyers talk to your AI agent on every page of your store. You switch it on once, in your Shopify theme:</p>
+<ol class="steps">
+  <li>Press <span class="ui">Switch on in your theme</span>. Your Shopify theme editor opens with PhiXtra chat selected.</li>
+  <li>Make sure PhiXtra chat is on, then press <span class="ui">Save</span> in the theme editor.</li>
+  <li>Open your store. When the chat box has loaded, the page shows "Seen on your store" with the time.</li>
+</ol>
+<p>If the chat box hasn't been seen for 7 days, the page shows a warning. It usually means it was switched off in the theme, or you changed themes.</p>
+<a class="g-top" href="#shp-top">↑ Back to top</a>
+</section>
+
+<!-- 5 -->
+<section class="part" id="shp-buyers">
+<h2><span class="num">5</span>Business buyers (B2B plan)</h2>
+<p class="where">Products &amp; Orders › Shopify Store › 3. Business buyers</p>
+<p>If you sell to businesses with Shopify B2B, PhiXtra reads your Shopify companies, their sites and their buyers. When a buyer chats, emails or messages you, PhiXtra matches them to their company, so the AI uses that company's prices and your salesperson sees the company on the lead and the quote request.</p>
+<ul>
+  <li>Changes you make to companies in Shopify are picked up by themselves.</li>
+  <li><span class="ui">Read buyers again</span> reads all companies and buyers now.</li>
+  <li>When a buyer is matched only by email or phone (not logged in to your store), the AI doesn't name the company or share account details with them.</li>
+</ul>
+<a class="g-top" href="#shp-top">↑ Back to top</a>
+</section>
+
+<!-- 6 -->
+<section class="part" id="shp-orders">
+<h2><span class="num">6</span>From won quotation to Shopify order (B2B plan)</h2>
+<p class="where">Quotations › Quote Won › a request</p>
+<p>When a buyer accepts your quotation, you can turn it into an order in your Shopify, at the quoted prices.</p>
+<ol class="steps">
+  <li>Open the won request. Under the buyer, press <span class="ui">Create Shopify draft order</span>. Every line of the quotation goes in at the quoted prices. Nothing goes to the buyer yet.</li>
+  <li>Check the draft in Shopify if you like, then press <span class="ui">Send Shopify invoice</span>. The buyer gets an email with a secure link where they pay, or accept the payment terms of their company.</li>
+  <li>When the buyer places the order, the status changes to <b>Completed</b> and <span class="ui">Open the order in Shopify</span> takes you to it.</li>
+</ol>
+<figure><img src="/static/portal/tutorial/shopify/shp02_quote_order.jpg" width="900" height="311" alt="A won request with Shopify draft order #D11, Completed, and Open the order in Shopify." loading="lazy"><figcaption>A won quotation that became Shopify order #D11.</figcaption></figure>
+<p>The Shopify Store page lists these orders under <b>Orders from your quotations</b>: Draft order, Invoice sent or Order placed. Only orders PhiXtra made are shown. Your other Shopify orders stay in Shopify, and they don't appear on the Orders page in the portal either.</p>
+<a class="g-top" href="#shp-top">↑ Back to top</a>
+</section>
+
+<!-- 7 -->
+<section class="part" id="shp-not">
+<h2><span class="num">7</span>What isn't used on Shopify</h2>
+<p>Some PhiXtra features are for WordPress and WooCommerce shops only, so a Shopify store doesn't see them in the menu:</p>
+<ul>
+  <li><b>WooCommerce Sync</b>: your products come through the Shopify app instead.</li>
+  <li><b>API Keys</b>: the Shopify app connects by itself, so there's no key to copy.</li>
+  <li><b>Order Messages</b>: Shopify sends its own order emails.</li>
+  <li><b>Cart Recovery</b> and the Cart Recovery Report.</li>
+  <li><b>Analytics</b>: it's built from WooCommerce orders.</li>
+</ul>
+<p>Everything else (Inbox, CRM, Leads, Quotations, Outreach, AI Assistant and Reports) works the same as for any other business.</p>
+<a class="g-top" href="#shp-top">↑ Back to top</a>
+</section>
+
+<!-- 8 -->
+<section class="part" id="shp-roles">
+<h2><span class="num">8</span>Who can do what</h2>
+<p class="where">Settings › Team › Roles › edit a role › Products &amp; Orders › Shopify Store</p>
+<div class="tbl"><table>
+<thead><tr><th>Tick</th><th>What it allows</th></tr></thead>
+<tbody>
+<tr><td>Shopify Store: View</td><td>Open the Shopify Store page.</td></tr>
+<tr><td>Shopify Store: Edit</td><td>Press <span class="ui">Read products again</span> and <span class="ui">Read buyers again</span>.</td></tr>
+</tbody></table></div>
+<p>The account owner can always do both.</p>
+<a class="g-top" href="#shp-top">↑ Back to top</a>
+</section>
+
+<!-- 9 -->
+<section class="part" id="shp-remove">
+<h2><span class="num">9</span>Disconnecting</h2>
+<p>To disconnect your store, uninstall PhiXtra in Shopify › Settings › Apps. PhiXtra stops reading your store straight away. 48 hours later, as Shopify requires, PhiXtra removes what it holds about your store, including your Shopify products on your AI agent. Your PhiXtra account stays, and you can connect a store again by installing the app.</p>
+<a class="g-top" href="#shp-top">↑ Back to top</a>
+</section>
+
+<!-- 10 -->
+<section class="part" id="shp-faq">
+<h2><span class="num">10</span>Questions and problems</h2>
+<dl class="qa">
+  <dt>A product is missing.</dt>
+  <dd>Check it's active and available on your Online Store in Shopify. Then press <span class="ui">Read products again</span>.</dd>
+  <dt>The page says the last product read didn't finish.</dt>
+  <dd>PhiXtra tries again each night. You can press <span class="ui">Read products again</span> now.</dd>
+  <dt>I don't see the chat box on my store.</dt>
+  <dd>Press <span class="ui">Switch on in your theme</span>, make sure PhiXtra chat is on and press Save. If you changed themes, switch it on in the new theme too.</dd>
+  <dt>My Shopify orders aren't on the Orders page.</dt>
+  <dd>That's expected. Shopify orders stay in Shopify. The portal shows only the orders PhiXtra made from your quotations, on the Shopify Store page.</dd>
+  <dt>I don't see Shopify Store in my menu.</dt>
+  <dd>Your role may not have the Shopify Store tick. Ask the person who manages your team.</dd>
+</dl>
+<a class="g-top" href="#shp-top">↑ Back to top</a>
+</section>
+</div>
