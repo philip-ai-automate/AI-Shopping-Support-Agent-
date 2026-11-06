@@ -1,0 +1,132 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Backups — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .bk-verdict{border-radius:16px;padding:16px 18px;margin-bottom:16px;font-size:15px;font-weight:750;
+              display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .bk-verdict.ok{background:rgba(18,183,106,.08);border:1.5px solid rgba(18,183,106,.4);color:#05603A}
+  .bk-verdict.bad{background:rgba(240,68,56,.07);border:1.5px solid rgba(240,68,56,.45);color:#912018}
+  .bk-verdict.run{background:rgba(46,144,250,.07);border:1.5px solid rgba(46,144,250,.45);color:#194185}
+  .bk-verdict small{font-weight:500;font-size:12.5px;opacity:.85}
+  .bk-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:18px}
+  .bk-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:12px;color:var(--muted)}
+  .bk-card b{display:block;font-size:15px;color:var(--ink);margin:2px 0}
+  .bk-card form{margin-top:6px}
+  .bk-sec{margin-bottom:20px}
+  .bk-h{font-size:13px;font-weight:800;margin:0 0 8px}
+  .bk-empty{font-size:12.5px;color:var(--muted);padding:12px 14px;background:#fff;border:1px dashed var(--line);border-radius:12px}
+  .bk-tag{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;background:rgba(3,12,24,.06);white-space:nowrap}
+  .bk-warn{color:#93370D;font-weight:700}
+  .bk-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+  .bk-counts{font-size:11.5px;color:var(--muted)}
+</style>
+
+{% macro uk(dt, fmt='%a %-d %b %H:%M') %}{{ dt.strftime(fmt) if dt else '—' }}{% endmacro %}
+
+<div class="page-header bk-top">
+  <div>
+    <h1 class="section-title">Backups</h1>
+    <p class="muted">Nightly encrypted backup of all databases, the app, websites, mailboxes, product photos and server settings.
+      Times are UK time.</p>
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <a href="{{ url_for('portal_admin.backups') }}" class="btn btn-sm">↻ Refresh</a>
+    <form method="post" action="{{ url_for('portal_admin.backups_run') }}" style="margin:0">
+      <input type="hidden" name="kind" value="backup">
+      <button class="btn btn-sm" {% if v.running or v.requested.backup %}disabled{% endif %}>Back up now</button>
+    </form>
+    <form method="post" action="{{ url_for('portal_admin.backups_run') }}" style="margin:0">
+      <input type="hidden" name="kind" value="restore">
+      <button class="btn btn-sm" {% if v.running or v.requested.restore %}disabled{% endif %}>Run restore test now</button>
+    </form>
+  </div>
+</div>
+
+{% if v.running %}
+  <div class="bk-verdict run">⏳ {{ 'Backup' if v.running.kind == 'backup' else 'Restore test' }} running — started {{ uk(v.running.since, '%H:%M') }}
+    <small>(a backup takes about 3–5 minutes; refresh to update)</small></div>
+{% elif v.requested.backup or v.requested.restore %}
+  <div class="bk-verdict run">⏳ {{ 'Backup' if v.requested.backup else 'Restore test' }} asked for — starts within a minute. <small>Refresh to update.</small></div>
+{% elif v.last_ok is none %}
+  <div class="bk-verdict bad">⚠ No backup has run yet.</div>
+{% elif not v.last_ok %}
+  <div class="bk-verdict bad">⚠ Last backup FAILED — {{ v.last_msg or 'see log' }}
+    <small>{{ uk(v.last_finished) }} · an email was sent to philip@phixtra.com</small></div>
+{% elif v.stale %}
+  <div class="bk-verdict bad">⚠ No backup for more than a day — last one {{ uk(v.last.time) }}.
+    <small>The nightly job may not have run.</small></div>
+{% else %}
+  <div class="bk-verdict ok">✅ Last backup OK — {{ uk(v.last_finished) }}{% if v.last_mins %}, took {{ v.last_mins }} min{% endif %}{% if v.last %}, {{ v.last.added }} new{% endif %}
+    {% if v.last_msg %}<small>· {{ v.last_msg }}</small>{% endif %}</div>
+{% endif %}
+
+<div class="bk-cards">
+  <div class="bk-card">Next backup<b>{{ uk(v.next) }}</b>every night, low priority so the portal stays fast</div>
+  <div class="bk-card">Last restore test
+    {% if v.restore_last.finished %}
+      <b>{{ '✅ Passed' if v.restore_last.ok else '⚠ Failed' }}</b>{{ uk(v.restore_last.finished) }}{% if v.restore_last.msg %} — {{ v.restore_last.msg }}{% endif %}
+    {% else %}<b>None yet</b>{% endif %}
+    <div>Automatic on the 1st of each month</div></div>
+  <div class="bk-card">Kept<b>{{ v.keep }}</b>{{ v.snaps|length }} backup{{ '' if v.snaps|length == 1 else 's' }} now · {{ v.stored or '—' }} stored (compressed, encrypted)</div>
+  <div class="bk-card">Backup key in your password manager
+    {% if v.key_saved %}<b>✅ Saved</b>marked {{ v.key_saved.at }}
+    {% else %}<b class="bk-warn">Not confirmed</b>Without the key nobody can open the backups.
+      <form method="post" action="{{ url_for('portal_admin.backups_key_saved') }}"
+            onsubmit="return confirm('Have you copied the backup key into your password manager?')">
+        <button class="btn btn-sm">I've saved it</button></form>
+    {% endif %}</div>
+  <div class="bk-card">Off-site copy<b class="bk-warn">Not set up yet</b>Backups are on this server's second disk only. Off-site copy is the next step.</div>
+</div>
+
+<div class="bk-sec">
+  <h3 class="bk-h">📦 Backups (newest first)</h3>
+  {% if v.snaps %}
+  <div class="table-wrap" style="background:#fff">
+    <table>
+      <thead><tr><th>Date / time (UK)</th><th>Kind</th><th>New data</th><th>Total backed up</th><th>Files</th><th>Took</th><th>Result</th></tr></thead>
+      <tbody>
+      {% for s in v.snaps %}
+        <tr>
+          <td style="white-space:nowrap"><b>{{ uk(s.time) }}</b></td>
+          <td><span class="bk-tag">{{ s.kind }}</span></td>
+          <td>{{ s.added }}</td>
+          <td>{{ s.total }}</td>
+          <td>{{ '{:,}'.format(s.files) if s.files else '—' }}</td>
+          <td>{{ (s.mins|string + ' min') if s.mins is not none else '—' }}</td>
+          <td>✅</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted" style="font-size:12px;margin-top:8px">"New data" is what changed since the backup before (after compression). Failed runs don't create a backup — they show in the box at the top and by email.</p>
+  {% else %}<div class="bk-empty">No backups yet.</div>{% endif %}
+</div>
+
+<div class="bk-sec">
+  <h3 class="bk-h">🧪 Restore tests — main portal database loaded from the backup and compared with live</h3>
+  {% if v.tests %}
+  <div class="table-wrap" style="background:#fff">
+    <table>
+      <thead><tr><th>Date (UK)</th><th>Result</th><th>Backup tested</th><th>Counts (restored / live)</th></tr></thead>
+      <tbody>
+      {% for t in v.tests %}
+        <tr>
+          <td style="white-space:nowrap"><b>{{ uk(t.at_uk) }}</b></td>
+          <td>{{ '✅ Passed' if t.ok else '⚠ Failed' }}</td>
+          <td style="white-space:nowrap">{{ t.snap_label }}</td>
+          <td class="bk-counts">
+            {% set names = {'tenants':'businesses','customers':'customers','team_members':'team','merchant_pipeline_leads':'pipeline leads','wa_contacts':'WhatsApp contacts','chat_messages':'chat messages','quote_requests':'quote requests'} %}
+            {% for k, c in t.counts.items() %}{{ names.get(k, k) }} {{ c.restored }}/{{ c.live }}{{ ' · ' if not loop.last }}{% endfor %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<div class="bk-empty">No restore tests yet.</div>{% endif %}
+</div>
+
+<p class="muted" style="font-size:12px">Putting data back from a backup is never done from this page — it overwrites live data, so it is done carefully with Claude.
+  Failures email philip@phixtra.com.</p>
+{% endblock %}

@@ -79,6 +79,11 @@ def create_app():
     shopify_app.ensure_tables()
     flask_app.register_blueprint(shopify_app.shopify_bp)
     flask_app.before_request(enforce_demo_lock)
+
+    # Who's Online (portal_presence): real page opens/actions, once a minute per person
+    import portal_presence
+    from flask import request as _pr_req, session as _pr_sess
+    flask_app.before_request(lambda: portal_presence.record(_pr_req, _pr_sess))
     flask_app.context_processor(demo_bar_context)
 
     # Feature -> Roles/Modules update policy (feature_access.py): grant any

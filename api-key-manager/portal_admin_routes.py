@@ -16,7 +16,7 @@ import bcrypt
 from urllib.parse import urlencode
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, send_file, send_from_directory, Response,
-                   current_app)
+                   current_app, jsonify)
 
 from db import get_db_connection, insert_audit_log
 from feature_access import check_feature_access, PLAN_LOCK_CODE_PATHS
@@ -6316,6 +6316,86 @@ def video_tutorials_products(slug):
 # ══════════════════════════════════════════════════════════════════════════════
 
 _INACTIVE_ORDER = {"warned": 0, "active": 1, "no_email": 2, "protected": 3}
+
+
+@portal_admin_bp.route("/online")
+def whos_online():
+    """Who's Online — is anyone using the portal right now (safe to restart?)."""
+    r = _require_admin("customers", "view")
+    if r: return r
+    import portal_presence as pp
+    from zoneinfo import ZoneInfo
+    import datetime as _dt
+    show_internal = request.args.get("internal") == "1"
+    tab = "daily" if request.args.get("tab") == "daily" else "now"
+    rng = request.args.get("range", type=int)
+    rng = rng if rng in (7, 14, 30) else 14
+    ctx = dict(tab=tab, show_internal=show_internal, app_label=pp.APP_LABEL,
+               active_min=pp.ACTIVE_MIN, idle_min=pp.IDLE_MIN, uk_tz=ZoneInfo(pp.CHART_TZ),
+               keep_days=pp.KEEP_DAYS, rng=rng)
+    if tab == "now":
+        hours, since = pp.hourly(days=rng, include_internal=show_internal)
+        ctx.update(people=pp.people(include_internal=show_internal), hours=hours, since=since,
+                   max_avg=max([h["avg"] for h in hours] + [1]))
+    else:
+        days, started = pp.daily(include_internal=show_internal)
+        ctx.update(days=days, started=started, day=None)
+        try:
+            day = _dt.date.fromisoformat(request.args.get("day") or "")
+        except ValueError:
+            day = None
+        if day and not (started and started <= day <= days[0]["day"]):
+            day = None   # before history started / in the future → back to the list
+        if day:
+            rows, per_hour = pp.day_detail(day, include_internal=show_internal)
+            known = [d["day"] for d in days]
+            ctx.update(day=day, day_rows=rows, per_hour=per_hour, max_hour=max(per_hour + [1]),
+                       day_info=next((d for d in days if d["day"] == day), None),
+                       prev_day=next((d for d in known if d < day), None),
+                       next_day=next((d for d in reversed(known) if d > day), None))
+    return render_template("portal/admin_online.html", **ctx)
+
+
+@portal_admin_bp.route("/online/count")
+def whos_online_count():
+    """Sidebar badge: customers active in the last 5 minutes."""
+    if not _admin_logged_in():
+        return jsonify({"ok": False}), 401
+    import portal_presence as pp
+    resp = jsonify({"ok": True, "active": pp.active_count()})
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@portal_admin_bp.route("/backups")
+def backups():
+    """Admin › Backups — status of the nightly encrypted backup + restore tests (owner only)."""
+    r = _require_owner()
+    if r: return r
+    import backups_status as bs
+    return render_template("portal/admin_backups.html", v=bs.view())
+
+
+@portal_admin_bp.route("/backups/run", methods=["POST"])
+def backups_run():
+    r = _require_owner()
+    if r: return r
+    import backups_status as bs
+    kind = request.form.get("kind")
+    if bs.request_job(kind):
+        flash("Backup asked for — it starts within a minute." if kind == "backup"
+              else "Restore test asked for — it starts within a minute (after any running backup).", "success")
+    return redirect(url_for("portal_admin.backups"))
+
+
+@portal_admin_bp.route("/backups/key-saved", methods=["POST"])
+def backups_key_saved():
+    r = _require_owner()
+    if r: return r
+    import backups_status as bs
+    bs.mark_key_saved(_admin_user())
+    flash("Noted — backup key saved in your password manager.", "success")
+    return redirect(url_for("portal_admin.backups"))
 
 
 @portal_admin_bp.route("/inactive-accounts")
