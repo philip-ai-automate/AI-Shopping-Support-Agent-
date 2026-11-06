@@ -449,6 +449,15 @@ def create_app():
                         platform = "website"
                     else:
                         platform = "none"
+                    # Shopify stores don't use Add products from Excel (an
+                    # active list switches their Shopify products off) — the
+                    # menu only shows it if one already exists, to remove it.
+                    excel_ok = True
+                    if platform == "shopify":
+                        cur.execute("""SELECT 1 FROM data_sources WHERE tenant_id=%s AND is_active
+                                         AND column_map IS NOT NULL LIMIT 1""", (tenant_id,))
+                        excel_ok = cur.fetchone() is not None
+                    _g._cached_excel_ok = excel_ok
                     _g._cached_has_site = has_site
                     _g._cached_store_platform = platform
                     _g._cached_has_woocommerce = platform == "woocommerce"
@@ -458,7 +467,8 @@ def create_app():
                 _g._cached_has_woocommerce = False
         return {"_has_woocommerce": _g._cached_has_woocommerce,
                 "_has_site": getattr(_g, "_cached_has_site", False),
-                "_store_platform": getattr(_g, "_cached_store_platform", "none")}
+                "_store_platform": getattr(_g, "_cached_store_platform", "none"),
+                "_excel_products_ok": getattr(_g, "_cached_excel_ok", True)}
 
     @flask_app.context_processor
     def inject_tenant_features():
