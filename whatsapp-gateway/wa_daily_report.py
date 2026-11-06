@@ -1,7 +1,10 @@
 """
 wa_daily_report.py — Daily merchant summary sent via WhatsApp at 08:00 WAT.
 
-Scheduler: AsyncIOScheduler fires run_daily_reports() at 07:00 UTC every day.
+Scheduler: AsyncIOScheduler fires run_daily_reports() every hour (2026-11-06);
+each business gets its report at 08:00 in ITS OWN time zone (Settings time
+zone, else its business country, else London — same rule as the portal's
+staff_activity.tenant_tz_name), covering yesterday in that time zone.
 Manual trigger: POST /wa-daily-report  (protected by PHIXTRA_INTERNAL_TOKEN)
 
 Report covers the calendar day that just ended (yesterday in WAT / UTC+1).
@@ -120,8 +123,60 @@ def _get_merchant_phone(tenant_id: int, report_phone_override: str | None) -> st
         conn.close()
 
 
-def _get_daily_stats(tenant_id: int, report_date: date) -> dict:
-    """Pull yesterday's metrics for one tenant. All queries hit the same DB."""
+_DEFAULT_TZ = "Europe/London"
+_country_zone: dict | None = None
+
+
+def _zone_for_country(cc: str | None) -> str | None:
+    global _country_zone
+    if _country_zone is None:
+        _country_zone = {}
+        try:
+            with open("/usr/share/zoneinfo/zone.tab") as f:
+                for line in f:
+                    if line.startswith("#"):
+                        continue
+                    parts = line.split("\t")
+                    if len(parts) >= 3:
+                        _country_zone.setdefault(parts[0].upper(), parts[2].strip())
+        except Exception as e:
+            print("⚠️ [DAILY] zone.tab error:", e)
+    return _country_zone.get((cc or "").strip().upper())
+
+
+def _tenant_tz_name(tenant_id: int) -> str:
+    """The business's own time zone — same rule as the portal
+    (staff_activity.tenant_tz_name): Settings time zone ("UTC" = not chosen),
+    else the main zone of its business country, else London."""
+    from zoneinfo import ZoneInfo
+    conn = get_db_connection()
+    if not conn:
+        return _DEFAULT_TZ
+    try:
+        cur = conn.cursor()
+        cur.execute("""SELECT timezone, business_country FROM customers
+                       WHERE tenant_id=%s ORDER BY id LIMIT 1""", (tenant_id,))
+        r = cur.fetchone()
+        cur.close()
+    except Exception:
+        r = None
+    finally:
+        conn.close()
+    if r:
+        tz, cc = (r[0] or "").strip(), r[1]
+        for cand in ((tz if tz and tz.upper() != "UTC" else None), _zone_for_country(cc)):
+            if cand:
+                try:
+                    ZoneInfo(cand)
+                    return cand
+                except Exception:
+                    continue
+    return _DEFAULT_TZ
+
+
+def _get_daily_stats(tenant_id: int, report_date: date, tz_name: str | None = None) -> dict:
+    """Pull yesterday's metrics for one tenant. All queries hit the same DB.
+    With tz_name, DATE(...) means the day in the business's own time zone."""
     conn = get_db_connection()
     if not conn:
         return {}
@@ -129,6 +184,8 @@ def _get_daily_stats(tenant_id: int, report_date: date) -> dict:
     stats: dict = {}
 
     try:
+        if tz_name:
+            cur.execute("SET TIME ZONE %s", (tz_name,))
         dt = report_date.isoformat()   # "YYYY-MM-DD"
 
         # ── Orders ──────────────────────────────────────────────────────────
@@ -608,6 +665,7 @@ def _mark_report_sent(tenant_id: int) -> None:
 async def send_daily_report_for_tenant(
     wa_tenant: dict,
     report_date: date | None = None,
+    tz_name: str | None = None,
 ) -> str:
     """
     Gather stats and send the daily report for a single tenant.
@@ -638,7 +696,7 @@ async def send_daily_report_for_tenant(
         return "skipped"
 
     # ── Pull stats ────────────────────────────────────────────────────────
-    stats = _get_daily_stats(tenant_id, report_date)
+    stats = _get_daily_stats(tenant_id, report_date, tz_name)
 
     # ── Try template first, fall back to plain text ───────────────────────
     tpl = _get_wa_template_for_report(tenant_id)
@@ -696,28 +754,35 @@ async def run_daily_reports(report_date: date | None = None) -> dict:
     Send daily reports to all eligible tenants.
     Returns a summary dict {"sent": n, "failed": n, "skipped": n}.
     """
-    if report_date is None:
-        report_date = date.today() - timedelta(days=1)
-
-    print(f"🚀 [DAILY] Starting daily reports for {report_date}")
+    # Scheduled (hourly): only businesses where it's 08:xx now in their own
+    # time zone, for yesterday in that zone. Manual run with a date: everyone.
+    from zoneinfo import ZoneInfo
+    from datetime import timezone as _utc
+    manual = report_date is not None
     tenants = _get_active_wa_tenants()
-    print(f"📋 [DAILY] {len(tenants)} tenant(s) eligible")
 
     results = {"sent": 0, "failed": 0, "skipped": 0}
     for tenant in tenants:
-        # Guard: don't double-send if already sent today
+        tz_name = _tenant_tz_name(int(tenant["tenant_id"]))
+        local_now = datetime.now(_utc.utc).astimezone(ZoneInfo(tz_name))
+        if not manual and local_now.hour != 8:
+            continue
+        rd = report_date or (local_now.date() - timedelta(days=1))
+        # Guard: don't double-send if already sent today (business's own day)
         last_sent = tenant.get("last_report_sent_at")
         if last_sent and isinstance(last_sent, datetime):
-            if last_sent.date() >= date.today():
+            if last_sent.astimezone(ZoneInfo(tz_name)).date() >= local_now.date():
                 print(f"⏭ [DAILY] tenant={tenant['tenant_id']} already sent today")
                 results["skipped"] += 1
                 continue
 
-        status = await send_daily_report_for_tenant(tenant, report_date)
+        print(f"🚀 [DAILY] tenant={tenant['tenant_id']} {tz_name} 08:00 → report for {rd}")
+        status = await send_daily_report_for_tenant(tenant, rd, tz_name)
         results[status] = results.get(status, 0) + 1
         await asyncio.sleep(0.3)   # gentle Meta API rate throttle
 
-    print(f"✅ [DAILY] Done — {results}")
+    if any(results.values()):
+        print(f"✅ [DAILY] Done — {results}")
     return results
 
 
@@ -744,7 +809,7 @@ async def trigger_daily_report(
         except ValueError:
             raise HTTPException(status_code=400, detail="invalid report_date_str, use YYYY-MM-DD")
     else:
-        rd = None   # defaults to yesterday inside run_daily_reports
+        rd = date.today() - timedelta(days=1)   # manual run: everyone, yesterday (as before 2026-11-06)
 
     results = await run_daily_reports(rd)
     return {"status": "ok", "results": results, "report_date": str(rd or (date.today() - timedelta(days=1)))}

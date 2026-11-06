@@ -100,8 +100,11 @@ def whatsapp_state(cur, tenant_id, local_day_start_utc):
     return "sent" if r["status"] == "sent" else "failed"
 
 
-def stats(cur, tenant_id, day):
-    """Same numbers as the WhatsApp report (wa_daily_report._get_daily_stats)."""
+def stats(cur, tenant_id, day, tz_name=None):
+    """Same numbers as the WhatsApp report (wa_daily_report._get_daily_stats).
+    With tz_name, DATE(...) is the day in the business's own time zone."""
+    if tz_name:
+        cur.execute("SET TIME ZONE %s", (tz_name,))
     dt = day.isoformat()
     s = {}
     cur.execute("""
@@ -286,19 +289,16 @@ def main():
                 if wa == "sent":
                     print(f"tenant {tid}: WhatsApp summary delivered today, no email")
                     continue
-                if wa == "waiting":
-                    # The WhatsApp report runs once a day at 07:00 UTC. Before
-                    # that (e.g. Asia, where 8 am local is earlier) WhatsApp
-                    # will still come, so no email; after it, give it until 11.
-                    from datetime import datetime as _dt, timezone as _tzu
-                    if _dt.now(_tzu.utc).hour < 8 or now.hour < 11:
-                        print(f"tenant {tid}: waiting for today's WhatsApp attempt")
-                        continue
+                if wa == "waiting" and now.hour < 11:
+                    # The WhatsApp report goes at 08:00 local too (2026-11-06);
+                    # give it until 11 before emailing instead.
+                    print(f"tenant {tid}: waiting for today's WhatsApp attempt")
+                    continue
             o = owner(cur, tid)
             if not o:
                 print(f"tenant {tid}: no owner email, skipped")
                 continue
-            s = stats(cur, tid, yesterday)
+            s = stats(cur, tid, yesterday, tz.key)
             if quiet(s) and not a.force:
                 print(f"tenant {tid}: quiet day ({yesterday}), skipped")
                 if not a.dry_run:

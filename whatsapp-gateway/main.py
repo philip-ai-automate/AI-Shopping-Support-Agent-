@@ -92,10 +92,11 @@ _scheduler.add_job(
     max_instances=1,
 )
 
-# Daily reports: 07:00 UTC = 08:00 WAT
+# Daily reports (2026-11-06): every hour; each business gets it at 08:00
+# in its own time zone (run_daily_reports picks who is at 8 am now).
 _scheduler.add_job(
     run_daily_reports,
-    CronTrigger(hour=7, minute=0, timezone="UTC"),
+    CronTrigger(minute=0, timezone="UTC"),
     id="daily_reports",
     replace_existing=True,
     misfire_grace_time=3600,
@@ -150,7 +151,7 @@ async def lifespan(app: FastAPI):
     init_wa_tables()
     init_staff_alert_tables()
     _scheduler.start()
-    print("✅ [SCHEDULER] Daily reports: 07:00 UTC | Plan resets: 00:05 UTC | Auto-close handoffs: every hour | Template poll: every 2 h", flush=True)
+    print("✅ [SCHEDULER] Daily reports: hourly, 08:00 each business time zone | Plan resets: 00:05 UTC | Auto-close handoffs: every hour | Template poll: every 2 h", flush=True)
     asyncio.create_task(ensure_templates_submitted())
     yield
     _scheduler.shutdown(wait=False)

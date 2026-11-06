@@ -320,7 +320,7 @@
           <div class="toggle-info">
             <strong>Daily Summary</strong>
             <span>Every morning: yesterday's website chats, WhatsApp conversations and orders.
-              {% if report_has_wa %}Sent on WhatsApp at 07:00 UTC to the number below. If WhatsApp can't deliver it, it comes by email to <strong>{{ report_owner_email or 'the account owner' }}</strong> at 8 AM{% if report_tz %} {{ report_tz }} time{% endif %}.
+              {% if report_has_wa %}Sent on WhatsApp at 8 AM{% if report_tz %} {{ report_tz }} time{% endif %} to the number below. If WhatsApp can't deliver it, it comes by email to <strong>{{ report_owner_email or 'the account owner' }}</strong> instead.
               {% else %}Your WhatsApp isn't connected, so it comes by email to <strong>{{ report_owner_email or 'the account owner' }}</strong> at 8 AM{% if report_tz %} {{ report_tz }} time{% endif %}.{% endif %}
               The email is skipped on days when nothing happened.</span>
           </div>
