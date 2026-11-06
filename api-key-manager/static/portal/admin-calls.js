@@ -13,11 +13,11 @@
     fetch('/admin/accounts/'+tid+'/call/check', {credentials:'same-origin'}).then(function(r){return r.json()}).then(function(d){
       btns.innerHTML = ''
       if (!d.show){ msg.innerHTML = '<span class="ac-bad">Can\'t call: '+(d.why||'not available')+'</span>'; return }
-      if (d.can_call){ msg.textContent = 'They agreed to WhatsApp calls. You\'re calling from '+d.number+'.'; btn('📞 Call '+box.dataset.name+' on WhatsApp', callOut, true) }
-      else if (d.can_ask){ msg.textContent = 'WhatsApp needs their OK before a business can call. Send "Can we call you?" — when they accept, the Call button appears here.'
+      if (d.can_call){ msg.textContent = 'They agreed to WhatsApp calls. You\'re calling from '+d.number+'.'; btn('📞 WhatsApp call '+box.dataset.name, callOut, true) }
+      else if (d.can_ask){ msg.textContent = 'WhatsApp needs their OK before a business can call. Send "Can we call you?" — when they accept, the WhatsApp call button appears here.'
         btn('Ask: can we call you?', function(b){
           amPreview({ title: 'Check before sending', text: box.dataset.ask, buttons: true,
-            note: 'WhatsApp shows the customer Allow / Not now buttons. When they allow, the Call button appears here.',
+            note: 'WhatsApp shows the customer Allow / Not now buttons. When they allow, the WhatsApp call button appears here.',
             send: function(){ post('/admin/accounts/'+tid+'/call/permission').then(function(r){
               document.getElementById('pv').hidden = true
               if (r.error){ alert(r.error) } else { b.disabled = true; b.textContent='✓ Asked'; msg.textContent='Asked. Refresh this page after they accept.' } }) } })
@@ -31,7 +31,7 @@
     clearInterval(pollT); clearInterval(timerT); pollT = timerT = null
     if (cur){ try{ cur.pc.close() }catch(e){} try{ cur.stream.getTracks().forEach(function(t){t.stop()}) }catch(e){} }
     cur = null; onCall.style.display='none'; btns.style.display='flex'
-    msg.textContent = note || 'Call ended.'
+    msg.textContent = note || 'WhatsApp call ended.'
     if (window.amAfterCall) window.amAfterCall()
   }
   function callOut(){
@@ -53,13 +53,13 @@
               if (s.answer_sdp && !cur.applied){ cur.applied = true; cur.pc.setRemoteDescription({type:'answer', sdp: s.answer_sdp}).catch(function(){}) }
               if (s.status === 'answered' && !timerT){ var t0 = s.answered_at ? Date.parse(s.answered_at) : Date.now()
                 timerT = setInterval(function(){ stateEl.textContent = 'On call · ' + fmt((Date.now()-t0)/1000) }, 1000) }
-              if (s.ended) done(s.status === 'missed' ? 'No answer.' : 'Call ended.')
+              if (s.ended) done(s.status === 'missed' ? 'No answer.' : 'WhatsApp call ended.')
             }).catch(function(){})
           }, 2000)
         })
     }).catch(function(){ alert('Your browser blocked the microphone. Allow it, then try again.') })
   }
-  document.getElementById('endBtn').onclick = function(){ if (cur && cur.id) post('/admin/accounts/call/'+cur.id+'/end').then(function(){ done('Call ended.') }); else done() }
+  document.getElementById('endBtn').onclick = function(){ if (cur && cur.id) post('/admin/accounts/call/'+cur.id+'/end').then(function(){ done('WhatsApp call ended.') }); else done() }
   document.getElementById('muteBtn').onclick = function(e){ if (!cur) return; var on = cur.stream.getAudioTracks().some(function(t){return t.enabled}); cur.stream.getAudioTracks().forEach(function(t){ t.enabled = !on }); e.target.textContent = on ? '🎙 Unmute' : '🔇 Mute' }
   window.amCallCheck = check
 })();

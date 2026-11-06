@@ -151,7 +151,7 @@
         {% if can_modify and nb.primary != 'none' %}
         <div class="row">
           <button type="button" class="ap-go" data-go="{{ nb.primary }}">{{ nb.label }}</button>
-          {% for p, l in [('wa', 'WhatsApp'), ('call', 'Call on WhatsApp'), ('email', 'Email'), ('logcall', 'Log a call')] if p != nb.primary and (p not in ('wa', 'call') or has_phone) and (p != 'email' or a.email) %}
+          {% for p, l in [('wa', 'WhatsApp'), ('call', 'WhatsApp call'), ('email', 'Email'), ('logcall', 'Log a call')] if p != nb.primary and (p not in ('wa', 'call') or has_phone) and (p != 'email' or a.email) %}
           <button type="button" class="ap-go ghost" data-go="{{ p }}">{{ l }}</button>
           {% endfor %}
         </div>
@@ -343,7 +343,7 @@
 </div>
 
 {% include "portal/_am_preview.html" %}
-<script src="{{ url_for('static', filename='portal/admin-calls.js') }}?v=1" defer></script>
+<script src="{{ url_for('static', filename='portal/admin-calls.js') }}?v=2" defer></script>
 <script>
 (function(){
   // WhatsApp previews

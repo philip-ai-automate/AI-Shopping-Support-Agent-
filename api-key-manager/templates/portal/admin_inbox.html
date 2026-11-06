@@ -94,7 +94,7 @@
           {% if quiet %}<button class="ib-ai off" name="ai" value="on" title="PhiXtra's AI doesn't answer this customer; you do. Click to let the AI answer again.">AI off for this chat</button>
           {% else %}<button class="ib-ai" name="ai" value="off" title="PhiXtra's AI may answer this customer. Click to stop it.">AI may answer · stop</button>{% endif %}
         </form>
-        <button type="button" class="btn btn-sm" id="callToggle">📞 Call</button>
+        <button type="button" class="btn btn-sm" id="callToggle">📞 WhatsApp call</button>
         {% endif %}
         <a class="btn btn-sm" href="{{ url_for('portal_admin.am_account', tenant_id=a.tenant_id) }}">Account</a>
       </div>
@@ -158,7 +158,7 @@
 </div>
 
 {% include "portal/_am_preview.html" %}
-<script src="{{ url_for('static', filename='portal/admin-calls.js') }}?v=1" defer></script>
+<script src="{{ url_for('static', filename='portal/admin-calls.js') }}?v=2" defer></script>
 <script>
 (function(){
   var chat = document.getElementById('ibChat'); if (chat) chat.scrollTop = chat.scrollHeight

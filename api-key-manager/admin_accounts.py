@@ -255,6 +255,7 @@ SETTING_DEFAULTS = {
     "alert_window_hours": "2",   # only replies newer than this are alerted
     "alert_fallback": "",        # comma list of admin logins for unassigned accounts; empty = every admin login that is an email
     "later_days": "14",          # "Not right now" button → follow up after this many days
+    "am_number": "",             # phone_number_id Account Managers send / call from; empty = PhiXtra's first number
 }
 
 
@@ -320,6 +321,24 @@ def platform_numbers() -> list:
         return cur.fetchall() or []
     finally:
         cur.close(); conn.close()
+
+
+def am_number():
+    """The PhiXtra WhatsApp number Account Managers message and call from
+    (Admin › Accounts › Settings), else PhiXtra's first number."""
+    nums = platform_numbers()
+    if not nums:
+        return None
+    try:
+        want = get_settings().get("am_number") or ""
+    except Exception:
+        want = ""
+    return next((n for n in nums if n["phone_number_id"] == want), nums[0])
+
+
+def am_numbers() -> list:
+    n = am_number()
+    return [n] if n else []
 
 
 # ── list ──────────────────────────────────────────────────────────────────
@@ -748,7 +767,7 @@ def next_best(a: dict, window: bool, replied: bool, tpl_ready: bool) -> dict:
         seen = "logged in today" if days == 0 else "logged in yesterday" if days == 1 else f"last logged in {days} days ago"
     else:
         seen = "never logged in after signing up"
-    reach = ("call", "Call on WhatsApp") if phone else ("email", "Write an email")
+    reach = ("call", "WhatsApp call") if phone else ("email", "Write an email")
     if a["status"] == "set_up" or a["setup"]["complete"]:
         return {"title": f"{a.get('business') or 'This account'} is set up", "why": "Check in after their first week to make sure the AI is answering customers well.",
                 "primary": "note", "label": "Add a note", "tone": "good"}
@@ -761,8 +780,8 @@ def next_best(a: dict, window: bool, replied: bool, tpl_ready: bool) -> dict:
     if is_paid_trial_ending(a):
         end = _d(a["trial_ends_at"]); left = (end - today).days
         when = "today" if left == 0 else "tomorrow" if left == 1 else f"on {end:%A}"
-        return {"title": f"{'Call' if phone else 'Email'} {first} before the trial ends {when}",
-                "why": f"Paid trial ({a['plan_name'].split(' ·')[0]}), {seen}, but {stuck_txt}. Helping them finish on a call is the quickest way to get them live.",
+        return {"title": f"{'WhatsApp call' if phone else 'Email'} {first} before the trial ends {when}",
+                "why": f"Paid trial ({a['plan_name'].split(' ·')[0]}), {seen}, but {stuck_txt}. Helping them finish on a WhatsApp call is the quickest way to get them live.",
                 "primary": reach[0], "label": reach[1], "tone": "urgent"}
     n = a.get("next_follow_up")
     if n and n <= today:
@@ -774,8 +793,8 @@ def next_best(a: dict, window: bool, replied: bool, tpl_ready: bool) -> dict:
             return {"title": f"Send {first} the check-in message", "why": f"Nobody has contacted them yet. {stuck_txt[0].upper() + stuck_txt[1:]} and {seen}. The check-in asks what got in the way, with one-tap answers.",
                     "primary": "wa", "label": "Preview check-in message", "tone": "warn"}
         if phone:
-            return {"title": f"Call {first}", "why": f"Nobody has contacted them yet. {stuck_txt[0].upper() + stuck_txt[1:]} and {seen}.",
-                    "primary": "call", "label": "Call on WhatsApp", "tone": "warn"}
+            return {"title": f"WhatsApp call {first}", "why": f"Nobody has contacted them yet. {stuck_txt[0].upper() + stuck_txt[1:]} and {seen}.",
+                    "primary": "call", "label": "WhatsApp call", "tone": "warn"}
         return {"title": f"Email {first}", "why": f"No phone number, so email is the only way. {stuck_txt[0].upper() + stuck_txt[1:]} and {seen}.",
                 "primary": "email", "label": "Write an email", "tone": "warn"}
     if not n:
@@ -888,9 +907,11 @@ def wa_window_open(phone: str) -> bool:
         return False
     conn, cur = _db()
     try:
+        n = am_number()   # the 24-hour window is per WhatsApp number
         cur.execute("""SELECT 1 FROM wa_message_log WHERE tenant_id=%s AND direction='inbound'
                          AND regexp_replace(customer_phone,'\\D','','g')=%s AND created_at > NOW() - INTERVAL '24 hours'
-                        LIMIT 1""", (pid, d))
+                         AND (%s IS NULL OR phone_number_id=%s)
+                        LIMIT 1""", (pid, d, n and n["phone_number_id"], n and n["phone_number_id"]))
         return cur.fetchone() is not None
     finally:
         cur.close(); conn.close()
@@ -940,10 +961,9 @@ def checkin_template_ready() -> bool:
 def send_whatsapp(tenant_id: int, phone: str, text: str, by: str, use_template=False, first_name="", manager="",
                   stuck=None, template_name=None):
     """Send from PhiXtra's first WhatsApp number; log it where the Inbox reads it too."""
-    nums = platform_numbers()
-    if not nums:
+    num = am_number()
+    if not num:
         return False, "PhiXtra's WhatsApp number isn't connected."
-    num = nums[0]
     to = digits(phone)
     if len(to) < 8:
         return False, "This customer has no valid phone number."
@@ -1023,6 +1043,62 @@ def register(bp, require_admin, admin_user):
                 return 0
         return {"am_due_count": am_due_count}
 
+    @bp.route("/accounts/settings/calls", methods=["POST"])
+    def am_settings_calls():
+        """Account Managers' WhatsApp calls on/off for the Account Manager
+        number — here in Admin, because Account Managers have no PhiXtra
+        portal login. Outgoing only: customers can't ring this number."""
+        r = _gate("modify")
+        if r: return r
+        import calls_routes as C
+        me = admin_user()
+        num = am_number()
+        if not num:
+            flash("PhiXtra has no WhatsApp number connected.", "warning")
+            return redirect(url_for("portal_admin.am_settings"))
+        want = request.form.get("outgoing") == "1"
+        pnid = num["phone_number_id"]
+        if want and not C._outgoing_allowed_country(num["display_phone_number"]):
+            flash("Meta doesn't allow calling customers from this number's country.", "warning")
+            return redirect(url_for("portal_admin.am_settings"))
+        conn, cur = _db()
+        try:
+            cur.execute("SELECT * FROM wa_call_settings WHERE phone_number_id=%s", (pnid,))
+            st = cur.fetchone() or {}
+            incoming = bool(st.get("incoming_on"))
+            hours = st.get("hours") or {"days": [1, 2, 3, 4, 5], "from": "0900", "to": "1700", "tz": "Europe/London"}
+            calling = {"status": "ENABLED" if incoming or want else "DISABLED",
+                       "call_icon_visibility": "DEFAULT" if incoming else "DISABLE_ALL",
+                       "callback_permission_status": "ENABLED" if want else "DISABLED"}
+            if st.get("hours_on"):
+                calling["call_hours"] = {"status": "ENABLED", "timezone_id": hours.get("tz") or "Europe/London",
+                                         "weekly_operating_hours": [{"day_of_week": C.META_DAYS[d], "open_time": hours.get("from", "0900"),
+                                                                     "close_time": "2359" if hours.get("to") == "2400" else hours.get("to", "1700")}
+                                                                    for d in hours.get("days") or [1, 2, 3, 4, 5]]}
+            else:   # same as the portal's Call Settings page
+                calling["call_hours"] = {"status": "DISABLED", "timezone_id": hours.get("tz") or "Europe/London",
+                                         "weekly_operating_hours": [{"day_of_week": "MONDAY", "open_time": "0000", "close_time": "2359"}]}
+            ok, data = C._graph(pnid, num["access_token"], {"calling": calling}, path="settings")
+            meta_status = "saved" if ok else C._meta_error(data)
+            outgoing = want if ok else bool(st.get("outgoing_on"))
+            cur.execute("""INSERT INTO wa_call_settings (phone_number_id, tenant_id, incoming_on, outgoing_on, meta_status, updated_at, updated_by)
+                           VALUES (%s,%s,%s,%s,%s,NOW(),%s)
+                           ON CONFLICT (phone_number_id) DO UPDATE SET outgoing_on=EXCLUDED.outgoing_on,
+                               meta_status=EXCLUDED.meta_status, updated_at=NOW(), updated_by=EXCLUDED.updated_by""",
+                        (pnid, A.platform_tenant_id(), incoming, outgoing, meta_status, f"Admin: {me}"))
+            conn.commit()
+        finally:
+            cur.close(); conn.close()
+        insert_audit_log(admin_username=me, action="am_calls_" + ("on" if want else "off"),
+                         details={"number": num["display_phone_number"], "meta": meta_status})
+        if ok:
+            flash(f"WhatsApp calls are {'on' if want else 'off'} for {num['display_phone_number']}." +
+                  (" Account Managers can now call customers who accept WhatsApp's \"Can we call you?\" request." if want else ""),
+                  "success")
+        else:
+            flash("Meta refused the calling settings: " + meta_status, "danger")
+        return redirect(url_for("portal_admin.am_settings"))
+
     @bp.route("/accounts/settings", methods=["GET", "POST"])
     def am_settings():
         r = _gate("modify" if request.method == "POST" else "view")
@@ -1041,6 +1117,9 @@ def register(bp, require_admin, admin_user):
                    "alert_window_hours": num("alert_window_hours", 1, 48),
                    "alert_fallback": ",".join(picked),
                    "later_days": num("later_days", 1, 90)}
+            _n = request.form.get("am_number") or ""
+            if _n and _n in {x["phone_number_id"] for x in platform_numbers()}:
+                new["am_number"] = _n
             save_settings(new, me)
             insert_audit_log(admin_username=me, action="am_settings_saved", details=new)
             flash("Settings saved.", "success")
@@ -1063,8 +1142,26 @@ def register(bp, require_admin, admin_user):
         except ValueError:
             pass
         admins = [dict(u, name=manager_name(u["username"])) for u in admin_users() if "@" in u["username"]]
+        numbers = []
+        conn, cur = _db()
+        try:
+            for n in platform_numbers():
+                cur.execute("""SELECT COALESCE(tm.name, tm.email) AS who FROM team_member_numbers tn
+                                 JOIN team_members tm ON tm.id = tn.team_member_id
+                                WHERE tn.phone_number_id=%s AND tm.is_active ORDER BY 1""", (n["phone_number_id"],))
+                users = [r["who"] for r in cur.fetchall() if r["who"] and "screenshot" not in r["who"].lower()]
+                cur.execute("SELECT COALESCE(outgoing_on, FALSE) AS o FROM wa_call_settings WHERE phone_number_id=%s", (n["phone_number_id"],))
+                cs = cur.fetchone()
+                cur.execute("SELECT COALESCE(label,'') AS l FROM wa_tenants WHERE id=%s", (n["id"],))
+                numbers.append({"id": n["phone_number_id"], "display": n["display_phone_number"], "label": cur.fetchone()["l"],
+                                "users": users, "calls": bool(cs and cs["o"])})
+        finally:
+            cur.close(); conn.close()
+        cur_num = am_number()
+        am_calls = next((n for n in numbers if cur_num and n["id"] == cur_num["phone_number_id"]), None)
         return render_template("portal/admin_accounts_settings.html", st=st, fallback=fallback, admins=admins,
                                saved=saved, last_run=last_run, sent7=sent7, now=datetime.now(timezone.utc),
+                               numbers=numbers, cur_num=(cur_num or {}).get("phone_number_id"), am_calls=am_calls,
                                can_modify=(require_admin("accounts", "modify") is None))
 
     @bp.route("/accounts/dashboard")
@@ -1204,7 +1301,7 @@ def register(bp, require_admin, admin_user):
             email_body=fill(etpl[2], a, me),
             reply_to=(me if "@" in me else "support@phixtra.com"),
             wa_window=window, checkin_ready=(not window and checkin_template_ready()),
-            wa_numbers=platform_numbers(),
+            wa_numbers=am_numbers(),
             checkin_preview=checkin_look((a["first_name"] or "").strip(), (a.get("setup") or {}).get("stuck")),
             wa_templates=templates_for((a["first_name"] or "").strip(), (a.get("setup") or {}).get("stuck")),
             call_ask_preview=call_ask_text((a["first_name"] or "").strip()),
@@ -1381,12 +1478,13 @@ def register(bp, require_admin, admin_user):
 # PhiXtra's own number and recorded as the Account Manager. ────────────────
 
 def _call_number(cur):
-    """PhiXtra's number to call from: the first with outgoing calls on, else the first."""
+    """PhiXtra's number Account Managers call from (Admin › Accounts › Settings)."""
     pid = A.platform_tenant_id()
+    n = am_number()   # Admin › Accounts › Settings
     cur.execute("""SELECT wt.phone_number_id, wt.display_phone_number, COALESCE(s.outgoing_on, FALSE) AS outgoing_on
                      FROM wa_tenants wt LEFT JOIN wa_call_settings s ON s.phone_number_id = wt.phone_number_id
-                    WHERE wt.tenant_id=%s AND wt.active AND wt.access_token LIKE 'EAA%%'
-                    ORDER BY COALESCE(s.outgoing_on, FALSE) DESC, wt.id LIMIT 1""", (pid,))
+                    WHERE wt.tenant_id=%s AND wt.active AND wt.access_token LIKE 'EAA%%' AND (%s IS NULL OR wt.phone_number_id=%s)
+                    ORDER BY wt.id LIMIT 1""", (pid, n and n["phone_number_id"], n and n["phone_number_id"]))
     return cur.fetchone()
 
 
@@ -1416,6 +1514,8 @@ def register_calls(bp, require_admin, admin_user):
             if not num:
                 return jsonify({"show": False, "why": "PhiXtra's WhatsApp number isn't connected."})
             tok, why = C._outgoing_ready(cur, pid, num["phone_number_id"])
+            if why and "switched off" in why:
+                why = "WhatsApp calls are switched off for this number. Turn them on in Admin › Accounts › Settings."
             if not tok:
                 return jsonify({"show": False, "why": why, "number": num["display_phone_number"]})
             status, acts = "no_permission", {}
@@ -1595,18 +1695,20 @@ def conversations():
     if not accts:
         return []
     pid = A.platform_tenant_id()
+    _amn = (am_number() or {}).get("phone_number_id")   # only chats on the Account Manager number
     conn, cur = _db()
     try:
         cur.execute("""
             WITH m AS (SELECT regexp_replace(customer_phone,'\\D','','g') AS d, direction, content, message_type, created_at
                          FROM wa_message_log WHERE tenant_id=%s AND NOT COALESCE(is_historical, FALSE)
-                          AND regexp_replace(customer_phone,'\\D','','g') = ANY(%s))
+                          AND regexp_replace(customer_phone,'\\D','','g') = ANY(%s)
+                          AND (%s IS NULL OR phone_number_id = %s))
             SELECT d, MAX(created_at) AS last_at,
                    MAX(created_at) FILTER (WHERE direction='inbound') AS last_in,
                    MAX(created_at) FILTER (WHERE direction<>'inbound' AND COALESCE(message_type,'')<>'am_auto') AS last_out,
                    (ARRAY_AGG(content ORDER BY created_at DESC))[1] AS last_text,
                    (ARRAY_AGG(direction ORDER BY created_at DESC))[1] AS last_dir
-              FROM m GROUP BY d ORDER BY MAX(created_at) DESC""", (pid, list(accts)))
+              FROM m GROUP BY d ORDER BY MAX(created_at) DESC""", (pid, list(accts), _amn, _amn))
         out = []
         for r in cur.fetchall() or []:
             a = dict(accts[r["d"]])
@@ -1621,6 +1723,7 @@ def conversations():
 def thread(phone):
     pid = A.platform_tenant_id()
     d = digits(phone)
+    _amn = (am_number() or {}).get("phone_number_id")   # the chat on the Account Manager number
     conn, cur = _db()
     try:
         cur.execute("""SELECT m.created_at, m.direction, m.content, m.message_type, m.sent_by_label, s.delivered_at, s.read_at, s.error AS wa_error, s.status AS wa_status,
@@ -1628,10 +1731,12 @@ def thread(phone):
                          FROM wa_message_log m LEFT JOIN wa_msg_status s ON s.meta_message_id = m.meta_message_id
                         WHERE m.tenant_id=%s AND regexp_replace(m.customer_phone,'\\D','','g')=%s
                           AND NOT COALESCE(m.is_historical, FALSE) AND m.message_type <> 'call'
-                        ORDER BY m.created_at ASC LIMIT 500""", (pid, d))
+                          AND (%s IS NULL OR m.phone_number_id = %s)
+                        ORDER BY m.created_at ASC LIMIT 500""", (pid, d, _amn, _amn))
         items = [{"src": "wa", **r} for r in cur.fetchall() or []]
         cur.execute("""SELECT created_at, direction, status, duration, answered_by_name, started_by_name
-                         FROM wa_calls WHERE tenant_id=%s AND regexp_replace(customer_phone,'\\D','','g')=%s""", (pid, d))
+                         FROM wa_calls WHERE tenant_id=%s AND regexp_replace(customer_phone,'\\D','','g')=%s
+                          AND (%s IS NULL OR phone_number_id = %s)""", (pid, d, _amn, _amn))
         items += [{"src": "call", **r} for r in cur.fetchall() or []]
     finally:
         cur.close(); conn.close()
@@ -1691,7 +1796,7 @@ def register_inbox(bp, require_admin, admin_user):
                        checkin_preview=checkin_look((a["first_name"] or "").strip(), (a.get("setup") or {}).get("stuck")),
                        wa_templates=templates_for((a["first_name"] or "").strip(), (a.get("setup") or {}).get("stuck")),
                        call_ask_preview=call_ask_text((a["first_name"] or "").strip()),
-                       quiet=is_quiet(a["phone_number"]), wa_numbers=platform_numbers())
+                       quiet=is_quiet(a["phone_number"]), wa_numbers=am_numbers())
         latest = max([c["last_at"] for c in convs], default=None)
         return render_template("portal/admin_inbox.html", convs=shown, a=a, show=show, q=q, me=me,
                                counts={"all": len(convs), "reply": sum(1 for c in convs if c["needs_reply"]),

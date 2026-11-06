@@ -77,6 +77,14 @@
   .as-btnrow p{margin:0;font-size:12.5px;color:var(--muted);line-height:1.5}
   .as-btnrow .as-seg{margin-top:8px}
 
+  .as-num{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid rgba(3,12,24,.14);border-radius:12px;cursor:pointer;background:#fff}
+  .as-num.on,.as-num:has(input:checked){border-color:var(--ink);box-shadow:0 0 0 3px rgba(3,12,24,.06)}
+  .as-num input{margin-top:3px;accent-color:#030C18;width:16px;height:16px}
+  .as-num-main{display:flex;flex-direction:column;gap:3px;font-size:13.5px}
+  .as-num-lbl{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:#F2F4F7;color:#3B4552;margin-left:4px}
+  .as-num-sub{font-size:12.5px;color:var(--muted)}
+  .as-warn{color:#93370D;font-weight:600} .as-ok{color:#067647;font-weight:600}
+  .as-calls{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-top:6px;padding:12px 14px;border-radius:12px;background:#F7F8FA}
   .as-foot{font-size:12px;color:var(--muted);margin:4px 2px 90px}
 
   /* save bar */
@@ -105,7 +113,57 @@
     </span>
   </div>
 
+  <form method="post" action="{{ url_for('portal_admin.am_settings_calls') }}" id="amCallForm"></form>
   <form method="post" id="asForm">
+    <!-- WhatsApp number -->
+    <section class="as-card">
+      <div class="as-card-h">
+        <div class="as-ico">📱</div>
+        <div class="as-grow">
+          <h2>WhatsApp number for Account Managers</h2>
+          <p>The number Account Managers message and WhatsApp call customers from. Admin › Inbox shows the chats on this number. Best kept separate from the sales team's numbers.</p>
+        </div>
+      </div>
+      <div class="as-body">
+        <div class="as-field" style="display:flex;flex-direction:column;gap:8px">
+          {% for n in numbers %}
+          {% set shared = n.users|length > 0 %}
+          <label class="as-num {{ 'on' if n.id == cur_num }}">
+            <input type="radio" name="am_number" value="{{ n.id }}" {% if n.id == cur_num %}checked{% endif %} {% if ro %}disabled{% endif %}>
+            <span class="as-num-main">
+              <b>{{ n.display }}</b>{% if n.label %} <span class="as-num-lbl">{{ n.label }}</span>{% endif %}
+              <span class="as-num-sub">
+                {% if shared %}<span class="as-warn">Shared with the sales team: {{ n.users|join(', ') }}</span>{% else %}<span class="as-ok">Not used by the sales team</span>{% endif %}
+                · WhatsApp calls {{ 'on' if n.calls else 'off' }}
+              </span>
+            </span>
+          </label>
+          {% else %}
+          <p class="as-hint">PhiXtra has no WhatsApp number connected.</p>
+          {% endfor %}
+          {% if am_calls %}
+          <div class="as-calls">
+            <div>
+              <p class="as-q" style="margin:0 0 2px">WhatsApp calls from {{ am_calls.display }}</p>
+              {% if am_calls.calls %}
+              <p class="as-hint" style="margin:0"><span class="as-ok">On.</span> Account Managers can WhatsApp call customers who accept WhatsApp's "Can we call you?" request. Customers can't ring this number. Meta charges per minute.</p>
+              {% else %}
+              <p class="as-hint" style="margin:0"><span class="as-warn">Off.</span> Account Managers can message from this number but can't call. Turning it on lets them call customers (outgoing only).</p>
+              {% endif %}
+            </div>
+            {% if can_modify %}
+            {% if am_calls.calls %}<button type="submit" form="amCallForm" name="outgoing" value="0" class="btn btn-sm">Turn off</button>
+            {% else %}<button type="submit" form="amCallForm" name="outgoing" value="1" class="btn btn-primary btn-sm">Turn on WhatsApp calls</button>{% endif %}
+            {% endif %}
+          </div>
+          {% endif %}
+          {% if numbers and (numbers|rejectattr('users')|list|length == 0) %}
+          <p class="as-eg" style="margin-top:4px"><b>Every number is shared with the sales team.</b> Add a new number to PhiXtra's WhatsApp account for Account Managers, then pick it here.</p>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
     <!-- Reply alerts -->
     <section class="as-card">
       <div class="as-card-h">
