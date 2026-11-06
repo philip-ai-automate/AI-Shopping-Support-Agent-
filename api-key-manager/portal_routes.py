@@ -15661,6 +15661,9 @@ def _get_wa_templates(tenant_id: int) -> dict:
         return {}
 
 
+_PORTAL_WA_IDS: dict = {}
+
+
 def _send_wa_text_from_portal(phone_number_id: str, access_token: str,
                                to: str, text: str) -> bool:
     """Send a plain text WhatsApp message via Meta Graph API."""
@@ -15689,6 +15692,12 @@ def _send_wa_text_from_portal(phone_number_id: str, access_token: str,
             headers={"Authorization": f"Bearer {access_token}"},
             timeout=10,
         )
+        if r.status_code == 200:
+            try:   # keep the message id for delivery / read ticks (2026-11-06)
+                _PORTAL_WA_IDS[(phone_number_id, "".join(ch for ch in (to or "") if ch.isdigit()))] = \
+                    ((r.json().get("messages") or [{}])[0]).get("id")
+            except Exception:
+                pass
         return r.status_code == 200
     except Exception as e:
         print("⚠️ _send_wa_text_from_portal error:", e)
@@ -21001,10 +21010,10 @@ def _send_campaign_now(campaign_id: int, tenant_id: int):
                         _lcc = _lc.cursor()
                         _lcc.execute(
                             """INSERT INTO wa_message_log
-                                   (tenant_id, phone_number_id, customer_phone, direction, content, message_type)
-                               VALUES (%s, %s, %s, 'outbound', %s, 'campaign')""",
+                                   (tenant_id, phone_number_id, customer_phone, direction, content, message_type, meta_message_id)
+                               VALUES (%s, %s, %s, 'outbound', %s, 'campaign', %s)""",
                             (tenant_id, row["phone_number_id"], norm_phone,
-                             f"📣 Campaign: \"{row['name']}\" (template: {row['template_name']})"),
+                             f"📣 Campaign: \"{row['name']}\" (template: {row['template_name']})", rec_msg_id),
                         )
                         _lc.commit()
                         _lcc.close(); _lc.close()
@@ -34592,15 +34601,18 @@ def _get_inbox_messages(tenant_id: int, phone: str, limit: int = 100) -> list:
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # wa_status / delivered_at / read_at: WhatsApp ticks (2026-11-06)
         cur.execute("""
-            SELECT id, direction, content, message_type, media_url, is_historical, created_at, sent_by_label
+            SELECT recent.id, direction, content, message_type, media_url, is_historical, created_at, sent_by_label,
+                   s.status AS wa_status, s.delivered_at, s.read_at, s.error AS wa_error
             FROM (
-                SELECT id, direction, content, message_type, media_url, is_historical, created_at, sent_by_label
+                SELECT id, direction, content, message_type, media_url, is_historical, created_at, sent_by_label, meta_message_id
                 FROM wa_message_log
                 WHERE tenant_id = %s AND customer_phone = %s
                 ORDER BY created_at DESC
                 LIMIT %s
             ) recent
+            LEFT JOIN wa_msg_status s ON s.meta_message_id = recent.meta_message_id AND recent.direction <> 'inbound'
             ORDER BY created_at ASC
         """, (tenant_id, phone, limit))
         rows = cur.fetchall() or []
@@ -35326,9 +35338,10 @@ def inbox_reply(phone: str):
             cur  = conn.cursor()
             cur.execute("""
                 INSERT INTO wa_message_log
-                  (tenant_id, phone_number_id, customer_phone, direction, content, message_type, sent_by_label)
-                VALUES (%s, %s, %s, 'outbound', %s, 'agent_reply', %s)
-            """, (tenant_id, wa["phone_number_id"], phone, reply_text, actor["label"]))
+                  (tenant_id, phone_number_id, customer_phone, direction, content, message_type, sent_by_label, meta_message_id)
+                VALUES (%s, %s, %s, 'outbound', %s, 'agent_reply', %s, %s)
+            """, (tenant_id, wa["phone_number_id"], phone, reply_text, actor["label"],
+                  _PORTAL_WA_IDS.pop((wa["phone_number_id"], "".join(ch for ch in (phone or "") if ch.isdigit())), None)))
             conn.commit()
             cur.close(); conn.close()
         except Exception as e:
@@ -35444,6 +35457,9 @@ def inbox_api_poll():
             d["created_at"] = d["created_at"].strftime("%Y-%m-%dT%H:%M:%S")
         if d.get("last_message_at"):
             d["last_message_at"] = d["last_message_at"].strftime("%Y-%m-%dT%H:%M:%S")
+        for k in ("delivered_at", "read_at"):   # WhatsApp ticks
+            if d.get(k):
+                d[k] = d[k].strftime("%Y-%m-%dT%H:%M:%S")
         # Team members never see the owner's name (company portal).
         if d.get("assigned_to_label"):
             d["assigned_to_label"] = display_actor(d["assigned_to_label"], d.get("assigned_to_key"))

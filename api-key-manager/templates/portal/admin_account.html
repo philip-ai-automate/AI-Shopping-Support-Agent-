@@ -82,6 +82,7 @@
   .ap-tl .b{display:block;font-size:13px;white-space:pre-wrap;margin-top:4px;background:#F7F8FA;border-radius:10px;padding:8px 10px;color:#1D2939}
   .ap-tl .b.in{background:#ECFDF3}
   .ap-tl .bad{color:#B42318;font-weight:700}
+  .tk{font-weight:650;color:#667781} .tk.read{color:#1D9BD1} .tk.failed{color:#B42318}
 
   .ap-dl{margin:0;display:grid;grid-template-columns:110px minmax(0,1fr);gap:9px 10px;font-size:13px}
   .ap-dl dt{color:var(--muted)} .ap-dl dd{margin:0;font-weight:600;word-break:break-word}
@@ -266,7 +267,7 @@
             {% if i.src == 'wa' %}
               <span class="dot {{ 'in' if i.direction == 'inbound' else 'out' }}"></span>
               <span><span class="t">WhatsApp {{ 'from' if i.direction == 'inbound' else 'to' }} {{ first }}</span>
-                {% if i.direction != 'inbound' %}<span class="s">{{ i.sent_by_label or 'PhiXtra (automatic)' }}</span>{% endif %}
+                {% if i.direction != 'inbound' %}<span class="s">{{ i.sent_by_label or 'PhiXtra (automatic)' }}{% if i.wa_status %} · <span class="tk {{ i.wa_status }}" title="{{ i.wa_status|capitalize }}{{ ' ' ~ i.status_at.strftime('%-d %b %H:%M') if i.status_at }}{{ ': ' ~ i.wa_error if i.wa_error }}">{{ {'sent': '✓ Sent', 'delivered': '✓✓', 'read': '✓✓', 'failed': '! Not delivered'}.get(i.wa_status, i.wa_status) }}</span>{% if i.delivered_at %} · delivered {{ i.delivered_at.strftime('%-d %b %H:%M') }}{% endif %}{% if i.read_at %} · read {{ i.read_at.strftime('%-d %b %H:%M') }}{% endif %}{% endif %}</span>{% endif %}
                 <span class="b {{ 'in' if i.direction == 'inbound' }}">{{ i.content }}</span></span>
             {% elif i.src == 'wacall' %}
               <span class="dot {{ 'in' if i.direction == 'in' else 'out' }}"></span>

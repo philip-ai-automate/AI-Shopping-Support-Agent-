@@ -1,75 +1,44 @@
-{# WhatsApp template picker (2026-11-06). Needs: wa_templates, tpl_action (form URL).
-   Used when the customer hasn't messaged in 24 hours. #}
+{# WhatsApp template picker (2026-11-06, compact): dropdown + Preview + Send on one line.
+   Needs: wa_templates, tpl_action (form URL). Shown when the customer hasn't messaged in 24 hours. #}
 {% set _ok = wa_templates|selectattr('approved')|list %}
 <style>
-  .tp-warn{background:#FFF6ED;border:1px solid rgba(247,144,9,.35);color:#93370D;border-radius:10px;padding:10px 12px;font-size:13px}
-  .tp-note{font-size:12.5px;color:var(--muted);margin:8px 0 0}
-  .tp-send{font:inherit;font-size:13.5px;font-weight:700;padding:10px 18px;min-height:42px;border-radius:10px;border:0;background:var(--ink);color:#fff;cursor:pointer}
-  .tp-list{display:flex;flex-direction:column;gap:8px;margin:10px 0 12px}
-  .tp-opt{position:relative;display:block}
-  .tp-opt input{position:absolute;opacity:0;width:1px;height:1px}
-  .tp-card{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid rgba(3,12,24,.14);border-radius:12px;background:#fff;cursor:pointer}
-  .tp-card:hover{border-color:rgba(3,12,24,.32)}
-  .tp-radio{width:18px;height:18px;border-radius:50%;border:2px solid rgba(3,12,24,.3);flex-shrink:0;margin-top:1px;display:grid;place-items:center}
-  .tp-opt input:checked + .tp-card{border-color:var(--ink);box-shadow:0 0 0 3px rgba(3,12,24,.07)}
-  .tp-opt input:checked + .tp-card .tp-radio{border-color:var(--ink)}
-  .tp-opt input:checked + .tp-card .tp-radio::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--ink)}
-  .tp-opt input:focus-visible + .tp-card{outline:2px solid var(--ink);outline-offset:2px}
-  .tp-opt input:disabled + .tp-card{cursor:not-allowed;background:#FAFAFB;opacity:.75}
-  .tp-main{flex:1;min-width:0}
-  .tp-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .tp-top b{font-size:13.5px}
-  .tp-badge{font-size:11px;font-weight:750;padding:2px 8px;border-radius:999px}
-  .tp-badge.UTILITY{background:#ECFDF3;color:#067647} .tp-badge.MARKETING{background:#FFF6ED;color:#93370D} .tp-badge.wait{background:#F2F4F7;color:#475467}
-  .tp-why{font-size:11.5px;color:#93370D}
-  .tp-line{font-size:12.5px;color:#5D6673;margin-top:4px;line-height:1.45;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-  .tp-look{font:inherit;font-size:12px;font-weight:650;border:0;background:transparent;color:#175CD3;cursor:pointer;padding:2px 0;margin-top:4px}
+  .tp-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .tp-sel{flex:1 1 220px;min-width:0;font:inherit;font-size:13px;padding:8px 10px;border-radius:9px;border:1px solid rgba(3,12,24,.18);background:#fff;color:var(--ink)}
+  .tp-btn{font:inherit;font-size:13px;font-weight:650;padding:8px 14px;min-height:36px;border-radius:9px;border:1px solid rgba(3,12,24,.18);background:#fff;color:var(--ink);cursor:pointer}
+  .tp-btn:hover{background:#F5F6F8}
+  .tp-btn.go{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .tp-btn.go:hover{background:#1c2633}
+  .tp-hint{font-size:12px;color:var(--muted);margin:6px 0 0}
 </style>
 <form method="POST" action="{{ tpl_action }}" id="waTplForm">
   <input type="hidden" name="mode" value="template">
-  <div class="tp-warn">No message from them in the last 24 hours, so WhatsApp only allows an approved template first. When they reply or tap a button, you can write freely for 24 hours.</div>
-  <div class="tp-list" role="radiogroup" aria-label="Choose a message">
-    {% for t in wa_templates %}
-    <label class="tp-opt">
-      <input type="radio" name="template" value="{{ t.name }}" {% if t.approved and t.name == _ok[0].name %}checked{% endif %} {% if not t.approved %}disabled{% endif %}>
-      <span class="tp-card">
-        <span class="tp-radio" aria-hidden="true"></span>
-        <span class="tp-main">
-          <span class="tp-top">
-            <b>{{ t.label }}</b>
-            {% if t.approved %}<span class="tp-badge {{ t.category }}">{{ t.category|capitalize }}</span>{% else %}<span class="tp-badge wait">Waiting for Meta</span>{% endif %}
-            {% if t.approved and loop.first and t.category == 'UTILITY' %}<span class="tp-badge UTILITY" style="background:transparent;padding:0">· recommended</span>{% endif %}
-            {% if t.approved and t.category == 'MARKETING' %}<span class="tp-why">costs more, may not arrive</span>{% endif %}
-          </span>
-          <span class="tp-line" style="display:-webkit-box">{{ t.first_line }}…</span>
-          <button type="button" class="tp-look" data-look="{{ t.name }}">See full message</button>
-        </span>
-      </span>
-    </label>
-    {% else %}
-    <p class="tp-note">No check-in templates found on PhiXtra's WhatsApp number.</p>
-    {% endfor %}
+  {% if _ok %}
+  <div class="tp-row">
+    <label for="tpSel" style="position:absolute;width:1px;height:1px;overflow:hidden">WhatsApp template</label>
+    <select name="template" id="tpSel" class="tp-sel">
+      {% for t in wa_templates %}<option value="{{ t.name }}" {% if not t.approved %}disabled{% endif %} {% if t.name == _ok[0].name %}selected{% endif %}>{{ t.label }}{{ ' (waiting for Meta)' if not t.approved }}</option>{% endfor %}
+    </select>
+    <button type="button" class="tp-btn" id="waTplPreview">Preview</button>
+    <button type="submit" class="tp-btn go" id="waTplSend">Send</button>
   </div>
-  {% if _ok %}<button type="button" class="tp-send" id="waTplPreview">Preview and send</button>
-  {% else %}<p class="tp-note">None is approved yet. Use a WhatsApp call or email for now.</p>{% endif %}
+  <p class="tp-hint">No message from them in 24 hours, so WhatsApp needs a template first. After they reply, you can write freely.</p>
+  {% else %}
+  <p class="tp-hint">No check-in template is approved yet. Use a WhatsApp call or email for now.</p>
+  {% endif %}
 </form>
 <script>
 (function(){
+  var f = document.getElementById('waTplForm'), s = document.getElementById('tpSel'); if (!f || !s) return
   var LOOKS = {{ wa_templates|map(attribute='look')|list|tojson }}, NAMES = {{ wa_templates|map(attribute='name')|list|tojson }}
-  var LABELS = {{ wa_templates|map(attribute='label')|list|tojson }}, OK = {{ wa_templates|map(attribute='approved')|list|tojson }}
-  function look(n){ var i = NAMES.indexOf(n); return i < 0 ? null : { look: LOOKS[i], label: LABELS[i], ok: OK[i] } }
-  var f = document.getElementById('waTplForm'); if (!f) return
-  document.querySelectorAll('[data-look]').forEach(function(b){ b.addEventListener('click', function(e){
-    e.preventDefault(); e.stopPropagation(); var x = look(b.dataset.look)
-    amPreview({ title: x.label + (x.ok ? '' : ' (waiting for Meta)'), text: x.look, note: 'Meta-approved wording, filled in for this customer.' })
-  }) })
-  var p = document.getElementById('waTplPreview')
-  if (p) p.addEventListener('click', function(){
-    var sel = f.querySelector('input[name=template]:checked'); if (!sel) return
-    var x = look(sel.value)
-    amPreview({ title: 'Check before sending: ' + x.label, text: x.look,
-                note: 'Meta-approved wording, so it can\'t be changed. When they reply you can write freely for 24 hours.',
+  var LABELS = {{ wa_templates|map(attribute='label')|list|tojson }}
+  function cur(){ var i = NAMES.indexOf(s.value); return { look: LOOKS[i], label: LABELS[i] } }
+  document.getElementById('waTplPreview').addEventListener('click', function(){
+    var x = cur()
+    amPreview({ title: x.label, text: x.look, note: 'Meta-approved wording, filled in for this customer.',
                 send: function(){ f.submit() } })
+  })
+  f.addEventListener('submit', function(e){
+    if (!confirm('Send “' + cur().label + '” on WhatsApp now?')) e.preventDefault()
   })
 })();
 </script>

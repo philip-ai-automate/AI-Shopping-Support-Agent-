@@ -311,6 +311,11 @@ html, body { overflow: hidden; height: 100%; }
   font-size: 14px; line-height: 1.5; word-break: break-word;
   position: relative; box-shadow: 0 1px 2px rgba(0,0,0,.1);
 }
+.wa-tk{margin-left:3px;font-weight:700;letter-spacing:-2px;color:#8696A0}
+.wa-tk.read{color:#34B7F1}
+.wa-tk.failed{color:#D92D20;letter-spacing:0}
+.wa-when{font-size:10.5px;color:#8696A0;text-align:right;margin-top:2px}
+.wa-when:empty{display:none}
 .bubble-time {
   font-size: 11px; opacity: .5; margin-top: 3px;
   display: block; text-align: right;
@@ -930,6 +935,16 @@ html, body { overflow: hidden; height: 100%; }
       </div>
       {% include "portal/_shopify_trade_strip.html" %}
 
+      {# WhatsApp ticks (2026-11-06): ✓ sent, ✓✓ delivered, blue ✓✓ read, ! not delivered #}
+      {% macro wa_tick(msg) -%}
+        {%- if msg.direction != 'inbound' %}<span class="wa-tk {{ msg.wa_status or '' }}" aria-label="{{ (msg.wa_status or '')|capitalize }}">{% if msg.wa_status %}{{ '✓' if msg.wa_status == 'sent' else ('!' if msg.wa_status == 'failed' else '✓✓') }}{% endif %}</span>{% endif -%}
+      {%- endmacro %}
+      {% macro wa_when(msg) -%}
+        {%- if msg.direction != 'inbound' %}<div class="wa-when">
+          {%- if msg.wa_status == 'failed' %}Not delivered{{ ': ' ~ msg.wa_error if msg.wa_error }}
+          {%- else %}{% if msg.delivered_at %}Delivered {{ msg.delivered_at.strftime('%H:%M') if msg.delivered_at.date() == msg.created_at.date() else msg.delivered_at.strftime('%-d %b %H:%M') }}{% endif %}{% if msg.read_at %} · Read {{ msg.read_at.strftime('%H:%M') if msg.read_at.date() == msg.created_at.date() else msg.read_at.strftime('%-d %b %H:%M') }}{% endif %}{% endif -%}
+        </div>{% endif -%}
+      {%- endmacro %}
       {% macro msg_body(msg) %}
         {% if msg.media_url and msg.message_type == 'image' %}
           <img src="{{ msg.media_url }}" alt="Photo" class="bubble-media-img" onclick="window.open(this.src,'_blank')">
@@ -964,9 +979,10 @@ html, body { overflow: hidden; height: 100%; }
             {% endif %}
 
             {% if msg.message_type == 'campaign' %}
-            <div class="campaign-msg-banner" data-ts="{{ msg.created_at.isoformat() if msg.created_at else '' }}">
+            <div class="campaign-msg-banner" data-mid="{{ msg.id }}" data-ts="{{ msg.created_at.isoformat() if msg.created_at else '' }}">
               <span>{{ msg.content }}</span>
-              <span class="bubble-time" style="margin-left:8px;opacity:.7">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
+              <span class="bubble-time" style="margin-left:8px;opacity:.7">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}{{ wa_tick(msg) }}</span>
+              {{ wa_when(msg) }}
             </div>
             {% elif msg.direction == 'inbound' %}
             {% if msg.content %}{% set ns.last_q = msg.content %}{% endif %}
@@ -985,23 +1001,25 @@ html, body { overflow: hidden; height: 100%; }
                merchant's own imported pre-migration messages, so they get
                the same "You" label/style as a live human agent reply, never
                the "AI" label below. #}
-            <div class="msg-wrap outbound" data-ts="{{ msg.created_at.isoformat() if msg.created_at else '' }}">
+            <div class="msg-wrap outbound" data-mid="{{ msg.id }}" data-ts="{{ msg.created_at.isoformat() if msg.created_at else '' }}">
               <div class="bubble-col">
                 <div class="bubble-sender">{{ (msg.sent_by_label|who) if (has_team and (msg.sent_by_label|who)) else 'You' }}</div>
                 <div class="chat-bubble bubble-agent">
                   {{ msg_body(msg) }}
-                  <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
+                  <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}{{ wa_tick(msg) }}</span>
                 </div>
+                {{ wa_when(msg) }}
               </div>
             </div>
             {% else %}
-            <div class="msg-wrap outbound" data-ts="{{ msg.created_at.isoformat() if msg.created_at else '' }}">
+            <div class="msg-wrap outbound" data-mid="{{ msg.id }}" data-ts="{{ msg.created_at.isoformat() if msg.created_at else '' }}">
               <div class="bubble-col">
                 <div class="bubble-sender">AI</div>
                 <div class="chat-bubble bubble-out">
                   {{ msg_body(msg) }}
-                  <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
+                  <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}{{ wa_tick(msg) }}</span>
                 </div>
+                {{ wa_when(msg) }}
                 {% set _fref = 'wa:' ~ msg.id %}
                 {% if corrections_map.get(_fref) %}
                 <a class="fix-tag" href="{{ url_for('portal.store_info', view='corrections') }}">✓ Corrected by {{ corrections_map[_fref] }} · view</a>
@@ -1872,6 +1890,7 @@ function rtAppendMessage(msg, chatEl) {
   var wrap=document.createElement('div');
   wrap.setAttribute('data-ts', msg.created_at||'');
   wrap.className='msg-wrap '+(msg.direction==='inbound'?'inbound':'outbound')+' msg-new';
+  if(msg.id) wrap.setAttribute('data-mid', msg.id);
 
   var col=phoneColor(RT.phone); var ini=phoneInitials(null,RT.phone);
 
@@ -1886,19 +1905,46 @@ function rtAppendMessage(msg, chatEl) {
     var senderLabel=(RT.hasTeam&&msg.sent_by_label)?msg.sent_by_label:'You';
     inner='<div class="bubble-col"><div class="bubble-sender">'+escHtml(senderLabel)+'</div>'
         +'<div class="chat-bubble bubble-agent">'+msgBodyHtml(msg)
-        +'<span class="bubble-time">'+timeLabel+'</span></div></div>';
+        +'<span class="bubble-time">'+timeLabel+waTickHtml(msg)+'</span></div><div class="wa-when">'+waWhenText(msg)+'</div></div>';
   } else {
     inner='<div class="bubble-col"><div class="bubble-sender">AI</div>'
         +'<div class="chat-bubble bubble-out">'+msgBodyHtml(msg)
-        +'<span class="bubble-time">'+timeLabel+'</span></div></div>';
+        +'<span class="bubble-time">'+timeLabel+waTickHtml(msg)+'</span></div><div class="wa-when">'+waWhenText(msg)+'</div></div>';
   }
   wrap.innerHTML=inner; chatEl.appendChild(wrap);
   requestAnimationFrame(function(){ requestAnimationFrame(function(){ wrap.classList.add('msg-new-in'); }); });
   chatEl.scrollTop=chatEl.scrollHeight;
 }
 
+// WhatsApp ticks (2026-11-06)
+function waTickHtml(m){
+  if(m.direction==='inbound') return '';
+  var st=m.wa_status||'', t=st==='sent'?'✓':(st==='failed'?'!':(st?'✓✓':''));
+  return '<span class="wa-tk '+st+'" aria-label="'+st+'">'+t+'</span>';
+}
+function waHm(iso, base){
+  if(!iso) return '';
+  var d=new Date(iso), hm=('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
+  return (base && iso.slice(0,10)!==String(base).slice(0,10)) ? d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' '+hm : hm;
+}
+function waWhenText(m){
+  if(m.direction==='inbound') return '';
+  if(m.wa_status==='failed') return 'Not delivered'+(m.wa_error?': '+escHtml(m.wa_error):'');
+  var out=m.delivered_at?'Delivered '+waHm(m.delivered_at,m.created_at):'';
+  if(m.read_at) out+=(out?' · ':'')+'Read '+waHm(m.read_at,m.created_at);
+  return out;
+}
+function rtUpdateTicks(messages){
+  messages.forEach(function(m){
+    if(m.direction==='inbound'||!m.wa_status) return;
+    var el=document.querySelector('[data-mid="'+m.id+'"]'); if(!el) return;
+    var tk=el.querySelector('.wa-tk'); if(tk){ tk.outerHTML=waTickHtml(m); }
+    var w=el.querySelector('.wa-when'); if(w){ w.innerHTML=waWhenText(m); }
+  });
+}
 function rtUpdateMessages(messages){
   var chatEl=document.getElementById('chatMessages'); if(!chatEl||!messages.length) return;
+  rtUpdateTicks(messages);
   var newMsgs=RT.lastMsgAt ? messages.filter(function(m){return m.created_at>RT.lastMsgAt;}) : [];
   if(!newMsgs.length) return;
   RT.lastMsgAt=messages[messages.length-1].created_at;

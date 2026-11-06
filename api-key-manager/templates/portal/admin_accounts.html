@@ -201,7 +201,7 @@
       <button type="button" class="bb" data-grp="checkin">Send check-in on WhatsApp</button>
       <span class="grp" data-g="checkin">
         <select name="template" aria-label="Which message" id="bulkTpl">
-          {% for t in bulk_templates %}<option value="{{ t.name }}">{{ t.label }} ({{ t.category|capitalize }})</option>{% endfor %}
+          {% for t in bulk_templates %}<option value="{{ t.name }}">{{ t.label }}</option>{% endfor %}
         </select>
         <button type="submit" class="bb" name="action" value="checkin" id="bulkCheckin">Send</button>
       </span>
@@ -309,8 +309,7 @@
   if (ci) ci.addEventListener('click', function(e){
     var n = boxes.filter(function(b){ return b.checked }).length
     var ts = document.getElementById('bulkTpl'), tl = ts ? ts.options[ts.selectedIndex].text : 'check-in'
-    var mk = /Marketing/.test(tl) ? '\n\nThis is a Marketing message: it costs more and some may not arrive.' : ''
-    if (!confirm('Send \u201c' + tl + '\u201d on WhatsApp to ' + n + ' account' + (n === 1 ? '' : 's') + '?\n\nAccounts without a phone number are skipped. Up to 50 at a time.' + mk)) e.preventDefault()
+    if (!confirm('Send \u201c' + tl + '\u201d on WhatsApp to ' + n + ' account' + (n === 1 ? '' : 's') + '?\n\nAccounts without a phone number are skipped. Up to 50 at a time.')) e.preventDefault()
   })
   upd()
 })();

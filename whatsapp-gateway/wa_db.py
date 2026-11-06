@@ -109,6 +109,12 @@ def log_message(
     Insert a message into wa_message_log.
     Returns False if the meta_message_id already exists (dedup via ON CONFLICT DO NOTHING).
     """
+    if direction != "inbound" and not meta_message_id:
+        try:   # keep the id of the message just sent, for delivery / read ticks
+            from meta_sender import pop_sent_id
+            meta_message_id = pop_sent_id(phone_number_id, customer_phone)
+        except Exception:
+            pass
     conn = get_db_connection()
     if not conn:
         return False

@@ -1,3 +1,4 @@
+import re
 import asyncio
 import io
 
@@ -38,6 +39,41 @@ def _split_variant_title(name: str) -> tuple:
     return name, ""
 
 
+# Message ids of recent sends, so the message log can keep them and the
+# Inbox can show sent / delivered / read ticks (2026-11-06).
+# {(phone_number_id, customer digits): [(time, id), ...]}
+import time as _time
+_SENT_IDS: dict = {}
+
+
+def _remember_id(phone_number_id, to, r):
+    try:
+        mid = ((r.json().get("messages") or [{}])[0]).get("id")
+        if not mid:
+            return
+        k = (str(phone_number_id), re.sub(r"\D", "", str(to or "")))
+        now = _time.time()
+        lst = [x for x in _SENT_IDS.get(k, []) if now - x[0] < 300]
+        lst.append((now, mid))
+        _SENT_IDS[k] = lst[-20:]
+    except Exception:
+        pass
+
+
+def pop_sent_id(phone_number_id, to):
+    """The oldest not-yet-logged message id sent to this customer in the last
+    5 minutes (or None). Called by wa_db.log_message for outbound rows."""
+    k = (str(phone_number_id), re.sub(r"\D", "", str(to or "")))
+    now = _time.time()
+    lst = [x for x in _SENT_IDS.get(k, []) if now - x[0] < 300]
+    if not lst:
+        _SENT_IDS.pop(k, None)
+        return None
+    first = lst.pop(0)
+    _SENT_IDS[k] = lst
+    return first[1]
+
+
 async def _send(phone_number_id: str, access_token: str, payload: dict) -> bool:
     """
     POST one message to the Meta Graph API with up to _MAX_ATTEMPTS tries.
@@ -55,6 +91,7 @@ async def _send(phone_number_id: str, access_token: str, payload: dict) -> bool:
                 r = await client.post(url, json=payload, headers=headers)
 
             if r.status_code == 200:
+                _remember_id(phone_number_id, payload.get("to"), r)
                 if attempt > 1:
                     print(f"✅ [META] send succeeded on attempt {attempt}/{_MAX_ATTEMPTS}")
                 return True

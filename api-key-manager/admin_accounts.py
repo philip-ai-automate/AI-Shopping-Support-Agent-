@@ -859,10 +859,12 @@ def timeline(tenant_id: int, phone: str) -> list:
             items.append({"at": r["created_at"], "src": "log", "kind": "note", "body": r["note"],
                           "by_admin": r["author_label"], "follow_up_on": r["follow_up_on"], "ok": True})
         if pid and len(d) >= 8:
-            cur.execute("""SELECT created_at, direction, content, message_type, sent_by_label FROM wa_message_log
-                            WHERE tenant_id=%s AND regexp_replace(customer_phone,'\\D','','g')=%s
-                              AND NOT COALESCE(is_historical, FALSE)
-                            ORDER BY created_at DESC LIMIT 200""", (pid, d))
+            cur.execute("""SELECT m.created_at, m.direction, m.content, m.message_type, m.sent_by_label,
+                                  s.status AS wa_status, s.status_at, s.error AS wa_error, s.delivered_at, s.read_at
+                             FROM wa_message_log m LEFT JOIN wa_msg_status s ON s.meta_message_id = m.meta_message_id
+                            WHERE m.tenant_id=%s AND regexp_replace(m.customer_phone,'\\D','','g')=%s
+                              AND NOT COALESCE(m.is_historical, FALSE)
+                            ORDER BY m.created_at DESC LIMIT 200""", (pid, d))
             for r in cur.fetchall() or []:
                 if r["message_type"] == "call":
                     continue
@@ -1621,7 +1623,7 @@ def thread(phone):
     d = digits(phone)
     conn, cur = _db()
     try:
-        cur.execute("""SELECT m.created_at, m.direction, m.content, m.message_type, m.sent_by_label, s.status AS wa_status,
+        cur.execute("""SELECT m.created_at, m.direction, m.content, m.message_type, m.sent_by_label, s.delivered_at, s.read_at, s.error AS wa_error, s.status AS wa_status,
                               s.status_at
                          FROM wa_message_log m LEFT JOIN wa_msg_status s ON s.meta_message_id = m.meta_message_id
                         WHERE m.tenant_id=%s AND regexp_replace(m.customer_phone,'\\D','','g')=%s

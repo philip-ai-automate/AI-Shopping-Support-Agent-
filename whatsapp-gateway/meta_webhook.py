@@ -1154,6 +1154,14 @@ def _store_msg_status(s: dict):
                                   WHEN 'read' THEN 3 WHEN 'failed' THEN 4 ELSE 0 END) < %s""",
                         (s["meta_message_id"][:128], st, (s.get("error_title") or s.get("error_message") or None),
                          _STATUS_RANK.get(st, 0)))
+            # when each step happened (2026-11-06): sent / delivered / read / failed times
+            col = {"sent": "sent_at", "delivered": "delivered_at", "read": "read_at", "failed": "failed_at"}.get(st)
+            if col:
+                cur.execute(f"UPDATE wa_msg_status SET {col}=COALESCE({col}, NOW()) WHERE meta_message_id=%s",
+                            (s["meta_message_id"][:128],))
+                if st == "read":   # a read message was delivered too, even if that update never came
+                    cur.execute("UPDATE wa_msg_status SET delivered_at=COALESCE(delivered_at, NOW()) WHERE meta_message_id=%s",
+                                (s["meta_message_id"][:128],))
             conn.commit()
         finally:
             cur.close(); conn.close()

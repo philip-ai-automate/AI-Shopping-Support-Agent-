@@ -29,7 +29,8 @@
   .ib-b.in{background:#fff;align-self:flex-start;border-top-left-radius:2px}
   .ib-b.out{background:#DCF8C6;align-self:flex-end;border-top-right-radius:2px}
   .ib-meta{font-size:10.5px;color:#667781;text-align:right;margin-top:3px}
-  .ib-tick{font-weight:700;letter-spacing:-2px}.ib-tick.read{color:#34B7F1}
+  .ib-tick{font-weight:700;letter-spacing:-2px;margin-left:2px;color:#667781}.ib-tick.read{color:#34B7F1}.ib-tick.failed{color:#B42318;letter-spacing:0}
+  .ib-when{font-size:10.5px;color:#667781;text-align:right;margin-top:1px}
   .ib-sys{align-self:center;background:rgba(255,255,255,.85);border-radius:8px;padding:4px 10px;font-size:12px;color:#54656F}
   .ib-day{align-self:center;background:#E1F2FB;border-radius:8px;padding:3px 10px;font-size:11.5px;color:#54656F;margin:6px 0}
   .ib-comp{border-top:1px solid var(--line);padding:10px 12px;background:#F0F2F5}
@@ -123,7 +124,11 @@
           <div class="ib-sys">📞 WhatsApp call {{ 'from customer' if i.direction=='in' else 'to customer' }} · {{ (i.status or '')|replace('_',' ') }}{% if i.duration %} · {{ i.duration // 60 }} min {{ i.duration % 60 }} s{% endif %}{% if i.started_by_name %} · {{ i.started_by_name }}{% endif %} · {{ i.created_at.strftime('%H:%M') }}</div>
         {% else %}
           <div class="ib-b {{ 'in' if i.direction=='inbound' else 'out' }}"><div class="ib-txt">{{ i.content }}</div><div class="ib-meta">{% if i.direction!='inbound' %}{{ i.sent_by_label or 'PhiXtra AI' }} · {% endif %}{{ i.created_at.strftime('%H:%M') }}
-              {% if i.direction!='inbound' and i.wa_status %}<span class="ib-tick {{ 'read' if i.wa_status=='read' }}" title="{{ i.wa_status|capitalize }}{{ ' ' ~ i.status_at.strftime('%-d %b %H:%M') if i.status_at }}">{{ '✓' if i.wa_status=='sent' else ('!' if i.wa_status=='failed' else '✓✓') }}</span>{% endif %}</div>
+              {% if i.direction!='inbound' %}{% if i.wa_status %}<span class="ib-tick {{ i.wa_status }}" aria-label="{{ i.wa_status|capitalize }}">{{ '✓' if i.wa_status=='sent' else ('!' if i.wa_status=='failed' else '✓✓') }}</span>{% endif %}{% endif %}</div>
+            {% if i.direction!='inbound' and (i.delivered_at or i.read_at or i.wa_status == 'failed') %}<div class="ib-when">
+              {%- if i.wa_status == 'failed' %}Not delivered{{ ': ' ~ i.wa_error if i.wa_error }}
+              {%- else %}{% if i.delivered_at %}Delivered {{ i.delivered_at.strftime('%-d %b %H:%M') if i.delivered_at.date() != i.created_at.date() else i.delivered_at.strftime('%H:%M') }}{% endif %}{% if i.read_at %} · Read {{ i.read_at.strftime('%-d %b %H:%M') if i.read_at.date() != i.created_at.date() else i.read_at.strftime('%H:%M') }}{% endif %}{% endif -%}
+            </div>{% endif %}
           </div>
         {% endif %}
       {% else %}
