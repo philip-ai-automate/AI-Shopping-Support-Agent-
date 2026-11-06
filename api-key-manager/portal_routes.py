@@ -13630,7 +13630,10 @@ def settings():
                 continue
             if _eff.get(k) if k in _eff else feat.get(k):
                 plan_features.append(label)
-        daily_report_enabled = int(row.get("daily_report_enabled") or 1)
+        # Show the real state (2026-11-06): "or 1" turned a switched-off report
+        # back ON on screen, and the next save switched it on again. The
+        # gateway only sends when daily_report_enabled IS TRUE.
+        daily_report_enabled = 1 if row.get("daily_report_enabled") is True else 0
         report_phone         = row.get("report_phone") or ""
     except Exception:
         daily_report_enabled = 1
