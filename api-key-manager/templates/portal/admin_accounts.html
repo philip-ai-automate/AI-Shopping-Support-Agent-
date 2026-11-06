@@ -1,0 +1,83 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Accounts — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .am-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+  .am-tab{padding:7px 14px;border-radius:999px;font-size:13px;font-weight:750;text-decoration:none;color:var(--ink);
+          background:#fff;border:1px solid var(--line)}
+  .am-tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .am-tab.warn:not(.on){color:#B42318;border-color:rgba(240,68,56,.4)}
+  .am-who{display:flex;gap:4px;margin:0 0 14px;font-size:12px}
+  .am-who a{padding:3px 10px;border-radius:999px;text-decoration:none;color:var(--muted);border:1px solid var(--line);background:#fff;font-weight:700}
+  .am-who a.on{color:#fff;background:var(--ink);border-color:var(--ink)}
+  .am-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;font-size:13px}
+  .am-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:9px 10px;background:#fafafa;border-bottom:1px solid var(--line)}
+  .am-table td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+  .am-table tr:last-child td{border-bottom:none}
+  .am-sub{font-size:11.5px;color:var(--muted)}
+  .am-pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:750;background:rgba(3,12,24,.07);white-space:nowrap}
+  .am-pill.not_contacted{background:rgba(247,144,9,.12);color:#93370D}
+  .am-pill.contacted{background:rgba(46,144,250,.12);color:#175CD3}
+  .am-pill.replied,.am-pill.helping{background:rgba(122,90,248,.12);color:#5925DC}
+  .am-pill.set_up{background:rgba(18,183,106,.14);color:#067647}
+  .am-pill.lost{background:rgba(3,12,24,.08);color:#475467}
+  .am-due{color:#B42318;font-weight:750}
+  .am-steps{display:flex;gap:3px;margin-top:4px}
+  .am-steps i{width:16px;height:5px;border-radius:3px;background:rgba(3,12,24,.12)}
+  .am-steps i.d{background:var(--good)}
+  .am-insight{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 14px}
+  .am-insight div{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:12.5px;min-width:220px}
+  .am-insight b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:4px}
+</style>
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">🤝 Accounts</h1>
+    <p class="muted" style="margin:4px 0 0">Every business that signed up. Help the ones that didn't finish setting up, record each contact, and why they stopped.</p>
+  </div>
+</div>
+
+<div class="am-insight">
+  <div><b>Where they stop</b>{% for s, n in stuck[:4] %}{{ s }}: <strong>{{ n }}</strong>{% if not loop.last %} · {% endif %}{% else %}—{% endfor %}</div>
+  <div><b>Why they left (Lost)</b>{% for s, n in reasons[:4] %}{{ s }}: <strong>{{ n }}</strong>{% if not loop.last %} · {% endif %}{% else %}No reasons recorded yet{% endfor %}</div>
+</div>
+
+<div class="am-tabs">
+  {% for k, label in [('todo','Not set up'),('due','Follow-ups due'),('set_up','Set up'),('lost','Lost'),('all','All')] %}
+  <a class="am-tab {{ 'on' if tab==k }} {{ 'warn' if k=='due' and counts.due }}" href="{{ url_for('portal_admin.am_accounts', tab=k, who=who) }}">{{ label }} ({{ counts[k] }})</a>
+  {% endfor %}
+</div>
+<div class="am-who">
+  {% for k, label in [('all','Everyone'),('me','Assigned to me'),('none','Unassigned')] %}
+  <a class="{{ 'on' if who==k }}" href="{{ url_for('portal_admin.am_accounts', tab=tab, who=k) }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+{% if rows %}
+<div style="overflow-x:auto">
+<table class="am-table">
+  <thead><tr><th>Business</th><th>Stopped at</th><th>Status</th><th>Last contact</th><th>Follow-up</th><th>Account manager</th><th></th></tr></thead>
+  <tbody>
+  {% for x in rows %}
+  <tr>
+    <td><a href="{{ url_for('portal_admin.am_account', tenant_id=x.tenant_id) }}"><b>{{ x.business or '—' }}</b></a>
+      <div class="am-sub">{{ x.contact or x.email }}{% if x.country %} · {{ x.country }}{% endif %}</div>
+      <div class="am-sub">Signed up {{ x.signed_up.strftime('%-d %b %Y') if x.signed_up }}{% if x.days_since_signup is not none %} ({{ x.days_since_signup }} days ago){% endif %}</div></td>
+    <td>{% if x.setup.complete %}<span class="am-sub">All steps done</span>{% else %}{{ x.setup.stuck or '—' }}{% endif %}
+      <div class="am-steps">{% for s in x.setup.steps %}<i class="{{ 'd' if s.done }}" title="{{ s.title }}"></i>{% endfor %}</div>
+      <div class="am-sub">{{ x.setup.type }}{% if x.setup.total %} · {{ x.setup.done }}/{{ x.setup.total }}{% endif %}</div></td>
+    <td><span class="am-pill {{ x.status }}">{{ x.status_label }}</span>{% if x.reason_label %}<div class="am-sub">{{ x.reason_label }}</div>{% endif %}</td>
+    <td>{% if x.last_contact %}{{ {'call':'Call','whatsapp':'WhatsApp','email':'Email'}[x.last_contact.kind] }}
+      <div class="am-sub">{{ x.last_contact.created_at.strftime('%-d %b, %H:%M') }}</div>{% else %}<span class="am-sub">Never</span>{% endif %}</td>
+    <td>{% if x.next_follow_up %}<span class="{{ 'am-due' if x.follow_up_due }}">{{ 'Overdue · ' if x.follow_up_overdue }}{{ 'Today' if x.next_follow_up == today else x.next_follow_up.strftime('%-d %b') }}</span>{% else %}<span class="am-sub">—</span>{% endif %}</td>
+    <td>{{ x.manager or '—' }}</td>
+    <td><a class="btn btn-sm" href="{{ url_for('portal_admin.am_account', tenant_id=x.tenant_id) }}">Open</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">Nothing here.</p>
+{% endif %}
+{% endblock %}

@@ -54,6 +54,7 @@ ADMIN_MODULES = {
     "plugins":                   {"label": "Plugins",               "actions": ["view", "create", "delete"]},
     "plans":                     {"label": "Plans",                 "actions": ["view", "modify", "delete"]},
     # "school_plans" deactivated 2026-11-06 (user): no admin page any more.
+    "accounts":                  {"label": "Accounts (Account Manager)", "actions": ["view", "modify"]},
     "wa_diagnostics":            {"label": "WA Diagnostics",        "actions": ["view"]},
     "recovery_queue":            {"label": "Recovery Queue",        "actions": ["view"]},
     "video_tutorials":           {"label": "Video Tutorials",       "actions": ["view", "modify"]},
@@ -721,13 +722,13 @@ def customers():
     # Portal/Connect businesses are assigned to the platform business's own
     # staff (Accounts page, 2026-10-10), not to ambassador Sales Managers.
     pc_ids = [row["tenant_id"] for row in pc_rows]
-    acct = accounts_core.assignments_for(pc_ids)
+    acct = _am_assignments(pc_ids)   # Admin › Accounts (2026-11-06)
     setup = accounts_core.setup_steps_many(pc_ids)
     for row in pc_rows:
         fn = (row.get("first_name") or "").strip()
         ln = (row.get("last_name")  or "").strip()
         a_ = acct.get(row["tenant_id"])
-        assignment = {"manager_id": a_["team_member_id"], "manager_name": a_["staff_name"]} if a_ else None
+        assignment = {"manager_id": a_, "manager_name": _admin_accounts.manager_name(a_)} if a_ else None
         rows.append({
             "product": row["signup_product"], "ref_id": row["tenant_id"], "customer_id": row["id"],
             "full_name": f"{fn} {ln}".strip() or "—", "business_name": row["tenant_name"] or "—",
@@ -942,7 +943,7 @@ def customers():
     return render_template(
         "portal/admin_customers.html", customers=rows, q=q,
         sales_managers=sales_managers_by_product["portal"],
-        platform_staff=accounts_core.platform_staff(),
+        platform_staff=_am_managers(),
         sales_managers_by_product=sales_managers_by_product,
         filter_groups=filter_groups, plan_group=plan_group,
         industry_options=CUSTOMER_INDUSTRY_OPTIONS, PRODUCT_LABELS=CUSTOMER_PRODUCT_LABELS,
@@ -1113,9 +1114,9 @@ def customer_detail(customer_id: int):
     _ia = inactivity_core.accounts([tenant_id])
     customer["inactivity"] = _ia[0] if _ia else None
 
-    a_ = accounts_core.assignments_for([tenant_id]).get(tenant_id)
-    customer["assigned_manager_id"]   = a_["team_member_id"] if a_ else None
-    customer["assigned_manager_name"] = a_["staff_name"]     if a_ else None
+    a_ = _am_assignments([tenant_id]).get(tenant_id)
+    customer["assigned_manager_id"]   = a_
+    customer["assigned_manager_name"] = _admin_accounts.manager_name(a_) if a_ else None
     customer["setup"] = accounts_core.setup_steps_many([tenant_id]).get(tenant_id)
 
     for inv in invs:
@@ -1166,7 +1167,7 @@ def customer_detail(customer_id: int):
                            tenant_system_prompt=tenant_system_prompt,
                            email_sender=email_sender,
                            sales_managers=_portal_sales_managers(),
-                           platform_staff=accounts_core.platform_staff(),
+                           platform_staff=_am_managers(),
                            wa_connected=wa_connected,
                            wa_numbers=wa_numbers,
                            meta_wizard_step=meta_wizard_step,
@@ -1200,23 +1201,29 @@ def customer_assign_manager(customer_id: int):
     if accounts_core.is_platform_tenant(tenant_id):
         flash("That's PhiXtra's own business account.", "warning")
         return redirect(fallback)
+    # 2026-11-06: assigned to an Account Manager (admin login), shown on Admin › Accounts.
     raw = (request.form.get("staff_id") or "").strip()
-    if raw and not raw.isdigit():
-        flash("Choose a staff member from the list.", "danger")
+    if raw and raw not in {m["id"] for m in _am_managers()}:
+        flash("Choose an account manager from the list.", "danger")
         return redirect(fallback)
+    _admin_accounts.ensure_tables()
+    _c = get_db_connection(); _k = _c.cursor()
     try:
-        name = accounts_core.assign(tenant_id, int(raw) if raw else None, f"{_admin_user()} (Admin)")
-    except ValueError as e:
-        flash(str(e), "danger")
-        return redirect(fallback)
+        _admin_accounts._upsert_state(_k, tenant_id, _admin_user(), assigned_admin=raw or None)
+        _admin_accounts.log(_k, tenant_id, "status", _admin_user(),
+                            body=f"Assigned to {_admin_accounts.manager_name(raw)}" if raw else "Unassigned")
+        _c.commit()
+    finally:
+        _k.close(); _c.close()
+    name = _admin_accounts.manager_name(raw) if raw else None
 
     insert_audit_log(admin_username=_admin_user(),
                      action="customer_assign_staff" if name else "customer_unassign_staff",
                      tenant_id=tenant_id,
                      details={"customer_id": customer_id, "tenant_id": tenant_id,
-                              "team_member_id": int(raw) if raw else None, "staff_name": name})
+                              "account_manager": raw or None, "staff_name": name})
     if name:
-        flash(f"{customer['tenant_name'] or 'Customer'} assigned to {name}. It's now on their Accounts page.", "success")
+        flash(f"{customer['tenant_name'] or 'Customer'} assigned to {name}. See Admin › Accounts.", "success")
     else:
         flash("Assignment removed.", "success")
     return redirect(fallback)
@@ -6477,3 +6484,28 @@ def inactive_accounts_delay(tenant_id: int):
     ic.delay(tenant_id, _admin_user())
     flash("Delayed by 30 days. Any warnings already sent start again later, with the new date.", "success")
     return _inactive_back(tenant_id)
+
+
+# Admin › Accounts — Account Manager workspace (2026-11-06)
+import admin_accounts as _admin_accounts
+_admin_accounts.register(portal_admin_bp, _require_admin, _admin_user)
+
+
+def _am_assignments(tenant_ids) -> dict:
+    """tenant_id -> Account Manager username (Admin › Accounts)."""
+    ids = [int(t) for t in tenant_ids or []]
+    if not ids:
+        return {}
+    _admin_accounts.ensure_tables()
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT tenant_id, assigned_admin FROM am_account_state WHERE tenant_id = ANY(%s) AND assigned_admin IS NOT NULL", (ids,))
+        return {r[0]: r[1] for r in cur.fetchall()}
+    finally:
+        cur.close(); conn.close()
+
+
+def _am_managers() -> list:
+    """Admin logins an account can be assigned to: [{id: username, name}]."""
+    return [{"id": u["username"], "name": f"{_admin_accounts.manager_name(u['username'])} ({u['username']})"}
+            for u in _admin_accounts.admin_users()]

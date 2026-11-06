@@ -251,6 +251,12 @@
        href="{{ url_for('portal_admin.customers') }}">
       <span class="asb-icon">👥</span> Customers
     </a>
+    {% set _am_due = am_due_count() if am_due_count is defined else 0 %}
+    <a class="asb-link {% if (request.endpoint or '').startswith('portal_admin.am_') %}active{% endif %}"
+       href="{{ url_for('portal_admin.am_accounts') }}">
+      <span class="asb-icon">🤝</span> Accounts
+      {% if _am_due %}<span style="margin-left:auto;background:#F04438;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px" title="Follow-ups due">{{ _am_due }}</span>{% endif %}
+    </a>
     <a class="asb-link {% if 'inactive_accounts' in (request.endpoint or '') %}active{% endif %}"
        href="{{ url_for('portal_admin.inactive_accounts') }}">
       <span class="asb-icon">⏳</span> Inactive Accounts
@@ -401,6 +407,7 @@
 (function(){
   var INDEX = [
     { icon:'👥', title:'Customers',          desc:'View and manage all merchant accounts',      url:'{{ url_for("portal_admin.customers") }}',           tags:'customers users merchants tenants accounts list find' },
+    { icon:'🤝', title:'Accounts',           desc:'Follow up sign-ups that did not finish set-up', url:'{{ url_for("portal_admin.am_accounts") }}',        tags:'accounts account manager onboarding churn follow up stalled sign ups whatsapp call email' },
     { icon:'📱', title:'Onboard WhatsApp',   desc:'Set up a new merchant WhatsApp account',    url:'{{ url_for("portal_admin.onboard_wa") }}',          tags:'onboard new merchant whatsapp setup register' },
     { icon:'📂', title:'Catalogue',          desc:'Manage product catalogue and categories',   url:'{{ url_for("portal_admin.catalogue_dashboard") }}', tags:'catalogue products categories inventory' },
     { icon:'🔑', title:'API Keys',           desc:'View and manage all API keys',              url:'{{ url_for("portal_admin.api_keys") }}',            tags:'api keys access developer integration' },
