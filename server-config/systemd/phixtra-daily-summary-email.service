@@ -1,0 +1,7 @@
+[Unit]
+Description=PhiXtra Daily Summary email (8 am in each business time zone, when WhatsApp didn't deliver it)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/phixtra-app/api-key-manager
+ExecStart=/root/phixtra-app/api-key-manager/venv/bin/python /root/phixtra-app/api-key-manager/daily_summary_email.py
