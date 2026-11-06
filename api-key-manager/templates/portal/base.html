@@ -1215,7 +1215,7 @@
         </a>
         {% endif %}
         {# Order Messages (2026-10-24): WooCommerce order-update WhatsApp templates, moved from the WhatsApp menu (was "Message Templates"). #}
-        {% if _tenant_features.get('whatsapp_message_templates') %}
+        {% if _has_woocommerce and _tenant_features.get('whatsapp_message_templates') %}
         {% if staff_can_open('portal.whatsapp_templates') %}
         <a href="{{ url_for('portal.whatsapp_templates') }}"
            class="{% if request.endpoint == 'portal.whatsapp_templates' %}active{% endif %}">
@@ -1267,7 +1267,7 @@
         <span class="sb-arrow">▾</span>
       </div>
       <div class="sb-sub sb-sub-tall {% if _ai_group %}open{% endif %}">
-        {% if staff_can_open('portal.api_keys') %}
+        {% if _store_platform != 'shopify' and staff_can_open('portal.api_keys') %}
         <a href="{{ url_for('portal.api_keys') }}"
            class="{% if request.endpoint == 'portal.api_keys' %}active{% endif %}">
           API Keys
@@ -1314,8 +1314,8 @@
         </a>
         {% endif %}
         {% endif %}
-        {# Chat Archive (2026-10-24): the AI's past conversations (website and WhatsApp); moved here from Ecommerce. WooCommerce stores only, as before. #}
-        {% if _has_woocommerce and staff_can_open('portal.chat_archive') %}
+        {# Chat Archive (2026-10-24): the AI's past conversations (website and WhatsApp); moved here from Ecommerce. Any business with a website (2026-11-06: _has_site, was _has_woocommerce). #}
+        {% if _has_site and staff_can_open('portal.chat_archive') %}
         <a href="{{ url_for('portal.chat_archive') }}"
            class="{% if request.endpoint in ('portal.chat_archive', 'portal.chat_archive_session') %}active{% endif %}">
           Chat Archive
@@ -1390,10 +1390,10 @@
           {% if 'wa.handoff_reports_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
-        {# The other reports stay WooCommerce stores only, as before 2026-10-24. #}
-        {% if _has_woocommerce %}
+        {# The other reports: any business with a website (2026-11-06 _has_site; Analytics and Cart Recovery Report WooCommerce shops only). #}
+        {% if _has_site %}
         {# Analytics (2026-10-24): moved here from its own menu item. #}
-        {% if staff_can_open('portal.analytics') %}
+        {% if _has_woocommerce and staff_can_open('portal.analytics') %}
         <a href="{{ url_for('portal.analytics') }}"
            class="{% if request.endpoint == 'portal.analytics' %}active{% endif %}">
           Analytics
@@ -1428,7 +1428,7 @@
           {% if 'calls.report' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
-        {% if staff_can_open('portal.report_cart') %}
+        {% if _has_woocommerce and staff_can_open('portal.report_cart') %}
         <a href="{{ url_for('portal.report_cart') }}"
            class="{% if request.endpoint == 'portal.report_cart' %}active{% endif %}">
           Cart Recovery Report
@@ -2242,13 +2242,15 @@
     { icon:'🛒', title:'Cart Recovery',          desc:'Recover abandoned shopping carts',             url:'{{ url_for("portal.cart_recovery_dashboard") }}',    tags:'abandoned cart recovery settings whatsapp' },
     { icon:'✉️', title:'Cart Email Templates',   desc:'Email messages sent for cart recovery',       url:'{{ url_for("portal.cart_recovery_email_template") }}',tags:'email template cart recovery message' },
     { icon:'📈', title:'Analytics',              desc:'Sales and performance analytics',              url:'{{ url_for("portal.analytics") }}',                  tags:'analytics performance charts graphs data sales' },
-    { icon:'📊', title:'AI Usage Report',        desc:'How many AI credits you have used',           url:'{{ url_for("portal.report_usage") }}',               tags:'usage report ai tokens credits consumption' },
     { icon:'🛒', title:'Cart Recovery Report',   desc:'How many carts were recovered',               url:'{{ url_for("portal.report_cart") }}',                tags:'cart recovery report results conversions' },
+    {% endif %}
+    {% if _has_site %}
+    { icon:'📊', title:'AI Usage Report',        desc:'How many AI credits you have used',           url:'{{ url_for("portal.report_usage") }}',               tags:'usage report ai tokens credits consumption' },
     { icon:'💰', title:'Billing Summary',        desc:'Revenue and billing history report',           url:'{{ url_for("portal.report_billing") }}',             tags:'billing summary revenue report' },
     { icon:'💬', title:'Chat Archive',           desc:'Browse all past AI conversations',             url:'{{ url_for("portal.chat_archive") }}',               tags:'chat archive history past conversations log' },
     {% endif %}
-    {% if _tenant_features and _tenant_features.get('whatsapp_message_templates') %}
-    { icon:'📝', title:'Message Templates',      desc:'WhatsApp pre-approved message templates',     url:'{{ url_for("portal.whatsapp_templates") }}',         tags:'templates whatsapp message pre-approved broadcast' },
+    {% if _has_woocommerce and _tenant_features and _tenant_features.get('whatsapp_message_templates') %}
+    { icon:'📝', title:'Order Messages',         desc:'WhatsApp messages for WooCommerce order updates',     url:'{{ url_for("portal.whatsapp_templates") }}',         tags:'templates whatsapp message pre-approved broadcast' },
     {% endif %}
   ];
 

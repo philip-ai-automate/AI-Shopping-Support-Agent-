@@ -399,7 +399,11 @@ def create_app():
 
     @flask_app.context_processor
     def inject_has_woocommerce():
-        """Detect whether tenant has a WooCommerce plugin connected.
+        """_has_site: the business has a website key (any platform) — the old
+        meaning of _has_woocommerce, still used for website-wide items.
+        _has_woocommerce: a real WooCommerce/WordPress shop (not Shopify, Wix…).
+        _store_platform: woocommerce / shopify / website / none.
+        Detect whether tenant has a WooCommerce plugin connected.
         Tenants with key_type='paid' or 'trial' have a WooCommerce site (Profile B).
         WhatsApp-only tenants (key_type='whatsapp' only) get Profile A — simplified sidebar.
         """
@@ -425,12 +429,36 @@ def create_app():
                         WHERE tenant_id=%s AND key_type IN ('paid','trial') AND is_active=TRUE
                         LIMIT 1
                     """, (tenant_id,))
-                    _g._cached_has_woocommerce = cur.fetchone() is not None
+                    has_site = cur.fetchone() is not None
+                    # Store platform (2026-11-06): a Shopify store is not a
+                    # WooCommerce shop. shopify = Shopify app installed (or
+                    # signed up as Shopify); woocommerce = website key and
+                    # platform WordPress or not recorded (older sign-ups);
+                    # website = Wix / Squarespace / other; none = no website.
+                    cur.execute("""SELECT COALESCE(t.website_platform,''),
+                                          EXISTS(SELECT 1 FROM shopify_shops s
+                                                 WHERE s.tenant_id=t.id AND s.uninstalled_at IS NULL)
+                                   FROM tenants t WHERE t.id=%s""", (tenant_id,))
+                    prow = cur.fetchone() or ("", False)
+                    wp, shop_on = (prow[0] or "").lower(), bool(prow[1])
+                    if shop_on or wp == "shopify":
+                        platform = "shopify"
+                    elif has_site and wp in ("", "wordpress"):
+                        platform = "woocommerce"
+                    elif has_site:
+                        platform = "website"
+                    else:
+                        platform = "none"
+                    _g._cached_has_site = has_site
+                    _g._cached_store_platform = platform
+                    _g._cached_has_woocommerce = platform == "woocommerce"
                     cur.close(); conn.close()
             except Exception as e:
                 print("⚠️ inject_has_woocommerce error:", e)
                 _g._cached_has_woocommerce = False
-        return {"_has_woocommerce": _g._cached_has_woocommerce}
+        return {"_has_woocommerce": _g._cached_has_woocommerce,
+                "_has_site": getattr(_g, "_cached_has_site", False),
+                "_store_platform": getattr(_g, "_cached_store_platform", "none")}
 
     @flask_app.context_processor
     def inject_tenant_features():
