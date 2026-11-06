@@ -27,10 +27,14 @@
 
 <div class="si-header">
   <div class="si-title">💬 Add the chat box</div>
+  {% if shopify %}
+  <div class="si-sub">Your store is on Shopify, so there's no code to paste: the PhiXtra app adds the chat box to every page of <strong>{{ shopify.shop_name }}</strong>. You switch it on once, in your Shopify theme.</div>
+  {% else %}
   <div class="si-sub">Copy one line of code into your website, or send the code and the steps by email. The chat box only works on <strong>{{ domain or 'your own website address' }}</strong>, so it is safe to paste anywhere on your site.</div>
+  {% endif %}
 </div>
 
-{% if seen %}
+{% if seen and not shopify %}
 <div class="cb-note ok" role="status">✅ We found the PhiXtra chat box on your website.</div>
 {% endif %}
 {% if ai_off %}
@@ -44,6 +48,28 @@
 </div>
 {% endif %}
 
+{% if shopify %}
+{# Shopify store connected through the app (2026-11-06): no code. #}
+{% set _seen = shopify.seen_minutes_ago %}
+{% if _seen is not none and _seen < 10080 %}
+<div class="cb-note ok" role="status">✅ Your chat box is on. Last seen on your store {% if _seen < 60 %}{{ _seen }} min{% elif _seen < 1440 %}{{ _seen // 60 }} h{% else %}{{ _seen // 1440 }} day{{ '' if _seen // 1440 == 1 else 's' }}{% endif %} ago.</div>
+{% else %}
+<div class="cb-note soon" role="status">⚠️ We haven't seen the chat box on your store yet. Follow the steps below to switch it on.</div>
+{% endif %}
+<div class="cb-card">
+  <h2 class="cb-h">Switch on the chat box in your Shopify theme</h2>
+  <ol class="cb-steps">
+    <li>Press <strong>Switch on in your theme</strong>. Your Shopify theme editor opens with PhiXtra chat selected.</li>
+    <li>Make sure PhiXtra chat is on, then press <strong>Save</strong> in the theme editor.</li>
+    <li>Open your store. Once the chat box has loaded, this page shows when it was last seen.</li>
+  </ol>
+  <div class="cb-row">
+    <a class="cb-btn" href="{{ shopify.theme_url }}" target="_blank" rel="noopener">Switch on in your theme ↗</a>
+    {% if staff_can_open('portal.shopify_store') %}<a class="cb-btn line" href="{{ url_for('portal.shopify_store') }}">Shopify Store page</a>{% endif %}
+  </div>
+  <p class="cb-small">If you change themes in Shopify, switch the chat box on in the new theme too. <a href="{{ url_for('portal.tutorials', topic='shopify') }}#shp-chat">Shopify guide: the chat box</a></p>
+</div>
+{% else %}
 <div class="cb-card">
   <h2 class="cb-h">Your chat box code</h2>
   <p class="cb-p">Paste it just before the closing <code>&lt;/body&gt;</code> tag of your website, or in your website builder's "custom code" setting for all pages.</p>
@@ -78,6 +104,8 @@
   {% endif %}
 </div>
 
+{% endif %}
+
 <script>
 (function(){
   var tabs = document.querySelectorAll('.cb-tab');
@@ -88,6 +116,7 @@
 })();
 (function(){
   var b = document.getElementById('cbCopy'), c = document.getElementById('cbCode');
+  if (!b || !c) return;
   b.addEventListener('click', function(){
     var t = c.textContent;
     function done(m){ var o = b.textContent; b.textContent = m; setTimeout(function(){ b.textContent = o; }, 1800); }

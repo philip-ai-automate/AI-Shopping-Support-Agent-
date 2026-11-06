@@ -6801,16 +6801,15 @@ def _setup_checklist(tenant_id: int):
 CHATBOX_GUIDES = {
     "shopify": {
         "name": "Shopify",
-        "warning": "If you're trying a paid Shopify theme, Shopify only lets you edit its code after you've bought the theme.",
+        # 2026-11-06: Shopify stores use the PhiXtra app, no code to paste.
+        "warning": "",
         "steps": [
-            "Copy your chat box code.",
-            "In your Shopify admin, go to <strong>Online Store</strong>.",
-            "Next to your live theme, click the <strong>…</strong> (more) button, then <strong>Edit code</strong>.",
-            "In the <strong>Layout</strong> folder, click <strong>theme.liquid</strong>.",
-            "Find <code>&lt;/body&gt;</code> near the bottom of the file, and paste the code on the line just above it.",
-            "Click <strong>Save</strong>.",
+            "On Shopify you don't need the code: the PhiXtra app adds the chat box for you.",
+            "In your Shopify admin, go to <strong>Apps</strong>, install the <strong>PhiXtra</strong> app and open it.",
+            "Create your PhiXtra account there, or press <strong>Link my account</strong> and use the email you log in to PhiXtra with.",
+            "Next to <strong>Chat on your store</strong>, press <strong>Turn on</strong>, then <strong>Save</strong> in the theme editor.",
         ],
-        "help": ("Shopify's own guide", "https://help.shopify.com/en/manual/online-store/themes/theme-code"),
+        "help": None,
     },
     "wix": {
         "name": "Wix",
@@ -6893,7 +6892,22 @@ def store_info_website_chatbox():
     cur.close(); conn.close()
     plan = _get_tenant_plan(tenant_id)
     code = f'<script src="{WIDGET_SCRIPT_URL}" data-site="{_site_widget_key(tenant_id)}" async></script>'
-    return render_template("portal/store_info_website_chatbox.html", customer=customer, code=code,
+    # Shopify store connected through the app (2026-11-06): no code, the
+    # chat box is switched on in the theme. Same data as the Shopify Store page.
+    shopify = None
+    try:
+        import shopify_orders, shopify_app
+        srow = shopify_orders.shop_for(tenant_id)
+        if srow:
+            seen_at = srow.get("chat_seen_at")
+            mins = None if not seen_at else max(0, int((datetime.now(seen_at.tzinfo) - seen_at).total_seconds() // 60))
+            shopify = {"shop": srow["shop"], "shop_name": srow.get("shop_name") or srow["shop"],
+                       "seen_minutes_ago": mins,
+                       "theme_url": f"https://admin.shopify.com/store/{shopify_orders._store(srow['shop'])}/themes/current/editor"
+                                    f"?context=apps&activateAppId={shopify_app._key()}/chat"}
+    except Exception as e:
+        print("chatbox shopify state:", e)
+    return render_template("portal/store_info_website_chatbox.html", customer=customer, code=code, shopify=shopify,
                            domain=t.get("domain") or "", platform=t.get("website_platform") or "",
                            seen=t.get("chatbox_seen_at"), ai_off=plan.get("plan_slug") in AI_OFF_FREE_PLAN_SLUGS,
                            guides=CHATBOX_GUIDES,
