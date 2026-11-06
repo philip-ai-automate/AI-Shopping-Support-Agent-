@@ -82,6 +82,14 @@
   .pager .per-page select{padding:5px 8px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;background:#fff}
   .pager .pages{display:flex;align-items:center;gap:8px}
   .pager .btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
+  .cust-sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+  .cs-card{display:flex;flex-direction:column;gap:2px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;text-decoration:none;color:var(--ink)}
+  .cs-card:hover{text-decoration:none;border-color:rgba(3,12,24,.3)}
+  .cs-card b{font-size:26px;font-weight:800;line-height:1.1}
+  .cs-card span{font-size:12.5px;color:var(--muted);font-weight:600}
+  .cs-card.done b{color:#067647} .cs-card.not_done b{color:#B42318}
+  .cs-card.on{border-color:var(--ink);box-shadow:0 0 0 3px rgba(3,12,24,.07)}
+  @media (max-width:760px){ .cust-sum{grid-template-columns:repeat(2,minmax(0,1fr))} }
   .signup-week{display:flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:14px;background:#fff;margin-bottom:14px;overflow:hidden}
   .signup-week div{flex:1 1 160px;padding:12px 16px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:2px}
   .signup-week div:last-child{border-right:0}
@@ -119,6 +127,18 @@
     </div>
   </div>
 </div>
+
+{# Customer totals (2026-11-06): with the page's other filters applied; click a card to show only those. #}
+{% if setup_summary %}
+<div class="cust-sum" aria-label="Customer totals">
+  <a class="cs-card total {{ 'on' if not setup_summary.cards|selectattr('on')|list }}" href="{{ setup_summary.all_url }}">
+    <b>{{ setup_summary.total }}</b><span>customer{{ 's' if setup_summary.total != 1 }}{% if (active_count - (setup_summary.cards|selectattr('on')|list|length)) > 0 or q %} (with these filters){% endif %}</span></a>
+  {% for c in setup_summary.cards %}
+  <a class="cs-card {{ c.key }} {{ 'on' if c.on }}" href="{{ c.url }}" {% if c.on %}aria-current="true"{% endif %}>
+    <b>{{ c.n }}</b><span>{{ c.label }}{% if setup_summary.total and c.key != 'na' %} · {{ ((c.n * 100) / setup_summary.total)|round|int }}%{% endif %}</span></a>
+  {% endfor %}
+</div>
+{% endif %}
 
 {# Sign-ups need WhatsApp + email codes before an account exists (2026-10-27).
    "Didn't finish" is a count only — no details are kept, so nobody chases them. #}

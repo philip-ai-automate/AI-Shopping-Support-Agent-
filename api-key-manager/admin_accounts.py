@@ -820,6 +820,102 @@ def journey(a: dict) -> list:
     return ev
 
 
+# ── Email signature per Account Manager (2026-11-06) ──────────────────────
+# Image (PNG, JPEG, GIF, WebP, BMP, TIFF) shown inside every email they send
+# from Admin, embedded in the email (cid) so it shows without "load images".
+
+SIG_CID = "am-signature"
+SIG_MAX_BYTES = 5 * 1024 * 1024
+SIG_MAX_W = 600          # stored size
+SIG_SHOW_W = 400         # shown size in the email (sharper on high-res screens)
+
+
+def _sig_table(cur):
+    cur.execute("""CREATE TABLE IF NOT EXISTS am_signatures (
+                     admin_username VARCHAR(190) PRIMARY KEY, image BYTEA NOT NULL, mime VARCHAR(40) NOT NULL,
+                     width INTEGER NOT NULL, height INTEGER NOT NULL, link TEXT, filename TEXT,
+                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
+
+
+def get_signature(username: str):
+    conn, cur = _db()
+    try:
+        _sig_table(cur); conn.commit()
+        cur.execute("SELECT * FROM am_signatures WHERE admin_username=%s", (username,))
+        r = cur.fetchone()
+        if r:
+            r = dict(r); r["image"] = bytes(r["image"])
+            r["show_w"] = min(r["width"], SIG_SHOW_W)
+            r["show_h"] = round(r["height"] * r["show_w"] / r["width"]) if r["width"] else r["height"]
+        return r
+    finally:
+        cur.close(); conn.close()
+
+
+def save_signature(username: str, raw: bytes, filename: str, link: str = ""):
+    """(ok, message). Reads any common image format, resizes to email width,
+    keeps PNG / JPEG / GIF as they are and turns the rest into PNG."""
+    import io
+    from PIL import Image, ImageOps
+    if not raw:
+        return False, "Choose an image file."
+    if len(raw) > SIG_MAX_BYTES:
+        return False, "That image is over 5 MB. Use a smaller one."
+    low = (filename or "").lower()
+    if low.endswith(".svg") or raw[:200].lstrip().startswith((b"<svg", b"<?xml")):
+        return False, "SVG images don't show in most email apps. Save it as PNG or JPEG and upload that."
+    if low.endswith((".heic", ".heif")):
+        return False, "iPhone HEIC photos can't be used. Save it as JPEG or PNG and upload that."
+    try:
+        im = Image.open(io.BytesIO(raw))
+        im.load()
+    except Exception:
+        return False, "That file isn't an image we can read. Use PNG, JPEG, GIF, WebP, BMP or TIFF."
+    fmt = (im.format or "").upper()
+    animated = fmt == "GIF" and getattr(im, "is_animated", False)
+    if animated and im.width <= SIG_MAX_W:
+        data, mime, w, h = raw, "image/gif", im.width, im.height
+    else:
+        im = ImageOps.exif_transpose(im)
+        if im.width > SIG_MAX_W:
+            im = im.resize((SIG_MAX_W, round(im.height * SIG_MAX_W / im.width)), Image.LANCZOS)
+        out = io.BytesIO()
+        if fmt in ("JPEG", "JPG") and im.mode in ("RGB", "L"):
+            im.save(out, "JPEG", quality=90, optimize=True); mime = "image/jpeg"
+        else:
+            if im.mode not in ("RGB", "RGBA", "L", "LA", "P"):
+                im = im.convert("RGBA")
+            im.save(out, "PNG", optimize=True); mime = "image/png"
+        data, w, h = out.getvalue(), im.width, im.height
+    link = (link or "").strip()[:500]
+    if link and not link.lower().startswith(("http://", "https://", "mailto:")):
+        link = "https://" + link
+    conn, cur = _db()
+    try:
+        _sig_table(cur)
+        cur.execute("""INSERT INTO am_signatures (admin_username, image, mime, width, height, link, filename, updated_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,NOW())
+                       ON CONFLICT (admin_username) DO UPDATE SET image=EXCLUDED.image, mime=EXCLUDED.mime,
+                           width=EXCLUDED.width, height=EXCLUDED.height, link=EXCLUDED.link,
+                           filename=EXCLUDED.filename, updated_at=NOW()""",
+                    (username, psycopg2.Binary(data), mime, w, h, link or None, (filename or "")[:200]))
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    return True, "Signature saved. It's added under the emails you send from Accounts."
+
+
+def signature_html(sig) -> str:
+    if not sig:
+        return ""
+    img = (f'<img src="cid:{SIG_CID}" width="{sig["show_w"]}" height="{sig["show_h"]}" alt="Email signature" '
+           f'style="display:block;border:0;max-width:100%;height:auto">')
+    if sig.get("link"):
+        import html as _h
+        img = f'<a href="{_h.escape(sig["link"])}">{img}</a>'
+    return f'<div style="margin-top:18px">{img}</div>'
+
+
 def due_count(username: str) -> int:
     ensure_tables()
     conn, cur = _db()
@@ -1043,6 +1139,52 @@ def register(bp, require_admin, admin_user):
                 return 0
         return {"am_due_count": am_due_count}
 
+    @bp.route("/accounts/settings/signature", methods=["POST"])
+    def am_signature_save():
+        r = _gate("view")   # everyone manages their own signature
+        if r: return r
+        me = admin_user()
+        if request.form.get("remove") == "1":
+            conn, cur = _db()
+            try:
+                _sig_table(cur)
+                cur.execute("DELETE FROM am_signatures WHERE admin_username=%s", (me,)); conn.commit()
+            finally:
+                cur.close(); conn.close()
+            flash("Signature removed.", "success")
+            return redirect(url_for("portal_admin.am_settings") + "#signature")
+        f = request.files.get("image")
+        if f and f.filename:
+            ok, msg = save_signature(me, f.read(SIG_MAX_BYTES + 1), f.filename, request.form.get("link") or "")
+        else:
+            sig = get_signature(me)
+            if not sig:
+                ok, msg = False, "Choose an image file."
+            else:   # only the link changed
+                conn, cur = _db()
+                try:
+                    link = (request.form.get("link") or "").strip()[:500]
+                    if link and not link.lower().startswith(("http://", "https://", "mailto:")):
+                        link = "https://" + link
+                    cur.execute("UPDATE am_signatures SET link=%s, updated_at=NOW() WHERE admin_username=%s", (link or None, me))
+                    conn.commit()
+                finally:
+                    cur.close(); conn.close()
+                ok, msg = True, "Signature link saved."
+        insert_audit_log(admin_username=me, action="am_signature_saved" if ok else "am_signature_refused", details={"msg": msg})
+        flash(msg, "success" if ok else "warning")
+        return redirect(url_for("portal_admin.am_settings") + "#signature")
+
+    @bp.route("/accounts/signature.img")
+    def am_signature_img():
+        r = _gate("view")
+        if r: return r
+        from flask import Response
+        sig = get_signature(admin_user())
+        if not sig:
+            return ("", 404)
+        return Response(sig["image"], mimetype=sig["mime"], headers={"Cache-Control": "private, no-store"})
+
     @bp.route("/accounts/settings/calls", methods=["POST"])
     def am_settings_calls():
         """Account Managers' WhatsApp calls on/off for the Account Manager
@@ -1162,6 +1304,7 @@ def register(bp, require_admin, admin_user):
         return render_template("portal/admin_accounts_settings.html", st=st, fallback=fallback, admins=admins,
                                saved=saved, last_run=last_run, sent7=sent7, now=datetime.now(timezone.utc),
                                numbers=numbers, cur_num=(cur_num or {}).get("phone_number_id"), am_calls=am_calls,
+                               my_sig=get_signature(me),
                                can_modify=(require_admin("accounts", "modify") is None))
 
     @bp.route("/accounts/dashboard")
@@ -1295,7 +1438,7 @@ def register(bp, require_admin, admin_user):
                             else datetime(t.year, t.month, t.day, tzinfo=timezone.utc)))
         _items.sort(key=lambda i: _aware(i["at"]), reverse=True)
         return render_template(
-            "portal/admin_account.html", a=a, items=_items, me=me, nb=nb, replied=_replied,
+            "portal/admin_account.html", a=a, items=_items, me=me, nb=nb, replied=_replied, my_sig=get_signature(me),
             statuses=STATUSES, reasons=REASONS, outcomes=CALL_OUTCOMES, admins=admin_users(),
             email_templates=EMAIL_TEMPLATES, etpl=etpl, email_subject=fill(etpl[1], a, me),
             email_body=fill(etpl[2], a, me),
@@ -1454,7 +1597,11 @@ def register(bp, require_admin, admin_user):
         from portal_utils import send_email
         html_body = ("<div style=\"font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:15px;"
                      "line-height:1.6;color:#111827\">" + _h.escape(body).replace("\n", "<br>") + "</div>")
-        ok = send_email(a["email"], subject, html_body, body, reply_to=reply_to if "@" in reply_to else None)
+        sig = get_signature(me) if request.form.get("with_sig") == "1" else None
+        if sig:
+            html_body += signature_html(sig)
+        ok = send_email(a["email"], subject, html_body, body, reply_to=reply_to if "@" in reply_to else None,
+                        inline_images=[(SIG_CID, sig["image"], sig["mime"])] if sig else None)
         ensure_tables()
         conn, cur = _db()
         try:

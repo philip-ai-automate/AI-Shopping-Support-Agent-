@@ -1,5 +1,14 @@
 {% extends "portal/admin_base.html" %}
-{% block title %}Accounts Settings — PhiXtra Admin{% endblock %}
+{% block title %}Accounts Settings — PhiXtra Admin<script>
+(function(){
+  var f = document.getElementById('sigFile'), box = document.getElementById('sigPrev'); if (!f) return
+  f.addEventListener('change', function(){
+    var file = f.files && f.files[0]; if (!file) { box.hidden = true; return }
+    var img = box.querySelector('img'); img.src = URL.createObjectURL(file); box.hidden = false
+  })
+})();
+</script>
+{% endblock %}
 {% block content %}
 {% set on = st.alerts_on == '1' %}
 {% set ro = not can_modify %}
@@ -85,7 +94,10 @@
   .as-num-sub{font-size:12.5px;color:var(--muted)}
   .as-warn{color:#93370D;font-weight:600} .as-ok{color:#067647;font-weight:600}
   .as-calls{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-top:6px;padding:12px 14px;border-radius:12px;background:#F7F8FA}
-  .as-foot{font-size:12px;color:var(--muted);margin:4px 2px 90px}
+  .as-sigbox{margin-top:8px;padding:12px;border:1px dashed rgba(3,12,24,.18);border-radius:10px;background:#fff;overflow:auto}
+  .as-sigbox img{display:block;max-width:100%;height:auto}
+  .as-text{width:100%;box-sizing:border-box;font:inherit;font-size:13.5px;padding:9px 12px;border-radius:10px;border:1px solid rgba(3,12,24,.15)}
+  .as-foot{font-size:12px;color:var(--muted);margin:4px 2px 18px}
 
   /* save bar */
   .as-bar{position:fixed;left:50%;bottom:18px;transform:translate(-50%,140%);transition:transform .25s ease;z-index:50;
@@ -245,6 +257,44 @@
     </div>
     {% endif %}
   </form>
+
+  <!-- My email signature (each Account Manager their own) -->
+  <form method="post" action="{{ url_for('portal_admin.am_signature_save') }}" enctype="multipart/form-data" id="signature" class="as-card" style="margin-bottom:90px">
+    <div class="as-card-h">
+      <div class="as-ico">🖊️</div>
+      <div class="as-grow">
+        <h2>My email signature</h2>
+        <p>Your own signature image, added under the emails you send from Accounts. Each Account Manager sets their own.</p>
+      </div>
+    </div>
+    <div class="as-body">
+      <div class="as-field">
+        {% if my_sig %}
+        <p class="as-q">Current signature</p>
+        <div class="as-sigbox"><img src="{{ url_for('portal_admin.am_signature_img') }}?v={{ my_sig.updated_at.timestamp()|int }}" alt="Your email signature" width="{{ my_sig.show_w }}" height="{{ my_sig.show_h }}"></div>
+        <p class="as-hint" style="margin:6px 0 0">{{ my_sig.width }} × {{ my_sig.height }} px · {{ my_sig.mime.split('/')[1]|upper }}{% if my_sig.link %} · opens {{ my_sig.link }}{% endif %}</p>
+        {% else %}
+        <p class="as-hint" style="margin:0">No signature yet.</p>
+        {% endif %}
+      </div>
+      <div class="as-field">
+        <label class="as-q" for="sigFile">{{ 'Replace with a new image' if my_sig else 'Upload your signature' }}</label>
+        <p class="as-hint">PNG, JPEG, GIF, WebP, BMP or TIFF, up to 5 MB. Wide images are resized to fit emails.</p>
+        <input type="file" id="sigFile" name="image" accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,image/tiff,.png,.jpg,.jpeg,.gif,.webp,.bmp,.tif,.tiff">
+        <div class="as-sigbox" id="sigPrev" hidden><img alt="New signature preview"></div>
+      </div>
+      <div class="as-field">
+        <label class="as-q" for="sigLink">Link when clicked <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+        <p class="as-hint">e.g. your booking page or phixtra.com</p>
+        <input type="url" id="sigLink" name="link" value="{{ my_sig.link if my_sig and my_sig.link else '' }}" placeholder="https://" class="as-text">
+      </div>
+      <div class="as-field" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+        {% if my_sig %}<button type="submit" name="remove" value="1" class="btn btn-sm" onclick="return confirm('Remove your email signature?')">Remove</button>{% endif %}
+        <button type="submit" class="btn btn-primary btn-sm">Save signature</button>
+      </div>
+    </div>
+  </form>
+
 </div>
 
 <script>

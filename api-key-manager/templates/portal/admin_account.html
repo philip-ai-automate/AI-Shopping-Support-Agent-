@@ -67,6 +67,12 @@
   .ap-q{font:inherit;font-size:12px;font-weight:650;padding:8px 10px;min-height:36px;border-radius:8px;border:1px solid rgba(3,12,24,.15);background:#fff;cursor:pointer;color:var(--ink)}
   .ap-q:hover{background:#F5F6F8}
   .ap-save{margin-left:auto;font:inherit;font-size:13.5px;font-weight:700;padding:10px 18px;min-height:42px;border-radius:10px;border:0;background:var(--ink);color:#fff;cursor:pointer}
+  .ap-sig{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:12px 0 6px}
+  .ap-sig input{width:16px;height:16px;accent-color:#030C18;margin:0}
+  .ap-sig a{font-weight:600;font-size:12.5px;margin-left:4px}
+  .ap-sigprev{padding:10px;border:1px dashed rgba(3,12,24,.18);border-radius:10px;background:#fff;overflow:auto}
+  .ap-sigprev img{display:block;max-width:100%;height:auto}
+  .ap-sigprev.off{opacity:.3}
   .ac-note{font-size:12.5px;color:var(--muted);margin:8px 0 0;line-height:1.5}
   .ac-warn{background:#FFF6ED;border:1px solid rgba(247,144,9,.35);color:#93370D;border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:10px}
   .ac-meta{font-size:11.5px;color:var(--muted)}
@@ -213,6 +219,13 @@
             <label class="l" for="em_rt">Replies go to</label><input id="em_rt" name="reply_to" value="{{ reply_to }}">
             <label class="l" for="em_s">Subject</label><input id="em_s" name="subject" value="{{ email_subject }}" required>
             <label class="l" for="em_b">Message</label><textarea id="em_b" name="body" style="min-height:220px" required>{{ email_body }}</textarea>
+            {% if my_sig %}
+            <label class="ap-sig"><input type="checkbox" name="with_sig" value="1" checked> Add my signature
+              <a href="{{ url_for('portal_admin.am_settings') }}#signature">Change</a></label>
+            <div class="ap-sigprev" id="sigPrev"><img src="{{ url_for('portal_admin.am_signature_img') }}?v={{ my_sig.updated_at.timestamp()|int }}" alt="Your email signature" width="{{ my_sig.show_w }}" height="{{ my_sig.show_h }}"></div>
+            {% else %}
+            <p class="ac-note"><a href="{{ url_for('portal_admin.am_settings') }}#signature">Add your email signature</a> (PNG, JPEG or other image) to show it under your emails.</p>
+            {% endif %}
             <div class="ap-fu">
               <label class="d">Follow up on<input type="date" name="follow_up_on" min="{{ today.isoformat() }}"></label>
               <button type="button" class="ap-q" data-days="1">Tomorrow</button><button type="button" class="ap-q" data-days="3">In 3 days</button><button type="button" class="ap-q" data-days="7">Next week</button>
@@ -364,6 +377,8 @@
   }
   acts.forEach(function(b){ b.addEventListener('click', function(){ show(b.dataset.p) }) })
 
+  var sg = document.querySelector('.ap-sig input'), sp = document.getElementById('sigPrev')
+  if (sg && sp) sg.addEventListener('change', function(){ sp.classList.toggle('off', !sg.checked) })
   function iso(days){ var d = new Date(); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10) }
   document.querySelectorAll('[data-days]').forEach(function(b){ b.addEventListener('click', function(){
     var f = b.closest('form').querySelector('input[name=follow_up_on]'); f.value = iso(parseInt(b.dataset.days, 10)); f.focus()

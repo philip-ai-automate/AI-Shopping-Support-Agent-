@@ -597,8 +597,11 @@ def _customer_facet(x, key):
     if key == "plan":     return x["plan_name"]
     if key == "heard":    return x["heard_value"]
     if key == "inactivity": return x["inactivity"]
+    if key == "setup": return x.get("setup_state", "na")
     return x[key]  # source, product
 
+
+CUSTOMER_SETUP_OPTIONS = [("done", "Completed set-up"), ("not_done", "Not completed"), ("na", "Not tracked (School / KeyLand)")]
 
 CUSTOMER_INACTIVITY_OPTIONS = [("warned", "Warned"), ("active", "Active"), ("no_email", "Can't warn · no email"),
                                ("protected", "Protected"), ("not_included", "School / KeyLand (not included)")]
@@ -684,6 +687,7 @@ def customers():
     f_product  = request.args.getlist("product")
     f_heard    = request.args.getlist("heard")
     f_inactive = request.args.getlist("inactivity")
+    f_setup    = request.args.getlist("setup")      # done / not_done / na (2026-11-06)
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -740,6 +744,8 @@ def customers():
             "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
             "assigned_manager_name": assignment["manager_name"] if assignment else None,
             "setup": setup.get(row["tenant_id"]),
+            "setup_state": ("done" if (setup.get(row["tenant_id"]) or {}).get("complete") else "not_done")
+                           if setup.get(row["tenant_id"]) else "na",
             "heard": _heard_label(row.get("hear_about_us")),
             "heard_value": row.get("hear_about_us") or CUSTOMER_HEARD_NONE,
             "source": row.get("source_type"),
@@ -783,7 +789,7 @@ def customers():
             "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
             "assigned_manager_name": assignment["manager_name"] if assignment else None,
             "heard": "Not answered", "heard_value": CUSTOMER_HEARD_NONE, "source": "web",
-            "inactivity": "not_included",
+            "inactivity": "not_included", "setup_state": "na",
         })
 
     # ── Estate (re_tenants — its own table, tenant + owner in one row) ──────
@@ -826,7 +832,7 @@ def customers():
             "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
             "assigned_manager_name": assignment["manager_name"] if assignment else None,
             "heard": "Not answered", "heard_value": CUSTOMER_HEARD_NONE, "source": "web",
-            "inactivity": "not_included",
+            "inactivity": "not_included", "setup_state": "na",
         })
 
     import inactivity_core
@@ -837,7 +843,7 @@ def customers():
             x["inactivity"] = inact.get(x["ref_id"], "active")
 
     selected = {k: v for k, v in {
-        "inactivity": f_inactive, "source": f_source, "verified": f_verified, "active": f_active, "assigned": f_assigned,
+        "inactivity": f_inactive, "setup": f_setup, "source": f_source, "verified": f_verified, "active": f_active, "assigned": f_assigned,
         "product": f_product, "plan": f_plan, "heard": f_heard,
     }.items() if v}
 
@@ -845,7 +851,7 @@ def customers():
         return all(_customer_facet(x, k) in v for k, v in selected.items() if k != skip)
 
     facet_counts = {}
-    for key in ("source", "verified", "active", "assigned", "product", "plan", "heard", "inactivity"):
+    for key in ("source", "verified", "active", "assigned", "product", "plan", "heard", "inactivity", "setup"):
         counts = facet_counts.setdefault(key, {})
         for x in rows:
             if _passes(x, key):
@@ -894,6 +900,12 @@ def customers():
             "count": len(selected),
         })
     filter_groups.append({
+        "key": "setup", "label": "Set-up",
+        "options": [{"value": v, "label": lbl, "checked": v in f_setup, "n": facet_counts["setup"].get(v, 0)}
+                    for v, lbl in CUSTOMER_SETUP_OPTIONS],
+        "count": len(f_setup),
+    })
+    filter_groups.append({
         "key": "inactivity", "label": "Inactivity",
         "options": [{"value": v, "label": lbl, "checked": v in f_inactive, "n": facet_counts["inactivity"].get(v, 0)}
                     for v, lbl in CUSTOMER_INACTIVITY_OPTIONS],
@@ -927,6 +939,8 @@ def customers():
                       "href": _remove_filter_url("heard", val)})
     for val in f_plan:
         chips.append({"label": f"Plan: {val}", "href": _remove_filter_url("plan", val)})
+    for val in f_setup:
+        chips.append({"label": "Set-up: " + dict(CUSTOMER_SETUP_OPTIONS).get(val, val), "href": _remove_filter_url("setup", val)})
     if date_from:
         chips.append({"label": f"From {date_from}", "href": _remove_filter_url("date_from", date_from)})
     if date_to:
@@ -940,8 +954,24 @@ def customers():
         "estate": _sales_managers_for("estate"),
     }
 
+    # Totals at the top (2026-11-06): with the other filters applied, not the set-up one
+    sc = facet_counts.get("setup", {})
+    def _setup_url(v):
+        args = request.args.to_dict(flat=False)
+        args.pop("page", None)
+        cur_v = request.args.getlist("setup")
+        args["setup"] = [] if cur_v == [v] else [v]
+        if not args["setup"]:
+            args.pop("setup")
+        return f"{url_for('portal_admin.customers')}?{urlencode(args, doseq=True)}" if args else url_for('portal_admin.customers')
+    setup_summary = {"total": sum(sc.values()), "cards": [
+        {"key": k, "label": l, "n": sc.get(k, 0), "url": _setup_url(k), "on": f_setup == [k]}
+        for k, l in CUSTOMER_SETUP_OPTIONS]}
+    all_args = request.args.to_dict(flat=False); all_args.pop("setup", None); all_args.pop("page", None)
+    setup_summary["all_url"] = f"{url_for('portal_admin.customers')}?{urlencode(all_args, doseq=True)}" if all_args else url_for('portal_admin.customers')
+
     return render_template(
-        "portal/admin_customers.html", customers=rows, q=q,
+        "portal/admin_customers.html", customers=rows, q=q, setup_summary=setup_summary,
         sales_managers=sales_managers_by_product["portal"],
         platform_staff=_am_managers(),
         sales_managers_by_product=sales_managers_by_product,

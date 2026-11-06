@@ -27,7 +27,7 @@ def utc_now_naive():
 
 
 def send_email(to_email: str, subject: str, html_body: str, text_body: str | None = None,
-               cc_email: str | None = None, reply_to: str | None = None) -> bool:
+               cc_email: str | None = None, reply_to: str | None = None, inline_images=None) -> bool:
     """Send an email. Returns True on success, False on failure.
     Failures are printed to server logs but never raise exceptions so calling
     code decides how to surface the error to the customer."""
@@ -53,6 +53,14 @@ def send_email(to_email: str, subject: str, html_body: str, text_body: str | Non
     msg["Subject"] = subject
     msg.set_content(text_body or "Please view this email in an HTML-capable client.")
     msg.add_alternative(html_body, subtype="html")
+    # Images shown inside the email, e.g. a signature (2026-11-06):
+    # [(cid, bytes, "image/png"), ...]; the HTML uses <img src="cid:...">.
+    if inline_images:
+        html_part = msg.get_payload()[-1]
+        for cid, data, mime in inline_images:
+            maintype, subtype = (mime or "image/png").split("/", 1)
+            html_part.add_related(data, maintype=maintype, subtype=subtype, cid=f"<{cid}>",
+                                  filename=f"{cid}.{subtype}", disposition="inline")
 
     try:
         if use_ssl:
