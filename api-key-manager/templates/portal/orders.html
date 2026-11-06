@@ -57,6 +57,7 @@
   <div>
     <div class="section-title">Orders</div>
     <p class="muted">All WhatsApp orders from your customers, in real time.</p>
+    {% if _store_platform == 'shopify' %}<p class="muted" style="margin-top:4px">Your Shopify shop orders stay in Shopify. Orders PhiXtra made from your quotations are on the <a href="{{ url_for('portal.shopify_store') }}">Shopify Store</a> page.</p>{% endif %}
   </div>
   <a href="?status={{ status_filter }}&export=csv" class="btn btn-sm">
     Export CSV

@@ -1,0 +1,146 @@
+{% extends "portal/base.html" %}
+{% block title %}Shopify Store — PhiXtra Portal{% endblock %}
+{# Shopify Store (2026-11-06): the Shopify business's own page. Numbers come
+   from shopify_app._state (same as the Shopify app Home) + quotations.shopify_draft. #}
+
+{% block head %}
+<style>
+.ss-card{background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:14px}
+.ss-head{display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap}
+.ss-title{font-size:15px; font-weight:800; color:var(--ink); margin-bottom:6px}
+.ss-line{font-size:13.5px; color:var(--ink); margin:4px 0}
+.ss-muted{font-size:12.5px; color:var(--muted)}
+.ss-ok{color:#12b76a; font-weight:700}
+.ss-warn{color:#b54708; font-weight:700}
+.ss-table{width:100%; border-collapse:collapse; font-size:13px; margin-top:8px}
+.ss-table th{text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:700; padding:8px 8px; border-bottom:1px solid var(--line)}
+.ss-table td{padding:10px 8px; border-bottom:1px solid var(--line); vertical-align:middle}
+.ss-table tr:last-child td{border-bottom:none}
+.ss-pill{display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:700; background:rgba(3,12,24,.07); color:var(--ink)}
+.ss-pill.placed{background:rgba(18,183,106,.14); color:#067647}
+.ss-scroll{overflow-x:auto}
+.ss-foot{font-size:12.5px; color:var(--muted); margin-top:6px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom:20px">
+  <div>
+    <div class="section-title">Shopify Store</div>
+    <p class="muted">Your connected Shopify store: products, chat box, business buyers and the orders PhiXtra made from your quotations.</p>
+  </div>
+</div>
+
+{% set can_sync = 'ecom.shopify_store_sync' in granted_features and staff_can_open('portal.shopify_store_read_again') %}
+
+<div class="ss-card">
+  <div class="ss-head">
+    <div>
+      <div class="ss-title">{{ s.shop_name }}</div>
+      <div class="ss-line">{{ s.shop }}</div>
+      <div class="ss-muted">{% if s.currency %}Currency {{ s.currency }} · {% endif %}{% if s.linked_at %}Connected {{ s.linked_at.strftime('%-d %b %Y') }}{% endif %}</div>
+    </div>
+    <a class="btn btn-sm" href="{{ s.admin_url }}" target="_blank" rel="noopener">Open in Shopify ↗</a>
+  </div>
+</div>
+
+{% set p = s.products or {} %}
+<div class="ss-card">
+  <div class="ss-head">
+    <div>
+      <div class="ss-title">1. Products</div>
+      {% if p.error %}
+        <div class="ss-line ss-warn">⚠ The last product read didn't finish. Press Read products again.</div>
+      {% elif p.status == 'list_in_use' %}
+        <div class="ss-line ss-warn">⚠ Not read: your AI already uses a product list from Add products from Excel. Remove that list to use your Shopify products.</div>
+      {% elif p.status not in ('done', 'error', 'list_in_use') %}
+        <div class="ss-line">⏳ Reading your products{% if p.total %}: {{ p.done }} of {{ p.total }}{% endif %}…</div>
+      {% else %}
+        <div class="ss-line"><span class="ss-ok">✓</span> {{ p.count or 0 }} product{{ '' if (p.count or 0) == 1 else 's' }} read{% if p.off %} · {{ p.off }} switched off{% endif %}{% if p.minutes_ago is not none %} · last read {% if p.minutes_ago < 60 %}{{ p.minutes_ago }} min{% elif p.minutes_ago < 1440 %}{{ p.minutes_ago // 60 }} h{% else %}{{ p.minutes_ago // 1440 }} day{{ '' if p.minutes_ago // 1440 == 1 else 's' }}{% endif %} ago{% endif %}</div>
+      {% endif %}
+      {% if p.pages %}
+        {% if p.pages.protected %}
+        <div class="ss-line ss-warn">⚠ Your store is password-protected, so the AI can't read your store pages yet.</div>
+        {% else %}
+        <div class="ss-muted">Store pages read: {{ p.pages.read }}</div>
+        {% endif %}
+      {% endif %}
+      <div class="ss-muted">Changes you make in Shopify reach the AI by themselves.</div>
+    </div>
+    {% if can_sync %}
+    <form method="POST" action="{{ url_for('portal.shopify_store_read_again') }}">
+      <input type="hidden" name="what" value="products">
+      <button type="submit" class="btn btn-sm">Read products again</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% set c = s.chat or {} %}
+<div class="ss-card">
+  <div class="ss-head">
+    <div>
+      <div class="ss-title">2. Chat box on your store</div>
+      {% if c.seen_minutes_ago is not none and c.seen_minutes_ago < 10080 %}
+        <div class="ss-line"><span class="ss-ok">✓</span> Seen on your store {% if c.seen_minutes_ago < 60 %}{{ c.seen_minutes_ago }} min{% elif c.seen_minutes_ago < 1440 %}{{ c.seen_minutes_ago // 60 }} h{% else %}{{ c.seen_minutes_ago // 1440 }} day{{ '' if c.seen_minutes_ago // 1440 == 1 else 's' }}{% endif %} ago</div>
+      {% else %}
+        <div class="ss-line ss-warn">⚠ Not seen on your store yet. Switch on "PhiXtra chat" in your theme, then save.</div>
+      {% endif %}
+    </div>
+    <a class="btn btn-sm" href="{{ s.theme_url }}" target="_blank" rel="noopener">{% if c.seen_minutes_ago is not none and c.seen_minutes_ago < 10080 %}Open theme settings ↗{% else %}Switch on in your theme ↗{% endif %}</a>
+  </div>
+</div>
+
+{% if s.is_b2b %}
+{% set b = s.buyers or {} %}
+<div class="ss-card">
+  <div class="ss-head">
+    <div>
+      <div class="ss-title">3. Business buyers</div>
+      {% if s.b2b_error %}
+        <div class="ss-line ss-warn">⚠ The last read of your Shopify companies didn't finish. Press Read buyers again.</div>
+      {% elif b.status not in ('done', 'error') %}
+        <div class="ss-line">⏳ Reading your Shopify companies and buyers…</div>
+      {% else %}
+        <div class="ss-line"><span class="ss-ok">✓</span> {{ b.companies or 0 }} compan{{ 'y' if (b.companies or 0) == 1 else 'ies' }} · {{ b.contacts or 0 }} buyer{{ '' if (b.contacts or 0) == 1 else 's' }} read from Shopify</div>
+      {% endif %}
+      <div class="ss-muted">When a buyer chats or emails, PhiXtra matches them to their company and its prices.</div>
+    </div>
+    {% if can_sync %}
+    <form method="POST" action="{{ url_for('portal.shopify_store_read_again') }}">
+      <input type="hidden" name="what" value="buyers">
+      <button type="submit" class="btn btn-sm">Read buyers again</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="ss-card">
+  <div class="ss-title">{{ '4' if s.is_b2b else '3' }}. Orders from your quotations</div>
+  {% if s.orders %}
+  <div class="ss-scroll">
+  <table class="ss-table">
+    <thead><tr><th>Shopify</th><th>Buyer</th><th>Quotation</th><th style="text-align:right">Total</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for o in s.orders %}
+      <tr>
+        <td><b>{{ o.name }}</b></td>
+        <td>{{ o.buyer }}{% if o.site %}<div class="ss-muted">{{ o.site }}</div>{% endif %}</td>
+        <td><a href="{{ url_for('portal.quotes_request_detail', request_id=o.request_id) }}">{{ o.quote_no or 'Open' }}</a></td>
+        <td style="text-align:right;white-space:nowrap">{{ o.currency }} {{ '{:,.2f}'.format(o.total|float) if o.total else '' }}</td>
+        <td><span class="ss-pill {% if o.placed %}placed{% endif %}">{{ o.status }}</span></td>
+        <td><a class="btn btn-sm" href="{{ o.url }}" target="_blank" rel="noopener">Open ↗</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="ss-line">No orders yet.</div>
+  {% endif %}
+  <div class="ss-foot">Only orders PhiXtra made: when a quotation is won, PhiXtra turns it into a Shopify draft order. Your other Shopify orders stay in Shopify.</div>
+</div>
+
+<p class="ss-foot">To disconnect, uninstall PhiXtra in Shopify › Settings › Apps.</p>
+{% endblock %}

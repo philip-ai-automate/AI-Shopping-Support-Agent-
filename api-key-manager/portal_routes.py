@@ -501,6 +501,8 @@ PLAN_FEATURE_CATALOG = {
         ("ecom.customers_view",          "Customers — view"),
         ("ecom.woo_sync_view",           "WooCommerce Sync — view"),
         ("ecom.woo_sync_delete",         "Remove a WooCommerce Sync record"),
+        ("ecom.shopify_store_view",      "Shopify Store — view"),
+        ("ecom.shopify_store_sync",      "Read Shopify products / buyers again"),
         ("ecom.data_sources_view",       "Add products from Excel — view"),
         ("ecom.data_sources_create",     "Add products from an Excel file"),
         ("ecom.data_sources_edit",       "Edit an Excel file's columns / re-sync"),
@@ -723,6 +725,7 @@ ROLE_FORM_GRID = {
         {"label": "Order",    "view": "ecom.orders_view",   "edit": "ecom.orders_manage", "other": ["ecom.orders_cancel"]},
         {"label": "Customer", "view": "ecom.customers_view"},
         {"label": "WooCommerce Sync",  "view": "ecom.woo_sync_view", "delete": "ecom.woo_sync_delete"},
+        {"label": "Shopify Store",     "view": "ecom.shopify_store_view", "edit": "ecom.shopify_store_sync"},
         {"label": "Add products from Excel", "view": "ecom.data_sources_view", "create": "ecom.data_sources_create",
          "edit": "ecom.data_sources_edit", "delete": "ecom.data_sources_delete"},
         {"label": "Discount Settings", "view": "ecom.discount_settings_view", "edit": "ecom.discount_settings_edit"},
@@ -33165,6 +33168,103 @@ def data_source_google_setup(source_id: int):
 # ═══════════════════════════════════════════════════════════════════════════
 # WOO SYNC — read-only view of documents synced from WooCommerce plugin
 # ═══════════════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Shopify Store (2026-11-06, Step 2 of "menu follows the store platform"):
+# the Shopify business's own page — store, products read, chat box, B2B
+# buyers, and the Shopify orders PhiXtra made from won quotations (only those:
+# no read_orders scope, by decision). Same numbers as the Shopify app Home.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _shopify_store_ctx(tenant_id: int):
+    import shopify_orders, shopify_app
+    row = shopify_orders.shop_for(tenant_id)
+    if not row:
+        return None
+    st = shopify_app._state(row)
+    store = shopify_orders._store(row["shop"])
+    admin = f"https://admin.shopify.com/store/{store}"
+    st["admin_url"] = admin
+    st["theme_url"] = f"{admin}/themes/current/editor?context=apps&activateAppId={shopify_app._key()}/chat"
+    st["linked_at"] = row.get("linked_at") or row.get("installed_at")
+    st["b2b_last"] = row.get("b2b_read_at")
+    st["b2b_error"] = bool(row.get("b2b_error")) and (row.get("b2b_status") == "error")
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""SELECT DISTINCT ON (q.request_id) q.request_id, q.number, q.shopify_draft
+                         FROM quotations q
+                        WHERE q.tenant_id=%s AND q.shopify_draft IS NOT NULL
+                        ORDER BY q.request_id, q.version DESC, q.id DESC""", (tenant_id,))
+        rows = cur.fetchall() or []
+    finally:
+        cur.close(); conn.close()
+    orders = []
+    for r in rows:
+        dr = r["shopify_draft"] or {}
+        if not dr.get("name") or dr.get("status") == "deleted":
+            continue
+        b = dr.get("buyer") or {}
+        stt = dr.get("status")
+        orders.append({
+            "request_id": r["request_id"], "quote_no": r.get("number") or "",
+            "name": dr["name"], "buyer": b.get("company") or b.get("name") or "",
+            "site": b.get("site") or "", "total": dr.get("total") or "", "currency": dr.get("currency") or "",
+            "status": {"completed": "Order placed", "invoice_sent": "Invoice sent"}.get(stt, "Draft order"),
+            "placed": stt == "completed",
+            "url": shopify_orders.order_url(row["shop"], dr["order_id"]) if dr.get("order_id")
+                   else shopify_orders.admin_url(row["shop"], dr["id"]),
+            "created_at": dr.get("created_at") or "",
+        })
+    orders.sort(key=lambda o: o["created_at"], reverse=True)
+    st["orders"] = orders
+    return st
+
+
+@portal_bp.route("/shopify-store")
+@team_feature("ecom.shopify_store_view")
+def shopify_store():
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("ecom.shopify_store_view")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.shopify_store_view", "Shopify Store")
+    if r2: return r2
+    st = _shopify_store_ctx(tenant_id)
+    if not st:
+        flash("No Shopify store is connected to this account.", "info")
+        return redirect(url_for("portal.home"))
+    return render_template("portal/shopify_store.html", customer=customer, s=st)
+
+
+@portal_bp.route("/shopify-store/read-again", methods=["POST"])
+@team_feature("ecom.shopify_store_sync")
+def shopify_store_read_again():
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("ecom.shopify_store_sync")
+    if _rperm: return _rperm
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "ecom.shopify_store_sync", "Shopify Store")
+    if r2: return r2
+    import shopify_orders
+    row = shopify_orders.shop_for(tenant_id)
+    if not row:
+        return redirect(url_for("portal.shopify_store"))
+    what = request.form.get("what")
+    if what == "buyers":
+        import shopify_b2b
+        shopify_b2b.queue_read(row["shop"])
+        flash("Reading your Shopify companies and buyers again. This takes a minute or two.", "success")
+    else:
+        import shopify_sync
+        shopify_sync.request_full_read(row["shop"])
+        flash("Reading your Shopify products again. Refresh this page in a few minutes.", "success")
+    return redirect(url_for("portal.shopify_store"))
+
 
 @portal_bp.route("/woo-sync")
 @team_feature("ecom.woo_sync_view")

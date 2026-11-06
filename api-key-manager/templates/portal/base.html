@@ -1149,7 +1149,7 @@
     {% set _commerce_group = request.endpoint in (
         'portal.products', 'portal.product_add', 'portal.product_edit',
         'portal.product_delete', 'portal.orders', 'portal.order_detail',
-        'portal.customers', 'portal.customer_detail',
+        'portal.customers', 'portal.customer_detail', 'portal.shopify_store',
         'portal.catalogue_browse', 'portal.catalogue_category', 'portal.catalogue_selections',
         'portal.woo_sync',
         'portal.data_sources', 'portal.data_source_upload', 'portal.data_source_map',
@@ -1199,6 +1199,14 @@
           {% if 'ecom.woo_sync_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
+        {% endif %}
+        {# Shopify Store (2026-11-06): Shopify businesses only, where WooCommerce Sync sits for WooCommerce shops #}
+        {% if _store_platform == 'shopify' and staff_can_open('portal.shopify_store') %}
+        <a href="{{ url_for('portal.shopify_store') }}"
+           class="{% if request.endpoint == 'portal.shopify_store' %}active{% endif %}">
+          Shopify Store
+          {% if 'ecom.shopify_store_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </a>
         {% endif %}
         {% if staff_can_open('portal.data_sources') %}
         <a href="{{ url_for('portal.data_sources') }}"
