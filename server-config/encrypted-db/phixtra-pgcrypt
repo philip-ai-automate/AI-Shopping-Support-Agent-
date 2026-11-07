@@ -1,0 +1,21 @@
+#!/bin/bash
+# Unlock + mount the encrypted database area (/vault/pgcrypt.img → /srv/pgcrypt).
+# 7 Nov 2026, Shopify 7A item 9. Key: /etc/phixtra/pg-volume.key (copy in owner's password manager).
+set -euo pipefail
+IMG=/vault/pgcrypt.img; KEY=/etc/phixtra/pg-volume.key; MNT=/srv/pgcrypt
+case "${1:-}" in
+  start)
+    mountpoint -q /vault || { echo "/vault not mounted"; exit 1; }
+    if [ ! -e /dev/mapper/pgcrypt ]; then
+      LOOP=$(losetup -j "$IMG" | cut -d: -f1 | head -1)
+      [ -n "$LOOP" ] || LOOP=$(losetup --find --show "$IMG")
+      cryptsetup open --key-file "$KEY" "$LOOP" pgcrypt
+    fi
+    mkdir -p "$MNT"
+    mountpoint -q "$MNT" || mount -o noatime /dev/mapper/pgcrypt "$MNT" ;;
+  stop)
+    mountpoint -q "$MNT" && umount "$MNT" || true
+    [ -e /dev/mapper/pgcrypt ] && cryptsetup close pgcrypt || true
+    for L in $(losetup -j "$IMG" | cut -d: -f1); do losetup -d "$L"; done ;;
+  *) echo "usage: $0 start|stop"; exit 2 ;;
+esac

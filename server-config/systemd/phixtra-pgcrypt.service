@@ -1,0 +1,13 @@
+[Unit]
+Description=PhiXtra encrypted database area (/srv/pgcrypt)
+RequiresMountsFor=/vault
+Before=postgresql@14-main.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/phixtra-pgcrypt start
+ExecStop=/usr/local/sbin/phixtra-pgcrypt stop
+
+[Install]
+WantedBy=multi-user.target

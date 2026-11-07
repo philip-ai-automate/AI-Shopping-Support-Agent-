@@ -1661,6 +1661,10 @@ def _add_logged_in(tenant_id: int, session_id: str, r: dict):
             cur.close(); conn.close()
         if not v:
             return
+        import data_crypto     # stored encrypted (7 Nov 2026)
+        v = dict(v)
+        for k in ("name", "email", "phone", "company"):
+            v[k] = data_crypto.dec(v.get(k))
         if v["email"] and not r.get("email"):
             r["email"] = v["email"]
         if v["phone"]:

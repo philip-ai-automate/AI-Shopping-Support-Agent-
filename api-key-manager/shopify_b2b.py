@@ -169,18 +169,24 @@ def fingerprint(secret: str, kind: str, value: str) -> str:
 
 
 def _fernet():
+    """OLD key (portal login key). Only for reading names saved before 7 Nov 2026."""
     from cryptography.fernet import Fernet
     raw = os.getenv("PORTAL_SECRET_KEY", "fallback-insecure-key-change-me")
     return Fernet(base64.urlsafe_b64encode(hashlib.sha256(raw.encode()).digest()))
 
 
 def _enc(s: str):
-    return _fernet().encrypt(s.encode()).decode() if s else None
+    """7 Nov 2026: names are encrypted with the data key (data_crypto), not the portal login key."""
+    import data_crypto
+    return data_crypto.enc(s) if s else None
 
 
 def _dec(s: str) -> str:
     if not s:
         return ""
+    import data_crypto
+    if data_crypto.is_enc(s):
+        return data_crypto.dec(s) or ""
     try:
         return _fernet().decrypt(s.encode()).decode()
     except Exception:
@@ -579,6 +585,11 @@ def inbox_card(tenant_id: int, key: str, webchat_conv: dict = None) -> dict:
             if cur.fetchone()["ok"]:
                 cur.execute("SELECT * FROM chat_visitors WHERE tenant_id=%s AND session_id=%s", (tenant_id, sid[:64]))
                 v = cur.fetchone()
+                if v:       # stored encrypted (7 Nov 2026)
+                    import data_crypto
+                    v = dict(v)
+                    for k in ("name", "email", "phone", "company"):
+                        v[k] = data_crypto.dec(v.get(k))
             wc = webchat_conv or {}
             emails = [e for e in (wc.get("visitor_email"), (v or {}).get("email")) if e]
             phones = [p for p in (wc.get("whatsapp_number"), (v or {}).get("phone")) if p]

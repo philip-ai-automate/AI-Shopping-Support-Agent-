@@ -6,9 +6,15 @@ phone and company with each chat message. They are kept per chat, so the
 AI doesn't ask for them again, and AI Lead Qualification (portal,
 lead_qualify.qualify_chat) puts them on the lead it makes from the chat.
 Only what the website sends is kept; nothing is looked up elsewhere.
+
+7 Nov 2026 (Shopify 7A item 9): name, email, phone and company are stored
+ENCRYPTED with the data key (data_crypto.py). Readers decrypt with
+data_crypto.dec. Rows are deleted 90 days after the chat
+(api-key-manager/chat_visitors_job.py).
 """
 import re
 
+import data_crypto
 from db import get_db_connection
 
 _ok = False
@@ -32,6 +38,12 @@ def _ensure(cur):
     # the buyer's selected B2B company location.
     cur.execute("ALTER TABLE chat_visitors ADD COLUMN IF NOT EXISTS shopify_signed BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE chat_visitors ADD COLUMN IF NOT EXISTS shopify_location_id VARCHAR(30)")
+    # 7 Nov 2026: encrypted values are longer than the old VARCHAR limits.
+    cur.execute("""SELECT 1 FROM information_schema.columns WHERE table_name='chat_visitors'
+                     AND column_name='name' AND data_type<>'text'""")
+    if cur.fetchone():
+        for c in ("name", "email", "phone", "company"):
+            cur.execute(f"ALTER TABLE chat_visitors ALTER COLUMN {c} TYPE TEXT")
     _ok = True
 
 
@@ -75,8 +87,9 @@ def save(tenant_id: int, session_id: str, v: dict) -> dict:
                                shopify_signed=EXCLUDED.shopify_signed OR chat_visitors.shopify_signed,
                                shopify_location_id=COALESCE(EXCLUDED.shopify_location_id, chat_visitors.shopify_location_id),
                                updated_at=NOW()""",
-                        (int(tenant_id), str(session_id)[:64], v["name"] or None, v["email"] or None,
-                         v["phone"] or None, v["company"] or None, bool(v.get("shopify_signed")),
+                        (int(tenant_id), str(session_id)[:64], data_crypto.enc(v["name"] or None),
+                         data_crypto.enc(v["email"] or None), data_crypto.enc(v["phone"] or None),
+                         data_crypto.enc(v["company"] or None), bool(v.get("shopify_signed")),
                          v.get("shopify_location_id")))
             conn.commit()
             cur.close()
