@@ -1,0 +1,20 @@
+{% extends "portal/base.html" %}
+{% block title %}Record Access{% endblock %}
+{% block content %}
+<style>
+  .ra-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+  .ra-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:12px;color:var(--muted)}
+  .ra-card b{display:block;font-size:18px;color:var(--ink);margin:2px 0}
+</style>
+<div class="page-header">
+  <h1 class="section-title">Record Access</h1>
+  <p class="muted">Who in your team opened or exported a lead, contact, customer, company or conversation.
+    Kept for 12 months and can't be changed. Times are {{ tz_label }} time.</p>
+</div>
+<div class="ra-cards">
+  <div class="ra-card">Records opened today<b>{{ '{:,}'.format(s.opens) }}</b></div>
+  <div class="ra-card">Exports and downloads today<b>{{ '{:,}'.format(s.exports) }}</b></div>
+  <div class="ra-card">Rows exported today<b>{{ '{:,}'.format(s.rows) }}</b></div>
+</div>
+{% include "portal/_access_log_table.html" %}
+{% endblock %}

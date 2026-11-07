@@ -88,6 +88,8 @@ def insert_audit_log(action: str, tenant_id=None, website=None, key_type=None, a
 
     It never throws: failures are printed and ignored so your API does not crash.
     """
+    # Never store full API keys in the log (Shopify 7A item 15, decision 6): last 4 only.
+    api_key_plain = None
     try:
         conn = get_db_connection()
         if not conn:

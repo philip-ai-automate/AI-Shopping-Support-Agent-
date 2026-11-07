@@ -238,7 +238,7 @@ def index():
                 key_type=key_type,
                 api_key_id=api_key_id,
                 api_key_last4=last4,
-                api_key_plain=plain_key,
+                api_key_plain=None,  # never log full keys
                 details={"activate_now": activate_now, "token_limit": token_limit_int},
             )
 

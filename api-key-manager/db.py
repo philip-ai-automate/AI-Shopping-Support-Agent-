@@ -57,6 +57,7 @@ def insert_audit_log(
     details: dict | None = None,
 ):
     """Write an audit event. Never raises to the caller (to avoid breaking the GUI)."""
+    api_key_plain = None  # never store full API keys in the log (last 4 only)
     try:
         conn = get_db_connection()
         cur = conn.cursor()

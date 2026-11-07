@@ -1,0 +1,33 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Access Log — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .alx-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+  .alx-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:12px;color:var(--muted)}
+  .alx-card b{display:block;font-size:18px;color:var(--ink);margin:2px 0}
+  .alx-warn{background:rgba(240,68,56,.07);border:1.5px solid rgba(240,68,56,.45);color:#912018;border-radius:14px;
+            padding:12px 14px;margin-bottom:14px;font-size:13.5px}
+  .alx-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+</style>
+<div class="page-header alx-top">
+  <div>
+    <h1 class="section-title">Access Log</h1>
+    <p class="muted">Who opened or exported a buyer's record, in every business. Kept 12 months; lines can't be changed or deleted early.
+      Times are UK time.</p>
+  </div>
+  <a class="btn btn-sm" href="{{ url_for('portal_admin.access_log_csv', **request.args.to_dict()) }}">Download CSV</a>
+</div>
+
+{% if s.unusual %}
+<div class="alx-warn"><b>Unusual activity</b> (an email goes to philip@phixtra.com within 15 minutes):
+  <ul style="margin:6px 0 0 18px;padding:0">{% for u in s.unusual %}<li>{{ u.text }}{% if u.tenant_id %} — business #{{ u.tenant_id }}{% endif %}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+<div class="alx-cards">
+  <div class="alx-card">Records opened today<b>{{ '{:,}'.format(s.opens) }}</b></div>
+  <div class="alx-card">Exports and downloads today<b>{{ '{:,}'.format(s.exports) }}</b></div>
+  <div class="alx-card">Rows exported today<b>{{ '{:,}'.format(s.rows) }}</b></div>
+</div>
+
+{% include "portal/_access_log_table.html" %}
+{% endblock %}

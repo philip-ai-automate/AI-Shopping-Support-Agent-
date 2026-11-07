@@ -523,6 +523,7 @@ PLAN_FEATURE_CATALOG = {
     ],
     "Team": [
         ("team.manage",                    "Team — view"),
+        ("team.record_access_view",        "Record Access — see who opened or exported records"),
         ("team.members_create",            "Create a team member"),
         ("team.members_edit",              "Edit a team member's details"),
         ("team.members_assign_role",       "Change a team member's role"),
@@ -739,6 +740,7 @@ ROLE_FORM_GRID = {
     ],
     "Team": [
         {"label": "Team", "view": "team.manage"},
+        {"label": "Record Access", "view": "team.record_access_view"},
         {"label": "Team Member", "create": "team.members_create", "edit": "team.members_edit", "delete": "team.members_remove", "needs_view": "team.manage",
          "other": ["team.members_assign_role", "team.members_deactivate", "team.members_reset_password",
                    "team.members_agent_access", "team.members_messenger_access", "team.members_webchat_access",
@@ -5151,6 +5153,32 @@ def reset_password():
 # ══════════════════════════════════════════════════════════════════════════════
 # SHARED TEAM INBOX — staff logins scoped to the Inbox only
 # ══════════════════════════════════════════════════════════════════════════════
+
+@portal_bp.route("/team/record-access")
+@team_feature("team.record_access_view")
+def record_access():
+    """Settings › Team › Record Access — who in this business opened or exported
+    a buyer's record (Shopify 7A item 15, 7 Nov 2026). Owner always; a team
+    member only with the Record Access tick. Lines written while a PhiXtra
+    admin was viewing as the business are never shown here (user decision)."""
+    r = _require_login()
+    if r: return r
+    customer = _get_customer(_customer_id())
+    r2 = _require_plan_sub_feature(customer, "team.record_access_view", "Record Access")
+    if r2: return r2
+    r3 = _require_team_permission("team.record_access_view")
+    if r3: return r3
+    import access_log as al
+    tenant_id = int(customer["tenant_id"])
+    a = request.args
+    f = {k: (a.get(k) or "").strip() for k in ("date_from", "date_to", "who", "action", "record_type", "record")}
+    page = max(int(a.get("page") or 1) if (a.get("page") or "1").isdigit() else 1, 1)
+    rows, total = al.search(f, tenant_id=tenant_id, limit=100, offset=(page - 1) * 100)
+    tz = _tp.tz_for(tenant_id)
+    return render_template("portal/record_access.html", rows=al.view_rows(rows, tz), total=total, page=page,
+                           pages=max((total + 99) // 100, 1), f=f, admin=False, links=True, tz_label=_tp.tz_label(tz),
+                           s=al.today_summary(tenant_id), actions=al.ACTIONS, types=al.TYPES)
+
 
 @portal_bp.route("/team")
 @team_feature("team.manage")
@@ -13062,22 +13090,10 @@ def chat_archive():
 
     # Build session_data_json for the JS inline viewer.
     # Summaries only fetched for paid tiers.
+    # Transcripts are no longer pre-loaded: clicking a chat fetches it from
+    # chat_archive_session_view, so each opened chat is in the access log
+    # (Shopify 7A item 15, user choice A, 7 Nov 2026).
     session_data = {}
-    for s in sessions[:50]:
-        sid  = s["session_id"]
-        msgs = _get_session_messages(tenant_id, sid)
-        summ = _get_session_summary(tenant_id, sid) if summaries_allowed else ""
-        session_data[sid] = {"messages": msgs, "summary": summ}
-
-    # If a specific session was requested via ?open= (e.g. from a handoff email link)
-    # and it wasn't in the first 50 sessions, fetch it directly so the modal can open.
-    if open_session_id and open_session_id not in session_data:
-        try:
-            msgs = _get_session_messages(tenant_id, open_session_id)
-            summ = _get_session_summary(tenant_id, open_session_id) if summaries_allowed else ""
-            session_data[open_session_id] = {"messages": msgs, "summary": summ}
-        except Exception as _oe:
-            print(f"⚠️ chat_archive: could not pre-load open session {open_session_id}: {_oe}")
 
     # Build filter query string for export links
     qs_parts = []
@@ -13191,6 +13207,32 @@ def chat_archive_export(fmt: str):
         return _export_docx(title, subtitle, summary_pairs, headers, rows_out)
     else:
         return _export_pdf(title, subtitle, summary_pairs, headers, rows_out)
+
+
+@portal_bp.route("/chat-archive/session/<session_id>/view")
+@team_feature("woo.chat_archive_view")
+def chat_archive_session_view(session_id: str):
+    """One archived chat as JSON for the Chat Archive viewer. Each call is an
+    "opened" line in the access log (item 15, 7 Nov 2026)."""
+    r = _require_login()
+    if r: return jsonify({"ok": False, "error": "login"}), 401
+    _rperm = _require_team_permission("woo.chat_archive_view")
+    if _rperm: return jsonify({"ok": False, "error": "permission"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "woo.chat_archive_view", "Chat Archive")
+    if r2: return jsonify({"ok": False, "error": "plan"}), 403
+    summaries_allowed = (_has_feature(tenant_id, "chat_archive_unlimited")
+                         or _has_feature(tenant_id, "chat_archive_30days"))
+    try:
+        msgs = _get_session_messages(tenant_id, session_id)
+        summ = _get_session_summary(tenant_id, session_id) if summaries_allowed else ""
+    except Exception as e:
+        print(f"⚠️ chat_archive_session_view {session_id}: {e}")
+        return jsonify({"ok": False, "error": "load"}), 500
+    resp = jsonify({"ok": True, "messages": msgs, "summary": summ})
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @portal_bp.route("/chat-archive/session/<session_id>/export/<fmt>")
@@ -35165,6 +35207,7 @@ def my_inbox():
                 active_phone = conversations[0]["customer_phone"]
             if active_phone:
                 messages = _get_inbox_messages(tenant_id, active_phone)
+                g.access_inbox_key = active_phone     # access log (item 15, 7 Nov 2026)
 
     active_handoff_session = None
     if active_phone and not is_messenger_active and not is_webchat_active and conversations:
@@ -35207,6 +35250,7 @@ def my_inbox():
                 active_phone = messenger_conversations[0]["key"] if messenger_conversations else None
             if active_phone:
                 messenger_messages = _get_messenger_messages(tenant_id, active_phone)
+                g.access_inbox_key = active_phone     # access log (item 15)
 
     # Web Chat — the AI website chat widget's human-handoff requests,
     # brought into the Inbox 2026-09-18 (previously only a Dashboard card,
@@ -35226,6 +35270,7 @@ def my_inbox():
                 active_phone = webchat_conversations[0]["key"] if webchat_conversations else None
             if active_phone:
                 webchat_messages = _get_webchat_messages(tenant_id, active_phone)
+                g.access_inbox_key = active_phone     # access log (item 15)
 
     shopify_strip = {}
     if active_phone and not is_messenger_active:

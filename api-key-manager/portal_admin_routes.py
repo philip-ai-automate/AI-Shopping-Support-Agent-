@@ -6648,6 +6648,55 @@ def backups_key_saved():
     return redirect(url_for("portal_admin.backups"))
 
 
+def _access_log_filters():
+    a = request.args
+    return {k: (a.get(k) or "").strip() for k in ("date_from", "date_to", "who", "tenant_id", "kind", "action",
+                                                   "record_type", "record")}
+
+
+@portal_admin_bp.route("/access-log")
+def access_log():
+    """Admin › Access Log — who opened / exported buyers' records (owner only, item 15, 7 Nov 2026)."""
+    r = _require_owner()
+    if r: return r
+    import access_log as al
+    from zoneinfo import ZoneInfo
+    f = _access_log_filters()
+    if f["tenant_id"] and not f["tenant_id"].isdigit():
+        f["tenant_id"] = ""
+    _pg = request.args.get("page") or "1"
+    page = max(int(_pg) if _pg.isdigit() else 1, 1)
+    rows, total = al.search(f, limit=100, offset=(page - 1) * 100)
+    return render_template("portal/admin_access_log.html", rows=al.view_rows(rows, ZoneInfo("Europe/London")),
+                           total=total, page=page, pages=max((total + 99) // 100, 1), f=f, admin=True, links=False,
+                           tz_label="UK", s=al.today_summary(), actions=al.ACTIONS, types=al.TYPES)
+
+
+@portal_admin_bp.route("/access-log.csv")
+def access_log_csv():
+    r = _require_owner()
+    if r: return r
+    import access_log as al, csv, io
+    from zoneinfo import ZoneInfo
+    f = _access_log_filters()
+    if f["tenant_id"] and not f["tenant_id"].isdigit():
+        f["tenant_id"] = ""
+    rows, total = al.search(f, limit=50000)
+    rows = al.view_rows(rows, ZoneInfo("Europe/London"))
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["When (UK)", "Business no.", "Business", "Who", "Action", "Record", "Rows", "Detail", "IP", "Browser"])
+    for x in rows:
+        w.writerow([x["at_local"].strftime("%Y-%m-%d %H:%M:%S") if x["at_local"] else "", x["tenant_id"] or "",
+                    x.get("tenant_name") or "", x["who"], x["action_label"], x["record_label"],
+                    "" if x["rows_count"] is None else x["rows_count"], x.get("detail") or "", x.get("ip") or "",
+                    x.get("browser") or ""])
+    al.write_admin_export(_admin_user(), "Access Log", len(rows), int(f["tenant_id"]) if f["tenant_id"] else None, request)
+    from flask import Response
+    return Response(buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=phixtra-access-log.csv"})
+
+
 @portal_admin_bp.route("/inactive-accounts")
 def inactive_accounts():
     r = _require_admin("customers", "view")

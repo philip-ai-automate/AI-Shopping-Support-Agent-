@@ -378,9 +378,28 @@
   var FIXED_REFS        = {{ fixed_refs_json | safe }};
   var STORE_INFO_FIXES  = '{{ url_for("portal.store_info", view="corrections") }}';
 
+  // Each chat is fetched when opened (so it is in the access log), then kept for this visit.
+  var VIEW_URL = '{{ url_for("portal.chat_archive_session_view", session_id="SESS_ID") }}';
   function openChat(sessionId) {
-    var data = SESSION_DATA[sessionId];
-    if (!data) return;
+    if (SESSION_DATA[sessionId]) return showChat(sessionId, SESSION_DATA[sessionId]);
+    document.getElementById('chatModalTitle').textContent = 'Conversation — ' + sessionId.substring(0, 20) + '…';
+    document.getElementById('chatModalBody').innerHTML =
+      '<div style="text-align:center;color:var(--muted);padding:24px">Loading…</div>';
+    document.getElementById('chatOverlay').classList.add('open');
+    fetch(VIEW_URL.replace('SESS_ID', encodeURIComponent(sessionId)), {credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error || 'load');
+        SESSION_DATA[sessionId] = {messages: d.messages, summary: d.summary};
+        showChat(sessionId, SESSION_DATA[sessionId]);
+      })
+      .catch(function () {
+        document.getElementById('chatModalBody').innerHTML =
+          '<div style="text-align:center;color:#b91c1c;padding:24px">Could not load this conversation. Please try again.</div>';
+      });
+  }
+
+  function showChat(sessionId, data) {
     var overlay = document.getElementById('chatOverlay');
     var body    = document.getElementById('chatModalBody');
     var title   = document.getElementById('chatModalTitle');

@@ -84,6 +84,10 @@ def create_app():
     import portal_presence
     from flask import request as _pr_req, session as _pr_sess
     flask_app.before_request(lambda: portal_presence.record(_pr_req, _pr_sess))
+
+    # Access log (Shopify 7A item 15, 7 Nov 2026): who opened / exported a buyer's record
+    import access_log
+    flask_app.after_request(access_log.after_request)
     flask_app.context_processor(demo_bar_context)
 
     # Feature -> Roles/Modules update policy (feature_access.py): grant any

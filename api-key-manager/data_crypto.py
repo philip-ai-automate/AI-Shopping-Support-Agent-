@@ -65,3 +65,12 @@ def dec(s):
 
 def is_enc(s) -> bool:
     return isinstance(s, str) and s.startswith(PREFIX)
+
+
+def fingerprint(kind: str, value) -> str:
+    """Keyed fingerprint of a value (e.g. a phone number in the access log), so
+    an exact value can be searched for without being stored. '' for empty."""
+    if value is None or value == "":
+        return ""
+    k = hmac.new(_raw(), b"phixtra-fp-v1", hashlib.sha256).digest()
+    return hmac.new(k, f"{kind}:{value}".encode(), hashlib.sha256).hexdigest()

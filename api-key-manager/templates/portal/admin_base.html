@@ -286,6 +286,10 @@
        href="{{ url_for('portal_admin.backups') }}">
       <span class="asb-icon">💾</span> Backups
     </a>
+    <a class="asb-link {% if request.endpoint and request.endpoint.startswith('portal_admin.access_log') %}active{% endif %}"
+       href="{{ url_for('portal_admin.access_log') }}">
+      <span class="asb-icon">🔍</span> Access Log
+    </a>
     {% endif %}
     {% set _comeback_group = request.endpoint and request.endpoint.startswith('portal_admin.comeback_sequence') %}
     <div class="asb-group-toggle {% if _comeback_group %}open{% endif %}" onclick="asbGroupToggle(this)">

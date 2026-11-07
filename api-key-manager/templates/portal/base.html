@@ -1474,7 +1474,7 @@
     <!-- ── Settings group (2026-10-24): Account Settings, Integration and Team
          (as its own sub-menu) in one place; Credits & Billing joined as a
          sub-menu too. Same pages, ticks and padlocks. -->
-    {% set _team_group = request.endpoint and (request.endpoint == 'portal.team_page' or request.endpoint.startswith('portal.team_create') or request.endpoint.startswith('portal.team_role') or request.endpoint.startswith('portal.team_department') or request.endpoint.startswith('portal.team_position')) %}
+    {% set _team_group = request.endpoint and (request.endpoint == 'portal.team_page' or request.endpoint.startswith('portal.team_create') or request.endpoint.startswith('portal.team_role') or request.endpoint.startswith('portal.team_department') or request.endpoint.startswith('portal.team_position') or request.endpoint == 'portal.record_access') %}
     {% set _bill_group = request.endpoint in ('portal.billing', 'portal.billing_plans', 'portal.invoices', 'portal.billing_subscribe', 'portal.billing_subscribe_checkout', 'portal.payment_settings') %}
     {% set _set_group = _team_group or _bill_group or request.endpoint in ('portal.settings', 'portal.whatsapp_connect', 'portal.channels_page', 'buffer.connect', 'mailbox.page') %}
     <div class="sb-group">
@@ -1528,6 +1528,9 @@
             {% endif %}
             {% if staff_can_open('portal.team_positions_page') %}
             <a href="{{ url_for('portal.team_positions_page') }}" class="{% if request.endpoint and request.endpoint.startswith('portal.team_position') %}active{% endif %}">Positions</a>
+            {% endif %}
+            {% if staff_can_open('portal.record_access') %}
+            <a href="{{ url_for('portal.record_access') }}" class="{% if request.endpoint == 'portal.record_access' %}active{% endif %}">Record Access</a>
             {% endif %}
           </div>
         </div>

@@ -552,6 +552,7 @@ def lead_card(tenant_id: int, lead_id: int) -> dict:
     if not chosen and len(mine) == 1:
         chosen = mine[0]
     store = k["shop"].replace(".myshopify.com", "")
+    import access_log; access_log.mark_trade_card()     # item 15 (7 Nov 2026)
     return {"company": k["company"] or "(company removed in Shopify)", "company_id": k["company_id"],
             "contact_name": _dec(k["name_enc"]), "main_contact": bool(k["is_main"]),
             "how": k["how"], "certain": bool(k["certain"]),
@@ -606,6 +607,7 @@ def inbox_card(tenant_id: int, key: str, webchat_conv: dict = None) -> dict:
     store = m["shop"].replace(".myshopify.com", "")
     locs = [{"location_id": l["location_id"], "name": l["name"], "payment_terms": l["payment_terms"]} for l in m["locations"]]
     loc = m.get("location")
+    import access_log; access_log.mark_trade_card()     # item 15 (7 Nov 2026)
     return {"company": m["company"], "certain": m["certain"], "how": m["how"], "locations": locs,
             "location": {"name": loc["name"], "payment_terms": loc["payment_terms"]} if loc else None,
             "admin_url": f"https://admin.shopify.com/store/{store}/companies/{m['company_id']}"}

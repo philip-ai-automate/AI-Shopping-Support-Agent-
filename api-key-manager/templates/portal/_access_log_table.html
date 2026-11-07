@@ -1,0 +1,85 @@
+{# Shared by Admin › Access Log and Settings › Team › Record Access (item 15, 7 Nov 2026).
+   Needs: rows (access_log.view_rows), f (filters), total, page, pages, admin (bool), tz_label, links (bool) #}
+<style>
+  .al-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin:0 0 14px;background:#fff;border:1px solid var(--line);
+              border-radius:14px;padding:12px}
+  .al-filters label{display:flex;flex-direction:column;font-size:11px;font-weight:700;color:var(--muted);gap:3px}
+  .al-filters input,.al-filters select{font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;min-width:120px}
+  .al-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;font-size:13px}
+  .al-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);padding:9px 10px;
+               border-bottom:1px solid var(--line);background:rgba(3,12,24,.02)}
+  .al-table td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  .al-table tr:last-child td{border-bottom:0}
+  .al-tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;background:rgba(3,12,24,.06)}
+  .al-tag.exported,.al-tag.downloaded{background:rgba(247,144,9,.12);color:#93370D}
+  .al-tag.phixtra{background:rgba(46,144,250,.1);color:#194185}
+  .al-small{font-size:11.5px;color:var(--muted)}
+  .al-pager{display:flex;gap:8px;align-items:center;margin-top:12px;font-size:12.5px;color:var(--muted)}
+  .al-empty{font-size:13px;color:var(--muted);padding:16px;background:#fff;border:1px dashed var(--line);border-radius:12px}
+  @media (max-width:760px){ .al-table .al-hide-sm{display:none} }
+</style>
+
+<form method="get" class="al-filters">
+  <label>From <input type="date" name="date_from" value="{{ f.date_from or '' }}"></label>
+  <label>To <input type="date" name="date_to" value="{{ f.date_to or '' }}"></label>
+  <label>Who <input type="text" name="who" value="{{ f.who or '' }}" placeholder="Name"></label>
+  {% if admin %}
+  <label>Business no. <input type="number" name="tenant_id" value="{{ f.tenant_id or '' }}" style="min-width:90px"></label>
+  <label>Kind
+    <select name="kind">
+      <option value="">Everyone</option>
+      <option value="owner" {% if f.kind=='owner' %}selected{% endif %}>Business owners</option>
+      <option value="team" {% if f.kind=='team' %}selected{% endif %}>Team members</option>
+      <option value="phixtra" {% if f.kind=='phixtra' %}selected{% endif %}>PhiXtra admins</option>
+    </select></label>
+  {% endif %}
+  <label>Action
+    <select name="action">
+      <option value="">All</option>
+      {% for k, v in actions.items() %}<option value="{{ k }}" {% if f.action==k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+    </select></label>
+  <label>Record type
+    <select name="record_type">
+      <option value="">All</option>
+      {% for k, v in types.items() %}<option value="{{ k }}" {% if f.record_type==k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+    </select></label>
+  <label>Record <input type="text" name="record" value="{{ f.record or '' }}" placeholder="Lead no. or full phone"></label>
+  <button class="btn btn-sm">Filter</button>
+  {% if f.values()|select|list %}<a class="btn btn-sm" href="?">Clear</a>{% endif %}
+</form>
+
+{% if rows %}
+<table class="al-table">
+  <thead><tr>
+    <th>When ({{ tz_label }})</th>{% if admin %}<th>Business</th>{% endif %}<th>Who</th><th>Action</th><th>Record</th>
+    <th class="al-hide-sm">From</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td style="white-space:nowrap">{{ r.at_local.strftime('%-d %b %Y %H:%M') if r.at_local else '' }}</td>
+      {% if admin %}<td>{{ r.tenant_name or '—' }}{% if r.tenant_id %} <span class="al-small">#{{ r.tenant_id }}</span>{% endif %}</td>{% endif %}
+      <td>{% if r.actor_kind=='phixtra' %}<span class="al-tag phixtra">{{ r.who }}</span>{% else %}{{ r.who }}{% endif %}</td>
+      <td><span class="al-tag {{ r.action }}">{{ r.action_label }}</span></td>
+      <td>
+        {% if links and r.link %}<a href="{{ r.link }}">{{ r.record_label }}</a>{% else %}{{ r.record_label }}{% endif %}
+        {% if r.rows_count is not none %}<span class="al-small">· {{ '{:,}'.format(r.rows_count) }} rows</span>{% endif %}
+        {% if r.detail %}<div class="al-small">{{ r.detail }}</div>{% endif %}
+      </td>
+      <td class="al-hide-sm al-small">{{ r.ip or '' }}{% if r.browser %}<br>{{ r.browser }}{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<div class="al-pager">
+  {{ '{:,}'.format(total) }} line{{ '' if total == 1 else 's' }}
+  {% if pages > 1 %}
+    · page {{ page }} of {{ pages }}
+    {% set q = request.args.to_dict() %}
+    {% if page > 1 %}{% set _ = q.update({'page': page - 1}) %}<a class="btn btn-sm" href="?{{ q|urlencode }}">← Newer</a>{% endif %}
+    {% if page < pages %}{% set _ = q.update({'page': page + 1}) %}<a class="btn btn-sm" href="?{{ q|urlencode }}">Older →</a>{% endif %}
+  {% endif %}
+</div>
+{% else %}
+<div class="al-empty">Nothing recorded{% if f.values()|select|list %} for these filters{% endif %} yet.</div>
+{% endif %}
