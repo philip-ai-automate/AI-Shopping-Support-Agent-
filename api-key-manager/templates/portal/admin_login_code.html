@@ -1,0 +1,42 @@
+{% extends "portal/base.html" %}
+{% block title %}Enter your code — PhiXtra Admin{% endblock %}
+{% block wrap_class %}page-sm{% endblock %}
+{% block content %}
+<div class="card" style="margin-top:12px">
+  {% if mode == 'email' %}
+    <h1 style="font-size:22px;font-weight:800;margin-bottom:6px">Enter the code we emailed you</h1>
+    <p class="muted" style="margin-bottom:22px">6 digits, sent to your backup email. It works for 10 minutes.</p>
+  {% elif mode == 'recovery' %}
+    <h1 style="font-size:22px;font-weight:800;margin-bottom:6px">Use a recovery code</h1>
+    <p class="muted" style="margin-bottom:22px">One of the 10 codes you saved when you set up two-step login. Each code works once.</p>
+  {% else %}
+    <h1 style="font-size:22px;font-weight:800;margin-bottom:6px">Enter your 6-digit code</h1>
+    <p class="muted" style="margin-bottom:22px">Open your authenticator app and type the code for PhiXtra Admin.</p>
+  {% endif %}
+  <form method="POST" action="{{ url_for('portal_admin.login_2fa') }}">
+    <input type="hidden" name="mode" value="{{ mode }}"/>
+    <div class="form-group">
+      <label>{{ 'Recovery code' if mode == 'recovery' else 'Code' }}</label>
+      <input type="text" name="code" required autofocus autocomplete="one-time-code"
+             {% if mode != 'recovery' %}inputmode="numeric" pattern="[0-9 ]{6,7}" maxlength="7" placeholder="123456"{% else %}placeholder="ABCD-1234" maxlength="12"{% endif %}
+             style="font-size:20px;letter-spacing:3px"/>
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;margin:4px 0 16px;font-size:14px">
+      <input type="checkbox" name="trust" value="1" checked/> Trust this computer for 30 days
+    </label>
+    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">Log in</button>
+  </form>
+  <div style="margin-top:18px;font-size:13.5px;display:flex;flex-direction:column;gap:8px">
+    {% if mode != 'app' %}<a href="{{ url_for('portal_admin.login_2fa', mode='app') }}">Use my authenticator app</a>{% endif %}
+    {% if has_email %}
+    <form method="POST" action="{{ url_for('portal_admin.login_2fa') }}" style="margin:0">
+      <input type="hidden" name="action" value="email"/>
+      <button type="submit" class="btn btn-sm" style="padding:0;border:none;background:none;color:var(--primary,#2563eb);text-decoration:underline;cursor:pointer">
+        No phone? Email me a code instead</button>
+    </form>
+    {% endif %}
+    {% if mode != 'recovery' %}<a href="{{ url_for('portal_admin.login_2fa', mode='recovery') }}">Use a recovery code</a>{% endif %}
+    <a href="{{ url_for('portal_admin.login') }}" class="muted">Back to login</a>
+  </div>
+</div>
+{% endblock %}

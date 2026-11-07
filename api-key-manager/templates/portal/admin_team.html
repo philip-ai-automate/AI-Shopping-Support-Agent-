@@ -11,6 +11,11 @@
   Support logins can only see and use the admin modules you grant them below.
   Owner accounts always have full access and are not editable here.
 </p>
+<p class="muted" style="margin:-10px 0 20px;font-size:13px">
+  Two-step login is <strong>{{ 'ON' if two_step_on else 'not switched on yet' }}</strong> for Admin:
+  password, then a 6-digit code from an authenticator app, with an emailed code as backup.
+  Each login needs a backup email below.
+</p>
 
 <div class="card" style="padding:0">
   <div class="table-wrap" style="border:none;border-radius:16px">
@@ -21,6 +26,7 @@
           <th>Role</th>
           <th>Status</th>
           <th>Modules granted</th>
+          <th>Two-step login</th>
           <th>Created</th>
           <th>Actions</th>
         </tr>
@@ -54,6 +60,28 @@
               <span class="muted">None yet</span>
             {% endif %}
           </td>
+          <td style="min-width:230px">
+            {% set t = a.two_step or {} %}
+            {% if t.on %}
+              <span class="pill pill-green">Set up</span>
+              <span class="muted" style="font-size:12px">since {{ t.since.strftime('%-d %b %Y') if t.since else '' }} · {{ t.codes_left }} recovery codes left</span>
+            {% else %}
+              <span class="pill pill-grey">Not set up</span>
+            {% endif %}
+            <form method="POST" action="{{ url_for('portal_admin.admin_team_two_step', admin_id=a.id) }}"
+                  style="display:flex;gap:5px;margin-top:6px">
+              <input type="email" name="email" value="{{ t.email or '' }}" placeholder="Backup email"
+                     style="font-size:12.5px;padding:4px 8px;min-width:150px"/>
+              <button type="submit" class="btn btn-sm">Save</button>
+            </form>
+            {% if t.on %}
+            <form method="POST" action="{{ url_for('portal_admin.admin_team_two_step', admin_id=a.id) }}" style="margin-top:5px"
+                  onsubmit="return confirm('Reset two-step login for {{ a.username }}? They set it up again at their next login.')">
+              <input type="hidden" name="action" value="reset"/>
+              <button type="submit" class="btn btn-sm">Reset two-step</button>
+            </form>
+            {% endif %}
+          </td>
           <td class="muted">{{ a.created_at.strftime('%Y-%m-%d') if a.created_at else '—' }}</td>
           <td style="display:flex;gap:5px;flex-wrap:wrap">
             {% if a.role != 'owner' %}
@@ -74,7 +102,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="muted" style="text-align:center;padding:24px">No admin logins yet.</td></tr>
+        <tr><td colspan="7" class="muted" style="text-align:center;padding:24px">No admin logins yet.</td></tr>
         {% endfor %}
       </tbody>
     </table>

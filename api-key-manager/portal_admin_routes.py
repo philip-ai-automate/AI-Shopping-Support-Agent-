@@ -94,7 +94,31 @@ SM_PLATFORMS = {
 
 
 def _admin_logged_in() -> bool:
-    return session.get("portal_admin_logged_in") is True
+    """Logged in AND the login still exists and is active (Nov 2026: a
+    deleted or switched-off Admin login is logged out on its next click).
+    Checked once per request; a database error keeps the session as it was."""
+    if session.get("portal_admin_logged_in") is not True:
+        return False
+    from flask import g
+    ok = getattr(g, "_admin_login_ok", None)
+    if ok is None:
+        ok = True
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT active FROM admin_users WHERE username=%s",
+                        (session.get("portal_admin_username") or "",))
+            row = cur.fetchone()
+            cur.close(); conn.close()
+            ok = bool(row and row[0])
+        except Exception:
+            ok = True
+        if not ok:
+            for k in ("portal_admin_logged_in", "portal_admin_username", "portal_admin_role",
+                      "portal_admin_permissions", "impersonate_customer_id"):
+                session.pop(k, None)
+        g._admin_login_ok = ok
+    return ok
 
 def _is_owner() -> bool:
     return session.get("portal_admin_role", "owner") == "owner"
@@ -136,25 +160,164 @@ def login():
     username = (request.form.get("username") or "").strip()
     password = (request.form.get("password") or "").strip()
 
+    # Wrong-guess limit (Nov 2026): 5 wrong → 15-minute pause for this
+    # username from this place.
+    import login_guard
+    if login_guard.paused("admin", username):
+        flash(login_guard.MSG_PAUSED.replace(" or reset your password", ""), "danger")
+        return redirect(url_for("portal_admin.login"))
+
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT * FROM admin_users WHERE username=%s", (username,))
     admin = cur.fetchone()
     cur.close(); conn.close()
 
-    # Plain-text check — same as app.py (admin_users.password is plaintext by design)
-    if admin and password == admin.get("password"):
+    # Scrambled (bcrypt) password check (Nov 2026; plain text before).
+    if admin and _verify_admin_password(password, admin):
         if not admin.get("active", True):
             flash("This admin login has been deactivated.", "danger")
             return redirect(url_for("portal_admin.login"))
-        session["portal_admin_logged_in"]  = True
-        session["portal_admin_username"]   = username
-        session["portal_admin_role"]        = admin.get("role") or "owner"
-        session["portal_admin_permissions"] = _parse_json_maybe(admin.get("permissions"))
-        return redirect(url_for("portal_admin.customers"))
+        login_guard.cleared("admin", username)
+        import admin_2fa
+        if admin_2fa.enabled():
+            if admin_2fa.is_trusted(int(admin["id"]), request.cookies.get(admin_2fa.TRUST_COOKIE)):
+                return _finish_admin_login(admin, how="trusted computer")
+            session.pop("admin_2fa_pending", None)
+            import time as _time
+            session["admin_2fa_pending"] = {"id": int(admin["id"]), "at": _time.time()}
+            if not admin_2fa.is_set_up(admin_2fa.get(int(admin["id"]))):
+                return redirect(url_for("portal_admin.login_2fa_setup"))
+            return redirect(url_for("portal_admin.login_2fa"))
+        return _finish_admin_login(admin)
 
+    login_guard.failed("admin", username)
     flash("Invalid admin login.", "danger")
     return redirect(url_for("portal_admin.login"))
+
+
+def _finish_admin_login(admin: dict, how: str = None, trust: bool = False):
+    session.pop("admin_2fa_pending", None)
+    session["portal_admin_logged_in"]  = True
+    session["portal_admin_username"]   = admin["username"]
+    session["portal_admin_role"]        = admin.get("role") or "owner"
+    session["portal_admin_permissions"] = _parse_json_maybe(admin.get("permissions"))
+    if how:
+        insert_audit_log(admin_username=admin["username"], action="admin_login_two_step",
+                         details={"how": how})
+    resp = redirect(url_for("portal_admin.customers"))
+    if trust:
+        import admin_2fa
+        token = admin_2fa.trust_this_computer(int(admin["id"]))
+        resp.set_cookie(admin_2fa.TRUST_COOKIE, token, max_age=admin_2fa.TRUST_DAYS * 86400,
+                        secure=True, httponly=True, samesite="Lax", path="/admin")
+    return resp
+
+
+def _pending_admin():
+    """The admin half-way through two-step login, or None (sent back to login)."""
+    import admin_2fa
+    p = session.get("admin_2fa_pending")
+    if not admin_2fa.pending_fresh(p):
+        session.pop("admin_2fa_pending", None)
+        return None
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM admin_users WHERE id=%s AND active", (int(p["id"]),))
+    admin = cur.fetchone()
+    cur.close(); conn.close()
+    return admin
+
+
+@portal_admin_bp.route("/login/code", methods=["GET", "POST"])
+def login_2fa():
+    import admin_2fa, login_guard
+    admin = _pending_admin()
+    if not admin:
+        flash("Please log in again.", "warning")
+        return redirect(url_for("portal_admin.login"))
+    info = admin_2fa.get(int(admin["id"]))
+    if not admin_2fa.is_set_up(info):
+        return redirect(url_for("portal_admin.login_2fa_setup"))
+    ident = f"id{admin['id']}"
+    mode = request.values.get("mode") or "app"
+    if request.method == "GET":
+        return render_template("portal/admin_login_code.html", mode=mode, has_email=bool(info.get("email")))
+
+    if request.form.get("action") == "email":
+        ok, msg = admin_2fa.send_email_code(int(admin["id"]))
+        if ok:
+            insert_audit_log(admin_username=admin["username"], action="admin_two_step_email_code_sent")
+        flash(msg, "success" if ok else "danger")
+        return redirect(url_for("portal_admin.login_2fa", mode="email" if ok else "app"))
+
+    if login_guard.paused("admin2fa", ident):
+        flash("Too many wrong codes. Please wait 15 minutes.", "danger")
+        return redirect(url_for("portal_admin.login_2fa", mode=mode))
+    code = (request.form.get("code") or "").strip()
+    uid = int(admin["id"])
+    if mode == "recovery":
+        ok = admin_2fa.use_recovery_code(uid, code); how = "recovery code"
+    elif mode == "email":
+        ok = admin_2fa.check_email_code(uid, code); how = "email code"
+    else:
+        ok = admin_2fa.check_app_code(uid, code); how = "authenticator app"
+    if not ok:
+        login_guard.failed("admin2fa", ident)
+        insert_audit_log(admin_username=admin["username"], action="admin_two_step_failed", details={"how": how})
+        flash("That code didn't work. Please try again.", "danger")
+        return redirect(url_for("portal_admin.login_2fa", mode=mode))
+    login_guard.cleared("admin2fa", ident)
+    if how == "recovery code":
+        left = len(admin_2fa.get(uid).get("recovery_codes") or [])
+        flash(f"Recovery code used. You have {left} left." + (" Ask an owner to reset your two-step login to get new ones." if left <= 3 else ""), "warning")
+    return _finish_admin_login(admin, how=how, trust=bool(request.form.get("trust")))
+
+
+@portal_admin_bp.route("/login/setup", methods=["GET", "POST"])
+def login_2fa_setup():
+    import admin_2fa
+    admin = _pending_admin()
+    if not admin:
+        flash("Please log in again.", "warning")
+        return redirect(url_for("portal_admin.login"))
+    info = admin_2fa.get(int(admin["id"]))
+    if admin_2fa.is_set_up(info):
+        return redirect(url_for("portal_admin.login_2fa"))
+    p = session.get("admin_2fa_pending") or {}
+    if not p.get("secret"):
+        p["secret"] = admin_2fa.new_secret()
+        session["admin_2fa_pending"] = p
+    secret = p["secret"]
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        step = admin_2fa.match_step(secret, request.form.get("code"))
+        if not email or "@" not in email or "." not in email.split("@")[-1]:
+            flash("Please enter the email address for backup codes.", "danger")
+        elif step is None:
+            flash("That code didn't match. Check the time on your phone is correct and type the newest code.", "danger")
+        else:
+            codes = admin_2fa.save_setup(int(admin["id"]), secret, email, step)
+            insert_audit_log(admin_username=admin["username"], action="admin_two_step_set_up")
+            resp = _finish_admin_login(admin, how="set up authenticator app", trust=bool(request.form.get("trust")))
+            session["admin_new_recovery_codes"] = codes
+            resp.headers["Location"] = url_for("portal_admin.login_recovery_codes")
+            return resp
+    return render_template("portal/admin_login_setup.html",
+                           qr=admin_2fa.qr_svg(admin_2fa.otpauth_uri(secret, admin["username"])),
+                           secret=" ".join(secret[i:i + 4] for i in range(0, len(secret), 4)),
+                           email=request.form.get("email") or info.get("email") or
+                                 (admin["username"] if "@" in admin["username"] else ""))
+
+
+@portal_admin_bp.route("/login/recovery-codes")
+def login_recovery_codes():
+    if not _admin_logged_in():
+        return redirect(url_for("portal_admin.login"))
+    codes = session.pop("admin_new_recovery_codes", None)
+    if not codes:
+        return redirect(url_for("portal_admin.customers"))
+    return render_template("portal/admin_recovery_codes.html", codes=codes)
 
 
 @portal_admin_bp.route("/logout")
@@ -223,8 +386,43 @@ def admin_team():
         a["module_count"] = len(perms)
         a["module_labels"] = [ADMIN_MODULES[m]["label"] for m in perms if m in ADMIN_MODULES]
 
+    import admin_2fa
+    two = admin_2fa.status_map()
+    for a in admins:
+        a["two_step"] = two.get(a["id"], {})
     return render_template("portal/admin_team.html", admins=admins, modules=ADMIN_MODULES,
-                            my_username=_admin_user())
+                            my_username=_admin_user(), two_step_on=admin_2fa.enabled())
+
+
+@portal_admin_bp.route("/team/<int:admin_id>/two-step", methods=["POST"])
+def admin_team_two_step(admin_id: int):
+    """Owners: save a login's backup email, or reset its two-step login."""
+    r = _require_owner()
+    if r: return r
+    import admin_2fa
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT username FROM admin_users WHERE id=%s", (admin_id,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    if not row:
+        flash("Admin login not found.", "danger")
+        return redirect(url_for("portal_admin.admin_team"))
+    if request.form.get("action") == "reset":
+        admin_2fa.reset(admin_id)
+        insert_audit_log(admin_username=_admin_user(), action="admin_two_step_reset",
+                         details={"login": row["username"]})
+        flash(f"Two-step login reset for '{row['username']}'. They set it up again at their next login.", "success")
+    else:
+        email = (request.form.get("email") or "").strip().lower()
+        if email and ("@" not in email or "." not in email.split("@")[-1]):
+            flash("Please enter a real email address.", "danger")
+        else:
+            admin_2fa.set_email(admin_id, email)
+            insert_audit_log(admin_username=_admin_user(), action="admin_two_step_email_saved",
+                             details={"login": row["username"]})
+            flash(f"Backup email saved for '{row['username']}'.", "success")
+    return redirect(url_for("portal_admin.admin_team"))
 
 
 @portal_admin_bp.route("/team/new", methods=["GET", "POST"])
@@ -253,9 +451,9 @@ def admin_team_new():
         return redirect(url_for("portal_admin.admin_team_new"))
 
     cur.execute("""
-        INSERT INTO admin_users (username, password, role, permissions, active)
-        VALUES (%s, %s, 'support', %s, TRUE) RETURNING id""",
-        (username, password, _json.dumps(permissions)))
+        INSERT INTO admin_users (username, password, password_hash, role, permissions, active)
+        VALUES (%s, '', %s, 'support', %s, TRUE) RETURNING id""",
+        (username, _hash_admin_password(password), _json.dumps(permissions)))
     new_id = cur.fetchone()["id"]
     conn.commit()
     cur.close(); conn.close()
@@ -345,7 +543,8 @@ def admin_team_reset_password(admin_id: int):
 
     alphabet = string.ascii_letters + string.digits
     new_password = ''.join(secrets.choice(alphabet) for _ in range(12))
-    cur.execute("UPDATE admin_users SET password=%s WHERE id=%s", (new_password, admin_id))
+    cur.execute("UPDATE admin_users SET password='', password_hash=%s WHERE id=%s",
+                (_hash_admin_password(new_password), admin_id))
     conn.commit()
     cur.close(); conn.close()
 
@@ -2601,8 +2800,9 @@ def _verify_admin_password(plain: str, stored_admin: dict) -> bool:
             return _bcrypt_admin.checkpw(plain.encode("utf-8"), pw_hash.encode("utf-8"))
         except Exception:
             return False
-    # Legacy plain-text fallback
-    return plain == stored_admin.get("password", "")
+    # Legacy plain-text fallback (only until scramble_admin_passwords.py has run)
+    legacy = stored_admin.get("password") or ""
+    return bool(legacy) and bool(plain) and secrets.compare_digest(plain.encode(), legacy.encode())
 
 
 def _hash_admin_password(plain: str) -> str:
@@ -2708,8 +2908,12 @@ def admin_change_password():
         return redirect(url_for("portal_admin.admin_settings"))
 
     from portal_routes import _password_problem
-    if _password_problem(new_pw):
-        flash(_password_problem(new_pw), "danger")
+    _pp = _password_problem(new_pw, email=username if "@" in username else None, names=[username])
+    if _pp:
+        flash(_pp, "danger")
+        return redirect(url_for("portal_admin.admin_settings"))
+    if new_pw == current_pw:
+        flash("Your new password can't be the same as your current one.", "danger")
         return redirect(url_for("portal_admin.admin_settings"))
 
     conn = get_db_connection()
@@ -2729,10 +2933,10 @@ def admin_change_password():
 
     new_hash = _hash_admin_password(new_pw)
     cur2 = conn.cursor()
-    # Update both password (legacy) and password_hash (bcrypt)
+    # Scrambled copy only — the plain-text column is emptied (Nov 2026)
     cur2.execute(
-        "UPDATE admin_users SET password=%s, password_hash=%s WHERE username=%s",
-        (new_pw, new_hash, username)
+        "UPDATE admin_users SET password='', password_hash=%s WHERE username=%s",
+        (new_hash, username)
     )
     conn.commit()
     cur2.close(); cur.close(); conn.close()

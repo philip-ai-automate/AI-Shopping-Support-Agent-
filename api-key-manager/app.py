@@ -58,8 +58,14 @@ def login():
         cursor.close()
         conn.close()
 
-        # Plain password check (as requested)
-        if admin and password == admin["password"]:
+        # Scrambled (bcrypt) password check — same as Admin (Nov 2026)
+        _ok = False
+        if admin and admin.get("password_hash") and password:
+            try:
+                _ok = bcrypt.checkpw(password.encode("utf-8"), admin["password_hash"].encode("utf-8"))
+            except Exception:
+                _ok = False
+        if _ok and admin.get("active", True):
             session["logged_in"] = True
             session["admin_username"] = admin["username"]
             return redirect(url_for("index"))
@@ -459,10 +465,11 @@ def admins():
     error = None
     try:
         if request.method == "POST":
-            action = request.form.get("action")
-            username = request.form.get("username", "").strip()
-            password = request.form.get("password", "").strip()
-            admin_id = request.form.get("admin_id", "").strip()
+            # Nov 2026: Admin logins are managed only in portal Admin › Team
+            # (scrambled passwords + two-step login). Nothing is changed here.
+            error = "Admin logins are now managed in PhiXtra Admin › Team."
+            action = None
+            username = password = admin_id = ""
 
             if action == "add" and username and password:
                 cursor.execute("INSERT INTO admin_users (username, password) VALUES (%s, %s)", (username, password))
@@ -479,7 +486,7 @@ def admins():
                 conn.commit()
                 insert_audit_log(admin_username=session.get("admin_username"), action="admin_delete", details={"admin_id": admin_id})
 
-        cursor.execute("SELECT id, username, password, created_at FROM admin_users ORDER BY id DESC")
+        cursor.execute("SELECT id, username, created_at FROM admin_users ORDER BY id DESC")
         admins_list = cursor.fetchall()
     except Exception as e:
         admins_list = []
@@ -487,7 +494,7 @@ def admins():
 
     cursor.close()
     conn.close()
-    return render_template("admins.html", admins=admins_list, error=error)
+    return render_template("admins.html", admins=admins_list, error=error, read_only=True)
 
 @app.route("/audit")
 def audit():

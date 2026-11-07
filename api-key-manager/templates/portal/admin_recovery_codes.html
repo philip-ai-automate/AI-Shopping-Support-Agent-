@@ -1,0 +1,36 @@
+{% extends "portal/base.html" %}
+{% block title %}Your recovery codes — PhiXtra Admin{% endblock %}
+{% block wrap_class %}page-sm{% endblock %}
+{% block content %}
+<div class="card" style="margin-top:12px">
+  <h1 style="font-size:22px;font-weight:800;margin-bottom:6px">Two-step login is on ✅</h1>
+  <p style="margin-bottom:14px">Save these 10 recovery codes in your password manager now. If you lose your phone <em>and</em> can't get the backup email, each code lets you in once. <strong>They are shown only this once.</strong></p>
+  <div id="rc" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-family:ui-monospace,Menlo,monospace;font-size:17px;background:var(--bg-soft,#f3f4f6);padding:14px;border-radius:10px;margin-bottom:14px">
+    {% for c in codes %}<span>{{ c }}</span>{% endfor %}
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button type="button" class="btn btn-sm" id="rcCopy">Copy codes</button>
+    <a href="{{ url_for('portal_admin.customers') }}" class="btn btn-primary btn-sm">I've saved them — continue</a>
+  </div>
+</div>
+<script>
+(function () {
+  var btn = document.getElementById('rcCopy');
+  btn.addEventListener('click', function () {
+    var text = Array.prototype.map.call(document.querySelectorAll('#rc span'),
+                                        function (s) { return s.textContent.trim(); }).join('\n');
+    function done() { btn.textContent = 'Copied ✓'; }
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) { btn.textContent = 'Select and copy them by hand'; }
+      document.body.removeChild(ta);
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else { fallback(); }
+  });
+})();
+</script>
+{% endblock %}

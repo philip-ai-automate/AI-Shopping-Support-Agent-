@@ -1,0 +1,35 @@
+{% extends "portal/base.html" %}
+{% block title %}Protect your Admin login — PhiXtra Admin{% endblock %}
+{% block wrap_class %}page-sm{% endblock %}
+{% block content %}
+<div class="card" style="margin-top:12px">
+  <h1 style="font-size:22px;font-weight:800;margin-bottom:6px">Protect your Admin login</h1>
+  <p class="muted" style="margin-bottom:18px">PhiXtra Admin now needs a second step: a 6-digit code from an authenticator app on your phone. This takes about a minute and is done once.</p>
+  <ol style="padding-left:20px;font-size:14.5px;line-height:1.6;margin-bottom:14px">
+    <li>Open <strong>Google Authenticator</strong>, <strong>Microsoft Authenticator</strong> or <strong>1Password</strong> and add a new account.</li>
+    <li>Scan this QR code.</li>
+  </ol>
+  <div style="display:flex;justify-content:center;margin:6px 0 8px">
+    <div style="background:#fff;padding:8px;border-radius:10px;width:200px;height:200px">{{ qr|safe }}</div>
+  </div>
+  <p class="muted" style="text-align:center;font-size:12.5px;margin-bottom:18px">Can't scan? Type this key instead:<br/>
+    <code style="font-size:14px;letter-spacing:1px;user-select:all">{{ secret }}</code></p>
+  <form method="POST" action="{{ url_for('portal_admin.login_2fa_setup') }}">
+    <div class="form-group">
+      <label>3. Type the 6-digit code the app shows</label>
+      <input type="text" name="code" required autofocus inputmode="numeric" pattern="[0-9 ]{6,7}" maxlength="7"
+             autocomplete="one-time-code" placeholder="123456" style="font-size:20px;letter-spacing:3px"/>
+    </div>
+    <div class="form-group">
+      <label>4. Email for backup codes</label>
+      <input type="email" name="email" required value="{{ email }}" placeholder="you@phixtra.com"/>
+      <p class="muted" style="font-size:12.5px;margin-top:4px">If you don't have your phone, we can email a code here instead.</p>
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;margin:4px 0 16px;font-size:14px">
+      <input type="checkbox" name="trust" value="1" checked/> Trust this computer for 30 days
+    </label>
+    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">Turn on two-step login</button>
+  </form>
+  <p style="margin-top:14px;font-size:13px"><a href="{{ url_for('portal_admin.login') }}" class="muted">Back to login</a></p>
+</div>
+{% endblock %}

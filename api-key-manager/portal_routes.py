@@ -2668,16 +2668,28 @@ def _trial_plan_slug(source_type, signup_channel) -> str:
     return "pro"
 
 
-# Passwords (2026-10-05): at least 8 characters including a special character.
-PASSWORD_RULE_TEXT = "at least 8 characters, including a special character such as ! @ # $ %"
+# Passwords: at least 8 characters including a special character (2026-10-05),
+# plus no common/leaked passwords and no own email or business name (Nov 2026).
+# The rules live in password_policy.py. No forced regular changes (NCSC).
+from password_policy import PASSWORD_RULE_TEXT, password_problem as _pw_policy_problem
 
 
-def _password_problem(pw: str):
-    """None when the password is allowed, else the message to show."""
-    pw = pw or ""
-    if len(pw) < 8 or not _re.search(r"[^A-Za-z0-9\s]", pw):
-        return "Your password must be " + PASSWORD_RULE_TEXT + "."
-    return None
+def _password_problem(pw: str, email=None, names=()):
+    """None when the password is allowed, else the message to show. With no
+    email/names given, the sign-up form's own email and business name boxes
+    are used when present."""
+    if email is None:
+        try:
+            email = (request.form.get("email") or "").strip().lower() or None
+        except Exception:
+            email = None
+    if not names:
+        try:
+            names = [request.form.get(k) for k in ("company_name", "business_name", "tenant_name")
+                     if request.form.get(k)]
+        except Exception:
+            names = ()
+    return _pw_policy_problem(pw, email=email, names=names)
 
 
 def _new_temp_password(length: int = 12) -> str:
@@ -4902,6 +4914,13 @@ def login():
     email    = (request.form.get("email")    or "").strip().lower()
     password = (request.form.get("password") or "").strip()
 
+    # Wrong-guess limit (Nov 2026): 5 wrong for this email from this place
+    # → 15-minute pause. The account itself is never locked.
+    import login_guard
+    if login_guard.paused("portal", email):
+        flash(login_guard.MSG_PAUSED, "danger")
+        return redirect(url_for("portal.login"))
+
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT * FROM customers WHERE email=%s ORDER BY email_verified DESC, id DESC LIMIT 1", (email,))
@@ -4921,8 +4940,10 @@ def login():
         cur.close(); conn.close()
 
         if not tm or not tm.get("password_hash") or not verify_password(password, tm["password_hash"]):
+            login_guard.failed("portal", email)
             flash("Incorrect email or password.", "danger")
             return redirect(url_for("portal.login"))
+        login_guard.cleared("portal", email)
 
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -4960,8 +4981,10 @@ def login():
         return redirect(nxt or (url_for(_home) if _home else url_for("portal.my_inbox")))
 
     if not verify_password(password, c.get("password_hash") or ""):
+        login_guard.failed("portal", email)
         flash("Incorrect email or password.", "danger")
         return redirect(url_for("portal.login"))
+    login_guard.cleared("portal", email)
 
     if not int(c.get("is_active") or 0):
         flash("Your account has been disabled. Contact support.", "danger")
@@ -13554,10 +13577,12 @@ def _settings_me_save(kind: str):
                 flash("All password fields are required.", "danger")
             elif new_pw != conf_pw:
                 flash("New passwords do not match.", "danger")
-            elif _password_problem(new_pw):
-                flash(_password_problem(new_pw), "danger")
+            elif _password_problem(new_pw, email=me.get("email")):
+                flash(_password_problem(new_pw, email=me.get("email")), "danger")
             elif not verify_password(cur_pw, me.get("password_hash") or ""):
                 flash("Current password is incorrect.", "danger")
+            elif new_pw == cur_pw:
+                flash("Your new password can't be the same as your current one.", "danger")
             else:
                 cur.execute("UPDATE team_members SET password_hash=%s WHERE id=%s", (hash_password(new_pw), tm_id))
                 flash("Password changed successfully ✅", "success")
@@ -13884,14 +13909,19 @@ def settings_password():
         flash("New passwords do not match.", "danger")
         return redirect(url_for("portal.settings"))
 
-    if _password_problem(new_pw):
-        flash(_password_problem(new_pw), "danger")
+    customer = _get_customer(cid)
+    _pp = _password_problem(new_pw, email=customer.get("email"),
+                            names=[customer.get("tenant_name") or ""])
+    if _pp:
+        flash(_pp, "danger")
         return redirect(url_for("portal.settings"))
 
     # Verify current password
-    customer = _get_customer(cid)
     if not verify_password(current_pw, customer.get("password_hash") or ""):
         flash("Current password is incorrect.", "danger")
+        return redirect(url_for("portal.settings"))
+    if new_pw == current_pw:
+        flash("Your new password can't be the same as your current one.", "danger")
         return redirect(url_for("portal.settings"))
 
     try:
