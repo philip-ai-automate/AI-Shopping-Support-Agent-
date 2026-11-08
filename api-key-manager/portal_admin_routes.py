@@ -6779,6 +6779,101 @@ def access_log_csv():
                     headers={"Content-Disposition": "attachment; filename=phixtra-access-log.csv"})
 
 
+# ── Admin › Incidents (8 Nov 2026, 7A item 16 — Incident Response Policy) ────
+@portal_admin_bp.route("/incidents")
+def incidents():
+    r = _require_owner()
+    if r: return r
+    import incidents as inc
+    return render_template("portal/admin_incidents.html", rows=inc.list_all(), inc=inc, uk=inc._uk())
+
+
+@portal_admin_bp.route("/incidents/new", methods=["GET", "POST"])
+def incidents_new():
+    r = _require_owner()
+    if r: return r
+    import incidents as inc
+    from datetime import datetime
+    form = {"found_at": datetime.now(inc._uk()).strftime("%Y-%m-%dT%H:%M"), "grade": "", "systems": []}
+    if request.method == "POST":
+        form = {"title": (request.form.get("title") or "").strip(),
+                "found_at_raw": request.form.get("found_at"),
+                "found_at": inc.parse_uk(request.form.get("found_at")),
+                "reported_by": (request.form.get("reported_by") or "").strip(),
+                "grade": request.form.get("grade"),
+                "systems": request.form.getlist("systems"),
+                "what": (request.form.get("what") or "").strip(),
+                "practice": bool(request.form.get("practice"))}
+        err = ("Give the incident a short title." if not form["title"] else
+               "Enter when it was found." if not form["found_at"] else
+               "Choose a grade." if form["grade"] not in inc.GRADES else None)
+        if not err:
+            inc_id = inc.create(form, _admin_user())
+            insert_audit_log(admin_username=_admin_user(), action="incident_created",
+                             details={"incident": inc.ref(inc_id), "grade": form["grade"], "practice": form["practice"]})
+            flash(f"{inc.ref(inc_id)} opened. Contain it first, then work through the deadlines.", "success")
+            return redirect(url_for("portal_admin.incident_detail", inc_id=inc_id))
+        flash(err, "error")
+        form["found_at"] = form["found_at_raw"]
+    return render_template("portal/admin_incident.html", i=None, form=form, inc=inc, uk=inc._uk())
+
+
+@portal_admin_bp.route("/incidents/<int:inc_id>")
+def incident_detail(inc_id):
+    r = _require_owner()
+    if r: return r
+    import incidents as inc
+    from datetime import datetime
+    i = inc.get(inc_id)
+    if not i:
+        flash("Incident not found.", "error")
+        return redirect(url_for("portal_admin.incidents"))
+    return render_template("portal/admin_incident.html", i=i, form=None, inc=inc, uk=inc._uk(),
+                           now_uk=datetime.now(inc._uk()).strftime("%Y-%m-%dT%H:%M"),
+                           tenants=inc.tenant_choices() if i["status"] != "closed" else [])
+
+
+@portal_admin_bp.route("/incidents/<int:inc_id>/entry", methods=["POST"])
+def incident_entry(inc_id):
+    r = _require_owner()
+    if r: return r
+    import incidents as inc
+    i = inc.get(inc_id)
+    text = (request.form.get("text") or "").strip()
+    at = inc.parse_uk(request.form.get("at"))
+    if not i:
+        return redirect(url_for("portal_admin.incidents"))
+    if not text or not at:
+        flash("Write what was done and when.", "error")
+    else:
+        inc.add_entry(inc_id, text, at, _admin_user())
+        insert_audit_log(admin_username=_admin_user(), action="incident_entry_added", details={"incident": i["ref"]})
+        flash("Added to the action log.", "success")
+    return redirect(url_for("portal_admin.incident_detail", inc_id=inc_id) + "#log")
+
+
+@portal_admin_bp.route("/incidents/<int:inc_id>/update", methods=["POST"])
+def incident_update(inc_id):
+    r = _require_owner()
+    if r: return r
+    import incidents as inc
+    what = request.form.get("what") or ""
+    f = {k: request.form.get(k) for k in ("title", "reported_by", "what_happened", "grade", "data_affected", "key",
+                                          "reason", "status", "cause", "worked", "didnt", "changes")}
+    f["what"] = f.pop("what_happened")
+    f["systems"] = request.form.getlist("systems")
+    f["at"] = inc.parse_uk(request.form.get("at"))
+    tid = (request.form.get("tenant_id") or "").strip().split(" ")[0].lstrip("#")
+    f["tenant_id"] = int(tid) if tid.isdigit() else None
+    err = inc.update(inc_id, what, f, _admin_user())
+    if err:
+        flash(err, "error")
+    else:
+        insert_audit_log(admin_username=_admin_user(), action="incident_updated",
+                         details={"incident": inc.ref(inc_id), "change": what})
+        flash("Saved.", "success")
+    return redirect(url_for("portal_admin.incident_detail", inc_id=inc_id))
+
 @portal_admin_bp.route("/inactive-accounts")
 def inactive_accounts():
     r = _require_admin("customers", "view")

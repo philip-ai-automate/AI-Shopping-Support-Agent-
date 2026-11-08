@@ -1,0 +1,55 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Incidents — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .inc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+  .inc-box{background:#fff;border:1px solid var(--line);border-radius:14px;overflow-x:auto}
+  .inc-empty{font-size:13px;color:var(--muted);padding:18px;background:#fff;border:1px dashed var(--line);border-radius:14px}
+  .inc-tag{font-size:10.5px;font-weight:750;padding:2px 8px;border-radius:999px;white-space:nowrap;display:inline-block;margin:1px 2px 1px 0}
+  .g-high{background:rgba(240,68,56,.12);color:#912018}.g-medium{background:rgba(247,144,9,.14);color:#93370D}
+  .g-low{background:rgba(3,12,24,.07);color:#344054}
+  .s-open{background:rgba(240,68,56,.10);color:#912018}.s-contained{background:rgba(46,144,250,.12);color:#194185}
+  .s-closed{background:rgba(18,183,106,.12);color:#05603A}
+  .d-ok{background:rgba(3,12,24,.06);color:#344054}.d-soon{background:rgba(247,144,9,.18);color:#93370D}
+  .d-late{background:#D92D20;color:#fff}.d-done{background:rgba(18,183,106,.12);color:#05603A}
+  .inc-row a{font-weight:700;color:var(--ink)}
+</style>
+<div class="page-header inc-top">
+  <div>
+    <h1 class="section-title">Incidents</h1>
+    <p class="muted">The written record the Incident Response Policy asks for. Shopify must be told within 24 hours,
+      the ICO within 72 hours. Action log entries can't be changed or deleted; records are kept 3 years after closing.
+      Times are UK time.</p>
+  </div>
+  <a class="btn btn-primary btn-sm" href="{{ url_for('portal_admin.incidents_new') }}">+ New incident</a>
+</div>
+
+{% if not rows %}
+  <div class="inc-empty">No incidents recorded. If something happens, press <b>+ New incident</b> straight away —
+    the deadlines start from when it was found.</div>
+{% else %}
+<div class="inc-box">
+<table>
+  <thead><tr><th>Ref</th><th>Found</th><th>Grade</th><th>Title</th><th>Status</th><th>Deadlines</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr class="inc-row">
+      <td><a href="{{ url_for('portal_admin.incident_detail', inc_id=r.id) }}">{{ r.ref }}</a></td>
+      <td style="white-space:nowrap">{{ r.found_at.astimezone(uk).strftime('%-d %b %Y %H:%M') }}</td>
+      <td><span class="inc-tag g-{{ r.grade }}">{{ inc.GRADES[r.grade] }}</span>
+        {% if r.practice %}<span class="inc-tag d-ok">Practice</span>{% endif %}</td>
+      <td><a href="{{ url_for('portal_admin.incident_detail', inc_id=r.id) }}">{{ r.title }}</a></td>
+      <td><span class="inc-tag s-{{ r.status }}">{{ inc.STATUSES[r.status] }}</span></td>
+      <td>
+        {% for d in r.deadlines %}
+          <span class="inc-tag d-{{ d.state }}">{{ d.label.replace(' told', '') }}
+            {% if d.state == 'done' %}✓{% else %}· {{ inc.left_text(d.left) }}{% endif %}</span>
+        {% else %}—{% endfor %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

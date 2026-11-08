@@ -1,0 +1,255 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}{{ i.ref if i else 'New incident' }} — PhiXtra Admin{% endblock %}
+{% block content %}
+<style>
+  .inc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+  .inc-sec{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:14px}
+  .inc-sec h2{font-size:13.5px;font-weight:800;margin:0 0 10px}
+  .inc-sec p.hint{font-size:12px;color:var(--muted);margin:-4px 0 10px}
+  .inc-f{display:grid;gap:10px}
+  .inc-f label{font-size:12px;font-weight:700;display:block;margin-bottom:4px}
+  .inc-f input[type=text],.inc-f input[type=datetime-local],.inc-f textarea,.inc-f select,.inc-in{
+    width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font:inherit;font-size:13px;background:#fff}
+  .inc-f textarea{min-height:70px}
+  .inc-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+  .inc-ticks{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px}
+  .inc-ticks label{font-weight:500;display:flex;gap:5px;align-items:center;margin:0}
+  .inc-grades{display:grid;gap:6px;font-size:12.5px}
+  .inc-grades label{font-weight:500;display:flex;gap:7px;align-items:baseline;margin:0}
+  .inc-tag{font-size:10.5px;font-weight:750;padding:2px 8px;border-radius:999px;white-space:nowrap;display:inline-block}
+  .g-high{background:rgba(240,68,56,.12);color:#912018}.g-medium{background:rgba(247,144,9,.14);color:#93370D}
+  .g-low{background:rgba(3,12,24,.07);color:#344054}
+  .s-open{background:rgba(240,68,56,.10);color:#912018}.s-contained{background:rgba(46,144,250,.12);color:#194185}
+  .s-closed{background:rgba(18,183,106,.12);color:#05603A}
+  .dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+  .dl-card{border-radius:12px;padding:11px 13px;font-size:12.5px;border:1.5px solid var(--line)}
+  .dl-card b{display:block;font-size:14px;margin-bottom:2px}
+  .dl-ok{background:rgba(3,12,24,.02)}.dl-soon{background:rgba(247,144,9,.08);border-color:rgba(247,144,9,.5)}
+  .dl-late{background:rgba(240,68,56,.08);border-color:#D92D20}.dl-done{background:rgba(18,183,106,.07);border-color:rgba(18,183,106,.4)}
+  .dl-card form{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
+  .dl-card input{border:1px solid var(--line);border-radius:8px;padding:5px 7px;font:inherit;font-size:12px}
+  .log td{vertical-align:top}
+  .log .auto{color:var(--muted)}
+  .inc-row-actions{display:flex;gap:6px;flex-wrap:wrap}
+  .inc-read{font-size:13px;white-space:pre-wrap;margin:0 0 8px}
+  .inc-read-l{font-size:11.5px;font-weight:800;color:var(--muted);margin-top:8px}
+</style>
+
+{% macro ukt(dt) %}{{ dt.astimezone(uk).strftime('%a %-d %b %Y %H:%M') if dt else '—' }}{% endmacro %}
+
+{% macro details_fields(v, grade, systems) %}
+  <div class="inc-2">
+    <div><label>Title</label><input type="text" name="title" value="{{ v.title or '' }}" maxlength="200"
+         placeholder="e.g. API key seen in a screenshot" required></div>
+    <div><label>Who reported it</label><input type="text" name="reported_by" value="{{ v.reported_by or '' }}"
+         placeholder="role or name, or 'customer: …'"></div>
+  </div>
+  <div><label>Grade</label>
+    <div class="inc-grades">
+      {% for g, name in inc.GRADES.items() %}
+      <label><input type="radio" name="grade" value="{{ g }}" {% if grade == g %}checked{% endif %} required>
+        <span><b>{{ name }}</b> — {{ inc.GRADE_HELP[g] }}</span></label>
+      {% endfor %}
+    </div>
+  </div>
+  <div><label>Systems affected</label>
+    <div class="inc-ticks">
+      {% for k, name in inc.SYSTEMS.items() %}
+      <label><input type="checkbox" name="systems" value="{{ k }}" {% if k in systems %}checked{% endif %}> {{ name }}</label>
+      {% endfor %}
+    </div>
+    <p class="hint" style="margin:6px 0 0">Ticking <b>Shopify app</b> adds the 24-hour Shopify deadline.</p>
+  </div>
+{% endmacro %}
+
+{% if not i %}
+{# ───────────── New incident ───────────── #}
+<div class="page-header">
+  <a href="{{ url_for('portal_admin.incidents') }}" class="muted" style="font-size:12px">← Incidents</a>
+  <h1 class="section-title">New incident</h1>
+  <p class="muted">Record it now, even if you're not sure yet. Contain the problem first; the details can be filled in later.</p>
+</div>
+<form method="post" class="inc-sec inc-f">
+  <div class="inc-2">
+    <div><label>When was it found? (UK time)</label>
+      <input type="datetime-local" name="found_at" value="{{ form.found_at or '' }}" required></div>
+  </div>
+  {{ details_fields(form, form.grade, form.systems) }}
+  <div><label>What happened</label><textarea name="what" placeholder="What you saw, when, on which system">{{ form.what or '' }}</textarea></div>
+  <div class="inc-ticks"><label><input type="checkbox" name="practice" value="1" {% if form.practice %}checked{% endif %}>
+    This is a <b>practice run</b> (yearly practice — not a real incident)</label></div>
+  <div><button class="btn btn-primary">Open incident</button></div>
+</form>
+
+{% else %}
+{# ───────────── Incident page ───────────── #}
+{% set closed = i.status == 'closed' %}
+<div class="page-header inc-top">
+  <div>
+    <a href="{{ url_for('portal_admin.incidents') }}" class="muted" style="font-size:12px">← Incidents</a>
+    <h1 class="section-title">{{ i.ref }} · {{ i.title }}</h1>
+    <p class="muted">
+      <span class="inc-tag g-{{ i.grade }}">{{ inc.GRADES[i.grade] }}</span>
+      <span class="inc-tag s-{{ i.status }}">{{ inc.STATUSES[i.status] }}</span>
+      {% if i.practice %}<span class="inc-tag g-low">Practice run</span>{% endif %}
+      &nbsp;Found {{ ukt(i.found_at) }} · opened by {{ i.created_by }}
+      {% if closed %} · closed {{ ukt(i.closed_at) }} by {{ i.closed_by }}{% endif %}
+    </p>
+  </div>
+  <div class="inc-row-actions">
+    {% if i.status == 'open' %}
+      <form method="post" action="{{ url_for('portal_admin.incident_update', inc_id=i.id) }}" style="margin:0">
+        <input type="hidden" name="what" value="status"><input type="hidden" name="status" value="contained">
+        <button class="btn btn-sm">Mark contained</button></form>
+    {% elif i.status == 'contained' %}
+      <form method="post" action="{{ url_for('portal_admin.incident_update', inc_id=i.id) }}" style="margin:0">
+        <input type="hidden" name="what" value="status"><input type="hidden" name="status" value="open">
+        <button class="btn btn-sm">Back to open</button></form>
+    {% else %}
+      <form method="post" action="{{ url_for('portal_admin.incident_update', inc_id=i.id) }}" style="margin:0"
+            onsubmit="return confirm('Reopen {{ i.ref }}?')">
+        <input type="hidden" name="what" value="reopen"><button class="btn btn-sm">Reopen</button></form>
+    {% endif %}
+  </div>
+</div>
+
+{# Deadlines #}
+<div class="inc-sec">
+  <h2>Who must be told</h2>
+  {% if not i.deadlines %}
+    <p class="hint" style="margin:0">No deadlines apply: Shopify data isn't involved, no businesses are listed, and the grade is Low.
+      If that changes, update the details or add the affected businesses below.</p>
+  {% else %}
+  <div class="dl">
+    {% for d in i.deadlines %}
+    <div class="dl-card dl-{{ d.state }}">
+      <b>{{ d.label }}{% if d.state == 'done' %} ✓{% endif %}</b>
+      {% if d.key == 'shopify' %}Within 24 hours · Partner Support: <a href="https://help.shopify.com/questions/partners" target="_blank" rel="noopener">help.shopify.com/questions/partners</a>
+      {% elif d.key == 'business' %}Target 24 hours · email the account owner, plus WhatsApp for High
+      {% else %}Within 72 hours · <a href="https://ico.org.uk/for-organisations/report-a-breach/" target="_blank" rel="noopener">ico.org.uk report a breach</a>{% endif %}
+      <div style="margin-top:4px">
+        {% if d.state == 'done' %}
+          {% if d.key == 'shopify' %}Told {{ ukt(i.shopify_told_at) }}
+          {% elif d.key == 'business' %}Told {{ ukt(i.business_told_at) }}
+          {% elif i.ico_not_needed %}Not needed — {{ i.ico_reason }}
+          {% else %}Told {{ ukt(i.ico_told_at) }}{% endif %}
+        {% else %}
+          Due {{ ukt(d.due) }} · <b style="display:inline;font-size:12.5px">{{ inc.left_text(d.left) }}</b>
+        {% endif %}
+      </div>
+      {% if not closed %}
+      <form method="post" action="{{ url_for('portal_admin.incident_update', inc_id=i.id) }}">
+        <input type="hidden" name="what" value="told"><input type="hidden" name="key" value="{{ d.key }}">
+        <input type="datetime-local" name="at" value="{{ now_uk }}" required>
+        <button class="btn btn-sm">{{ 'Change time' if d.state == 'done' and not (d.key == 'ico' and i.ico_not_needed) else 'Mark told' }}</button>
+      </form>
+      {% if d.key == 'ico' %}
+      <form method="post" action="{{ url_for('portal_admin.incident_update', inc_id=i.id) }}">
+        <input type="hidden" name="what" value="ico_not_needed">
+        <input type="text" name="reason" placeholder="Why the ICO doesn't need telling" style="flex:1;min-width:160px"
+               value="{{ i.ico_reason if i.ico_not_needed else '' }}" required>
+        <button class="btn btn-sm">Not needed</button>
+      </form>
+      {% endif %}
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+{# Details #}
+<div class="inc-sec">
+  <h2>Details</h2>
+  {% if closed %}
+    <div class="inc-read-l">Reported by</div><p class="inc-read">{{ i.reported_by or '—' }}</p>
+    <div class="inc-read-l">Systems</div><p class="inc-read">{% for k in i.systems %}{{ inc.SYSTEMS.get(k, k) }}{{ ', ' if not loop.last }}{% else %}—{% endfor %}</p>
+    <div class="inc-read-l">What happened</div><p class="inc-read">{{ i.what or '—' }}</p>
+    <div class="inc-read-l">Data affected</div><p class="inc-read">{{ i.data_affected or '—' }}</p>
+  {% else %}
+  <form method="post" action="{{ url_for('portal_admin.incident_update', inc_id=i.id) }}" class="inc-f">
+    <input type="hidden" name="what" value="details">
+    {{ details_fields(i, i.grade, i.systems) }}
+    <div><label>What happened</label><textarea name="what_happened">{{ i.what }}</textarea></div>
+    <div><label>Data affected</label><textarea name="data_affected"
+         placeholder="Which data, how many businesses and buyers, for how long">{{ i.data_affected }}</textarea></div>
+    <div><button class="btn btn-sm">Save details</button></div>
+  </form>
+  {% endif %}
+</div>
+
+{# Affected businesses #}
+<div class="inc-sec">
+  <h2>Affected businesses ({{ i.tenants|length }})</h2>
+  {% if i.tenants %}
+  <table style="margin-bottom:10px"><tbody>
+    {% for t in i.tenants %}
+    <tr><td>#{{ t.id }}</td>
+      <td>{{ t.name }}
+        {% if t.kind != 'real' %}<span class="inc-tag g-low">{{ 'Sales demo' if t.kind == 'demo' else 'Test' }}</span>{% endif %}</td>
+      <td style="text-align:right">{% if not closed %}
+        <form method="post" action="{{ url_for('portal_admin.incident_update', inc_id=i.id) }}" style="margin:0">
+          <input type="hidden" name="what" value="remove_tenant"><input type="hidden" name="tenant_id" value="{{ t.id }}">
+          <button class="btn btn-sm">Remove</button></form>{% endif %}</td></tr>
+    {% endfor %}
+  </tbody></table>
+  {% else %}<p class="hint">None listed.</p>{% endif %}
+  {% if not closed %}
+  <form method="post" action="{{ url_for('portal_admin.incident_update', inc_id=i.id) }}" style="display:flex;gap:6px;flex-wrap:wrap">
+    <input type="hidden" name="what" value="add_tenant">
+    <input class="inc-in" list="inc-tenants" name="tenant_id" placeholder="Type a business name or number" style="flex:1;min-width:220px" required>
+    <datalist id="inc-tenants">{% for t in tenants %}<option value="{{ t.id }} {{ t.name }}">{% endfor %}</datalist>
+    <button class="btn btn-sm">Add business</button>
+  </form>
+  {% endif %}
+</div>
+
+{# Action log #}
+<div class="inc-sec" id="log">
+  <h2>Action log</h2>
+  <p class="hint">Every step with its time. Entries can't be changed or deleted — if one is wrong, add a correction.</p>
+  <table class="log"><thead><tr><th style="width:150px">When (UK)</th><th>What was done</th><th style="width:110px">By</th></tr></thead>
+  <tbody>
+    {% for e in i.entries %}
+    <tr class="{{ 'auto' if e.auto }}"><td style="white-space:nowrap">{{ e.at.astimezone(uk).strftime('%-d %b %H:%M') }}</td>
+      <td style="white-space:pre-wrap">{{ e.text }}</td><td>{{ e.by }}</td></tr>
+    {% endfor %}
+  </tbody></table>
+  {% if not closed %}
+  <form method="post" action="{{ url_for('portal_admin.incident_entry', inc_id=i.id) }}" class="inc-f" style="margin-top:12px">
+    <div style="display:grid;grid-template-columns:190px 1fr;gap:8px">
+      <input type="datetime-local" name="at" value="{{ now_uk }}" required>
+      <input type="text" name="text" placeholder="e.g. Changed the OpenAI key and restarted the AI agent" required>
+    </div>
+    <div><button class="btn btn-sm">Add to log</button></div>
+  </form>
+  {% endif %}
+</div>
+
+{# Review / close #}
+<div class="inc-sec">
+  <h2>{{ 'Review' if closed else 'Review and close' }}</h2>
+  <p class="hint">{% if closed %}{% if i.review_done_at %}Review finished {{ ukt(i.review_done_at) }}.{% else %}Finish the review within 7 days of closing — a reminder email is sent if it's still empty.{% endif %}
+    {% else %}Closing needs every deadline above recorded and the cause written down. The rest of the review can be finished within 7 days.{% endif %}</p>
+  <form method="post" action="{{ url_for('portal_admin.incident_update', inc_id=i.id) }}" class="inc-f"
+        {% if not closed %}onsubmit="return this.querySelector('[name=what]').value!=='status' || confirm('Close {{ i.ref }}?')"{% endif %}>
+    <input type="hidden" name="what" value="{{ 'review' if closed else 'status' }}">
+    {% if not closed %}<input type="hidden" name="status" value="closed">{% endif %}
+    <div><label>What caused it</label><textarea name="cause">{{ i.cause }}</textarea></div>
+    <div class="inc-2">
+      <div><label>What worked</label><textarea name="worked">{{ i.worked }}</textarea></div>
+      <div><label>What didn't</label><textarea name="didnt">{{ i.didnt }}</textarea></div>
+    </div>
+    <div><label>Changes we will make (one per line: change — owner role — date)</label>
+      <textarea name="changes" placeholder="Move keys out of chat — Integrations Lead — 30 Nov 2026">{{ i.changes }}</textarea></div>
+    <div class="inc-row-actions">
+      {% if closed %}<button class="btn btn-sm">Save review</button>
+      {% else %}
+        <button class="btn btn-primary btn-sm">Close incident</button>
+        <button class="btn btn-sm" type="submit" onclick="this.form.querySelector('[name=what]').value='review'">Save review without closing</button>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}
