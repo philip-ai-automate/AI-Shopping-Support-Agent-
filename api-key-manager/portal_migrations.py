@@ -917,6 +917,9 @@ def ensure_portal_tables():
             cur.execute(
                 "ALTER TABLE tenants ADD COLUMN is_training BOOLEAN NOT NULL DEFAULT FALSE"
             )
+        # Account kind real / demo / test (8 Nov 2026, item 11) — see account_kind.py
+        import account_kind as _ak
+        _ak.schema(cur)
         if _table_exists(cur, "ambassadors"):
             if not _column_exists(cur, "ambassadors", "demo_tenant_id"):
                 cur.execute(

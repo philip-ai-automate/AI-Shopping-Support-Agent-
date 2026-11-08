@@ -23624,7 +23624,7 @@ def _comeback_scan_and_send():
         FROM customers c
         JOIN tenants t ON t.id = c.tenant_id
         LEFT JOIN onboarding_state os ON os.customer_id = c.id
-        WHERE t.is_demo = FALSE
+        WHERE t.account_kind = 'real'
           AND t.status NOT IN ('cancelled', 'suspended')
           AND c.is_active = TRUE
           AND t.trial_granted_at IS NULL

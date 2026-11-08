@@ -168,9 +168,11 @@ def _save(who, path, demo_session):
     else:
         tenant_sql, tenant_arg = "%s", ref
     if app == "portal":
+        # + any business labelled Sales demo / Test (account_kind, 8 Nov 2026)
         internal_sql = f"""(%s OR {tenant_sql} IN %s OR EXISTS
-                            (SELECT 1 FROM chat_links WHERE is_demo AND tenant_id={tenant_sql}))"""
-        internal_args = (demo_session, tenant_arg, INTERNAL_TENANT_IDS, tenant_arg)
+                            (SELECT 1 FROM chat_links WHERE is_demo AND tenant_id={tenant_sql})
+                            OR EXISTS (SELECT 1 FROM tenants WHERE account_kind <> 'real' AND id={tenant_sql}))"""
+        internal_args = (demo_session, tenant_arg, INTERNAL_TENANT_IDS, tenant_arg, tenant_arg)
     elif app == "estate":
         internal_sql, internal_args = "(%s OR %s IN %s)", (demo_session, ref, INTERNAL_ESTATE_IDS)
     else:

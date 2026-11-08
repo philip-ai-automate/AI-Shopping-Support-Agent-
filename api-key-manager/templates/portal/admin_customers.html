@@ -71,6 +71,7 @@
   .filter-opt.disabled{cursor:not-allowed;color:var(--muted)}
   .filter-opt.disabled input{cursor:not-allowed}
   .filter-caption{font-size:11px;color:var(--warn);font-style:italic;padding:4px 8px 8px;border-bottom:1px solid var(--line);margin-bottom:6px}
+  .kind-tag{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;background:rgba(247,144,9,.12);color:#93370D;white-space:nowrap}
   .chips-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
   .chip{display:inline-flex;align-items:center;gap:6px;background:rgba(3,12,24,.05);border:1px solid var(--line);
         border-radius:999px;padding:5px 6px 5px 12px;font-size:12px;font-weight:650;color:var(--txt)}
@@ -269,7 +270,7 @@
       <div class="cc-avatar">{{ c.full_name[:2]|upper }}</div>
       <div>
         <div class="cc-name">{{ c.full_name }}</div>
-        <div class="cc-business">{{ c.business_name }}</div>
+        <div class="cc-business">{{ c.business_name }}{% if c.kind and c.kind != "real" %} <span class="kind-tag">{{ "Sales demo" if c.kind == "demo" else "Test" }}</span>{% endif %}</div>
       </div>
     </div>
     <div class="cc-fields">
@@ -350,7 +351,7 @@
         {% for c in customers %}
         <tr>
           <td><strong>{{ c.full_name }}</strong></td>
-          <td><span class="truncate" title="{{ c.business_name }}">{{ c.business_name }}</span></td>
+          <td><span class="truncate" title="{{ c.business_name }}">{{ c.business_name }}</span>{% if c.kind and c.kind != "real" %} <span class="kind-tag">{{ "Sales demo" if c.kind == "demo" else "Test" }}</span>{% endif %}</td>
           <td><span class="pill pill-grey">{{ PRODUCT_LABELS[c.product] }}</span></td>
           <td><span class="truncate" title="{{ c.email }}">{{ c.email }}</span></td>
           <td class="muted">{{ c.phone }}{% if c.phone_ok %} <span class="pill pill-green" title="Confirmed by WhatsApp code">WhatsApp ✓</span>{% endif %}</td>

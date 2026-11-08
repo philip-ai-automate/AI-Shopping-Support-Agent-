@@ -22,6 +22,15 @@
       <tr><td class="muted" style="border:none;padding:4px 0">First name</td><td style="border:none;padding:4px 8px">{{ customer.first_name or '—' }}</td></tr>
       <tr><td class="muted" style="border:none;padding:4px 0">Last name</td><td style="border:none;padding:4px 8px">{{ customer.last_name or '—' }}</td></tr>
       <tr><td class="muted" style="border:none;padding:4px 0">Business Name</td><td style="border:none;padding:4px 8px"><strong>{{ customer.tenant_name or '—' }}</strong></td></tr>
+      <tr><td class="muted" style="border:none;padding:4px 0" title="Real businesses are counted everywhere. Sales demos and Tests are left out of counts, emails and Who's Online.">Kind</td>
+          <td style="border:none;padding:4px 8px">
+            <form method="post" action="{{ url_for('portal_admin.customer_kind', customer_id=customer.id) }}" style="margin:0;display:inline">
+              <select name="kind" onchange="if(confirm('Change this business to ' + this.options[this.selectedIndex].text + '?')) this.form.submit(); else this.value='{{ account_kind }}'"
+                      style="padding:3px 8px;font-size:12px;border-radius:8px;border:1px solid var(--line)">
+                {% for v, lbl in account_kinds %}<option value="{{ v }}" {% if v == account_kind %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
+              </select>
+            </form>
+          </td></tr>
       <tr><td class="muted" style="border:none;padding:4px 0">Email</td><td style="border:none;padding:4px 8px">{{ customer.email }}</td></tr>
       <tr><td class="muted" style="border:none;padding:4px 0">Phone</td><td style="border:none;padding:4px 8px">{{ customer.phone_number or '—' }}</td></tr>
       <tr><td class="muted" style="border:none;padding:4px 0">Domain</td><td style="border:none;padding:4px 8px">{{ customer.domain }}</td></tr>

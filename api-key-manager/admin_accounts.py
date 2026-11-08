@@ -350,7 +350,7 @@ def rows(only_tenant=None) -> list:
     pid = A.platform_tenant_id() or 0
     conn, cur = _db()
     try:
-        where, params = ["t.id <> %s", "NOT COALESCE(t.is_training, FALSE)", "NOT COALESCE(t.is_demo, FALSE)",
+        where, params = ["t.id <> %s", "NOT COALESCE(t.is_training, FALSE)", "NOT COALESCE(t.is_demo, FALSE)", "t.account_kind = 'real'",
                          "COALESCE(t.status,'') <> 'cancelled'", "c.id IS NOT NULL",
                          # PhiXtra's own demo / test / training accounts (website "Try it"
                          # demo shops, test stores, B2B/B2C demos) are not customers.

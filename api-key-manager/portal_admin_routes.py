@@ -34,6 +34,7 @@ from buffer_client import buffer_create_post, buffer_get_post_status, BufferAPIE
 import buffer_accounts as _ba
 
 portal_admin_bp = Blueprint("portal_admin", __name__)
+import account_kind as _account_kind
 
 
 @portal_admin_bp.context_processor
@@ -675,7 +676,7 @@ def comeback_sequence():
         FROM customers c
         JOIN tenants t ON t.id = c.tenant_id
         LEFT JOIN onboarding_state os ON os.customer_id = c.id
-        WHERE t.is_demo = FALSE AND t.status NOT IN ('cancelled', 'suspended') AND c.is_active = TRUE
+        WHERE t.account_kind = 'real' AND t.status NOT IN ('cancelled', 'suspended') AND c.is_active = TRUE
         GROUP BY 1
     """)
     funnel = {"never_started": 0, "stuck_products": 0, "near_done": 0, "activated": 0}
@@ -807,6 +808,7 @@ def _customer_facet(x, key):
     if key == "heard":    return x["heard_value"]
     if key == "inactivity": return x["inactivity"]
     if key == "setup": return x.get("setup_state", "na")
+    if key == "kind": return x.get("kind", "real")
     return x[key]  # source, product
 
 
@@ -897,6 +899,8 @@ def customers():
     f_heard    = request.args.getlist("heard")
     f_inactive = request.args.getlist("inactivity")
     f_setup    = request.args.getlist("setup")      # done / not_done / na (2026-11-06)
+    f_kind_chosen = [k for k in request.args.getlist("kind") if k in _account_kind.LABELS]
+    f_kind     = f_kind_chosen or ["real"]          # Real / Sales demo / Test (8 Nov 2026)
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -904,7 +908,8 @@ def customers():
     rows = []
 
     # ── Portal + Connect (share the tenants/customers tables) ──────────────
-    where  = ["t.is_demo = FALSE"]
+    # Kind filter (8 Nov 2026, item 11): Real only unless Sales demo / Test is ticked.
+    where  = ["TRUE"]
     params = []
 
     if q:
@@ -921,6 +926,7 @@ def customers():
         SELECT c.id, c.first_name, c.last_name, c.email, c.phone_number, c.phone_verified,
                c.email_verified, c.is_active, c.created_at, c.hear_about_us,
                t.id AS tenant_id, t.name AS tenant_name, t.domain, t.signup_product, t.source_type,
+               t.account_kind,
                COALESCE(p.name,'Free') AS plan_name,
                COALESCE(tb.token_balance,0) AS token_balance
         FROM customers c
@@ -958,6 +964,7 @@ def customers():
             "heard": _heard_label(row.get("hear_about_us")),
             "heard_value": row.get("hear_about_us") or CUSTOMER_HEARD_NONE,
             "source": row.get("source_type"),
+            "kind": row.get("account_kind") or "real",
             "inactivity": "active",
         })
 
@@ -1052,7 +1059,7 @@ def customers():
             x["inactivity"] = inact.get(x["ref_id"], "active")
 
     selected = {k: v for k, v in {
-        "inactivity": f_inactive, "setup": f_setup, "source": f_source, "verified": f_verified, "active": f_active, "assigned": f_assigned,
+        "kind": f_kind, "inactivity": f_inactive, "setup": f_setup, "source": f_source, "verified": f_verified, "active": f_active, "assigned": f_assigned,
         "product": f_product, "plan": f_plan, "heard": f_heard,
     }.items() if v}
 
@@ -1060,7 +1067,7 @@ def customers():
         return all(_customer_facet(x, k) in v for k, v in selected.items() if k != skip)
 
     facet_counts = {}
-    for key in ("source", "verified", "active", "assigned", "product", "plan", "heard", "inactivity", "setup"):
+    for key in ("source", "verified", "active", "assigned", "product", "plan", "heard", "inactivity", "setup", "kind"):
         counts = facet_counts.setdefault(key, {})
         for x in rows:
             if _passes(x, key):
@@ -1109,6 +1116,12 @@ def customers():
             "count": len(selected),
         })
     filter_groups.append({
+        "key": "kind", "label": "Kind",
+        "options": [{"value": v, "label": lbl, "checked": v in f_kind, "n": facet_counts["kind"].get(v, 0)}
+                    for v, lbl in _account_kind.KINDS],
+        "count": len(f_kind_chosen),
+    })
+    filter_groups.append({
         "key": "setup", "label": "Set-up",
         "options": [{"value": v, "label": lbl, "checked": v in f_setup, "n": facet_counts["setup"].get(v, 0)}
                     for v, lbl in CUSTOMER_SETUP_OPTIONS],
@@ -1148,6 +1161,8 @@ def customers():
                       "href": _remove_filter_url("heard", val)})
     for val in f_plan:
         chips.append({"label": f"Plan: {val}", "href": _remove_filter_url("plan", val)})
+    for val in f_kind_chosen:
+        chips.append({"label": "Kind: " + _account_kind.LABELS.get(val, val), "href": _remove_filter_url("kind", val)})
     for val in f_setup:
         chips.append({"label": "Set-up: " + dict(CUSTOMER_SETUP_OPTIONS).get(val, val), "href": _remove_filter_url("setup", val)})
     if date_from:
@@ -1191,6 +1206,29 @@ def customers():
         paging=paging, per_page_options=CUSTOMERS_PER_PAGE_OPTIONS,
         signup_week=signup_confirm.week_counts(),
     )
+
+
+@portal_admin_bp.route("/customers/<int:customer_id>/kind", methods=["POST"])
+def customer_kind(customer_id: int):
+    """Set the business's kind: Real / Sales demo / Test (owner only, 8 Nov 2026, item 11)."""
+    r = _require_owner()
+    if r: return r
+    kind = request.form.get("kind")
+    if kind not in _account_kind.LABELS:
+        return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("""UPDATE tenants t SET account_kind=%s FROM customers c
+                        WHERE c.id=%s AND t.id=c.tenant_id
+                        RETURNING t.id, t.name""", (kind, customer_id))
+        row = cur.fetchone(); conn.commit()
+    finally:
+        cur.close(); conn.close()
+    if row:
+        insert_audit_log(admin_username=_admin_user(), action="account_kind_set", tenant_id=row[0],
+                         details={"kind": kind})
+        flash(f"{row[1]} is now marked {_account_kind.LABELS[kind]}.", "success")
+    return redirect(url_for("portal_admin.customer_detail", customer_id=customer_id))
 
 
 @portal_admin_bp.route("/customers/<int:customer_id>")
@@ -1394,7 +1432,14 @@ def customer_detail(customer_id: int):
     else:
         meta_wizard_step = 3        # ready to go live
 
+    _kc = get_db_connection(); _kcur = _kc.cursor()
+    try:
+        _kcur.execute("SELECT account_kind FROM tenants WHERE id=%s", (tenant_id,))
+        _kr = _kcur.fetchone()
+    finally:
+        _kcur.close(); _kc.close()
     return render_template("portal/admin_customer_detail.html",
+                           account_kind=(_kr[0] if _kr else "real"), account_kinds=_account_kind.KINDS,
                            customer=customer, keys=keys,
                            invoices=invs, audit=audit,
                            tenant_features=tenant_features,
@@ -5301,7 +5346,7 @@ def admin_plans():
     _legacy_cols = [key.split(":", 1)[1] for key, _label in _ALL_CATALOG_ITEMS if key.startswith("legacy:")]
     # Every tenant counts here, cancelled ones too — they still point at the
     # plan, so a delete has to move them as well.
-    cur.execute("SELECT plan_id, COUNT(*) AS n FROM tenants WHERE plan_id IS NOT NULL GROUP BY plan_id")
+    cur.execute("SELECT plan_id, COUNT(*) AS n FROM tenants WHERE plan_id IS NOT NULL AND account_kind = 'real' GROUP BY plan_id")
     _tenant_counts = {row["plan_id"]: row["n"] for row in (cur.fetchall() or [])}
     for p in plans:
         p["tenant_count"] = _tenant_counts.get(p["id"], 0)

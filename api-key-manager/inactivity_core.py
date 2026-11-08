@@ -175,7 +175,7 @@ def accounts(tenant_ids=None) -> list[dict]:
     ensure_tables()
     conn, cur = _db()
     try:
-        where = "t.is_demo = FALSE"
+        where = "t.account_kind = 'real'"
         params = [TRACKING_START]
         if tenant_ids is not None:
             where += " AND t.id = ANY(%s)"
@@ -387,7 +387,7 @@ def delete_business(tenant_id: int, by: str) -> dict:
     conn, cur = _db()
     files, removed = set(), {}
     try:
-        cur.execute("SELECT is_demo FROM tenants WHERE id=%s FOR UPDATE", (tenant_id,))
+        cur.execute("SELECT (account_kind <> 'real') AS is_demo FROM tenants WHERE id=%s FOR UPDATE", (tenant_id,))
         t = cur.fetchone()
         if not t or t["is_demo"]:
             raise ValueError("not a deletable business")
