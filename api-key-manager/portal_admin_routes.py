@@ -35,6 +35,16 @@ import buffer_accounts as _ba
 
 portal_admin_bp = Blueprint("portal_admin", __name__)
 
+
+@portal_admin_bp.context_processor
+def _disk_warning_ctx():
+    """Red banner on every Admin page while a server drive is ≥85% full (8 Nov 2026)."""
+    try:
+        import backups_status as _bs
+        return {"disk_full": [d for d in _bs.disk_view() if d["warn"]]}
+    except Exception:
+        return {"disk_full": []}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SUPPORT-TEAM PERMISSIONS — module catalog
 #
@@ -6623,7 +6633,8 @@ def backups():
     r = _require_owner()
     if r: return r
     import backups_status as bs
-    return render_template("portal/admin_backups.html", v=bs.view())
+    return render_template("portal/admin_backups.html", v=bs.view(),
+                           disks=bs.disk_view(), disk_limit=bs.DISK_LIMIT)
 
 
 @portal_admin_bp.route("/backups/run", methods=["POST"])

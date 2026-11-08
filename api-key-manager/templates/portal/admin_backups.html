@@ -78,6 +78,21 @@
   <div class="bk-card">Off-site copy<b class="bk-warn">Not set up yet</b>Backups are on this server's second disk only. Off-site copy is the next step.</div>
 </div>
 
+<div class="bk-sec" id="disk">
+  <h3 class="bk-h">💽 Disk space — email to you once a day if a drive passes {{ disk_limit }}%</h3>
+  <div class="bk-cards">
+    {% for d in disks %}
+    <div class="bk-card">{{ d.name }}
+      <b {% if d.warn %}class="bk-warn"{% endif %}>{{ d.pct }}% used</b>
+      {{ d.free }} free of {{ d.total }}<br>{{ d.holds }}
+      <div style="height:6px;border-radius:99px;background:rgba(3,12,24,.08);margin-top:8px;overflow:hidden">
+        <div style="height:100%;width:{{ d.pct }}%;background:{{ '#F04438' if d.warn else ('#F79009' if d.pct >= 70 else '#12B76A') }}"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
 <div class="bk-sec">
   <h3 class="bk-h">📦 Backups (newest first)</h3>
   {% if v.snaps %}

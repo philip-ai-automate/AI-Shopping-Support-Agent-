@@ -276,7 +276,8 @@ def graphql(shop: str, query: str, variables=None):
 _SHOP_Q = """{ shop { name email currencyCode
   plan { displayName shopifyPlus }
   billingAddress { countryCodeV2 address1 city zip }
-  primaryDomain { host } } }"""
+  primaryDomain { host } }
+  currentAppInstallation { accessScopes { handle } } }"""
 
 _WEBHOOK_SUB = """mutation($topic: WebhookSubscriptionTopic!, $uri: String!) {
   webhookSubscriptionCreate(topic: $topic, webhookSubscription: {uri: $uri}) {
@@ -284,9 +285,23 @@ _WEBHOOK_SUB = """mutation($topic: WebhookSubscriptionTopic!, $uri: String!) {
 
 
 def refresh_shop_details(shop: str):
-    s = graphql(shop, _SHOP_Q)["shop"]
+    d = graphql(shop, _SHOP_Q)
+    s = d["shop"]
+    # The permissions the owner has actually approved. Token responses only
+    # carry them when a token is issued, so a permission approved later
+    # (e.g. read_publications) used to stay missing from the saved list.
+    handles = sorted(x["handle"] for x in
+                     ((d.get("currentAppInstallation") or {}).get("accessScopes") or []))
     conn = get_db_connection(); cur = conn.cursor()
     try:
+        if handles:
+            sc = ",".join(handles)
+            cur.execute("""UPDATE shopify_shops SET
+                              b2b_status = CASE WHEN %s LIKE '%%read_customers%%'
+                                                 AND COALESCE(scope,'') NOT LIKE '%%read_customers%%'
+                                                THEN 'queued' ELSE b2b_status END,
+                              scope = %s
+                            WHERE shop=%s""", (sc, sc, shop))
         ba = s.get("billingAddress") or {}
         cur.execute("""UPDATE shopify_shops SET shop_name=%s, shop_email=%s, currency=%s,
                           country=%s, plan_name=%s, is_plus=%s, primary_domain=%s,

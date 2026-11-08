@@ -123,3 +123,25 @@ def mark_key_saved(by):
     with open(tmp, "w") as f:
         json.dump({"by": by, "at": _dt.datetime.now(UK).strftime("%-d %b %Y %H:%M")}, f)
     os.replace(tmp, os.path.join(STATUS, "key_saved.json"))
+
+
+# ── Disk space (8 Nov 2026) ─────────────────────────────────────────────
+DISK_LIMIT = 85
+DISKS = [("/", "Main drive", "System, websites, MariaDB, logs"),
+         ("/vault", "Big drive", "Backups, product photos"),
+         ("/srv/pgcrypt", "PhiXtra database area", "Encrypted PostgreSQL")]
+
+
+def disk_view():
+    import shutil
+    out = []
+    for path, name, holds in DISKS:
+        try:
+            u = shutil.disk_usage(path)
+        except Exception:
+            continue
+        pct = round(u.used * 100 / u.total)
+        out.append({"path": path, "name": name, "holds": holds, "pct": pct,
+                    "used": human_bytes(u.used), "free": human_bytes(u.free),
+                    "total": human_bytes(u.total), "warn": pct >= DISK_LIMIT})
+    return out

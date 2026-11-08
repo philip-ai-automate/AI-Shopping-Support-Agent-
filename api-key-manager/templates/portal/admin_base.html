@@ -396,6 +396,12 @@
         <div class="flash {{ cat }}">{{ msg }}</div>
       {% endfor %}{% endif %}
     {% endwith %}
+    {% if disk_full %}
+      <div class="flash danger"><b>Server disk nearly full:</b>
+        {% for d in disk_full %}{{ d.name }} {{ d.pct }}% ({{ d.free }} free){% if not loop.last %} · {% endif %}{% endfor %}.
+        Free space soon — a full main drive stops the websites and databases.
+        <a href="{{ url_for('portal_admin.backups') }}#disk">See Disk space</a></div>
+    {% endif %}
     {% block content %}{% endblock %}
     <div class="footer">© 2026 PhiXtra Admin</div>
   </div>
