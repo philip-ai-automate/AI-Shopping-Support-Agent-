@@ -18,6 +18,7 @@ Region matches the existing transactional SMTP host (smtp.zeptomail.eu) —
 ZeptoMail accounts are region-locked, so a .com token will not work against
 the .eu API host or vice versa.
 """
+import os
 import requests
 
 TIMEOUT = 20
@@ -42,6 +43,8 @@ def send_email(send_mail_token: str, from_email: str, from_name: str,
         payload["reply_to"] = [{"address": reply_to}]
     if client_reference:
         payload["client_reference"] = client_reference
+    if os.getenv("PHIXTRA_ENV") == "staging":
+        return _staging_trap(from_email, to_email, subject, html_body, reply_to)
     try:
         r = requests.post(
             API_URL,
@@ -64,3 +67,22 @@ def send_email(send_mail_token: str, from_email: str, from_name: str,
     except ValueError:
         error = r.text[:200]
     return False, f"ZeptoMail returned {r.status_code}: {error}"
+
+
+def _staging_trap(from_email, to_email, subject, html_body, reply_to):
+    """STAGING only (8 Nov 2026, item 11): never call ZeptoMail. Hand the email
+    to the local mail trap (SMTP_HOST/PORT), which saves it and only passes on
+    mail for staff on its allow list. Reports success so campaign flows can be tested."""
+    import smtplib
+    from email.message import EmailMessage
+    m = EmailMessage()
+    m["From"] = from_email; m["To"] = to_email; m["Subject"] = subject
+    if reply_to:
+        m["Reply-To"] = reply_to
+    m.set_content("HTML email"); m.add_alternative(html_body or "", subtype="html")
+    try:
+        with smtplib.SMTP(os.getenv("SMTP_HOST", "127.0.0.1"), int(os.getenv("SMTP_PORT", "2525")), timeout=10) as s:
+            s.send_message(m)
+        return True, None
+    except Exception as e:
+        return False, f"Staging mail trap: {e}"

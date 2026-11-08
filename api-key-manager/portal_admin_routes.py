@@ -42,9 +42,35 @@ def _disk_warning_ctx():
     """Red banner on every Admin page while a server drive is ≥85% full (8 Nov 2026)."""
     try:
         import backups_status as _bs
-        return {"disk_full": [d for d in _bs.disk_view() if d["warn"]]}
+        return {"disk_full": [d for d in _bs.disk_view() if d["warn"]], "is_staging": _IS_STAGING}
     except Exception:
-        return {"disk_full": []}
+        return {"disk_full": [], "is_staging": _IS_STAGING}
+
+
+_IS_STAGING = os.getenv("PHIXTRA_ENV") == "staging"
+_MAIL_TRAP_DIR = "/srv/phixtra/mail-trap"
+
+
+@portal_admin_bp.route("/staging-mail")
+def staging_mail():
+    """STAGING only (8 Nov 2026, item 11): every email staging tried to send, held or passed on."""
+    r = _require_admin("customers", "view")
+    if r: return r
+    if not _IS_STAGING:
+        return "Not found", 404
+    import json as _json
+    rows = []
+    try:
+        with open(os.path.join(_MAIL_TRAP_DIR, "index.jsonl")) as f:
+            for line in f:
+                try:
+                    rows.append(_json.loads(line))
+                except ValueError:
+                    pass
+    except FileNotFoundError:
+        pass
+    rows.reverse()
+    return render_template("portal/admin_staging_mail.html", rows=rows[:500], total=len(rows))
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SUPPORT-TEAM PERMISSIONS — module catalog

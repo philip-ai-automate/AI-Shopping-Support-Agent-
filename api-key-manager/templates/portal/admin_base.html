@@ -281,6 +281,12 @@
        href="{{ url_for('portal_admin.whos_online') }}">
       <span class="asb-icon">🟢</span> Who's Online
     </a>
+    {% if is_staging %}
+    <a class="asb-link {% if request.endpoint == 'portal_admin.staging_mail' %}active{% endif %}"
+       href="{{ url_for('portal_admin.staging_mail') }}">
+      <span class="asb-icon">📭</span> Staging mail
+    </a>
+    {% endif %}
     {% if session.get('portal_admin_role', 'owner') == 'owner' %}
     <a class="asb-link {% if request.endpoint and request.endpoint.startswith('portal_admin.backups') %}active{% endif %}"
        href="{{ url_for('portal_admin.backups') }}">
