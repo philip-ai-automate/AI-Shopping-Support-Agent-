@@ -35,3 +35,9 @@ uri = "https://portal.phixtra.com/shopify/webhooks"
 [[webhooks.subscriptions]]
 topics = [ "draft_orders/update", "draft_orders/delete" ]
 uri = "https://portal.phixtra.com/shopify/webhooks"
+
+# 7B (8 Nov 2026): Shopify App Pricing. Plan approved, changed, cancelled
+# or frozen → PhiXtra re-checks the store's plan and matches the portal plan.
+[[webhooks.subscriptions]]
+topics = [ "app_subscriptions/update" ]
+uri = "https://portal.phixtra.com/shopify/webhooks"

@@ -413,6 +413,19 @@ def app_home():
     return render_template("shopify/app_home.html", api_key=_key(), shop=shop)
 
 
+@shopify_bp.route("/app/welcome")
+@public_route
+def app_welcome():
+    """7B Shopify Billing: the plan's welcome link (merchant just approved a
+    plan). Shopify adds plan_handle, so the signed-link check can fail; the
+    page holds no data — everything comes through the session token — and
+    the session call re-checks the plan with Shopify straight away."""
+    shop = (request.args.get("shop") or "").lower()
+    if not valid_shop(shop):
+        return redirect("https://phixtra.com/")
+    return render_template("shopify/app_home.html", api_key=_key(), shop=shop)
+
+
 @shopify_bp.route("/api/session", methods=["POST"])
 @public_route
 def api_session():
@@ -448,6 +461,12 @@ def api_session():
             set_embed_data(shop)
         except Exception as e:
             print(f"⚠️ shopify embed data {shop}: {e}")
+    if cur_row.get("tenant_id"):
+        try:
+            import shopify_billing
+            shopify_billing.check(shop, "session")
+        except Exception as e:
+            print(f"⚠️ shopify billing {shop}: {e}")
     return jsonify(_state(_shop_row(shop)))
 
 
@@ -539,6 +558,15 @@ def webhooks():
         conn.commit()
     finally:
         cur.close(); conn.close()
+    # 7B Shopify Billing — after the commit above (the billing code updates the same shop row).
+    if topic in ("app_subscriptions/update", "app/uninstalled"):
+        try:
+            import shopify_billing
+            res = (shopify_billing.on_webhook(shop, payload) if topic == "app_subscriptions/update"
+                   else shopify_billing.on_uninstall(shop))
+            print(f"shopify billing {topic} {shop}: {res}")
+        except Exception as e:
+            print(f"⚠️ shopify billing webhook {shop}: {e}")
     return Response(status=200)
 
 
@@ -616,6 +644,11 @@ def _state(row):
         seen = row.get("chat_seen_at")
         out["chat"] = {"seen_minutes_ago": None if not seen else max(0, int((time.time() - seen.timestamp()) // 60)),
                        "embed_url": f"shopify://admin/themes/current/editor?context=apps&activateAppId={_key()}/chat"}
+        try:
+            import shopify_billing
+            out["billing"] = shopify_billing.state(row)
+        except Exception:
+            out["billing"] = None
     return out
 
 
