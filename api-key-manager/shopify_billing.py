@@ -32,6 +32,7 @@ PARTNER_API_VERSION = "2026-07"
 PLAN_MAP = {
     "free": "connect",
     "retail_starter": "web_startup",
+    "retail_starter_wa": "startup_dual",   # Starter + WhatsApp, $93 (9 Nov 2026)
     "retail_growth": "web_business",
     "retail_scale": "web_enterprise",
     "b2b_starter": "b2b_starter",

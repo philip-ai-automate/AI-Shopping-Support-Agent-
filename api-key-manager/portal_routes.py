@@ -35978,6 +35978,14 @@ def billing_plans():
         print("⚠️ billing_plans shopify card error:", e)
     if shop_bill:
         plan_ccy = "USD"
+        # Only the plans that exist in Shopify (9 Nov 2026): no channel switch,
+        # no Custom plan; B2B businesses keep their three B2B plans.
+        _shop_slugs = set(shopify_billing.PLAN_MAP.values())
+        _pool = single_plans + dual_plans + custom_plans
+        single_plans = [p for p in plans if p in _pool and (p["slug"] in _shop_slugs
+                        or p["id"] == current.get("plan_id"))]
+        single_plans.sort(key=lambda p: float(p.get("price_dollars") or 0))
+        dual_plans, custom_plans = [], []
     for p in plans:
         p["my_price"] = _plan_price(p, plan_ccy) if plan_ccy else 0
         p["my_annual_month"] = (_yearly_per_month(p["my_price"], p.get("annual_discount_pct"))
