@@ -588,6 +588,21 @@ async def receive_webhook(
         await handle_call_webhook(payload)
         return {"status": "ok", "reason": "call"}
 
+    # Keep-your-number numbers (Business app + PhiXtra, 2026-11-09): copied
+    # chats, copied contacts and replies sent from the phone app — see
+    # coexist_sync.py. Normal customer messages still come as "messages".
+    from coexist_sync import is_coexist_payload, first_phone_number_id as _cx_pnid, handle as _cx_handle
+    if is_coexist_payload(payload):
+        _xpnid = _cx_pnid(payload)
+        _xtenant = get_tenant_by_phone_number_id(_xpnid) if _xpnid else None
+        if not _xtenant:
+            return {"status": "ok", "reason": "coexist_unknown_number"}
+        if not _verify_signature(body, x_hub_signature_256 or "", _xtenant.get("app_secret") or ""):
+            print("⚠️ [META] HMAC mismatch on coexist webhook — ignoring")
+            return {"status": "ok"}
+        _cx_handle(payload, _xtenant)
+        return {"status": "ok", "reason": "coexist"}
+
     # Delivery-status callbacks (sent/delivered/read/failed) are a distinct
     # payload shape from inbound messages — handle and return early so they
     # never fall through to message-handling logic below.

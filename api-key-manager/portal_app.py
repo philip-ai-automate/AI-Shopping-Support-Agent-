@@ -18,7 +18,7 @@ def create_app():
     flask_app = Flask(__name__, template_folder="templates", static_folder="static")
     flask_app.secret_key = os.getenv("PORTAL_SECRET_KEY", "change-this-secret-in-env")
 
-    from portal_migrations import ensure_portal_tables, ensure_b2b_tables
+    from portal_migrations import ensure_portal_tables, ensure_b2b_tables, ensure_coexist_tables
     from portal_routes import portal_bp
     from portal_admin_routes import portal_admin_bp
     from portal_facebook_routes import facebook_bp
@@ -36,6 +36,7 @@ def create_app():
     # Run DB migrations on startup (all idempotent — safe)
     ensure_portal_tables()
     ensure_b2b_tables()
+    ensure_coexist_tables()
     ensure_school_tables()
 
     flask_app.register_blueprint(portal_bp)

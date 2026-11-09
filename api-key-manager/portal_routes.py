@@ -15862,7 +15862,9 @@ def whatsapp_connect():
                            suggested_verify_token=suggested_verify_token,
                            portal_api_key=portal_api_key,
                            report_phone=report_phone,
-                           wa_onboarding_link=wa_onboarding_link)
+                           wa_onboarding_link=wa_onboarding_link,
+                           coexist_allowed=_coexist_allowed(tenant_id),
+                           coexist_status=_coexist_status(tenant_id))
 
 
 @portal_bp.route("/whatsapp/save-notify-phone", methods=["POST"])
@@ -16740,6 +16742,86 @@ def _save_wa_embedded_connection(tenant_id: int, phone_number_id: str, waba_id: 
         return False
 
 
+# ── Keep-your-number (WhatsApp Business app + PhiXtra), 2026-11-09 ───────────
+# Plan: https://claude.ai/artifact/ThPqrX2AT5gbtiEZYWp76y (Step 0).
+# Switched on only for the businesses in WA_COEXIST_TENANTS (comma list in
+# .env) until the real test passes. After Meta's window finishes we ask
+# WhatsApp — once, within 24 hours, or Meta drops the number — for the
+# contacts (only if the owner left the tick on) and then the chat history.
+# The gateway (coexist_sync.py) saves what comes back.
+
+def _coexist_allowed(tenant_id: int) -> bool:
+    ids = {x.strip() for x in os.getenv("WA_COEXIST_TENANTS", "").split(",") if x.strip()}
+    return str(int(tenant_id)) in ids
+
+
+def _coexist_after_connect(tenant_id: int, phone_number_id: str, token: str, want_contacts: bool) -> dict:
+    """Check the number stayed on the Business app, then ask for contacts and
+    chat history. Never raises; problems go in wa_coexist_sync.last_error."""
+    import requests as _req
+    out = {"on_biz_app": None, "contacts": None, "history": None, "error": None}
+    hdr = {"Authorization": f"Bearer {token}"}
+    try:
+        r = _req.get(f"{_GRAPH}/{phone_number_id}", params={"fields": "is_on_biz_app,platform_type"},
+                     headers=hdr, timeout=10).json()
+        out["on_biz_app"] = r.get("is_on_biz_app")
+    except Exception as e:
+        out["error"] = f"status check: {e}"
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("""INSERT INTO wa_coexist_sync (phone_number_id, tenant_id, on_biz_app, want_contacts)
+                       VALUES (%s, %s, %s, %s)
+                       ON CONFLICT (phone_number_id) DO UPDATE SET tenant_id=EXCLUDED.tenant_id,
+                         on_biz_app=EXCLUDED.on_biz_app, want_contacts=EXCLUDED.want_contacts, updated_at=NOW()""",
+                    (phone_number_id, tenant_id, out["on_biz_app"], bool(want_contacts)))
+        conn.commit()
+        if out["on_biz_app"] is False:
+            return out          # an ordinary number: nothing to copy
+        steps = ([("contacts", "smb_app_state_sync")] if want_contacts else []) + [("history", "history")]
+        for key, sync_type in steps:
+            rid, err = None, None
+            for _try in range(2):
+                try:
+                    resp = _req.post(f"{_GRAPH}/{phone_number_id}/smb_app_data", headers=hdr, timeout=15,
+                                     json={"messaging_product": "whatsapp", "sync_type": sync_type}).json()
+                    rid = resp.get("request_id")
+                    err = None if rid else str(resp.get("error") or resp)[:500]
+                except Exception as e:
+                    err = str(e)[:500]
+                if rid:
+                    break
+            out[key] = rid or False
+            cur.execute(f"""UPDATE wa_coexist_sync SET {key}_request_id=%s, {key}_requested_at=NOW(),
+                               last_error=COALESCE(%s, last_error), updated_at=NOW()
+                            WHERE phone_number_id=%s""", (rid, err and f"{key}: {err}", phone_number_id))
+            conn.commit()
+            if err:
+                out["error"] = f"{key}: {err}"
+                print(f"⚠️ coexist {key} sync request failed tenant={tenant_id} pnid={phone_number_id}: {err}")
+    except Exception as e:
+        conn.rollback()
+        out["error"] = str(e)[:300]
+        print("⚠️ _coexist_after_connect error:", e)
+    finally:
+        cur.close(); conn.close()
+    insert_audit_log(action="wa_coexist_connected", tenant_id=tenant_id,
+                     details={"phone_number_id": phone_number_id, **out})
+    return out
+
+
+def _coexist_status(tenant_id: int) -> dict:
+    """{phone_number_id: wa_coexist_sync row} for the WhatsApp page."""
+    try:
+        conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM wa_coexist_sync WHERE tenant_id=%s", (int(tenant_id),))
+        rows = {r["phone_number_id"]: r for r in cur.fetchall()}
+        cur.close(); conn.close()
+        return rows
+    except Exception as e:
+        print("⚠️ _coexist_status:", e)
+        return {}
+
+
 @portal_bp.route("/whatsapp/embedded-callback", methods=["POST"])
 @team_feature("wa.connect_manage")
 def whatsapp_embedded_callback():
@@ -16763,6 +16845,8 @@ def whatsapp_embedded_callback():
     waba_id         = (data.get("waba_id")         or "").strip()
     signup_mode     = (data.get("mode")            or "")[:20]
     meta_event      = (data.get("meta_event")      or "")[:60]
+    want_contacts   = data.get("want_contacts", True) is not False
+    is_coexist      = (signup_mode == "coexist" or meta_event == "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING")
     print(f"ℹ️ wa embedded callback tenant={tenant_id} mode={signup_mode} meta_event={meta_event}")
 
     if not code:
@@ -16823,13 +16907,17 @@ def whatsapp_embedded_callback():
                          details={"phone_number_id": pn["phone_number_id"],
                                   "waba_id": pn["waba_id"], "via": "embedded_signup",
                                   "mode": signup_mode, "meta_event": meta_event})
+        coexist = (_coexist_after_connect(tenant_id, pn["phone_number_id"], token, want_contacts)
+                   if is_coexist else None)
         return jsonify({
             "status": "connected",
             "display_phone": pn["display_phone_number"],
             "verified_name": pn["verified_name"],
+            "coexist": coexist,
         })
 
     # Multiple phones — let the user pick
+    session["wa_pending_coexist"] = {"on": is_coexist, "want_contacts": want_contacts}
     return jsonify({"status": "select_phone", "phone_options": phones})
 
 
@@ -16882,10 +16970,13 @@ def whatsapp_embedded_complete():
         display_phone=display_phone,
         verified_name=verified_name,
     )
+    pending_cx = session.pop("wa_pending_coexist", None) or {}
     if saved:
         insert_audit_log(action="wa_embedded_connected", tenant_id=tenant_id,
                          details={"phone_number_id": phone_number_id,
                                   "waba_id": waba_id, "via": "embedded_signup"})
+        if pending_cx.get("on"):
+            _coexist_after_connect(tenant_id, phone_number_id, token, pending_cx.get("want_contacts", True))
         flash(f"WhatsApp connected! ✅  {display_phone or phone_number_id}", "success")
     else:
         flash("Could not save connection. Please try again.", "danger")

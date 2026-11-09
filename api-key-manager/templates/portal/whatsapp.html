@@ -199,7 +199,19 @@
             {% else %}
               <span class="pill pill-grey" style="font-size:10px">Manual</span>
             {% endif %}
+            {% set cx = (coexist_status or {}).get(cn.phone_number_id) %}
+            {% if cx and cx.on_biz_app %}
+              <span class="pill pill-green" style="font-size:10px">Business app + PhiXtra</span>
+            {% endif %}
           </div>
+          {# Keep-your-number copy progress (2026-11-09) #}
+          {% if cx and cx.on_biz_app %}
+          <div style="font-size:12.5px;margin:0 0 8px;padding:8px 10px;border-radius:8px;background:rgba(37,211,102,.08)">
+            {% if cx.want_contacts %}Contacts: {{ ('%d copied' % cx.contacts_count) if cx.contacts_count else ('asked for, waiting for WhatsApp' if cx.contacts_request_id else 'not copied yet') }}{% else %}Contacts: not copied (you chose this){% endif %}
+            · Chats: {% if cx.history_declined %}not shared in WhatsApp{% elif cx.history_done_at %}done, {{ cx.history_messages }} messages{% elif cx.history_request_id %}{{ cx.history_progress }}% copied{% else %}not copied yet{% endif %}
+            {% if cx.last_error and not cx.history_done_at %}<div style="color:#b42318;margin-top:4px">Something went wrong copying. Please message PhiXtra support.</div>{% endif %}
+          </div>
+          {% endif %}
 
           <!-- Meta IDs -->
           <div style="font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:2px">
@@ -372,7 +384,23 @@
     A Meta window opens and walks you through it — it takes about 5 minutes.
   </p>
 
-  {# "Keep my phone app" (WhatsApp Business app number) option removed 2026-10-29: it did not work. #}
+  {# "Keep my phone app" removed 2026-10-29 (it did not work); back 2026-11-09,
+     rebuilt properly, shown only to businesses in WA_COEXIST_TENANTS until tested. #}
+  {% if coexist_allowed %}
+  <div class="wa-choice" style="border-color:#25D366">
+    <div class="wa-choice-title">My number is on the WhatsApp Business app — keep my app</div>
+    <div class="wa-choice-sub">
+      Your number keeps working on your phone, and the same chats also show in PhiXtra.
+      Have your phone with you, with WhatsApp Business updated. A computer and Chrome work best.
+      WhatsApp sends a message to your Business app: tap <b>Connect</b>, then <b>Share chat history</b>.
+    </div>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:12px">
+      <input type="checkbox" id="coexistContacts" checked style="margin-top:3px">
+      <span><b>Copy my WhatsApp contacts into PhiXtra.</b> WhatsApp only lets us copy them now, once.</span>
+    </label>
+    <button class="wa-signup-btn" onclick="launchWhatsAppSignup('coexist')" id="signupBtnCoexist">Connect and keep my app</button>
+  </div>
+  {% endif %}
   <div class="wa-choice">
     <div class="wa-choice-title">Use a new number, or one not on the WhatsApp Business app</div>
     <div class="wa-choice-sub">
@@ -438,6 +466,12 @@
         if (String(data.event || '').indexOf('FINISH') === 0) {
           _sessionInfo = data.data || {};
           _sessionInfo._event = data.event;
+          // v5 sends messaging_account_ids instead of waba_id
+          if (!_sessionInfo.waba_id && (_sessionInfo.messaging_account_ids || []).length)
+            _sessionInfo.waba_id = _sessionInfo.messaging_account_ids[0];
+        } else if (data.event === 'CANCEL' || data.event === 'ERROR') {
+          _sessionInfo = {_event: data.event, _step: (data.data || {}).current_step || '',
+                          _error: (data.data || {}).error_message || ''};
         }
       }
     } catch(e) {}
@@ -456,8 +490,14 @@
         sendCodeToBackend(response.authResponse.code);
       } else {
         setStatus('idle');
-        if (response.status === 'unknown' || !response.authResponse) {
-          // User closed the popup — silent, no error needed
+        // Keep-your-number (2026-11-09): say plainly that it didn't finish.
+        // Ordinary connections keep today's silent close until Step 1.
+        if (_signupMode === 'coexist') {
+          var _ns = _sessionInfo._error
+            ? "WhatsApp said: " + _sessionInfo._error + " Your number isn't connected yet. Nothing has changed on your phone."
+            : "WhatsApp's window closed before you finished. Your number isn't connected yet. Nothing has changed on your phone. " +
+              "If the window didn't open, allow pop-ups for portal.phixtra.com and try again.";
+          showError(_ns);
         }
       }
     }, {
@@ -482,6 +522,8 @@
         waba_id: _sessionInfo.waba_id || '',
         mode: _signupMode,
         meta_event: _sessionInfo._event || '',
+        want_contacts: _signupMode === 'coexist'
+          ? !!(document.getElementById('coexistContacts') || {}).checked : true,
       })
     })
     .then(function(r) { return r.json(); })

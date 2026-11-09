@@ -5018,3 +5018,41 @@ def ensure_b2b_tables():
     finally:
         cur.close()
         conn.close()
+
+
+def ensure_coexist_tables():
+    """Keep-your-number (WhatsApp Business app + PhiXtra), 2026-11-09: one row
+    per number that keeps the Business app — what we asked Meta to copy and how
+    far it got. Written by the portal (connect) and the gateway (webhooks)."""
+    from db import get_db_connection
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS wa_coexist_sync (
+                phone_number_id      TEXT PRIMARY KEY,
+                tenant_id            INTEGER NOT NULL,
+                connected_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                on_biz_app           BOOLEAN,
+                want_contacts        BOOLEAN NOT NULL DEFAULT TRUE,
+                contacts_request_id  TEXT,
+                contacts_requested_at TIMESTAMPTZ,
+                contacts_count       INTEGER NOT NULL DEFAULT 0,
+                contacts_done_at     TIMESTAMPTZ,
+                history_request_id   TEXT,
+                history_requested_at TIMESTAMPTZ,
+                history_progress     INTEGER NOT NULL DEFAULT 0,
+                history_messages     INTEGER NOT NULL DEFAULT 0,
+                history_declined     BOOLEAN NOT NULL DEFAULT FALSE,
+                history_done_at      TIMESTAMPTZ,
+                last_error           TEXT,
+                updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS wa_coexist_sync_tenant ON wa_coexist_sync (tenant_id)")
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print("⚠️  Coexist migration error:", e)
+    finally:
+        cur.close()
+        conn.close()
