@@ -152,6 +152,9 @@ def apply(shop: str, sub, source: str) -> str:
         if not row:
             return "unknown_shop"
         tid = row[0]
+        # Shopify suggests handles with dashes (retail-starter); accept either.
+        if sub and sub.get("handle"):
+            sub = dict(sub, handle=str(sub["handle"]).strip().lower().replace("-", "_"))
         active = bool(sub and sub.get("status") == "ACTIVE" and sub.get("handle") in PLAN_MAP)
         handle = sub["handle"] if active else None
         cur.execute("""UPDATE shopify_shops SET bill_plan=%s, bill_status=%s, bill_period=%s, bill_trial_ends=%s,
@@ -186,7 +189,7 @@ def apply(shop: str, sub, source: str) -> str:
     import portal_routes as pr
     # Same yearly discount as the website and portal (e.g. B2B Scale 20%).
     amount = 0 if slug == FREE_SLUG else (round(float(price or 0), 2) if cycle == "monthly"
-                                          else round(float(price or 0) * 12 * (100 - float(disc)) / 100, 2))
+                                          else pr._yearly_per_month(price, disc) * 12)   # same as portal + Shopify plan
     pr._activate_plan_subscription(tid, plan_id, cycle, "USD", "shopify",
                                    (sub or {}).get("sub_id"), shop,
                                    f"shopify:{shop}:{slug}:{cycle}:{int(time.time())}", amount)
@@ -253,6 +256,13 @@ def state(row) -> dict:
             "plan_page": plan_page_url(row["shop"])}
 
 
+def _year_price(price, disc) -> int:
+    """Yearly charge = yearly-per-month rounded half up × 12, same as the portal and website."""
+    from decimal import Decimal, ROUND_HALF_UP
+    v = Decimal(str(price)) * (Decimal(100) - Decimal(str(disc or 0))) / Decimal(100)
+    return int(v.quantize(Decimal(1), rounding=ROUND_HALF_UP)) * 12
+
+
 def card(tenant_id: int, row=None) -> dict | None:
     """What a Shopify-connected business is on, for the Shopify Home 'Your plan'
     card and the portal's 'Billed through Shopify' card (7B screens, 9 Nov 2026).
@@ -286,7 +296,7 @@ def card(tenant_id: int, row=None) -> dict | None:
     price = float(price or 0)
     out = {"shop": row["shop"], "plan_page": st["plan_page"], "plan_name": name or "Free",
            "price": round(price), "yearly": yearly,
-           "year_price": round(price * 12 * (100 - float(disc)) / 100) if yearly else None,
+           "year_price": _year_price(price, disc) if yearly else None,
            "days_left": None, "kind": "free"}
     status = (row.get("bill_status") or "").upper()
     if status == "FROZEN":
