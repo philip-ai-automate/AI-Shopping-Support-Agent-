@@ -426,6 +426,19 @@ def app_welcome():
     return render_template("shopify/app_home.html", api_key=_key(), shop=shop)
 
 
+# Shopify App Pricing sends merchants back to the plan's redirect ("/welcome")
+# on the site root, not under the app URL (9 Nov 2026) — forward it, keeping
+# Shopify's query string (shop, host, charge_id, plan_handle…).
+shopify_root_bp = Blueprint("shopify_root", __name__)
+
+
+@shopify_root_bp.route("/welcome")
+@public_route
+def root_welcome():
+    qs = request.query_string.decode("utf-8", "ignore")
+    return redirect("/shopify/app/welcome" + ("?" + qs if qs else ""))
+
+
 @shopify_bp.route("/api/session", methods=["POST"])
 @public_route
 def api_session():

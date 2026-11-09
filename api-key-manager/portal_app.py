@@ -80,6 +80,7 @@ def create_app():
     import shopify_app
     shopify_app.ensure_tables()
     flask_app.register_blueprint(shopify_app.shopify_bp)
+    flask_app.register_blueprint(shopify_app.shopify_root_bp)
     flask_app.before_request(enforce_demo_lock)
 
     # Who's Online (portal_presence): real page opens/actions, once a minute per person
