@@ -194,7 +194,7 @@
 
       {# AI Sales Agent for B2B (2026-10-29): B2B-only fields, shown by render(). #}
       <div class="rg-f b2-only" id="blkJob" hidden>
-        <label for="fJob">Job title</label>
+        <label for="fJob">Job title <span class="b2-opt">(optional)</span></label>
         <input type="text" name="job_title" id="fJob" maxlength="120" placeholder="e.g. Sales Director" value="{{ fd.get('job_title', '') }}"/>
       </div>
       <div class="b2-sec" id="secCompany" hidden><b>Your company</b><span>Shown on your quotes and invoices.</span></div>
