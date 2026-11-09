@@ -577,7 +577,7 @@ function updateWa(){
   if (box) { el('lblPhoneWa').textContent = box[0]; el('waSub').textContent = box[1]; }
 }
 document.querySelectorAll('input[name="wa_usage"]').forEach(function(r){
-  r.addEventListener('change', function(){ checkUsage(); updateWa(); });
+  r.addEventListener('change', function(){ if (TRIED) checkUsage(); updateWa(); });
 });
 // "What does this mean?" pop-ups (2026-11-09)
 document.querySelectorAll('.wu-mean').forEach(function(b){
@@ -595,14 +595,18 @@ function check(r){
   var f = el(r[0]); if (!visible(f)) return true;
   var ok = r[2](f.value); f.classList.toggle('f-invalid', !ok); el(r[1]).hidden = ok; return ok;
 }
+// 2026-11-09: messages show only after "Create free account" is pressed
+// (showing them when a box is left moved the page mid-click). After that,
+// each message clears as soon as the box is fixed.
+var TRIED = false;
 RULES.forEach(function(r){
-  var f = el(r[0]); if (!f) return; var touched = false;
-  f.addEventListener('blur', function(){ touched = true; check(r); });
-  f.addEventListener('input', function(){ if (touched) check(r); });
-  f.addEventListener('change', function(){ touched = true; check(r); });
+  var f = el(r[0]); if (!f) return;
+  f.addEventListener('input', function(){ if (TRIED) check(r); });
+  f.addEventListener('change', function(){ if (TRIED) check(r); });
 });
 el('regForm').addEventListener('submit', function(e){
   if (!TYPE) { e.preventDefault(); openPicker(); return; }
+  TRIED = true;
   var first = null;
   RULES.forEach(function(r){ if (!check(r) && !first) first = el(r[0]); });
   if (!checkUsage() && !first) first = el('blkUsage');
