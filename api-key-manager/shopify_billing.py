@@ -305,8 +305,11 @@ def card(tenant_id: int, row=None) -> dict | None:
            "year_price": _year_price(price, disc) if yearly else None,
            "days_left": None, "kind": "free"}
     status = (row.get("bill_status") or "").upper()
+    on_free = (slug or FREE_SLUG) == FREE_SLUG or price <= 0
     if status == "FROZEN":
         out["kind"] = "frozen"
+    elif on_free and not (trial_ends and _date(trial_ends) >= datetime.now(timezone.utc).date()):
+        out.update(kind="free", plan_name="Free")     # incl. Shopify's $0 "free" plan
     elif row.get("bill_plan") and status == "ACTIVE":
         if st["trial_days_left"]:
             out.update(kind="shop_trial", days_left=st["trial_days_left"])
