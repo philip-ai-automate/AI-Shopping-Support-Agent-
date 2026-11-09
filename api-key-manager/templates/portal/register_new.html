@@ -115,9 +115,9 @@
 <div class="rg-shell">
 
   <aside class="rg-aside">
-    <div class="rg-kicker" id="asKicker">PhiXtra AI</div>
+    <div class="rg-kicker" id="asKicker">PhiXtra AI Agent</div>
     <h2 id="asTitle">Your WhatsApp, website and CRM on one platform.</h2>
-    <p id="asSub">AI answers your customers, and your team sees every conversation in one place.</p>
+    <p id="asSub">Your AI Agent answers your customers, and your team sees every conversation in one place.</p>
     <ul class="rg-benefits" id="asList"></ul>
     <div class="rg-trust">PhiXtra is an official Meta-approved WhatsApp Tech Provider. A trading name of ProfitBuyz Limited.</div>
   </aside>
@@ -332,12 +332,12 @@
         </button>
         <button type="button" class="rg-choice" onclick="pickType('web')">
           <span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0B1D40" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19M12 2.5c2.6 2.7 3.9 5.9 3.9 9.5s-1.3 6.8-3.9 9.5c-2.6-2.7-3.9-5.9-3.9-9.5S9.4 5.2 12 2.5z"/></svg></span>
-          <span class="tx"><b>Website only</b><span>AI chat on your website: WordPress, Shopify, Wix, Squarespace or any site.</span></span>
+          <span class="tx"><b>Website only</b><span>An AI Agent that chats on your website: WordPress, Shopify, Wix, Squarespace or any site.</span></span>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5B78" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
         </button>
         <button type="button" class="rg-choice" onclick="pickType('both')">
           <span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0B1D40" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="13" height="10" rx="2"/><path d="M21.5 13.5a5 5 0 0 1-7.4 4.4L11 19l1.1-3"/><path d="M6 17.5h4"/></svg></span>
-          <span class="tx"><b>WhatsApp and website</b><span>One AI on both, one shared inbox. Website + WhatsApp plans.</span></span>
+          <span class="tx"><b>WhatsApp and website</b><span>One AI Agent on both, one shared inbox. Website + WhatsApp plans.</span></span>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5B78" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
         </button>
         <button type="button" class="rg-choice" onclick="pickType('b2b')">
@@ -372,14 +372,14 @@ var PLAT_NAMES = {wordpress:'WordPress / WooCommerce', shopify:'Shopify', wix:'W
 var PLAT_SHORT = {shopify:'Shopify', wix:'Wix', squarespace:'Squarespace', other:'your website'};
 var TYPE_NAMES = {whatsapp:'WhatsApp only', web:'Website only', both:'WhatsApp and website', b2b:'AI Sales Agent for B2B'};
 var ASIDE = {
-  '':      ['PhiXtra AI', 'Your WhatsApp, website and CRM on one platform.', 'AI answers your customers, and your team sees every conversation in one place.',
-            ['Official WhatsApp Business API, approved by Meta', 'AI chat for WordPress, Shopify, Wix, Squarespace or any site', 'A free CRM with a sales pipeline', 'Try the AI free for 2 weeks, whenever you are ready']],
-  whatsapp:['WhatsApp AI + CRM', 'Turn every WhatsApp message into a sale.', 'Your team works from one official WhatsApp number and a free CRM. Add the AI when you are ready.',
-            ['Use the number your customers already message, or a new one', 'One shared inbox for your whole team', 'Every customer saved in a free CRM, with a sales pipeline', 'Try the AI free for 2 weeks, whenever you are ready']],
-  web:     ['Website AI', 'Let AI answer every visitor on your website.', 'Works on WordPress, Shopify, Wix, Squarespace or a site built for you.',
-            ['Answers from your own website pages and product list', 'Recommends products and passes serious buyers to your team', 'Every visitor conversation in one inbox, with a free CRM', 'Try the AI free for 2 weeks, whenever you are ready']],
-  both:    ['WhatsApp + Website AI', 'One AI on WhatsApp and your website.', 'The same AI answers on both, and your team sees every conversation in one inbox.',
-            ['Use the number your customers already message, or a new one', 'Chat on WordPress, Shopify, Wix, Squarespace or any site', 'One shared inbox and a free CRM for both channels', 'Try the AI free for 2 weeks, whenever you are ready']],
+  '':      ['PhiXtra AI Agent', 'Your WhatsApp, website and CRM on one platform.', 'Your AI Agent answers your customers, and your team sees every conversation in one place.',
+            ['Official WhatsApp Business API, approved by Meta', 'AI Agent chat for WordPress, Shopify, Wix, Squarespace or any site', 'A free CRM with a sales pipeline', 'Try the AI Agent free for 2 weeks, whenever you are ready']],
+  whatsapp:['WhatsApp AI Agent + CRM', 'Turn every WhatsApp message into a sale.', 'Your team works from one official WhatsApp number and a free CRM. Add the AI Agent when you are ready.',
+            ['Use the number your customers already message, or a new one', 'One shared inbox for your whole team', 'Every customer saved in a free CRM, with a sales pipeline', 'Try the AI Agent free for 2 weeks, whenever you are ready']],
+  web:     ['Website AI Agent', 'Let your AI Agent answer every visitor on your website.', 'Works on WordPress, Shopify, Wix, Squarespace or a site built for you.',
+            ['Answers from your own website pages and product list', 'Recommends products and passes serious buyers to your team', 'Every visitor conversation in one inbox, with a free CRM', 'Try the AI Agent free for 2 weeks, whenever you are ready']],
+  both:    ['WhatsApp + Website AI Agent', 'One AI Agent on WhatsApp and your website.', 'The same AI Agent answers on both, and your team sees every conversation in one inbox.',
+            ['Use the number your customers already message, or a new one', 'Chat on WordPress, Shopify, Wix, Squarespace or any site', 'One shared inbox and a free CRM for both channels', 'Try the AI Agent free for 2 weeks, whenever you are ready']],
   b2b:     ['AI Sales Agent for B2B', 'Every Enquiry. Every Language. Every Sales Opportunity.', 'For wholesalers, distributors, exporters and manufacturers.',
             ["Website chat and WhatsApp answered in your buyer's language, day and night", 'Automatic follow-up by email and WhatsApp until they order', 'Every buyer and deal in a free CRM with a sales pipeline', 'Try it free for 2 weeks, whenever you are ready. No card needed']]
 };
@@ -391,11 +391,11 @@ function steps() {
   var wp = PLAT === 'wordpress', short = PLAT_SHORT[PLAT] || 'your website';
   var verify = ['Confirm your WhatsApp and email.', 'We send a code to each. Enter both and your account is ready.'];
   var wa = ['Connect your WhatsApp.', "Use Meta's official sign-up window. The number then works through PhiXtra, not the phone app."];
-  var site = ['Connect your website.', 'You give permission first, then click Sync now and your AI reads your public pages. If something blocks us, we tell you the reason and how to fix it.'];
+  var site = ['Connect your website.', 'You give permission first, then click Sync now and your AI Agent reads your public pages. If something blocks us, we tell you the reason and how to fix it.'];
   var box = wp ? ['Install the free PhiXtra plugin.', 'From WordPress.org (Plugins › Add New, search PhiXtra), then click Connect to PhiXtra inside it. That adds the chat box.'] : ['Add the chat box.', 'Copy one line of code into ' + short + ', with a step-by-step guide.'];
-  var prod = wp ? ['Send your products with one click.', 'In the plugin, choose All published products and click Save. No Excel, nothing to prepare.'] : ['Add your products (optional).', "Your AI reads them from your website's product pages. Nothing to prepare."];
+  var prod = wp ? ['Send your products with one click.', 'In the plugin, choose All published products and click Save. No Excel, nothing to prepare.'] : ['Add your products (optional).', "Your AI Agent reads them from your website's product pages. Nothing to prepare."];
   var free = ['Your team replies free', 'on PhiXtra Connect, with the shared inbox and CRM.'];
-  var trial = ['Start your 2-week AI trial', 'from your dashboard when you are ready. No card needed.'];
+  var trial = ['Start your 2-week AI Agent trial', 'from your dashboard when you are ready. No card needed.'];
   var webFree = ['Your team replies free', 'on PhiXtra Connect: website chats come to your shared inbox, and replies show in the visitor\'s chat box.'];
   var b2bVerify = ['Confirm your mobile and email.', 'We send a code to each: the mobile code comes on WhatsApp.'];
   var price = ['Your prices.', "From your WooCommerce shop through the PhiXtra plugin, or from your website's product pages. Nothing to prepare."];
