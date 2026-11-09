@@ -45,6 +45,10 @@
  .ok{color:#0c5132;font-weight:600}
  .pill{display:inline-block;font-size:12px;font-weight:600;border-radius:99px;padding:2px 10px;white-space:nowrap;background:#f1f1f1;color:#616161}
  .pill.go{background:#cdfee1;color:#0c5132}
+ .pill.trial{background:#e8f1ff;color:#0b4fb3}.pill.warn{background:#fff1d6;color:#8a5300}.pill.bad{background:#fee9e8;color:#8e1f0b}
+ .plan{display:flex;align-items:center;gap:14px;flex-wrap:wrap}.plan .t{flex:1;min-width:220px}
+ .plan .t b{display:block;font-size:15px}.plan .t b .pill{margin-left:6px;vertical-align:1px}.plan .t span.d{color:#616161}
+ .plan .btn{margin-top:0}
  .prog{height:6px;border-radius:99px;background:#ebebeb;overflow:hidden;margin-top:8px;max-width:320px}
  .prog i{display:block;height:100%;width:0;background:#303030;transition:width .4s}
  .prog.wait i{width:30%;animation:slide 1.4s ease-in-out infinite}
@@ -67,7 +71,7 @@
    <p class="sub">From first enquiry to confirmed order.</p>
    <ul class="vals">
     <li><div class="ic">💬</div><div><b>Every enquiry answered</b><span>On your store chat, WhatsApp and email, in the buyer's own language, day and night, using your Shopify products, prices and stock.</span></div></li>
-    <li><div class="ic">🧾</div><div><b>Quote requests, ready for your salesperson <span class="tag">B2B</span></b><span>When a business buyer asks for a price, your AI agent writes it up as a quote request with the products and quantities. Your salesperson is alerted so the quote goes out fast.</span></div></li>
+    <li><div class="ic">🧾</div><div><b>Quote requests, ready for your salesperson <span class="tag">B2B</span></b><span>When a business buyer asks for a price, your AI Agent writes it up as a quote request with the products and quantities. Your salesperson is alerted so the quote goes out fast.</span></div></li>
     <li><div class="ic">✅</div><div><b>Accepted quotes become Shopify orders <span class="tag">B2B</span></b><span>When the buyer says yes, the order and invoice are created in your Shopify.</span></div></li>
     <li><div class="ic">🔁</div><div><b>Automatic follow-ups</b><span>Buyers who go quiet hear from you on time, so no sale slips away.</span></div></li>
     <li><div class="ic">📊</div><div><b>Every sale tracked</b><span>Each enquiry becomes a lead in your sales pipeline, from first message to won order.</span></div></li>
@@ -130,6 +134,8 @@
    <h1>Your store is connected to PhiXtra <span class="ok">✓</span></h1>
    <p class="sub" id="h-biz" style="margin:0"></p>
   </div>
+  <!-- 7B (9 Nov 2026, approved mock-up Qk1B4uW9DFbE9zUxQkEnJo): the plan, billed through Shopify -->
+  <div class="card hide" id="h-plan"><div class="plan"><div class="t"><b id="hp-title"></b><span class="d" id="hp-text"></span></div><div id="hp-act"></div></div></div>
   <div class="card">
    <ul class="steps">
     <li><div class="n">1</div><div class="t"><b>Products</b><span id="h-products">Reading your products from Shopify…</span>
@@ -138,7 +144,7 @@
       <span class="more hide" id="h-off"></span>
       <span class="more hide" id="h-pages"></span></div>
       <div id="h-pact"><span class="pill" id="h-pill">Reading</span></div></li>
-    <li><div class="n">2</div><div class="t"><b>Chat on your store</b><span id="h-chat">Let buyers chat with your AI agent on every page of your store. Press Turn on, then Save in the theme editor.</span></div><div id="h-cact"><button class="btn sec" id="b-chat">Turn on</button></div></li>
+    <li><div class="n">2</div><div class="t"><b>Chat on your store</b><span id="h-chat">Let buyers chat with your AI Agent on every page of your store. Press Turn on, then Save in the theme editor.</span></div><div id="h-cact"><button class="btn sec" id="b-chat">Turn on</button></div></li>
     <li id="h-quotes" class="hide"><div class="n">3</div><div class="t"><b>Quotations <span class="tag">B2B</span></b><span id="h-qtext">Quote requests from your buyers arrive in Quotations › Requests.</span><span class="more hide" id="h-qerr" style="color:#8e1f0b"></span><span class="more hide" id="h-buyers"></span></div><div id="h-qact"><button class="btn sec" data-open="/quotations/requests">Open</button></div></li>
     <li><div class="n" id="h-wa-n">3</div><div class="t"><b>WhatsApp and email</b><span>Connect your WhatsApp number and email in your PhiXtra account.</span></div><button class="btn sec" data-open="/dashboard">Open PhiXtra</button></li>
    </ul>
@@ -199,17 +205,17 @@
       const ago = p.minutes_ago == null ? '' : (p.minutes_ago < 1 ? ' Last update just now.'
         : ' Last update ' + n(p.minutes_ago) + (p.minutes_ago === 1 ? ' minute' : ' minutes') + ' ago.');
       txt.textContent = p.count
-        ? n(p.count) + (p.count === 1 ? ' product' : ' products') + ' ready for your AI agent. Changes you make in Shopify are picked up automatically.' + (p.minutes_ago != null && p.minutes_ago < 600 ? ago : '')
+        ? n(p.count) + (p.count === 1 ? ' product' : ' products') + ' ready for your AI Agent. Changes you make in Shopify are picked up automatically.' + (p.minutes_ago != null && p.minutes_ago < 600 ? ago : '')
         : 'No products are on sale in your online store yet. When you add one in Shopify, it comes here automatically.';
       $('h-pact').innerHTML = again;
       if (p.skipped) {
         $('h-skipped').textContent = n(p.skipped) + (p.skipped === 1 ? ' product is a draft, archived or hidden' : ' products are drafts, archived or hidden')
-          + " from your online store, so your AI agent won't offer " + (p.skipped === 1 ? 'it.' : 'them.');
+          + " from your online store, so your AI Agent won't offer " + (p.skipped === 1 ? 'it.' : 'them.');
         $('h-skipped').classList.remove('hide');
       }
       if (p.off) {
         $('h-off').innerHTML = '';
-        $('h-off').append(n(p.off) + (p.off === 1 ? ' product is' : ' products are') + ' switched off for your AI agent. ');
+        $('h-off').append(n(p.off) + (p.off === 1 ? ' product is' : ' products are') + ' switched off for your AI Agent. ');
         const b = document.createElement('button'); b.className = 'lnk2'; b.textContent = 'See ' + (p.off === 1 ? 'it' : 'them');
         b.dataset.open = '/products/store?offer=off'; b.onclick = openPhx;
         $('h-off').append(b); $('h-off').classList.remove('hide');
@@ -238,29 +244,67 @@
       t.textContent = "We haven't seen the chat on your store for a while. If you turned it off, press Turn on to switch it back on.";
       a.innerHTML = btn;
     } else {
-      t.textContent = 'Let buyers chat with your AI agent on every page of your store. Press Turn on, then Save in the theme editor.';
+      t.textContent = 'Let buyers chat with your AI Agent on every page of your store. Press Turn on, then Save in the theme editor.';
       a.innerHTML = btn;
     }
     const b = $('b-chat');
     if (b) b.onclick = function () { window.open(c.embed_url, '_top'); };
   }
+  // Shopify's own plan page must open at the top level, not inside the app frame.
+  function toPlans(url) { return function () { window.open(url, '_top'); }; }
+  function plan(c) {
+    const box = $('h-plan');
+    if (!c) { box.classList.add('hide'); return; }
+    const money = (v) => '$' + Number(v || 0).toLocaleString();
+    const pill = (cls, txt) => ' <span class="pill ' + cls + '">' + txt + '</span>';
+    const esc = (x) => String(x).replace(/[&<>"]/g, (m) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[m]));
+    const days = (n) => n + (n === 1 ? ' day' : ' days') + ' left';
+    const per = c.yearly ? money(c.year_price) + ' a year' : money(c.price) + ' a month';
+    let title = 'Your plan: ' + esc(c.plan_name), text = '', btn = 'Change plan', url = c.plan_page, primary = false, phx = false;
+    if (c.kind === 'free') {
+      title = 'Your plan: Free';
+      text = 'Team chat works. AI Agent replies, quotations and follow-ups start with a paid plan. Every paid plan starts with a 14-day free trial, billed through Shopify.';
+      btn = 'Choose plan'; primary = true;
+    } else if (c.kind === 'shop_trial') {
+      title += pill('trial', 'Free trial · ' + days(c.days_left));
+      text = 'Then ' + per + ' on your Shopify bill. Cancel any time before the trial ends and you pay nothing.';
+    } else if (c.kind === 'active') {
+      title += pill('go', 'Active');
+      text = per + ', billed through Shopify.';
+    } else if (c.kind === 'cancelling') {
+      title += pill('warn', 'Ends at the end of this billing period');
+      text = 'Paid ' + (c.yearly ? 'yearly' : 'monthly') + ' through Shopify. After it ends, your account moves to Free and the AI Agent stops replying.';
+    } else if (c.kind === 'frozen') {
+      title = 'Your plan is paused' + pill('bad', 'Shopify bill unpaid');
+      text = "Shopify has paused your PhiXtra plan because your Shopify bill is unpaid. AI Agent replies are off until it's settled; team chat still works.";
+      btn = 'Open Shopify billing'; url = 'https://admin.shopify.com/store/' + c.shop.split('.')[0] + '/settings/billing';
+    } else if (c.kind === 'phx_trial') {
+      title += pill('trial', 'Free trial · ' + days(c.days_left));
+      btn = 'Choose plan'; primary = true;
+    } else {                       // paying PhiXtra another way (card, or set by PhiXtra)
+      title += pill('go', 'Active');
+      btn = 'Open PhiXtra'; phx = true;
+    }
+    $('hp-title').innerHTML = title;
+    $('hp-text').textContent = text;
+    $('hp-text').classList.toggle('hide', !text);
+    const a = $('hp-act');
+    a.innerHTML = '<button class="btn ' + (primary ? '' : 'sec') + '" id="b-plan"></button>';
+    $('b-plan').textContent = btn;
+    if (phx) { $('b-plan').dataset.open = '/billing/plans'; $('b-plan').onclick = openPhx; }
+    else $('b-plan').onclick = toPlans(url);
+    box.classList.remove('hide');
+  }
   function quotes(q) {
     const t = $('h-qtext'), a = $('h-qact');
     $('h-qerr').classList.add('hide');
-    if (q === 'trial') {
-      t.textContent = 'Quote requests from business buyers come with your free 2-week B2B trial.';
-      a.innerHTML = '<button class="btn sec" id="b-trial">Start free trial</button>';
-      $('b-trial').onclick = async function () {
-        this.disabled = true;
-        const r = await api('trial');
-        if (r.ok) { render(r.d); return; }
-        this.disabled = false;
-        $('h-qerr').textContent = (r.d && r.d.error) || 'The trial could not be started just now. Please try again.';
-        $('h-qerr').classList.remove('hide');
-      };
-    } else if (q === 'plans') {
+    if (q === 'trial' || q === 'plans') {
+      // 7B: the trial comes with a plan chosen in Shopify (no separate trial button).
       t.textContent = 'Quote requests from business buyers come with a B2B plan.';
-      a.innerHTML = '<button class="btn sec" data-open="/billing/plans">See plans</button>';
+      a.innerHTML = '<button class="btn sec" id="b-qplans">See plans</button>';
+      $('b-qplans').onclick = (st.plan && st.plan.plan_page) ? toPlans(st.plan.plan_page)
+        : function () { this.dataset.open = '/billing/plans'; openPhx.call(this); };
+      return;
     } else {
       t.textContent = 'Quote requests from your buyers arrive in Quotations › Requests.';
       a.innerHTML = '<button class="btn sec" data-open="/quotations/requests">Open</button>';
@@ -293,7 +337,7 @@
     if (!w) { e.classList.add('hide'); return; }
     const n = Number(w.read || 0);
     if (w.status === 'done' && n) {
-      e.textContent = 'Your AI agent has also read ' + n.toLocaleString() + (n === 1 ? ' page' : ' pages') + ' of your store (about, delivery, returns, FAQs).';
+      e.textContent = 'Your AI Agent has also read ' + n.toLocaleString() + (n === 1 ? ' page' : ' pages') + ' of your store (about, delivery, returns, FAQs).';
       e.style.color = '';
     } else if (w.status === 'pending' || w.status === 'reading') {
       e.textContent = "Reading your store's pages (about, delivery, returns, FAQs)…";
@@ -301,7 +345,7 @@
     } else {
       e.textContent = "We couldn't read your store's pages (about, delivery, returns) "
         + (w.protected ? 'because your store is password-protected' : 'just now')
-        + ". Your AI agent will know less about delivery and returns until we can. We'll try again automatically.";
+        + ". Your AI Agent will know less about delivery and returns until we can. We'll try again automatically.";
       e.style.color = '#8a5a00';
     }
     e.classList.remove('hide');
@@ -316,6 +360,7 @@
     if (d.linked) {
       products(d.products);
       $('h-biz').textContent = d.business || d.shop_name;
+      plan(d.plan);
       $('h-quotes').classList.toggle('hide', !d.is_b2b);
       quotes(d.quotes);
       buyers(d.is_b2b ? d.buyers : null);

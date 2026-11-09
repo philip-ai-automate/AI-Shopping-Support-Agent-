@@ -99,6 +99,31 @@
   </div>
 </div>
 
+{# ── 7B (9 Nov 2026, approved mock-up): billed through Shopify ─────────────── #}
+{% if shop_bill %}
+{% set sb = shop_bill %}
+{% set sb_per = ('$' ~ "{:,}".format(sb.year_price) ~ ' a year') if sb.yearly else ('$' ~ "{:,}".format(sb.price) ~ ' a month') %}
+<div style="background:#fff;border:1.5px solid #9fd3b6;border-radius:14px;padding:16px 18px;margin-bottom:18px;
+            display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+  <div style="flex:1;min-width:240px">
+    <div style="font-weight:700;font-size:15px;margin-bottom:3px">Billed through Shopify</div>
+    <div class="muted" style="font-size:13.5px;line-height:1.5">
+    {% if sb.kind == 'active' %}{{ sb.plan_name }} · {{ sb_per }} on your Shopify bill ({{ sb.shop.split('.')[0] }}). To change or cancel, use Shopify's plan page.
+    {% elif sb.kind == 'shop_trial' %}{{ sb.plan_name }} · Free trial · {{ sb.days_left }} day{{ 's' if sb.days_left != 1 }} left. Then {{ sb_per }} on your Shopify bill. Cancel any time before the trial ends and you pay nothing.
+    {% elif sb.kind == 'cancelling' %}{{ sb.plan_name }} · Ends at the end of this billing period. After it ends, your account moves to Free and the AI Agent stops replying.
+    {% elif sb.kind == 'frozen' %}Shopify has paused your PhiXtra plan because your Shopify bill is unpaid. AI Agent replies are off until it's settled; team chat still works.
+    {% elif sb.kind == 'phx_trial' %}{{ sb.plan_name }} · Free trial · {{ sb.days_left }} day{{ 's' if sb.days_left != 1 }} left. Every paid plan starts with a 14-day free trial, billed through Shopify.
+    {% else %}Your plan: Free. Every paid plan starts with a 14-day free trial, billed through Shopify.{% endif %}
+    </div>
+  </div>
+  {% if sb.kind == 'frozen' %}
+  <a href="https://admin.shopify.com/store/{{ sb.shop.split('.')[0] }}/settings/billing" target="_blank" rel="noopener" class="btn-upgrade btn-upgrade-primary" style="width:auto">Open Shopify billing</a>
+  {% else %}
+  <a href="{{ sb.plan_page }}" target="_blank" rel="noopener" class="btn-upgrade btn-upgrade-primary" style="width:auto">Change plan in Shopify</a>
+  {% endif %}
+</div>
+{% endif %}
+
 {# ── Current plan usage meter ──────────────────────────────────────────────── #}
 <div class="usage-card">
   <div class="usage-header">
@@ -127,7 +152,8 @@
     {% if current.is_connect_plan %}
     <div class="usage-counts"><span class="usage-denom">Free · no AI</span></div>
   </div>
-  {% if current.ai_trial_available %}
+  {% if current.ai_trial_available and shop_bill %}
+  {% elif current.ai_trial_available %}
   <div style="background:rgba(18,183,106,0.08);border:1px solid rgba(18,183,106,0.35);border-radius:10px;
               padding:14px 16px;font-size:13.5px;color:#030C18;margin-top:14px;display:flex;
               justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
@@ -391,6 +417,8 @@
     <span class="btn-upgrade btn-upgrade-outline" style="cursor:default">Downgrade</span>
     {% elif not plan.my_price %}
     <a href="https://outlook.office.com/book/TalktoUs1@phixtra.com/?ismsaljsauthenabled" target="_blank" rel="noopener" class="btn-upgrade btn-upgrade-outline">Talk to Sales</a>
+    {% elif shop_bill %}
+    <a href="{{ shop_bill.plan_page }}" target="_blank" rel="noopener" class="btn-upgrade btn-upgrade-outline">Choose in Shopify</a>
     {% else %}
     <button type="button" onclick="openUpgradeModal('{{ plan.slug }}',{{ plan.name|tojson|forceescape }},{{ plan.my_price }},{{ plan.my_annual_month }},{{ plan.annual_discount_pct }})"
             class="btn-upgrade {{ 'btn-upgrade-purple' if is_popular else 'btn-upgrade-primary' }}">
@@ -420,10 +448,14 @@
 {% for plan in custom_plans %}{{ plan_card(plan, current) }}{% endfor %}
 </div>
 
+{% if shop_bill %}
+<p style="font-size:12px;color:var(--muted);margin-top:20px;text-align:center">Prices in US dollars ($), billed through Shopify.</p>
+{% else %}
 <p style="font-size:12px;color:var(--muted);margin-top:20px;text-align:center">
   Prices in {{ ccy_name }}, because of where your business is based. Payments are processed securely via
   {{ 'Flutterwave' if plan_ccy == 'NGN' else 'Stripe (card)' }}. Annual billing saves up to 15%.
 </p>
+{% endif %}
 {% endif %}
 
 {# ── Flash messages from callback ─────────────────────────────────────────── #}

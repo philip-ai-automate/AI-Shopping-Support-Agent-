@@ -647,8 +647,10 @@ def _state(row):
         try:
             import shopify_billing
             out["billing"] = shopify_billing.state(row)
-        except Exception:
-            out["billing"] = None
+            out["plan"] = shopify_billing.card(int(row["tenant_id"]), row)
+        except Exception as e:
+            print(f"⚠️ shopify plan card {row['shop']}: {e}")
+            out["billing"] = out["plan"] = None
     return out
 
 

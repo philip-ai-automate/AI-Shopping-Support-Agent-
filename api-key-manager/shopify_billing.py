@@ -253,6 +253,63 @@ def state(row) -> dict:
             "plan_page": plan_page_url(row["shop"])}
 
 
+def card(tenant_id: int, row=None) -> dict | None:
+    """What a Shopify-connected business is on, for the Shopify Home 'Your plan'
+    card and the portal's 'Billed through Shopify' card (7B screens, 9 Nov 2026).
+    kind: free | shop_trial | active | cancelling | frozen | phx_trial | other_paid.
+    None when the business isn't connected to a Shopify store."""
+    conn = _conn()
+    try:
+        cur = conn.cursor()
+        if row is None:
+            cur.execute("""SELECT shop, bill_plan, bill_status, bill_period, bill_trial_ends, bill_cancel_at_end
+                             FROM shopify_shops WHERE tenant_id=%s AND uninstalled_at IS NULL
+                            ORDER BY installed_at DESC NULLS LAST LIMIT 1""", (tenant_id,))
+            r = cur.fetchone()
+            if not r:
+                return None
+            row = dict(zip(("shop", "bill_plan", "bill_status", "bill_period", "bill_trial_ends",
+                            "bill_cancel_at_end"), r))
+        cur.execute("""SELECT p.name, p.slug, COALESCE(p.price_dollars, 0), COALESCE(p.annual_discount_pct, 0),
+                              t.trial_ends_at,
+                              (SELECT payment_provider FROM plan_subscriptions s WHERE s.tenant_id=t.id
+                                  AND s.status='active' ORDER BY s.id DESC LIMIT 1)
+                         FROM tenants t LEFT JOIN plans p ON p.id=t.plan_id WHERE t.id=%s""", (tenant_id,))
+        r = cur.fetchone()
+    finally:
+        conn.close()
+    if not r:
+        return None
+    name, slug, price, disc, trial_ends, provider = r
+    st = state(row)
+    yearly = (row.get("bill_period") or "") == "annual"
+    price = float(price or 0)
+    out = {"shop": row["shop"], "plan_page": st["plan_page"], "plan_name": name or "Free",
+           "price": round(price), "yearly": yearly,
+           "year_price": round(price * 12 * (100 - float(disc)) / 100) if yearly else None,
+           "days_left": None, "kind": "free"}
+    status = (row.get("bill_status") or "").upper()
+    if status == "FROZEN":
+        out["kind"] = "frozen"
+    elif row.get("bill_plan") and status == "ACTIVE":
+        if st["trial_days_left"]:
+            out.update(kind="shop_trial", days_left=st["trial_days_left"])
+        elif st["cancel_at_end"]:
+            out["kind"] = "cancelling"
+        else:
+            out["kind"] = "active"
+    elif provider and provider != "shopify":
+        out["kind"] = "other_paid"
+    elif trial_ends and _date(trial_ends) >= datetime.now(timezone.utc).date():
+        left = (_date(trial_ends) - datetime.now(timezone.utc).date()).days + 1
+        out.update(kind="phx_trial", days_left=left)
+    elif slug and slug != FREE_SLUG and price > 0:
+        out["kind"] = "other_paid"      # plan set in Admin
+    else:
+        out["plan_name"] = "Free"
+    return out
+
+
 def nightly():
     conn = _conn()
     try:

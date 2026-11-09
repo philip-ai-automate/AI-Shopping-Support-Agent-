@@ -35934,6 +35934,19 @@ def billing_plans():
     # One currency per business, from its country (2026-10-17). None → the
     # page asks "Where is your business based?" before showing any price.
     plan_ccy = _plan_currency(customer)
+    # 7B (9 Nov 2026): a business connected through the Shopify app is billed by
+    # Shopify in US dollars — show its plan from Shopify and send plan changes there.
+    # Not when it already pays PhiXtra another way (card / Flutterwave / set in Admin).
+    shop_bill = None
+    try:
+        import shopify_billing
+        shop_bill = shopify_billing.card(tenant_id)
+        if shop_bill and shop_bill["kind"] == "other_paid":
+            shop_bill = None
+    except Exception as e:
+        print("⚠️ billing_plans shopify card error:", e)
+    if shop_bill:
+        plan_ccy = "USD"
     for p in plans:
         p["my_price"] = _plan_price(p, plan_ccy) if plan_ccy else 0
         p["my_annual_month"] = (_yearly_per_month(p["my_price"], p.get("annual_discount_pct"))
@@ -35944,6 +35957,7 @@ def billing_plans():
         customer=customer,
         current=current,
         plan_ccy=plan_ccy,
+        shop_bill=shop_bill,
         ccy_sign=PLAN_CURRENCY_SIGN.get(plan_ccy, ""),
         ccy_name=PLAN_CURRENCY_NAME.get(plan_ccy, ""),
         all_plans=plans,

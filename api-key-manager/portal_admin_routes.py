@@ -803,6 +803,10 @@ CUSTOMER_FILTER_GROUPS = [
     {"key": "assigned", "label": "Assigned To",     "options": [("yes", "Assigned"), ("no", "Unassigned")]},
     {"key": "product",  "label": "Product",         "options": [("portal", "Portal / CRM"), ("connect", "Connect"),
                                                                   ("school", "SchoolCompass"), ("estate", "KeyLand")]},
+    # 7B (9 Nov 2026): who takes the money — from the active plan_subscriptions row.
+    {"key": "billed",   "label": "Billed through",  "options": [("shopify", "Shopify"), ("stripe", "Stripe (card)"),
+                                                                  ("flutterwave", "Flutterwave"),
+                                                                  ("none", "Not paying (free, trial or set in Admin)")]},
 ]
 
 CUSTOMER_PRODUCT_LABELS = {"portal": "Portal / CRM", "connect": "Connect", "school": "SchoolCompass", "estate": "KeyLand"}
@@ -922,6 +926,7 @@ def customers():
     f_assigned = request.args.getlist("assigned")
     f_plan     = request.args.getlist("plan")
     f_product  = request.args.getlist("product")
+    f_billed   = request.args.getlist("billed")
     f_heard    = request.args.getlist("heard")
     f_inactive = request.args.getlist("inactivity")
     f_setup    = request.args.getlist("setup")      # done / not_done / na (2026-11-06)
@@ -954,7 +959,9 @@ def customers():
                t.id AS tenant_id, t.name AS tenant_name, t.domain, t.signup_product, t.source_type,
                t.account_kind,
                COALESCE(p.name,'Free') AS plan_name,
-               COALESCE(tb.token_balance,0) AS token_balance
+               COALESCE(tb.token_balance,0) AS token_balance,
+               (SELECT ps.payment_provider FROM plan_subscriptions ps
+                 WHERE ps.tenant_id=t.id AND ps.status='active' ORDER BY ps.id DESC LIMIT 1) AS billed_by
         FROM customers c
         JOIN tenants t ON t.id=c.tenant_id
         LEFT JOIN tenant_balances tb ON tb.tenant_id=t.id
@@ -991,6 +998,7 @@ def customers():
             "heard_value": row.get("hear_about_us") or CUSTOMER_HEARD_NONE,
             "source": row.get("source_type"),
             "kind": row.get("account_kind") or "real",
+            "billed": row.get("billed_by") if row.get("billed_by") in ("shopify", "stripe", "flutterwave") else "none",
             "inactivity": "active",
         })
 
@@ -1031,7 +1039,7 @@ def customers():
             "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
             "assigned_manager_name": assignment["manager_name"] if assignment else None,
             "heard": "Not answered", "heard_value": CUSTOMER_HEARD_NONE, "source": "web",
-            "inactivity": "not_included", "setup_state": "na",
+            "inactivity": "not_included", "setup_state": "na", "billed": "none",
         })
 
     # ── Estate (re_tenants — its own table, tenant + owner in one row) ──────
@@ -1074,7 +1082,7 @@ def customers():
             "assigned_manager_id":   assignment["manager_id"]   if assignment else None,
             "assigned_manager_name": assignment["manager_name"] if assignment else None,
             "heard": "Not answered", "heard_value": CUSTOMER_HEARD_NONE, "source": "web",
-            "inactivity": "not_included", "setup_state": "na",
+            "inactivity": "not_included", "setup_state": "na", "billed": "none",
         })
 
     import inactivity_core
@@ -1086,14 +1094,14 @@ def customers():
 
     selected = {k: v for k, v in {
         "kind": f_kind, "inactivity": f_inactive, "setup": f_setup, "source": f_source, "verified": f_verified, "active": f_active, "assigned": f_assigned,
-        "product": f_product, "plan": f_plan, "heard": f_heard,
+        "product": f_product, "plan": f_plan, "heard": f_heard, "billed": f_billed,
     }.items() if v}
 
     def _passes(x, skip=None):
         return all(_customer_facet(x, k) in v for k, v in selected.items() if k != skip)
 
     facet_counts = {}
-    for key in ("source", "verified", "active", "assigned", "product", "plan", "heard", "inactivity", "setup", "kind"):
+    for key in ("source", "verified", "active", "assigned", "product", "plan", "heard", "inactivity", "setup", "kind", "billed"):
         counts = facet_counts.setdefault(key, {})
         for x in rows:
             if _passes(x, key):
@@ -1410,6 +1418,16 @@ def customer_detail(customer_id: int):
     # "How did you hear about us" is stored as a slug (e.g. "sales_ambassador") —
     # map it to its human-readable label for display.
     from portal_routes import HEAR_ABOUT_US_OPTIONS
+    # 7B (9 Nov 2026): "Shopify" tag beside the plan when Shopify takes the money.
+    try:
+        _c = get_db_connection(); _k = _c.cursor()
+        _k.execute("""SELECT payment_provider FROM plan_subscriptions WHERE tenant_id=%s AND status='active'
+                       ORDER BY id DESC LIMIT 1""", (customer.get("tenant_id"),))
+        _r = _k.fetchone(); _k.close(); _c.close()
+        customer["billed_by"] = _r[0] if _r else None
+    except Exception as e:
+        print("⚠️ customer_detail billed_by error:", e)
+        customer["billed_by"] = None
     customer["hear_about_us_label"] = dict(HEAR_ABOUT_US_OPTIONS).get(
         customer.get("hear_about_us"), customer.get("hear_about_us")) or "—"
 

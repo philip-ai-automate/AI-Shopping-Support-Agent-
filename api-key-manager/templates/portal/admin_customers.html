@@ -71,6 +71,7 @@
   .filter-opt.disabled{cursor:not-allowed;color:var(--muted)}
   .filter-opt.disabled input{cursor:not-allowed}
   .filter-caption{font-size:11px;color:var(--warn);font-style:italic;padding:4px 8px 8px;border-bottom:1px solid var(--line);margin-bottom:6px}
+  .shop-tag{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;background:#e3f5ea;color:#05603a;margin-left:4px;white-space:nowrap}
   .kind-tag{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;background:rgba(247,144,9,.12);color:#93370D;white-space:nowrap}
   .chips-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
   .chip{display:inline-flex;align-items:center;gap:6px;background:rgba(3,12,24,.05);border:1px solid var(--line);
@@ -278,7 +279,7 @@
       <div class="cc-field"><span>Phone</span><span>{{ c.phone }}{% if c.phone_ok %} <span class="pill pill-green" title="Confirmed by WhatsApp code">WhatsApp ✓</span>{% endif %}</span></div>
       {% if c.domain %}<div class="cc-field"><span>Domain</span><span title="{{ c.domain }}">{{ c.domain }}</span></div>{% endif %}
       {% if c.balance_credits is not none %}<div class="cc-field"><span>Balance</span><span><strong>{{ "%.1f"|format(c.balance_credits) }}</strong> cr</span></div>{% endif %}
-      <div class="cc-field"><span>Plan</span><span>{{ c.plan_name }}</span></div>
+      <div class="cc-field"><span>Plan</span><span>{{ c.plan_name }}{% if c.billed == 'shopify' %} <span class="shop-tag">Shopify</span>{% endif %}</span></div>
       <div class="cc-field"><span>Heard about us</span><span>{{ c.heard }}</span></div>
       <div class="cc-field"><span>Signed up</span><span>{{ c.created_at.strftime('%Y-%m-%d') if c.created_at else '—' }}</span></div>
     </div>
@@ -355,7 +356,7 @@
           <td><span class="pill pill-grey">{{ PRODUCT_LABELS[c.product] }}</span></td>
           <td><span class="truncate" title="{{ c.email }}">{{ c.email }}</span></td>
           <td class="muted">{{ c.phone }}{% if c.phone_ok %} <span class="pill pill-green" title="Confirmed by WhatsApp code">WhatsApp ✓</span>{% endif %}</td>
-          <td class="muted">{{ c.plan_name }}</td>
+          <td class="muted">{{ c.plan_name }}{% if c.billed == 'shopify' %} <span class="shop-tag">Shopify</span>{% endif %}</td>
           <td>
             {% if c.verified %}<span class="pill pill-green">✓</span>
             {% else %}<span class="pill pill-red">✗</span>{% endif %}
