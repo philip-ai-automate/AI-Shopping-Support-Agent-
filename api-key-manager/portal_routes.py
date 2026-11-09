@@ -4008,15 +4008,23 @@ def wp_whatsapp_status():
     })
 
 
+# 2026-11-09 (approved): AI chat, blog, WordPress directory, Instagram, YouTube,
+# event added. Old values kept so past answers still show.
 HEAR_ABOUT_US_OPTIONS = [
     ("google",           "Google"),
-    ("referral",         "Referral"),
-    ("email_advert",     "Email Advert"),
+    ("ai_chat",          "AI chat (ChatGPT, Gemini, Copilot, Claude…)"),
     ("linkedin",         "LinkedIn"),
-    ("sales_ambassador", "Sales Ambassador"),
+    ("referral",         "Referral"),
+    ("blog_article",     "Blog or article"),
+    ("wordpress_dir",    "WordPress plugin directory"),
+    ("email_advert",     "Email Advert"),
     ("facebook",         "Facebook"),
+    ("instagram",        "Instagram"),
     ("tiktok",           "TikTok"),
+    ("youtube",          "YouTube"),
     ("whatsapp_advert",  "WhatsApp Advert"),
+    ("event",            "Event or trade show"),
+    ("sales_ambassador", "Sales Ambassador"),
     ("other",            "Other"),
 ]
 

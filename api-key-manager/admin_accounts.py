@@ -410,7 +410,9 @@ def rows(only_tenant=None) -> list:
 
 SOURCE_LABEL = {"google": "Google", "other": "Other", "email_advert": "Email advert", "whatsapp_advert": "WhatsApp advert",
                 "referral": "Referral", "facebook": "Facebook", "sales_ambassador": "Sales ambassador",
-                "linkedin": "LinkedIn", "instagram": "Instagram", "youtube": "YouTube", "tiktok": "TikTok"}
+                "linkedin": "LinkedIn", "instagram": "Instagram", "youtube": "YouTube", "tiktok": "TikTok",
+                "ai_chat": "AI chat", "blog_article": "Blog or article", "wordpress_dir": "WordPress plugin directory",
+                "event": "Event or trade show"}
 STEP_SHORT = {"Products": "Add products", "AI trial": "Start AI trial"}
 
 
