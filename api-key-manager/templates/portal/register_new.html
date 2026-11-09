@@ -103,18 +103,29 @@
   .rg-plat span{font-size:13px;color:var(--muted);line-height:1.4}
   .rg-back{align-self:flex-start;min-height:44px;padding:0 4px;border:0;background:none;color:var(--navy);font:inherit;font-weight:600;font-size:14px;cursor:pointer}
   @media(max-width:640px){.rg-aside{padding:30px 24px}.rg-main{padding:28px 20px 30px}.rg-dialog{padding:24px 18px}}
-  /* "How do you use this number today?" (2026-11-09) */
-  .wu{display:grid;gap:10px}
-  .wu-c{display:flex;gap:10px;align-items:flex-start;border:1.5px solid #D5DEEC;border-radius:12px;padding:12px 14px;cursor:pointer;background:#fff}
-  .wu-c:has(input:checked){border-color:#1FA855;background:#EEF9F2}
-  .rg-f .wu-c input[type=radio]{width:18px;height:18px;min-width:0;padding:0;margin:3px 0 0;border:0;box-shadow:none;flex:0 0 18px;accent-color:#1FA855}
-  .wu-t{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start}
-  .wu-t label{cursor:pointer;display:block;font-weight:400}
-  .wu-t #blkWa{align-self:stretch;width:100%;margin-top:12px;padding-top:12px;border-top:1px solid #CFE9D9;cursor:default}
-  .wu-t #blkWa > label{cursor:default;font-weight:600}
-  .wu-c b{display:block;font-size:14.5px;color:var(--ink,#111E2D)}
-  .wu-c .s{display:block;font-size:13px;color:var(--muted);line-height:1.45}
-  .wu-soon{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9A6700;background:#FFF5D6;border-radius:99px;padding:2px 8px;margin-left:6px;vertical-align:1px}
+  /* "How do your customers reach you on WhatsApp today?" as a drop-down (2026-11-09, approved mock-up L1SHjEoGTkjyGRFPeJ955a) */
+  .wu-dd{position:relative}
+  .wu-btn{width:100%;min-height:48px;display:flex;align-items:center;gap:10px;padding:8px 12px;border:1.5px solid var(--field);border-radius:10px;background:#fff;
+          font:inherit;font-size:15px;color:var(--ink);text-align:left;cursor:pointer;box-sizing:border-box}
+  .wu-btn:hover,.wu-dd.open .wu-btn{border-color:var(--navy)}
+  .wu-btn:focus-visible{outline:2px solid #1FA855;outline-offset:2px}
+  .wu-btn.f-invalid{border-color:#C0392B}
+  .wu-val{flex:1;min-width:0;display:flex;align-items:center;gap:8px;font-weight:600}
+  .wu-val .ph{color:var(--muted);font-weight:400}
+  .wu-chev{flex:0 0 auto;transition:transform .15s}
+  .wu-dd.open .wu-chev{transform:rotate(180deg)}
+  .wu-list{list-style:none;margin:6px 0 0;padding:6px;border:1px solid var(--line);border-radius:12px;background:#fff;box-shadow:0 12px 32px rgba(5,15,35,.18);
+           position:absolute;left:0;right:0;top:100%;z-index:20;display:flex;flex-direction:column;gap:2px}
+  .wu-opt{display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border-radius:9px;cursor:pointer}
+  .wu-opt.act{background:var(--tint)}
+  .wu-opt[aria-selected="true"]{background:#EEF9F2}
+  .wu-opt svg,.wu-val svg{flex:0 0 auto}
+  .wu-opt b{display:block;font-size:14.5px;color:var(--ink)}
+  .wu-opt span{display:block;font-size:13px;color:var(--muted);line-height:1.4}
+  .wu-picked{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-top:10px;border-left:3px solid #1FA855;padding:2px 0 2px 12px}
+  .wu-picked .s{font-size:14px;color:var(--muted);line-height:1.5}
+  .wu-picked #blkWa{align-self:stretch;margin:0}
+  .wu-picked #blkWa > label{font-weight:600}
   .wu-mean{font:inherit;font-size:12.8px;font-weight:700;color:var(--navy);background:none;border:0;padding:0;margin-top:4px;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
   .wu-mean:focus-visible{outline:2px solid #1FA855;outline-offset:2px}
   dialog.wu-pop{margin:auto;border:0;padding:0;border-radius:16px;width:min(540px,calc(100vw - 32px));max-height:calc(100vh - 48px);box-shadow:0 20px 60px rgba(5,15,35,.35);color:#111E2D}
@@ -243,38 +254,35 @@
       {% set wu = fd.get('wa_usage', '') %}
       <div class="rg-f" id="blkUsage" hidden>
         <span class="rg-lbl" id="lblUsage">How do your customers reach you on WhatsApp today?</span>
-        <div class="wu" role="radiogroup" aria-labelledby="lblUsage">
-          <div class="wu-c"><input type="radio" name="wa_usage" value="biz_app" id="wu_biz_app" {% if wu == 'biz_app' %}checked{% endif %}>
-            <div class="wu-t"><label for="wu_biz_app"><b>On my WhatsApp Business app</b>
-            <span class="s">Keep your app and your chats, and answer the same chats in PhiXtra.</span></label>
-            <button class="wu-mean" type="button" data-pop="wuBiz">What does this mean?</button></div></div>
-          <div class="wu-c"><input type="radio" name="wa_usage" value="normal" id="wu_normal" {% if wu == 'normal' %}checked{% endif %}>
-            <div class="wu-t"><label for="wu_normal"><b>On normal WhatsApp</b>
-            <span class="s">Switch to the free WhatsApp Business app first. Your chats come with you.</span></label>
-            <button class="wu-mean" type="button" data-pop="wuNormal">What does this mean?</button></div></div>
-          <div class="wu-c"><input type="radio" name="wa_usage" value="new" id="wu_new" {% if wu == 'new' %}checked{% endif %}>
-            <div class="wu-t"><label for="wu_new"><b>They don't yet – I'll use a new number</b>
-            <span class="s">For a new number, or one you don't use on a phone. Connect it straight after you sign up.</span></label>
-            <button class="wu-mean" type="button" data-pop="wuNew">What does this mean?</button></div></div>
-          <div class="wu-c"><input type="radio" name="wa_usage" value="later" id="wu_later" {% if wu == 'later' %}checked{% endif %}>
-            <div class="wu-t"><label for="wu_later"><b>I'll add WhatsApp later</b>
-            <span class="s">Add your products and website chat first.</span></label>
-            <button class="wu-mean" type="button" data-pop="wuLater">What does this mean?</button></div></div>
+        <input type="hidden" name="wa_usage" id="fUsage" value="{{ wu if wu in ('biz_app','normal','new','later') else '' }}">
+        <div class="wu-dd" id="wuDd">
+          <button type="button" class="wu-btn" id="wuBtn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="lblUsage wuVal">
+            <span class="wu-val" id="wuVal"><span class="ph">Choose one…</span></span>
+            <svg class="wu-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5B78" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <ul class="wu-list" id="wuList" role="listbox" aria-labelledby="lblUsage" hidden>
+          <li class="wu-opt" role="option" id="wuo_biz_app" data-v="biz_app" data-pop="wuBiz" aria-selected="false"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="#1FA855" d="M12 2a10 10 0 0 0-8.6 15l-1.4 5 5.1-1.3A10 10 0 1 0 12 2z"/><text x="12" y="16" text-anchor="middle" font-size="10" font-weight="700" fill="#fff" font-family="Inter,sans-serif">B</text></svg><div><b>WhatsApp Business app</b><span>Keep your chats. Answer them in PhiXtra too.</span></div></li>
+          <li class="wu-opt" role="option" id="wuo_normal" data-v="normal" data-pop="wuNormal" aria-selected="false"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="#1FA855" d="M12 2a10 10 0 0 0-8.6 15l-1.4 5 5.1-1.3A10 10 0 1 0 12 2z"/><path fill="#fff" d="M9.2 7.5c.3 0 .5 0 .7.5l.8 1.9c.1.3 0 .5-.1.7l-.6.7c.6 1.2 1.6 2.2 2.8 2.8l.7-.6c.2-.2.4-.2.7-.1l1.9.8c.4.2.5.4.5.7 0 1.2-1 2.1-2.2 2.1-3.6 0-6.6-3-6.6-6.6 0-1.2.9-2.2 1.9-2.2z"/></svg><div><b>Normal WhatsApp</b><span>Switch to the free Business app first.</span></div></li>
+          <li class="wu-opt" role="option" id="wuo_new" data-v="new" data-pop="wuNew" aria-selected="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0B1D40" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M12 9v6M9 12h6"/></svg><div><b>A new number</b><span>Not on WhatsApp yet. Connect it after sign-up.</span></div></li>
+          <li class="wu-opt" role="option" id="wuo_later" data-v="later" data-pop="wuLater" aria-selected="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0B1D40" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><div><b>I'll add it later</b><span>Add products and website chat first.</span></div></li>
+          </ul>
         </div>
-        <button class="wu-mean" type="button" data-pop="wuWhich" style="margin-top:8px;align-self:flex-start">Not sure which WhatsApp you have?</button>
+        <div class="wu-picked" id="wuPicked" hidden>
+          <span class="s" id="wuLine"></span>
+          <div id="wuNumSlot"></div>
+          <button class="wu-mean" type="button" id="wuMean" data-pop="wuBiz">What does this mean?</button>
+        </div>
         <p class="rg-err" id="hUsage" hidden>Please choose how your customers reach you on WhatsApp today.</p>
       </div>
 
       <div class="rg-f" id="blkWa" hidden>
         <label for="fPhoneWa" id="lblPhoneWa">Your WhatsApp number</label><span id="waOpt" hidden></span>
-        <p class="rg-hint" id="waSub"></p>
         <div class="rg-phone">
           {% set pc_name = 'wa_phone_country' %}{% set pc_id = 'fPhoneWaCountry' %}{% set pc_required = false %}
           {% set pc_selected = fd.get('wa_phone_country', '') %}{% set pc_style = '' %}{% set pc_placeholder = 'Country…' %}
           {% include "portal/_phone_country_select.html" %}
           <input type="tel" name="wa_phone_number" id="fPhoneWa" placeholder="801 234 5678" autocomplete="tel-national" value="{{ fd.get('wa_phone_number', '') }}"/>
         </div>
-        <p class="rg-hint" id="waHint">Choose your country, then type your number. We add the country code for you.</p>
         <p class="rg-err" id="hPhoneWa" hidden>Please choose the country and enter your WhatsApp number.</p>
       </div>
 
@@ -362,12 +370,14 @@
       <div class="pp"><span class="lb">What you keep</span><p>Your number, your app, and your chats from the last 6 months. Your customers notice nothing.</p></div>
       <div class="pp"><span class="lb">Good to know</span><p>WhatsApp Web will be logged out; use PhiXtra on your computer instead. Group chats stay on your phone. Customers' WhatsApp calls to this number ring on your phone, not in PhiXtra. Open the app at least once every 2 weeks.</p></div>
       <div class="pp eg"><span class="lb">Think of it like</span><p>Adding a second screen to your WhatsApp. Your phone is still there; your team now sees the same chats on their computers.</p></div>
+    <div class="pp"><button class="wu-mean" type="button" data-pop="wuWhich" style="margin:0">Not sure which WhatsApp you have?</button></div>
     </div></dialog>
     <dialog class="wu-pop" id="wuNormal" aria-labelledby="wuNormalT"><div class="wu-hd"><h3 id="wuNormalT">You use normal WhatsApp</h3><button class="wu-x" type="button" aria-label="Close">✕</button></div><div class="wu-bd">
       <div class="pp"><span class="lb">What happens</span><p>PhiXtra connects to the <b>WhatsApp Business app</b>, not normal WhatsApp. So first you move your number to the Business app. It's free and made by WhatsApp.</p></div>
       <div class="pp"><span class="lb">How to switch (2 minutes)</span><p>1. Install <b>WhatsApp Business</b> from the App Store or Google Play.<br>2. Open it and choose to use your current number.<br>3. It offers to bring your chats across. Say yes.</p></div>
       <div class="pp"><span class="lb">Good to know</span><p>WhatsApp may ask you to use the Business app for about a week before it lets you connect it to PhiXtra.</p></div>
       <div class="pp eg"><span class="lb">Then</span><p>Connect it from your Dashboard and choose <b>Connect and keep my app</b>.</p></div>
+    <div class="pp"><button class="wu-mean" type="button" data-pop="wuWhich" style="margin:0">Not sure which WhatsApp you have?</button></div>
     </div></dialog>
     <dialog class="wu-pop" id="wuNew" aria-labelledby="wuNewT"><div class="wu-hd"><h3 id="wuNewT">Your number isn't on WhatsApp yet</h3><button class="wu-x" type="button" aria-label="Close">✕</button></div><div class="wu-bd">
       <div class="pp"><span class="lb">What happens</span><p>Straight after you sign up, we set the number up on WhatsApp with you. Customers message it, and you and your team answer in PhiXtra, on your computer or the PhiXtra app.</p></div>
@@ -510,7 +520,6 @@ function render() {
   el('lblBusinessName').textContent = b2b ? 'Registered company name' : 'Business name';
   el('fBusinessName').placeholder = b2b ? 'e.g. Harbour Supplies Ltd' : 'e.g. Unity Foods Distribution';
   el('lblBased').textContent = b2b ? 'Country of registration' : 'Where is your business based?';
-  el('waHint').textContent = 'Choose your country, then type your number. We add the country code for you.';
   el('mainTitle').textContent = b2b ? 'Start your free B2B trial' : 'Create your free account';
   el('mainSub').textContent = b2b ? 'Free to start. Try the B2B agent free for 2 weeks. No credit card needed.' : 'Free to start. No credit card needed.';
   el('submitBtn').textContent = b2b ? 'Create my B2B account' : 'Create free account';
@@ -558,32 +567,58 @@ var RULES = [
   ['fHearAboutUs', 'hHearAboutUs', function(v){ return v !== ''; }]
 ];
 function visible(e){ return !!(e && e.offsetParent !== null); }
-function usage(){ var r = document.querySelector('input[name="wa_usage"]:checked'); return r ? r.value : ''; }
+function usage(){ return el('fUsage').value; }
 function checkUsage(){
-  if (el('blkUsage').hidden) { el('hUsage').hidden = true; return true; }
-  var ok = usage() !== ''; el('hUsage').hidden = ok; return ok;
+  if (el('blkUsage').hidden) { el('hUsage').hidden = true; el('wuBtn').classList.remove('f-invalid'); return true; }
+  var ok = usage() !== ''; el('hUsage').hidden = ok; el('wuBtn').classList.toggle('f-invalid', !ok); return ok;
 }
-// The number box shows after the WhatsApp answer, worded for it (2026-11-09).
+// The WhatsApp question is a drop-down (2026-11-09, approved mock-up).
+// After an answer: one line, the number box (not for "later") and one help link.
 var WA_BOX = {
-  biz_app: ['Your WhatsApp Business number', 'The number on your WhatsApp Business app.'],
-  normal:  ['Your WhatsApp number', "The number on your WhatsApp app. You'll switch it to the free WhatsApp Business app before connecting."],
-  'new':   ['Your new business number', "Customers will message this number. It mustn't be on WhatsApp yet, and it must be able to get one text or call."]
+  biz_app: ['Your WhatsApp Business number', 'Keep your app and your chats. Your team answers the same chats in PhiXtra.', 'wuBiz'],
+  normal:  ['Your WhatsApp number', 'Switch to the free WhatsApp Business app first. Your chats come with you.', 'wuNormal'],
+  'new':   ['Your new business number', "A number that isn't on WhatsApp yet. You'll connect it straight after you sign up.", 'wuNew'],
+  later:   ['', 'Add your products and website chat first.', 'wuLater']
 };
+el('wuNumSlot').appendChild(el('blkWa'));
 function updateWa(){
   var u = usage(), box = WA_BOX[u];
-  el('blkWa').hidden = el('blkUsage').hidden || !box;
+  el('wuPicked').hidden = !box;
+  el('blkWa').hidden = el('blkUsage').hidden || !box || !box[0];
+  document.querySelectorAll('.wu-opt').forEach(function(o){ o.setAttribute('aria-selected', o.dataset.v === u ? 'true' : 'false'); });
   if (box) {
-    el('lblPhoneWa').textContent = box[0]; el('waSub').textContent = box[1];
-    // The number box sits inside the chosen card, under its text (user 2026-11-09).
-    var card = document.querySelector('input[name="wa_usage"]:checked').closest('.wu-c').querySelector('.wu-t');
-    if (el('blkWa').parentNode !== card) card.appendChild(el('blkWa'));
+    var o = el('wuo_' + u);
+    el('wuVal').innerHTML = o.querySelector('svg').outerHTML + '<span>' + o.querySelector('b').textContent + '</span>';
+    el('wuLine').textContent = box[1];
+    el('wuMean').dataset.pop = box[2];
+    if (box[0]) el('lblPhoneWa').textContent = box[0];
   }
 }
-document.querySelectorAll('input[name="wa_usage"]').forEach(function(r){
-  r.addEventListener('change', function(){ if (TRIED) checkUsage(); updateWa(); });
-});
+(function(){
+  var dd = el('wuDd'), btn = el('wuBtn'), list = el('wuList');
+  var opts = Array.prototype.slice.call(list.querySelectorAll('.wu-opt')), act = 0;
+  function setAct(i){ act = i; opts.forEach(function(o, j){ o.classList.toggle('act', j === i); }); btn.setAttribute('aria-activedescendant', opts[i].id); }
+  function open(){ list.hidden = false; dd.classList.add('open'); btn.setAttribute('aria-expanded', 'true');
+    var cur = opts.findIndex(function(o){ return o.dataset.v === usage(); }); setAct(cur < 0 ? 0 : cur); }
+  function close(){ list.hidden = true; dd.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); btn.removeAttribute('aria-activedescendant'); }
+  function pick(i){ el('fUsage').value = opts[i].dataset.v; close(); updateWa(); if (TRIED) checkUsage(); btn.focus(); }
+  opts.forEach(function(o, i){
+    o.addEventListener('mousedown', function(e){ e.preventDefault(); });
+    o.addEventListener('click', function(){ pick(i); });
+    o.addEventListener('mousemove', function(){ setAct(i); });
+  });
+  btn.addEventListener('click', function(){ list.hidden ? open() : close(); });
+  btn.addEventListener('keydown', function(e){
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (list.hidden) open(); else setAct(Math.min(opts.length - 1, act + 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (list.hidden) open(); else setAct(Math.max(0, act - 1)); }
+    else if ((e.key === 'Enter' || e.key === ' ') && !list.hidden) { e.preventDefault(); pick(act); }
+    else if (e.key === 'Escape' && !list.hidden) { e.preventDefault(); e.stopPropagation(); close(); }
+  });
+  btn.addEventListener('blur', close);
+  document.addEventListener('click', function(e){ if (!dd.contains(e.target)) close(); });
+})();
 // "What does this mean?" pop-ups (2026-11-09)
-document.querySelectorAll('.wu-mean').forEach(function(b){
+document.querySelectorAll('button.wu-mean').forEach(function(b){
   // Open on mouse press: leaving a field above can show an error message
   // that moves this link before the click finishes. Click covers keyboards.
   function open(e){ e.preventDefault(); e.stopPropagation(); var d = el(b.dataset.pop); if (d && d.showModal && !d.open) d.showModal(); }
@@ -612,7 +647,7 @@ el('regForm').addEventListener('submit', function(e){
   TRIED = true;
   var first = null;
   RULES.forEach(function(r){ if (!check(r) && !first) first = el(r[0]); });
-  if (!checkUsage() && !first) first = el('blkUsage');
+  if (!checkUsage() && !first) first = el('wuBtn');
   if (first) { e.preventDefault(); first.focus(); first.scrollIntoView({behavior:'smooth', block:'center'}); return; }
   if (window.grecaptcha && grecaptcha.getResponse && grecaptcha.getResponse() === '') {
     e.preventDefault(); var rc = el('hRecaptcha'); rc.hidden = false; rc.scrollIntoView({behavior:'smooth', block:'center'}); return;
