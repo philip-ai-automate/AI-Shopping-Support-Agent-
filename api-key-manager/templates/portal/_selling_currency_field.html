@@ -7,7 +7,7 @@
      sc_country_ids  ids of country pickers that fill the currency in
                      (Nigeria → ₦, UK → £, US → $; any other country → empty) #}
 <style>
-  .sc-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;position:relative}
+  .sc-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;position:relative}
   @media (max-width:420px){.sc-cards{grid-template-columns:1fr}}
   .sc-opt{position:relative;margin:0}
   .sc-opt input{position:absolute;opacity:0;width:1px;height:1px;margin:0}

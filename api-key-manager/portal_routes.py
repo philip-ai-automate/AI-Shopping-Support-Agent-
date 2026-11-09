@@ -3746,12 +3746,9 @@ def wp_connect():
         return render_template("portal/wp_connect.html", b2b_sells_options=B2B_SELLS_OPTIONS, selling_currencies=_selling_currency.currencies(), domain=tenant_domain, email=email,
                                form_data=request.form)
 
-    # Currency the business sells / quotes in (2026-10-31): ₦, $ or £ only for now.
-    selling_currency = (request.form.get("selling_currency") or "").strip().upper()
-    if selling_currency not in _selling_currency.currency_codes():
-        flash("Please choose the currency you sell in.", "danger")
-        return render_template("portal/wp_connect.html", b2b_sells_options=B2B_SELLS_OPTIONS, selling_currencies=_selling_currency.currencies(), domain=tenant_domain, email=email,
-                               form_data=request.form)
+    # Selling currency from the country (user 2026-11-09), US dollars by default.
+    selling_currency = _selling_currency.default_for_country(
+        (request.form.get("business_based") or phone_country or "").strip().upper())
 
     if not tenant_domain:
         flash("Store domain is required.", "danger")
@@ -4177,10 +4174,10 @@ def register():
         flash("Please tell us how you heard about us.", "danger")
         return _register_page(request.form, form_data=request.form)
 
-    selling_currency = (request.form.get("selling_currency") or "").strip().upper()
-    if selling_currency not in _selling_currency.currency_codes():
-        flash("Please choose the currency you sell in.", "danger")
-        return _register_page(request.form, form_data=request.form)
+    # Selling currency from the country (user 2026-11-09): business country,
+    # else the WhatsApp number's country; US dollars when neither is known.
+    selling_currency = _selling_currency.default_for_country(
+        (request.form.get("business_based") or request.form.get("wa_phone_country") or "").strip().upper())
 
     # ── Website and "WhatsApp and website" sign-ups (2026-10-05) ────────────
     business_name = (request.form.get("business_name") or "").strip()

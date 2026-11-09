@@ -280,6 +280,8 @@ def currency_label(code) -> dict:
 def currency_plural(code) -> str:
     """'British pounds' · 'US dollars' · 'Nigerian naira' (naira has no plural s)."""
     name = currency_label(code)["name"]
+    if name.lower() == "euro":
+        return "euros"
     return name if name.lower().endswith("naira") else name + "s"
 
 
@@ -435,10 +437,19 @@ GENERIC_PRICING_BLOCK = (
 )
 
 
+# Countries that use the euro (2026: the 21 euro-area members plus the
+# small states that use it), 2026-11-09.
+EURO_COUNTRIES = {"AT", "BE", "BG", "HR", "CY", "EE", "FI", "FR", "DE", "GR", "IE", "IT", "LV", "LT",
+                  "LU", "MT", "NL", "PT", "SK", "SI", "ES", "AD", "MC", "SM", "VA", "ME", "XK"}
+
+
 def default_for_country(country) -> str:
-    """Selling currency for a new business that hasn't chosen one
-    (2026-11-02): UK → pounds, Nigeria → naira, anywhere else → US dollars."""
-    code = {"GB": "GBP", "NG": "NGN"}.get((country or "").strip().upper(), "USD")
+    """Selling currency set from the business's country at sign-up (user
+    2026-11-09: chosen from the country, US dollars by default): UK → pounds,
+    euro countries → euros, Nigeria → naira, anywhere else or unknown → US
+    dollars. The business can change it in Settings."""
+    iso = (country or "").strip().upper()
+    code = "GBP" if iso == "GB" else "NGN" if iso == "NG" else "EUR" if iso in EURO_COUNTRIES else "USD"
     return code if code in currency_codes() else "USD"
 
 

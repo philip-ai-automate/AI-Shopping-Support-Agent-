@@ -294,9 +294,7 @@
         <p class="rg-err" id="hBased" hidden>Please choose where your business is based.</p>
       </div>
 
-      {% set sc_selected = fd.get('selling_currency', '') %}{% set sc_wrap_class = 'rg-f' %}{% set sc_err_hidden = true %}
-      {% set sc_country_ids = ['fPhoneWaCountry', 'fBased'] %}
-      {% include "portal/_selling_currency_field.html" %}
+      {# Currency question removed 2026-11-09: set from the country (US dollars by default), changeable in Settings. #}
 
       <div class="b2-sec" id="secLogin" hidden><b>Sign-in details</b></div>
       <div class="rg-f" id="blkMobile" hidden>
@@ -513,7 +511,6 @@ function render() {
   el('fBusinessName').placeholder = b2b ? 'e.g. Harbour Supplies Ltd' : 'e.g. Unity Foods Distribution';
   el('lblBased').textContent = b2b ? 'Country of registration' : 'Where is your business based?';
   el('waHint').textContent = 'Choose your country, then type your number. We add the country code for you.';
-  el('lblSellCur').textContent = b2b ? 'What currency do you quote in?' : 'What currency do you sell in?';
   el('mainTitle').textContent = b2b ? 'Start your free B2B trial' : 'Create your free account';
   el('mainSub').textContent = b2b ? 'Free to start. Try the B2B agent free for 2 weeks. No credit card needed.' : 'Free to start. No credit card needed.';
   el('submitBtn').textContent = b2b ? 'Create my B2B account' : 'Create free account';
@@ -555,7 +552,6 @@ var RULES = [
   ['fCity', 'hCity', function(v){ return v.trim().length > 0; }],
   ['fSells', 'hSells', function(v){ return v !== ''; }],
   ['fBased', 'hBased', function(v){ return v !== ''; }],
-  ['fSellCur', 'hSellCur', function(v){ return v !== ''; }],
   ['fPhone', 'hPhone', function(v){ return v.trim().length > 0 && el('fPhoneCountry').value !== ''; }],
   ['fEmail', 'hEmail', function(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()); }],
   ['fPassword', 'hPassword', function(v){ return v.length >= 8 && /[^A-Za-z0-9\s]/.test(v); }],
