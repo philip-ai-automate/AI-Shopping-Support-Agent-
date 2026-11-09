@@ -43,13 +43,26 @@
   var sessionId = store(SKEY) || FIXSID;
   if (!sessionId) { sessionId = "w-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); store(SKEY, sessionId); }
 
-  fetch(BASE + "/widget/config?site=" + encodeURIComponent(SITE), { method: "GET" })
+  fetch(BASE + "/widget/config?site=" + encodeURIComponent(SITE) + "&lang=" + encodeURIComponent(navigator.language || ""), { method: "GET" })
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (cfg) { if (cfg && cfg.enabled) { build(cfg); } })
     .catch(function () {});
 
   function build(cfg) {
     var color = /^#[0-9a-fA-F]{6}$/.test(cfg.color || "") ? cfg.color : "#0B1D40";
+    // Customise chat box (9 Nov 2026): text on the business's colour stays readable.
+    var fg = (function (h) { var f = function (i) { var v = parseInt(h.substr(i, 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+      return (0.2126 * f(1) + 0.7152 * f(3) + 0.0722 * f(5)) > 0.42 ? "#111111" : "#fff"; })(color);
+    var FONTS = { Inter: "Inter,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif", Roboto: "Roboto,system-ui,Arial,sans-serif",
+                  Lato: "Lato,system-ui,Arial,sans-serif", Merriweather: "Merriweather,Georgia,serif" };
+    var font = FONTS.Inter;
+    if (cfg.font === "store") { try { font = getComputedStyle(document.body).fontFamily || font; } catch (e) { /* keep Inter */ } }
+    else if (FONTS[cfg.font]) {
+      font = FONTS[cfg.font];
+      if (cfg.font !== "Inter") { var fl = document.createElement("link"); fl.rel = "stylesheet"; fl.href = "https://fonts.googleapis.com/css2?family=" + cfg.font + ":wght@400;700&display=swap"; document.head.appendChild(fl); }
+    }
+    var LARGE = cfg.size === "large";
+    var AV = cfg.avatar || "none";
     var host = document.createElement("div");
     host.id = "phixtra-chat-root";
     host.style.cssText = PAGE ? "position:fixed;left:0;right:0;bottom:0;top:" + TOPPX + "px;z-index:2147483000;"
@@ -64,19 +77,19 @@
 
     var css = [
       ":host{all:initial}",
-      "*{box-sizing:border-box;font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif}",
-      ".btn{width:60px;height:60px;border-radius:50%;border:0;background:" + color + ";color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(11,29,64,.35)}",
+      "*{box-sizing:border-box;font-family:" + font.replace(/"/g, "'") + "}",
+      ".btn{width:60px;height:60px;border-radius:50%;border:0;background:" + color + ";color:" + fg + ";cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(11,29,64,.35)}",
       ".btn svg{width:28px;height:28px}",
-      ".panel{position:absolute;right:0;bottom:76px;width:370px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 120px);background:#fff;border-radius:18px;box-shadow:0 24px 60px rgba(11,29,64,.35);display:flex;flex-direction:column;overflow:hidden}",
+      ".panel{position:absolute;right:0;bottom:76px;width:" + (LARGE ? 440 : 370) + "px;max-width:calc(100vw - 32px);height:" + (LARGE ? 640 : 560) + "px;max-height:calc(100vh - 120px);background:#fff;border-radius:18px;box-shadow:0 24px 60px rgba(11,29,64,.35);display:flex;flex-direction:column;overflow:hidden}",
       ".panel[hidden]{display:none}",
-      ".top{background:" + color + ";color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}",
+      ".top{background:" + color + ";color:" + fg + ";padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}",
       ".top b{font-size:15px;display:block}",
       ".top small{font-size:12px;opacity:.85}",
-      ".x{background:transparent;border:0;color:#fff;cursor:pointer;width:36px;height:36px;border-radius:8px;font-size:20px;line-height:1}",
+      ".x{background:transparent;border:0;color:" + fg + ";cursor:pointer;width:36px;height:36px;border-radius:8px;font-size:20px;line-height:1}",
       ".x:hover{background:rgba(255,255,255,.12)}",
       ".msgs{flex:1;overflow-y:auto;padding:14px;background:#F4F6FA;display:flex;flex-direction:column;gap:10px}",
       ".m{max-width:85%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.5;color:#111E2D;white-space:pre-wrap;word-wrap:break-word}",
-      ".m.me{align-self:flex-end;background:" + color + ";color:#fff;border-bottom-right-radius:4px}",
+      ".m.me{align-self:flex-end;background:" + color + ";color:" + fg + ";border-bottom-right-radius:4px}",
       ".m.ai{align-self:flex-start;background:#fff;border:1px solid #D9E1EE;border-bottom-left-radius:4px}",
       ".m.ai a{color:" + color + ";font-weight:600}",
       ".m.typing{color:#4A5B78;font-style:italic}",
@@ -103,14 +116,14 @@
       ".thumbs img{width:40px;height:40px;object-fit:cover;border-radius:5px;display:block}",
       ".card b{font-size:13.5px;color:#111E2D;display:block}",
       ".card span{font-size:13px;color:#127A4A;font-weight:600;display:block;margin-top:2px}",
-      ".card a{display:inline-block;margin-top:6px;font-size:12.5px;font-weight:700;color:#fff;background:" + color + ";padding:6px 10px;border-radius:8px;text-decoration:none}",
+      ".card a{display:inline-block;margin-top:6px;font-size:12.5px;font-weight:700;color:" + fg + ";background:" + color + ";padding:6px 10px;border-radius:8px;text-decoration:none}",
       ".form{align-self:stretch;background:#fff;border:1px solid #D9E1EE;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}",
       ".form p{margin:0;font-size:13.5px;color:#111E2D}",
       ".form input{width:100%;height:38px;border:1px solid #C3CEDF;border-radius:8px;padding:0 10px;font-size:14px}",
-      ".form button{height:38px;border:0;border-radius:8px;background:" + color + ";color:#fff;font-weight:700;cursor:pointer}",
+      ".form button{height:38px;border:0;border-radius:8px;background:" + color + ";color:" + fg + ";font-weight:700;cursor:pointer}",
       ".bar{display:flex;gap:8px;padding:10px;border-top:1px solid #D9E1EE;background:#fff}",
       ".bar input{flex:1;min-width:0;height:44px;border:1px solid #C3CEDF;border-radius:12px;padding:0 12px;font-size:14px;color:#111E2D}",
-      ".bar button{width:44px;height:44px;border:0;border-radius:12px;background:" + color + ";color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center}",
+      ".bar button{width:44px;height:44px;border:0;border-radius:12px;background:" + color + ";color:" + fg + ";cursor:pointer;display:flex;align-items:center;justify-content:center}",
       ".bar button:disabled{opacity:.5;cursor:default}",
       ".bar svg{width:20px;height:20px}",
       ".foot{font-size:11px;color:#4A5B78;text-align:center;padding:0 0 8px;background:#fff}",
@@ -136,12 +149,26 @@
       ".qrow .rm{border:0;background:none;color:#B42318;font-size:12px;text-decoration:underline;cursor:pointer;padding:0}",
       ".qest{display:flex;justify-content:space-between;background:#F4F6FA;border-radius:8px;padding:8px 10px;font-size:12.5px}",
       ".qest b{font-size:15px}",
-      ".qgo{height:42px;border:0;border-radius:10px;background:" + color + ";color:#fff;font-weight:700;font-size:14px;cursor:pointer}",
+      ".qgo{height:42px;border:0;border-radius:10px;background:" + color + ";color:" + fg + ";font-weight:700;font-size:14px;cursor:pointer}",
       ".qgo:disabled{opacity:.6}",
       ".qerr{color:#B42318;font-size:13px;margin:0}",
       ".qok{background:#E6F4EC;color:#067647;border-radius:10px;padding:12px;font-weight:600;margin:0}",
       ".qhp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}",
-      ".qmuted{color:#4A5B78;font-size:12.5px;margin:0}"
+      ".qmuted{color:#4A5B78;font-size:12.5px;margin:0}",
+      /* Customise chat box (9 Nov 2026): logo, avatar, emojis and stickers */
+      ".lg{width:36px;height:36px;border-radius:50%;object-fit:cover;flex:0 0 auto;background:rgba(255,255,255,.2)}",
+      ".tl{display:flex;align-items:center;gap:10px;min-width:0}",
+      ".row{display:flex;gap:8px;align-items:flex-end;align-self:flex-start;max-width:92%}",
+      ".row .m{max-width:100%}",
+      ".av{width:28px;height:28px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;overflow:hidden;background:" + color + ";color:" + fg + "}",
+      ".av img{width:100%;height:100%;object-fit:cover}.av svg{width:17px;height:17px}",
+      ".eb{width:36px!important;background:transparent!important;color:#111E2D!important;font-size:20px;padding:0}",
+      ".pk{border-top:1px solid #D9E1EE;background:#fff;padding:10px 12px;display:flex;flex-direction:column;gap:8px}",
+      ".pk[hidden]{display:none}",
+      ".pk .e{display:flex;flex-wrap:wrap;gap:2px}.pk .e button{border:0;background:none;font-size:21px;cursor:pointer;padding:3px;border-radius:6px}",
+      ".pk .e button:hover{background:#F4F6FA}",
+      ".pk .s{display:flex;flex-wrap:wrap;gap:6px}.pk .s button{border:0;cursor:pointer;font-size:12.5px;font-weight:700;padding:6px 10px;border-radius:12px;background:#FFF4D6;color:#5A4300}",
+      ".m.stk{background:#FFF4D6!important;color:#5A4300!important;font-weight:700;border:0}"
     ].join("") + (PAGE ? ":host{display:block;width:100%;height:100%}.btn,.x{display:none!important}" +
       ".panel{position:absolute;inset:0;width:auto;max-width:none;height:auto;max-height:none;border-radius:0;box-shadow:none}" +
       "@media (min-width:700px){.panel{left:50%;right:auto;width:520px;transform:translateX(-50%);top:20px;bottom:20px;border-radius:18px;box-shadow:0 20px 60px rgba(11,29,64,.18)}}" +
@@ -158,15 +185,32 @@
     var top = el("div", "top");
     var title = el("div"); var tb = el("b"); tb.textContent = cfg.title || "Chat with us"; var ts = el("small"); ts.textContent = cfg.subtitle || "We usually reply straight away";
     title.appendChild(tb); title.appendChild(ts);
+    if (cfg.logo) { var tl = el("div", "tl"), lgi = el("img", "lg"); lgi.src = cfg.logo; lgi.alt = ""; lgi.onerror = function () { lgi.remove(); }; tl.appendChild(lgi); tl.appendChild(title); title = tl; }
     var x = el("button", "x"); x.type = "button"; x.setAttribute("aria-label", "Close chat"); x.textContent = "\u00d7";
     top.appendChild(title); top.appendChild(x);
     var msgs = el("div", "msgs"); msgs.setAttribute("aria-live", "polite");
     var bar = el("form", "bar");
     var input = el("input"); input.type = "text"; input.placeholder = "Type your message"; input.maxLength = 1000; input.setAttribute("aria-label", "Your message");
     var send = el("button"); send.type = "submit"; send.setAttribute("aria-label", "Send"); send.innerHTML = sendIcon;
+    var STICKERS = ["Thanks!", "Great \ud83d\udc4d", "Deal \ud83e\udd1d", "Hello \ud83d\udc4b"];
+    var pick = null;
+    if (cfg.emojis) {
+      var eb = el("button", "eb"); eb.type = "button"; eb.setAttribute("aria-label", "Emojis and stickers"); eb.textContent = "\ud83d\ude42";
+      pick = el("div", "pk"); pick.hidden = true;
+      var er = el("div", "e");
+      ["\ud83d\ude00", "\ud83d\ude0a", "\ud83d\udc4d", "\ud83d\ude4f", "\ud83c\udf89", "\u2764\ufe0f", "\ud83d\udc4c", "\ud83e\udd1d", "\ud83d\ude02", "\ud83d\ude2e"].forEach(function (e) {
+        var b = el("button"); b.type = "button"; b.textContent = e; b.setAttribute("aria-label", "Add " + e);
+        b.addEventListener("click", function () { input.value += e; input.focus(); }); er.appendChild(b);
+      });
+      var sr = el("div", "s");
+      STICKERS.forEach(function (t) { var b = el("button"); b.type = "button"; b.textContent = t; b.addEventListener("click", function () { pick.hidden = true; sendText(t); }); sr.appendChild(b); });
+      pick.appendChild(er); pick.appendChild(sr);
+      eb.addEventListener("click", function () { pick.hidden = !pick.hidden; });
+      bar.appendChild(eb);
+    }
     bar.appendChild(input); bar.appendChild(send);
     var foot = el("div", "foot"); foot.textContent = "Powered by PhiXtra AI";
-    panel.appendChild(top); panel.appendChild(msgs); panel.appendChild(bar); panel.appendChild(foot);
+    panel.appendChild(top); panel.appendChild(msgs); if (pick) { panel.appendChild(pick); } panel.appendChild(bar); panel.appendChild(foot);
     root.appendChild(panel); root.appendChild(btn);
     setupQuote(panel, top, msgs, bar);
 
@@ -195,7 +239,25 @@
       s = s.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
       return s;
     }
-    function addMsg(t, who) { var m = el("div", "m " + who); m.innerHTML = who === "ai" ? format(t) : esc(t); msgs.appendChild(m); msgs.scrollTop = msgs.scrollHeight; return m; }
+    var BOT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01"/></svg>';
+    function avatar(staff) {
+      var a = el("div", "av");
+      if (staff) { a.textContent = staff.split(/\s+/).map(function (w) { return w.charAt(0); }).join("").slice(0, 2).toUpperCase(); return a; }
+      var src = AV === "upload" ? cfg.avatar_img : AV === "logo" ? cfg.logo : null;
+      if (src) { var im = el("img"); im.src = src; im.alt = ""; a.appendChild(im); }
+      else if (AV === "bot") { a.innerHTML = BOT; }
+      else { a.textContent = String(cfg.title || "C").charAt(0).toUpperCase(); }
+      return a;
+    }
+    function addMsg(t, who, staff) {
+      var m = el("div", "m " + who); m.innerHTML = who.indexOf("ai") === 0 ? format(t) : esc(t);
+      if (who === "me" && STICKERS.indexOf(t) > -1) { m.className = "m me stk"; }
+      if (who.indexOf("ai") === 0 && (AV !== "none" || staff)) {
+        var row = el("div", "row"); row.appendChild(avatar(staff)); row.appendChild(m); msgs.appendChild(row);
+        m.remove = function () { row.parentNode && row.parentNode.removeChild(row); };
+      } else { msgs.appendChild(m); }
+      msgs.scrollTop = msgs.scrollHeight; return m;
+    }
     function addCards(list) {
       if (!list || !list.length) { return; }
       var wrap = el("div", "cards");
@@ -271,7 +333,7 @@
     var lastId = 0, polling = false, pollTimer = null;
     function staffMsg(r) {
       var w = el("div", "who"); w.textContent = (r.by ? r.by + " \u00b7 " : "") + (cfg.title || "Our team"); msgs.appendChild(w);
-      addMsg(r.text, "ai");
+      addMsg(r.text, "ai", r.by || (cfg.title || "Team"));
       if (r.by) { ts.innerHTML = '<span class="dot"></span>'; ts.appendChild(document.createTextNode(r.by + " is here")); }
     }
     function pollOnce(first) {

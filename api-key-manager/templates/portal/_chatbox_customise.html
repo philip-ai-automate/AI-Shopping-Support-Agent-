@@ -1,0 +1,223 @@
+{# Customise chat box (Phase 1, 9 Nov 2026) — approved mock-up F4b3VfCzR7Sois2gBFP9kN.
+   Settings on the left, live preview on the right. Saved by
+   portal.store_info_website_chatbox_customise; read by ai-backend /widget/config. #}
+<style>
+.cz-wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px;align-items:start}
+@media (max-width:980px){.cz-wrap{grid-template-columns:minmax(0,1fr)}}
+.cz-f{display:flex;flex-direction:column;gap:6px;padding:14px 0;border-top:1px solid #E3E8F0}
+.cz-f:first-child{border-top:0;padding-top:2px}
+.cz-l{font-weight:700;font-size:13.5px;color:#111E2D}
+.cz-h{font-size:12.5px;color:#4A5B78;line-height:1.5}
+.cz-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.cz-c{font-size:12px;color:#4A5B78;font-variant-numeric:tabular-nums}
+.cz-in{width:100%;font:inherit;font-size:14px;color:#111E2D;background:#fff;border:1px solid #C3CEDF;border-radius:8px;padding:9px 11px}
+textarea.cz-in{resize:vertical;min-height:70px}
+.cz-sw{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.cz-dot{width:30px;height:30px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #C3CEDF;cursor:pointer;padding:0}
+.cz-dot[aria-pressed="true"]{box-shadow:0 0 0 2px #3B6FD8}
+.cz-pick{width:44px;height:32px;border:1px solid #C3CEDF;border-radius:8px;background:#fff;padding:2px;cursor:pointer}
+.cz-seg{display:inline-flex;flex-wrap:wrap;border:1px solid #C3CEDF;border-radius:999px;padding:3px;gap:2px;background:#F4F6FA}
+.cz-seg button{font:inherit;font-size:13px;border:0;background:transparent;color:#4A5B78;padding:6px 13px;border-radius:999px;cursor:pointer}
+.cz-seg button[aria-pressed="true"]{background:#fff;color:#111E2D;box-shadow:0 1px 3px rgba(0,0,0,.12);font-weight:600}
+.cz-tick{display:flex;gap:8px;align-items:center;font-size:14px;color:#111E2D}
+.cz-tick input{width:auto;min-width:0;flex:none;margin:0;height:auto}
+#customise [hidden]{display:none!important}
+@media (min-width:981px){.cz-wrap>div:last-child{position:sticky;top:16px}}
+.cz-btns{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.cz-act{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;padding-top:14px;border-top:1px solid #E3E8F0}
+/* preview */
+.cz-pvh{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.cz-pvh b{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:#4A5B78}
+.cz-store{position:relative;background:#FBFAF7;border:1px solid #E3E8F0;border-radius:12px;height:620px;overflow:hidden;font-family:Georgia,'Times New Roman',serif;color:#2A2620}
+.cz-store .nav{display:flex;justify-content:space-between;gap:8px;padding:12px 16px;border-bottom:1px solid #E8E4DC;font-size:14px}
+.cz-store .hero{padding:18px 16px;max-width:55%;font-size:13px;opacity:.75}
+.cz-store .tag{position:absolute;left:14px;bottom:12px;font-family:Inter,system-ui,sans-serif;font-size:11px;color:#8A93A3;max-width:45%}
+.cz-chat{position:absolute;right:14px;bottom:86px;width:340px;max-width:calc(100% - 28px);height:430px;background:#fff;border-radius:18px;box-shadow:0 20px 50px rgba(11,29,64,.28);display:flex;flex-direction:column;overflow:hidden;color:#111E2D}
+.cz-chat.lg{width:400px;height:500px}
+.cz-top{display:flex;gap:10px;align-items:center;padding:13px 14px}
+.cz-logo{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-weight:700;overflow:hidden;flex:none}
+.cz-logo img,.cz-av img{width:100%;height:100%;object-fit:cover}
+.cz-t{font-weight:700;font-size:15px;line-height:1.2}
+.cz-s{font-size:12px;opacity:.85}
+.cz-gd{display:inline-block;width:8px;height:8px;border-radius:50%;background:#3DD68C;margin-right:6px;vertical-align:middle}
+.cz-body{flex:1;background:#F4F6FA;padding:14px;display:flex;flex-direction:column;gap:8px;overflow:auto}
+.cz-mr{display:flex;gap:8px;align-items:flex-end}
+.cz-av{width:28px;height:28px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;overflow:hidden}
+.cz-av svg{width:17px;height:17px}
+.cz-m{max-width:85%;padding:9px 12px;border-radius:14px;border-bottom-left-radius:4px;font-size:14px;line-height:1.5;background:#fff;border:1px solid #D9E1EE;white-space:pre-wrap;word-wrap:break-word}
+.cz-pk{border-top:1px solid #D9E1EE;padding:10px 12px;display:flex;flex-direction:column;gap:8px;background:#fff}
+.cz-pk .e{font-size:20px;letter-spacing:4px}
+.cz-pk .s{display:flex;gap:6px;flex-wrap:wrap}
+.cz-pk .s b{font-size:12.5px;padding:6px 10px;border-radius:12px;background:#FFF4D6;color:#5A4300}
+.cz-bar{display:flex;gap:8px;align-items:center;padding:10px;border-top:1px solid #D9E1EE;background:#fff}
+.cz-bar .eb{border:0;background:transparent;font-size:20px;cursor:pointer;padding:0 2px}
+.cz-bar span{flex:1;border:1px solid #C3CEDF;border-radius:12px;padding:10px 12px;color:#8B97AB;font-size:13.5px}
+.cz-bar i{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-style:normal}
+.cz-btn{position:absolute;right:14px;bottom:14px;width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 28px rgba(11,29,64,.32)}
+.cz-btn svg{width:27px;height:27px}
+@media (max-width:520px){.cz-chat,.cz-chat.lg{width:calc(100% - 28px);height:400px}.cz-store .hero{max-width:100%}}
+</style>
+
+<div class="cb-card" id="customise" style="max-width:1180px">
+  <h2 class="cb-h">Customise chat box</h2>
+  <p class="cb-p">Change how the chat box looks on your website. Nothing changes until you press Save. Leave a box empty to keep today's look.</p>
+
+  <div class="cz-wrap">
+    <form method="POST" action="{{ url_for('portal.store_info_website_chatbox_customise') }}" enctype="multipart/form-data" id="czForm" autocomplete="off">
+      <input type="hidden" name="colour" id="czColour" value="{{ cb.colour }}">
+      <input type="hidden" name="avatar_mode" id="czAvMode" value="{{ cb.avatar_mode }}">
+      <input type="hidden" name="size" id="czSize" value="{{ cb.size }}">
+      <input type="hidden" name="logo_remove" id="czLogoRm" value="0">
+      <input type="hidden" name="avatar_remove" id="czAvRm" value="0">
+      <input type="hidden" name="reset" id="czReset" value="0">
+
+      <div class="cz-f">
+        <div class="cz-row"><label class="cz-l" for="czWelcome">Welcome message</label><span class="cz-c" id="czWc">0/200</span></div>
+        <textarea class="cz-in" id="czWelcome" name="welcome" maxlength="200" placeholder="Hello! How can I help you today?">{{ cb.welcome }}</textarea>
+        <span class="cz-h">The first message visitors see when they open the chat box. Visitors who use another language see it translated automatically. Leave empty to use "{{ 'Hello! Send us a message and our team will reply here.' if ai_off else 'Hello! How can I help you today?' }}"</span>
+      </div>
+
+      <div class="cz-f">
+        <span class="cz-l" id="czColL">Colour</span>
+        <div class="cz-sw" role="group" aria-labelledby="czColL">
+          {% for c, n in [('#0B1D40','Navy (PhiXtra)'),('#1F7A55','Green'),('#B4372E','Red'),('#6B3FA0','Purple'),('#C77700','Amber'),('#1A1A1A','Black')] %}
+          <button type="button" class="cz-dot" data-c="{{ c }}" style="background:{{ c }}" aria-label="{{ n }}"></button>
+          {% endfor %}
+          <input type="color" class="cz-pick" id="czPick" value="{{ cb.colour }}" aria-label="Pick any colour">
+        </div>
+        <span class="cz-h">Used for the chat button, the top of the window and the send button. Text on it turns white or black automatically so it stays easy to read.</span>
+      </div>
+
+      <div class="cz-f">
+        <label class="cz-l" for="czFont">Font</label>
+        <select class="cz-in" id="czFont" name="font">
+          {% for f in cb_fonts %}<option value="{{ f }}" {% if cb.font == f %}selected{% endif %}>{{ "Use my store's font" if f == 'store' else f }}</option>{% endfor %}
+        </select>
+        <span class="cz-h">"Use my store's font" matches the rest of your website.</span>
+      </div>
+
+      <div class="cz-f">
+        <label class="cz-l" for="czTitle">Window title</label>
+        <input class="cz-in" type="text" id="czTitle" name="title" maxlength="40" placeholder="{{ business_name or 'Chat with us' }}" value="{{ cb.title }}">
+        <span class="cz-h">Leave empty to use your business name.</span>
+      </div>
+
+      <div class="cz-f">
+        <label class="cz-l" for="czSub">Window subtitle</label>
+        <input class="cz-in" type="text" id="czSub" name="subtitle" maxlength="60" placeholder="{{ 'Our team replies here' if ai_off else 'We usually reply straight away' }}" value="{{ cb.subtitle }}">
+        <span class="cz-h">Leave empty to use "{{ 'Our team replies here' if ai_off else 'We usually reply straight away' }}".</span>
+      </div>
+
+      <div class="cz-f">
+        <span class="cz-l">Logo or photo</span>
+        <div class="cz-btns">
+          <input type="file" id="czLogo" name="logo" accept="image/png,image/jpeg,image/webp" hidden>
+          <button type="button" class="cb-btn line" id="czLogoBtn">Upload image</button>
+          <button type="button" class="cb-btn line" id="czLogoDel" {% if not cb.logo_url %}hidden{% endif %}>Remove</button>
+        </div>
+        <span class="cz-h">PNG, JPG or WebP, square works best. Without one, the first letter of your title shows.</span>
+      </div>
+
+      <div class="cz-f">
+        <span class="cz-l" id="czAvL">AI Agent avatar</span>
+        <div class="cz-seg" role="group" aria-labelledby="czAvL">
+          <button type="button" class="czav" data-av="logo">Same as logo</button>
+          <button type="button" class="czav" data-av="bot">AI Agent icon</button>
+          <button type="button" class="czav" data-av="upload">Upload photo</button>
+          <button type="button" class="czav" data-av="none">No avatar</button>
+        </div>
+        <input type="file" id="czAvFile" name="avatar" accept="image/png,image/jpeg,image/webp" hidden>
+        <span class="cz-h">Shows next to every AI Agent message in the chat. Staff who take over a chat show their own initials.</span>
+      </div>
+
+      <div class="cz-f">
+        <span class="cz-l">Emojis and stickers</span>
+        <label class="cz-tick"><input type="checkbox" id="czEmo" name="emojis_on" value="1" {% if cb.emojis_on %}checked{% endif %}> Visitors can send emojis and stickers</label>
+        <label class="cz-tick"><input type="checkbox" id="czAiEmo" name="ai_emojis" value="1" {% if cb.ai_emojis %}checked{% endif %}> The AI Agent can use emojis in its replies</label>
+        <span class="cz-h">Adds a 🙂 button to the chat box with emojis and a small set of stickers (Thanks, Great, Deal, Hello).</span>
+      </div>
+
+      <div class="cz-f">
+        <span class="cz-l" id="czSzL">Window size</span>
+        <div class="cz-seg" role="group" aria-labelledby="czSzL">
+          <button type="button" class="czsz" data-sz="standard">Standard</button>
+          <button type="button" class="czsz" data-sz="large">Large</button>
+        </div>
+      </div>
+
+      <div class="cz-act">
+        <button type="button" class="cb-btn line" id="czResetBtn">Use today's look</button>
+        <button type="submit" class="cb-btn">Save</button>
+      </div>
+    </form>
+
+    <div>
+      <div class="cz-pvh"><b>Preview</b><span class="cz-h">How visitors see it. Your website's own look sits behind it.</span></div>
+      <div class="cz-store" aria-label="Preview of your chat box on a website">
+        <div class="nav"><b>{{ (business_name or 'Your website')|upper }}</b><span>Shop · Contact</span></div>
+        <div class="hero">Your website</div>
+        <div class="cz-chat" id="pvChat">
+          <div class="cz-top" id="pvTop"><div class="cz-logo" id="pvLogo"></div><div><div class="cz-t" id="pvT"></div><div class="cz-s"><span class="cz-gd"></span><span id="pvS"></span></div></div></div>
+          <div class="cz-body"><div class="cz-mr"><div class="cz-av" id="pvAv"></div><div class="cz-m" id="pvW"></div></div></div>
+          <div class="cz-pk" id="pvPick" hidden><div class="e">😀 😊 👍 🙏 🎉 ❤️ 👌 🤝</div><div class="s"><b>Thanks!</b><b>Great 👍</b><b>Deal 🤝</b><b>Hello 👋</b></div></div>
+          <div class="cz-bar"><button type="button" class="eb" id="pvEb" aria-label="Emojis and stickers">🙂</button><span>Type your message</span><i id="pvSend">➤</i></div>
+        </div>
+        <div class="cz-btn" id="pvBtn" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.4 8.4 0 1 1 21 11.5z"/></svg></div>
+        <div class="tag">Preview only. "Use my store's font" shows as a serif here; on your website it uses your website's font.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var $=function(i){return document.getElementById(i)};
+  var DEF={welcome:{{ ('Hello! Send us a message and our team will reply here.' if ai_off else 'Hello! How can I help you today?')|tojson }},
+           sub:{{ ('Our team replies here' if ai_off else 'We usually reply straight away')|tojson }},
+           title:{{ (business_name or 'Chat with us')|tojson }}};
+  var st={logo:{{ (cb.logo_url or '')|tojson }}, avimg:{{ (cb.avatar_url or '')|tojson }}, av:$('czAvMode').value, size:$('czSize').value};
+  var BOT='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01"/></svg>';
+  function fgOn(hex){var c=hex.replace('#','');var f=function(i){var v=parseInt(c.substr(i,2),16)/255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)};
+    return (.2126*f(0)+.7152*f(2)+.0722*f(4))>.42?'#111111':'#FFFFFF'}
+  function img(src){var i=document.createElement('img');i.src=src;i.alt='';return i}
+  var FONTS={Inter:"'Inter',system-ui,sans-serif",Roboto:"'Roboto',system-ui,sans-serif",Lato:"'Lato',system-ui,sans-serif",Merriweather:"'Merriweather',Georgia,serif",store:"Georgia,'Times New Roman',serif"};
+  (function(){var l=document.createElement('link');l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Roboto:wght@400;700&family=Lato:wght@400;700&family=Merriweather:wght@400;700&display=swap';document.head.appendChild(l)})();
+  function render(){
+    var col=$('czColour').value, fg=fgOn(col), t=$('czTitle').value.trim()||DEF.title;
+    $('czWc').textContent=$('czWelcome').value.length+'/200';
+    $('pvW').textContent=($('czWelcome').value.trim()||DEF.welcome)+($('czAiEmo').checked?' 😊':'');
+    $('pvT').textContent=t; $('pvS').textContent=$('czSub').value.trim()||DEF.sub;
+    [$('pvTop'),$('pvBtn'),$('pvSend')].forEach(function(e){e.style.background=col;e.style.color=fg});
+    $('pvChat').style.fontFamily=FONTS[$('czFont').value]||FONTS.Inter;
+    $('pvChat').classList.toggle('lg',st.size==='large');
+    var L=$('pvLogo'); L.innerHTML=''; if(st.logo){L.appendChild(img(st.logo))}else{L.textContent=(t[0]||'C').toUpperCase()}
+    $('czLogoDel').hidden=!st.logo;
+    var A=$('pvAv'); A.innerHTML=''; A.hidden=st.av==='none'; A.style.background=col; A.style.color=fg;
+    if(st.av==='logo'){ if(st.logo)A.appendChild(img(st.logo)); else A.textContent=(t[0]||'C').toUpperCase(); }
+    else if(st.av==='bot'){ A.innerHTML=BOT; }
+    else if(st.av==='upload'){ if(st.avimg)A.appendChild(img(st.avimg)); else A.textContent='?'; }
+    $('pvEb').hidden=!$('czEmo').checked; if(!$('czEmo').checked)$('pvPick').hidden=true;
+    document.querySelectorAll('.cz-dot').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.c.toLowerCase()===col.toLowerCase()?'true':'false')});
+    document.querySelectorAll('.czav').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.av===st.av?'true':'false')});
+    document.querySelectorAll('.czsz').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.sz===st.size?'true':'false')});
+    $('czPick').value=col;
+  }
+  function setCol(c){$('czColour').value=c.toUpperCase();render()}
+  document.querySelectorAll('.cz-dot').forEach(function(b){b.addEventListener('click',function(){setCol(b.dataset.c)})});
+  $('czPick').addEventListener('input',function(e){setCol(e.target.value)});
+  ['czWelcome','czTitle','czSub','czFont','czEmo','czAiEmo'].forEach(function(i){$(i).addEventListener('input',render);$(i).addEventListener('change',render)});
+  document.querySelectorAll('.czsz').forEach(function(b){b.addEventListener('click',function(){st.size=b.dataset.sz;$('czSize').value=st.size;render()})});
+  document.querySelectorAll('.czav').forEach(function(b){b.addEventListener('click',function(){st.av=b.dataset.av;$('czAvMode').value=st.av;if(st.av==='upload'&&!st.avimg)$('czAvFile').click();render()})});
+  function readImg(input,cb){var f=input.files&&input.files[0];if(!f)return;var r=new FileReader();r.onload=function(){cb(r.result)};r.readAsDataURL(f)}
+  $('czLogoBtn').addEventListener('click',function(){$('czLogo').click()});
+  $('czLogo').addEventListener('change',function(){readImg($('czLogo'),function(d){st.logo=d;$('czLogoRm').value='0';render()})});
+  $('czLogoDel').addEventListener('click',function(){st.logo='';$('czLogo').value='';$('czLogoRm').value='1';render()});
+  $('czAvFile').addEventListener('change',function(){readImg($('czAvFile'),function(d){st.avimg=d;st.av='upload';$('czAvMode').value='upload';$('czAvRm').value='0';render()})});
+  $('pvEb').addEventListener('click',function(){$('pvPick').hidden=!$('pvPick').hidden});
+  $('czResetBtn').addEventListener('click',function(){
+    var box=$('czResetBtn'); if(box.dataset.sure!=='1'){box.dataset.sure='1';box.textContent='Press again to confirm';return}
+    $('czReset').value='1'; $('czForm').submit();
+  });
+  render();
+})();
+</script>

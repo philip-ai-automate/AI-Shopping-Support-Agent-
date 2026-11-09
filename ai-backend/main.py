@@ -2604,8 +2604,82 @@ def _w_mark_seen(tenant_id: int) -> None:
         conn.close()
 
 
+_CB_FONTS = ("store", "Inter", "Roboto", "Lato", "Merriweather")
+_CB_CACHE: dict = {}          # tenant_id -> (time, settings row) — 60 s
+_CB_PORTAL = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com").rstrip("/")
+
+
+def _cb_settings(tenant_id: int) -> dict:
+    """The business's own chat box look (Customise chat box, 9 Nov 2026), or {}."""
+    hit = _CB_CACHE.get(tenant_id)
+    if hit and _w_time.time() - hit[0] < 60:
+        return hit[1]
+    row = {}
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT * FROM chatbox_settings WHERE tenant_id=%s", (tenant_id,))
+            row = dict(cur.fetchone() or {})
+            cur.close()
+        except Exception:
+            conn.rollback()      # table not made yet (portal makes it) = today's look
+        finally:
+            conn.close()
+    _CB_CACHE[tenant_id] = (_w_time.time(), row)
+    return row
+
+
+def _cb_lang(lang: str) -> str:
+    l = (lang or "").strip().replace("_", "-").lower()
+    return l[:12] if _re.match(r"^[a-z]{2,3}(-[a-z0-9]{2,8})?$", l) else ""
+
+
+def _cb_translate(tenant_id: int, text: str, lang: str) -> str:
+    """The welcome message in the visitor's language — translated by the AI
+    Agent once per business and language, then reused. English visitors and
+    any failure get the text as written."""
+    lang = _cb_lang(lang)
+    if not text or not lang or lang.split("-")[0] == "en" and tenant_id == 0:
+        return text
+    key = lang.split("-")[0]
+    conn = get_db_connection()
+    if not conn:
+        return text
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT src, text FROM chatbox_welcome_tr WHERE tenant_id=%s AND lang=%s", (tenant_id, key))
+            r = cur.fetchone()
+        except Exception:
+            conn.rollback(); return text
+        if r and r[0] == text:
+            return r[1]
+        try:
+            resp = _llm_module._get_client().chat.completions.create(
+                model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"), timeout=15,
+                messages=[{"role": "system", "content":
+                           "You translate the welcome message of a shop or wholesaler's website chat box. Business terms keep their shop meaning (for example 'trade' means business customers, as in trade price or trade quote). Translate it into the language with this code: " + key +
+                           ". If it is already in that language, return it unchanged. Use the polite, formal way of addressing a customer where the language has one. Keep names, brands and emojis. "
+                           "Reply with the message only."},
+                          {"role": "user", "content": text}])
+            out = (resp.choices[0].message.content or "").strip().strip('"')
+        except Exception as e:
+            print("⚠️ chat box welcome translate:", e)
+            return text
+        if not out or len(out) > 600:
+            return text
+        cur.execute("""INSERT INTO chatbox_welcome_tr (tenant_id, lang, src, text) VALUES (%s,%s,%s,%s)
+                       ON CONFLICT (tenant_id, lang) DO UPDATE SET src=EXCLUDED.src, text=EXCLUDED.text, created_at=NOW()""",
+                    (tenant_id, key, text, out))
+        conn.commit()
+        return out
+    finally:
+        conn.close()
+
+
 @app.get("/widget/config")
-def widget_config(site: str, request: _WRequest):
+def widget_config(site: str, request: _WRequest, lang: str = ""):
     row, err = _w_site(site, request)
     if err:
         return _WJSON({"enabled": False, "detail": err[1]}, status_code=err[0])
@@ -2613,16 +2687,28 @@ def widget_config(site: str, request: _WRequest):
         _w_mark_seen(int(row["tenant_id"]))
     if row.get("shopify_shop"):
         _w_shopify_seen(row["shopify_shop"])
+    tid = int(row["tenant_id"])
+    cb = _cb_settings(tid)
     # The box always shows (2026-10-06). AI off (PhiXtra Connect) = "team"
     # mode: the business's staff answer from the Inbox.
-    if row["ai_on"]:
-        return {"enabled": True, "mode": "ai", "title": row["name"] or "Chat with us",
-                "subtitle": "We usually reply straight away", "greeting": "Hello! How can I help you today?",
-                "color": "#0B1D40"}
-    return {"enabled": bool(row["api_key"]), "mode": "team", "title": row["name"] or "Chat with us",
-            "subtitle": "Our team replies here",
-            "greeting": "Hello! Send us a message and our team will reply here.",
-            "color": "#0B1D40"}
+    ai = bool(row["ai_on"])
+    default_greet = "Hello! How can I help you today?" if ai else "Hello! Send us a message and our team will reply here."
+    own = (cb.get("welcome") or "").strip()
+    greeting = _cb_translate(tid if own else 0, own or default_greet, lang)
+    colour = cb.get("colour") if _re.match(r"^#[0-9a-fA-F]{6}$", cb.get("colour") or "") else "#0B1D40"
+    def _img(f):
+        return f"{_CB_PORTAL}/media/chatbox/{tid}/{f}" if f and _re.match(r"^[0-9a-f]{32}\.png$", f) else None
+    out = {"enabled": bool(row["api_key"]) if not ai else True, "mode": "ai" if ai else "team",
+           "title": (cb.get("title") or "").strip() or row["name"] or "Chat with us",
+           "subtitle": (cb.get("subtitle") or "").strip() or ("We usually reply straight away" if ai else "Our team replies here"),
+           "greeting": greeting, "color": colour,
+           "font": cb.get("font") if cb.get("font") in _CB_FONTS else "Inter",
+           "logo": _img(cb.get("logo_file")),
+           "avatar": (cb.get("avatar_mode") or "logo") if cb else "none",
+           "avatar_img": _img(cb.get("avatar_file")),
+           "size": "large" if cb.get("size") == "large" else "standard",
+           "emojis": bool(cb.get("emojis_on")) if cb else False}
+    return out
 
 
 class WidgetChatRequest(BaseModel):
@@ -2648,8 +2734,11 @@ def widget_chat_stream(req: WidgetChatRequest, request: _WRequest):
     sid = (req.session_id or "").strip()[:80] or None
     if row.get("via_link") and sid:
         _w_list_demo_chat(int(row["tenant_id"]), sid, msg)
+    # Customise chat box (9 Nov 2026): the business lets the AI Agent use emojis.
+    addon = ("\n\nSTYLE: You may use an occasional friendly emoji in replies, at most one per message."
+             if _cb_settings(int(row["tenant_id"])).get("ai_emojis") else None)
     return chat_stream(ChatRequest(api_key=row["api_key"], message=msg, session_id=sid, channel="website",
-                                   visitor=_w_visitor(row, req)))
+                                   visitor=_w_visitor(row, req), system_addon=addon))
 
 
 def _w_list_demo_chat(tenant_id: int, sid: str, msg: str) -> None:

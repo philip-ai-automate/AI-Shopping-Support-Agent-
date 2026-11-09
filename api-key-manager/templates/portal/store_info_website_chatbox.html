@@ -48,6 +48,8 @@
 </div>
 {% endif %}
 
+{% include "portal/_chatbox_customise.html" %}
+
 {% if shopify %}
 {# Shopify store connected through the app (2026-11-06): no code. #}
 {% set _seen = shopify.seen_minutes_ago %}

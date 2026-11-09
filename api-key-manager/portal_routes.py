@@ -6983,7 +6983,7 @@ def store_info_website_chatbox():
     r3 = _require_team_permission("store.info")
     if r3: return r3
     conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT domain, website_platform, chatbox_seen_at FROM tenants WHERE id=%s", (tenant_id,))
+    cur.execute("SELECT name, domain, website_platform, chatbox_seen_at FROM tenants WHERE id=%s", (tenant_id,))
     t = cur.fetchone() or {}
     cur.close(); conn.close()
     plan = _get_tenant_plan(tenant_id)
@@ -7003,7 +7003,11 @@ def store_info_website_chatbox():
                                     f"?context=apps&activateAppId={shopify_app._key()}/chat"}
     except Exception as e:
         print("chatbox shopify state:", e)
+    # Customise chat box (Phase 1, 9 Nov 2026).
+    import chatbox_settings as _cbs
+    cb = _cbs.get(tenant_id)
     return render_template("portal/store_info_website_chatbox.html", customer=customer, code=code, shopify=shopify,
+                           cb=cb, cb_fonts=_cbs.FONTS, business_name=(t.get("name") or customer.get("business_name") or "").strip(),
                            domain=t.get("domain") or "", platform=t.get("website_platform") or "",
                            seen=t.get("chatbox_seen_at"), ai_off=plan.get("plan_slug") in AI_OFF_FREE_PLAN_SLUGS,
                            guides=CHATBOX_GUIDES,
@@ -7035,6 +7039,48 @@ def setup_check_chatbox():
     if request.form.get("back") == "chatbox":
         return redirect(url_for("portal.store_info_website_chatbox"))
     return redirect(url_for("portal.dashboard"))
+
+
+@portal_bp.route("/store-info/website/chat-box/customise", methods=["POST"])
+@team_feature("store.info")
+def store_info_website_chatbox_customise():
+    """Saves the business's own chat box look (Phase 1, 9 Nov 2026)."""
+    r = _require_login()
+    if r: return r
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information") \
+        or _require_plan_sub_feature(customer, "store.website_connect", "Connect Website")
+    if r2: return r2
+    r3 = _require_team_permission("store.info")
+    if r3: return r3
+    import chatbox_settings as _cbs
+    actor = _current_actor(customer)
+    errs = _cbs.save(tenant_id, request.form, request.files, actor.get("label") or "")
+    if errs:
+        for e in errs:
+            flash(e, "warning")
+    else:
+        try:
+            insert_audit_log(action="chatbox_customised", tenant_id=tenant_id,
+                             details={"by": actor.get("label"), "reset": request.form.get("reset") == "1"})
+        except Exception as e:
+            print("chatbox audit:", e)
+        flash("Today's look is back on your chat box." if request.form.get("reset") == "1"
+              else "Saved. Your chat box shows the new look on your website now.", "success")
+    return redirect(url_for("portal.store_info_website_chatbox") + "#customise")
+
+
+@portal_bp.route("/media/chatbox/<int:tenant_id>/<fname>")
+@public_route
+def chatbox_media_file(tenant_id: int, fname: str):
+    """Chat box logo and avatar: public (every website visitor's browser loads
+    them); random names, so they can't be guessed."""
+    import chatbox_settings as _cbs
+    if not _cbs.safe_name(fname):
+        return ("Not found", 404)
+    return send_from_directory(_os.path.join(_cbs.MEDIA_DIR, str(int(tenant_id))), fname, mimetype="image/png",
+                               max_age=60 * 60 * 24 * 30)
 
 
 @portal_bp.route("/store-info/website/chat-box/send", methods=["POST"])
