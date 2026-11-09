@@ -33732,10 +33732,16 @@ def _wa_otp_sender():
     return (pnid, row[0], row[1]) if row and row[1] else None
 
 
+WA_CODE_LOGIN_ON = False   # 2026-11-09 user: owners log in with email + password only
+                           # (1 WhatsApp-code login vs 169 email logins in 2 weeks).
+
+
 @portal_bp.app_template_global()
 def wa_login_ready() -> bool:
     """True once Meta has approved the login-code template (checked at most
-    every 10 minutes)."""
+    every 10 minutes). Off while WA_CODE_LOGIN_ON is False."""
+    if not WA_CODE_LOGIN_ON:
+        return False
     import time as _t
     if _t.time() - _wa_login_ready_cache["at"] < 600:
         return _wa_login_ready_cache["ok"]
@@ -34184,7 +34190,7 @@ def wa_login():
     if _logged_in():
         return redirect(url_for("portal.dashboard"))
     if not wa_login_ready():
-        flash("Logging in with WhatsApp isn't available right now. Please log in with your email.", "info")
+        flash("Please log in with your email and password. Forgotten your password? Click Forgot password.", "info")
         return redirect(url_for("portal.login"))
     return render_template("portal/wa_login.html")
 
