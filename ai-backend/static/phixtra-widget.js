@@ -192,6 +192,12 @@
     var top = el("div", "top");
     var title = el("div"); var tb = el("b"); tb.textContent = cfg.title || "Chat with us"; var ts = el("small"); ts.textContent = cfg.subtitle || "We usually reply straight away";
     title.appendChild(tb); title.appendChild(ts);
+    // Business hours (Phase 3, 10 Nov 2026): green dot when open, grey + when the team is back when closed.
+    var CLOSED = cfg.hours && cfg.open === false && cfg.closed ? cfg.closed : null;
+    if (cfg.hours) {
+      ts.textContent = ""; var hd = el("span", "dot"); if (CLOSED) { hd.style.background = "#A0A9B8"; }
+      ts.appendChild(hd); ts.appendChild(document.createTextNode(CLOSED ? CLOSED.closed_sub : (cfg.subtitle || "We usually reply straight away")));
+    }
     if (cfg.logo) { var tl = el("div", "tl"), lgi = el("img", "lg"); lgi.src = cfg.logo; lgi.alt = ""; lgi.onerror = function () { lgi.remove(); }; tl.appendChild(lgi); tl.appendChild(title); title = tl; }
     var x = el("button", "x"); x.type = "button"; x.setAttribute("aria-label", "Close chat"); x.textContent = "\u00d7";
     top.appendChild(title); top.appendChild(x);
@@ -222,7 +228,8 @@
     setupQuote(panel, top, msgs, bar);
 
     var greeted = false;
-    function open() { panel.hidden = false; badge.hidden = true; if (!greeted) { greeted = true; addMsg(GREET || cfg.greeting || "Hello! How can I help you today?", "ai"); showSugg(); } msgs.scrollTop = msgs.scrollHeight; setTimeout(function () { input.focus(); }, 50); }
+    function open() { panel.hidden = false; badge.hidden = true; if (!greeted) { greeted = true; addMsg(GREET || cfg.greeting || "Hello! How can I help you today?", "ai"); showSugg();
+        if (CLOSED && TEAM) { addMsg(CLOSED.closed_msg, "sys"); contactForm(CLOSED.closed_form); } } msgs.scrollTop = msgs.scrollHeight; setTimeout(function () { input.focus(); }, 50); }
     var suggBox = null;
     function showSugg() {
       if (!SUGG.length || suggBox) { return; }
@@ -307,11 +314,11 @@
       return g;
     }
     var DKEY = "phixtra_w_details_" + SITE;
-    function contactForm() {
+    function contactForm(prompt) {
       if (store(DKEY) === sessionId) { return; }
       store(DKEY, sessionId);
       var f = el("form", "form");
-      var p = el("p"); p.textContent = TEAM ? "So we can still reach you if you leave this page:" : "Leave your details and our team will get back to you."; f.appendChild(p);
+      var p = el("p"); p.textContent = prompt || (TEAM ? "So we can still reach you if you leave this page:" : "Leave your details and our team will get back to you."); f.appendChild(p);
       var n = el("input"); n.placeholder = "Your name"; n.setAttribute("aria-label", "Your name");
       var ph = el("input"); ph.placeholder = "Phone number"; ph.type = "tel"; ph.setAttribute("aria-label", "Phone number");
       var em = el("input"); em.placeholder = "Email address"; em.type = "email"; em.setAttribute("aria-label", "Email address");
@@ -406,7 +413,7 @@
               if (!bubble) { typing.remove(); bubble = addMsg("", "ai"); }
               bubble.innerHTML = format(final);
               addCards(data.product_recommendations);
-              if (data.handoff_triggered) { contactForm(); startPolling(); }
+              if (data.handoff_triggered) { if (CLOSED) { addMsg(CLOSED.closed_msg, "sys"); } contactForm(CLOSED ? CLOSED.closed_form : null); startPolling(); }
               else if (PAGE) { startPolling(); }  // chat link page: the team can step in any time
               return;
             } else if (ev === "error") {

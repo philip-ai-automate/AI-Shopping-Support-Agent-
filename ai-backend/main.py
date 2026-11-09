@@ -2689,6 +2689,38 @@ def _cb_translate(tenant_id: int, texts: dict, lang: str) -> dict:
         conn.close()
 
 
+_CB_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def _cb_hours_state(cb: dict):
+    """(open now?, when the team is back e.g. '9:00 tomorrow') for a business
+    with hours set (Customise chat box Phase 3, 10 Nov 2026); (True, None) otherwise."""
+    if not cb.get("hours_on") or not isinstance(cb.get("hours"), list) or len(cb["hours"]) != 7:
+        return True, None
+    from zoneinfo import ZoneInfo
+    import datetime as _dt
+    try:
+        tz = ZoneInfo(cb.get("hours_tz") or "Europe/London")
+    except Exception:
+        tz = ZoneInfo("Europe/London")
+    now = _dt.datetime.now(tz)
+    hm = now.strftime("%H:%M")
+    days = cb["hours"]
+    today = days[now.weekday()]
+    if today.get("on") and today.get("from", "") <= hm < today.get("to", ""):
+        return True, None
+    def fmt(t):
+        return (t or "09:00").lstrip("0") if not (t or "").startswith("00") else t
+    if today.get("on") and hm < today.get("from", ""):
+        return False, f"{fmt(today['from'])} today"
+    for k in range(1, 8):
+        d = days[(now.weekday() + k) % 7]
+        if d.get("on"):
+            when = "tomorrow" if k == 1 else "on " + _CB_DAYS[(now.weekday() + k) % 7]
+            return False, f"{fmt(d['from'])} {when}"
+    return True, None
+
+
 @app.get("/widget/config")
 def widget_config(site: str, request: _WRequest, lang: str = ""):
     row, err = _w_site(site, request)
@@ -2713,6 +2745,17 @@ def widget_config(site: str, request: _WRequest, lang: str = ""):
         src["button"] = words_own or "Chat with us"
     for i, q in enumerate(qs):
         src[f"q{i + 1}"] = q
+    is_open, back = _cb_hours_state(cb)
+    if not is_open:
+        custom = True
+        if ai:
+            src["closed_sub"] = f"Team back at {back} · AI Agent here now"
+            src["closed_msg"] = f"You asked to talk to our team. They are back at {back}."
+            src["closed_form"] = "Leave your details and our team will reply when they are back:"
+        else:
+            src["closed_sub"] = f"Closed now · back at {back}"
+            src["closed_msg"] = f"We are closed right now. We are back at {back}."
+            src["closed_form"] = "Leave your details and we will reply when we are back:"
     tr = _cb_translate(tid if custom else 0, src, lang)
     greeting = tr.get("welcome") or src["welcome"]
     colour = cb.get("colour") if _re.match(r"^#[0-9a-fA-F]{6}$", cb.get("colour") or "") else "#0B1D40"
@@ -2731,7 +2774,9 @@ def widget_config(site: str, request: _WRequest, lang: str = ""):
            "position": "left" if cb.get("btn_position") == "left" else "right",
            "button_words": (tr.get("button") or src.get("button")) if cb.get("btn_style") == "words" else None,
            "phones": True if cb.get("show_on_phones") is None else bool(cb.get("show_on_phones")),
-           "questions": [tr.get(f"q{i + 1}") or q for i, q in enumerate(qs)]}
+           "questions": [tr.get(f"q{i + 1}") or q for i, q in enumerate(qs)],
+           "hours": bool(cb.get("hours_on")), "open": is_open,
+           "closed": None if is_open else {k: tr.get(k) or src[k] for k in ("closed_sub", "closed_msg", "closed_form")}}
     return out
 
 

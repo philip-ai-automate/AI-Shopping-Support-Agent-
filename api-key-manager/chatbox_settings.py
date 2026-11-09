@@ -30,7 +30,29 @@ IMG_EDGE = 256
 LIMITS = {"welcome": 200, "title": 40, "subtitle": 60, "btn_words": 24, "question": 40}
 # Phase 2 (9 Nov 2026): chat button + quick-question buttons.
 _P2_COLS = {"btn_position": "VARCHAR(5) NOT NULL DEFAULT 'right'", "btn_style": "VARCHAR(6) NOT NULL DEFAULT 'round'",
-            "btn_words": "VARCHAR(24)", "show_on_phones": "BOOLEAN NOT NULL DEFAULT TRUE", "quick_qs": "JSONB"}
+            "btn_words": "VARCHAR(24)", "show_on_phones": "BOOLEAN NOT NULL DEFAULT TRUE", "quick_qs": "JSONB",
+            # Phase 3 (10 Nov 2026): business hours, Monday first, in the business's own time zone.
+            "hours_on": "BOOLEAN NOT NULL DEFAULT FALSE", "hours": "JSONB", "hours_tz": "VARCHAR(64)"}
+DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+DEFAULT_HOURS = [{"on": i < 5, "from": "09:00", "to": "17:30"} for i in range(7)]
+_TIME_RE = re.compile(r"^([01]\d|2[0-3]):[03]0$")
+
+
+def tz_name(tenant_id: int) -> str:
+    try:
+        import staff_activity
+        return staff_activity.tenant_tz_name(int(tenant_id))
+    except Exception:
+        return "Europe/London"
+
+
+def _clean_hours(raw) -> list:
+    out = []
+    for i in range(7):
+        d = raw[i] if isinstance(raw, list) and i < len(raw) and isinstance(raw[i], dict) else DEFAULT_HOURS[i]
+        f, t = str(d.get("from") or "09:00"), str(d.get("to") or "17:30")
+        out.append({"on": bool(d.get("on")), "from": f if _TIME_RE.match(f) else "09:00", "to": t if _TIME_RE.match(t) else "17:30"})
+    return out
 
 _COLOUR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 _LINK_RE = re.compile(r"(https?://|www\.)", re.I)
@@ -95,6 +117,10 @@ def get(tenant_id: int) -> dict:
         if r:
             cols = [d[0] for d in cur.description]
             row = r if isinstance(r, dict) else dict(zip(cols, r))
+            # Keep the hours' time zone in step with Settings (the AI service reads hours_tz).
+            if row.get("hours_on") and row.get("hours_tz") != tz_name(tenant_id):
+                cur.execute("UPDATE chatbox_settings SET hours_tz=%s WHERE tenant_id=%s", (tz_name(tenant_id), int(tenant_id)))
+                conn.commit()
     finally:
         conn.close()
     return {
@@ -114,6 +140,9 @@ def get(tenant_id: int) -> dict:
         "btn_words": row.get("btn_words") or "",
         "show_on_phones": True if row.get("show_on_phones") is None else bool(row.get("show_on_phones")),
         "quick_qs": [q for q in (row.get("quick_qs") or []) if isinstance(q, str)][:4],
+        "hours_on": bool(row.get("hours_on")),
+        "hours": _clean_hours(row.get("hours")),
+        "tz": tz_name(tenant_id),
         "saved": bool(row),
     }
 
@@ -193,6 +222,16 @@ def save(tenant_id: int, form, files, actor: str) -> list:
     for i, q in enumerate(quick_qs, 1):
         if len(q) > LIMITS["question"]:
             errs.append(f"Quick question {i} can be up to 40 characters.")
+    hours_on = form.get("hours_on") == "1"
+    hours = []
+    for i in range(7):
+        f, t = form.get(f"from_{i}") or "09:00", form.get(f"to_{i}") or "17:30"
+        on = form.get(f"open_{i}") == "1"
+        if on and (not _TIME_RE.match(f) or not _TIME_RE.match(t) or f >= t):
+            errs.append(f"On {DAYS[i]}, the closing time must be after the opening time.")
+        hours.append({"on": on, "from": f if _TIME_RE.match(f) else "09:00", "to": t if _TIME_RE.match(t) else "17:30"})
+    if hours_on and not any(h["on"] for h in hours):
+        errs.append("Tick at least one day you're open, or untick Set business hours.")
     if any(_LINK_RE.search(v) for v in [btn_words] + quick_qs):
         errs.append("Please take web links out of the button words and quick questions.")
     if errs:
@@ -235,18 +274,20 @@ def save(tenant_id: int, form, files, actor: str) -> list:
         cur.execute("""
             INSERT INTO chatbox_settings (tenant_id, welcome, colour, font, title, subtitle, logo_file, avatar_mode,
                                           avatar_file, size, emojis_on, ai_emojis, btn_position, btn_style, btn_words,
-                                          show_on_phones, quick_qs, updated_at, updated_by)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
+                                          show_on_phones, quick_qs, hours_on, hours, hours_tz, updated_at, updated_by)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
             ON CONFLICT (tenant_id) DO UPDATE SET
               welcome=EXCLUDED.welcome, colour=EXCLUDED.colour, font=EXCLUDED.font, title=EXCLUDED.title,
               subtitle=EXCLUDED.subtitle, logo_file=EXCLUDED.logo_file, avatar_mode=EXCLUDED.avatar_mode,
               avatar_file=EXCLUDED.avatar_file, size=EXCLUDED.size, emojis_on=EXCLUDED.emojis_on,
               ai_emojis=EXCLUDED.ai_emojis, btn_position=EXCLUDED.btn_position, btn_style=EXCLUDED.btn_style,
               btn_words=EXCLUDED.btn_words, show_on_phones=EXCLUDED.show_on_phones, quick_qs=EXCLUDED.quick_qs,
+              hours_on=EXCLUDED.hours_on, hours=EXCLUDED.hours, hours_tz=EXCLUDED.hours_tz,
               updated_at=NOW(), updated_by=EXCLUDED.updated_by
         """, (int(tenant_id), welcome or None, colour.upper(), font, title or None, subtitle or None, logo,
               avatar_mode, avatar, size, emojis_on, ai_emojis, btn_position, btn_style, btn_words or None,
-              show_on_phones, json.dumps(quick_qs) if quick_qs else None, (actor or "")[:120]))
+              show_on_phones, json.dumps(quick_qs) if quick_qs else None, hours_on, json.dumps(hours),
+              tz_name(tenant_id), (actor or "")[:120]))
         if old_texts != (welcome or None, btn_words or None, quick_qs):
             cur.execute("DELETE FROM chatbox_welcome_tr WHERE tenant_id=%s", (int(tenant_id),))
         conn.commit()

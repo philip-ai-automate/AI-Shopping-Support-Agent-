@@ -55,6 +55,13 @@ textarea.cz-in{resize:vertical;min-height:70px}
 .cz-bar i{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-style:normal}
 .cz-btn{position:absolute;right:14px;bottom:14px;width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 28px rgba(11,29,64,.32)}
 .cz-btn svg{width:27px;height:27px}
+.cz-day{display:grid;grid-template-columns:96px auto 1fr;gap:8px;align-items:center;font-size:13px}
+.cz-day select.cz-in{width:auto;padding:5px 6px;font-size:13px}
+@media (max-width:520px){.cz-day{grid-template-columns:1fr auto}.cz-day .czTimes,.cz-day .czClosed{grid-column:1/-1}}
+.cz-sys{align-self:center;max-width:95%;background:#EEF2F8;border:1px dashed #C3CEDF;color:#4A5B78;font-size:12.5px;text-align:center;border-radius:12px;padding:8px 10px}
+.cz-form{align-self:stretch;background:#fff;border:1px solid #D9E1EE;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px;font-size:13px}
+.cz-form span{border:1px solid #C3CEDF;border-radius:8px;padding:7px 9px;color:#8B97AB}
+.cz-form b{text-align:center;border-radius:8px;padding:8px}
 .cz-qq{display:flex;flex-direction:column;align-items:flex-start;gap:7px;padding-left:36px}
 .cz-qq span{font-size:13px;font-weight:600;border:1px solid #C3CEDF;background:#fff;color:#0B1D40;border-radius:999px;padding:7px 12px}
 .cz-btn.w{width:auto;padding:0 18px 0 14px;border-radius:999px;gap:8px;font-family:Inter,system-ui,sans-serif;font-weight:700;font-size:14.5px}
@@ -175,6 +182,31 @@ textarea.cz-in{resize:vertical;min-height:70px}
       </div>
 
       <div class="cz-f">
+        <span class="cz-l">Business hours</span>
+        <label class="cz-tick"><input type="checkbox" id="czHrs" name="hours_on" value="1" {% if cb.hours_on %}checked{% endif %}> Set business hours</label>
+        <span class="cz-h">When your team is around to take over a chat. Without hours, the chat box always shows you as online.</span>
+        <div id="czHrsBox" style="display:flex;flex-direction:column;gap:8px">
+          <div class="cz-row"><span class="cz-h">Time zone</span><b style="font-size:13px">{{ cb.tz }} (your business time zone)</b></div>
+          <span class="cz-h" style="margin-top:-6px">Wrong time zone? Change it in Settings, then come back and press Save.</span>
+          {% set _days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}
+          {% for d in cb.hours %}
+          <div class="cz-day" data-i="{{ loop.index0 }}">
+            <b>{{ _days[loop.index0] }}</b>
+            <label class="cz-tick"><input type="checkbox" class="czOpen" name="open_{{ loop.index0 }}" value="1" {% if d.on %}checked{% endif %}> Open</label>
+            <span class="czTimes">
+              <select class="cz-in czFrom" name="from_{{ loop.index0 }}" aria-label="{{ _days[loop.index0] }} opening time">{% for h in range(24) %}{% for m in ['00','30'] %}{% set t = '%02d'|format(h) ~ ':' ~ m %}<option {% if t == d['from'] %}selected{% endif %}>{{ t }}</option>{% endfor %}{% endfor %}</select>
+              to
+              <select class="cz-in czTo" name="to_{{ loop.index0 }}" aria-label="{{ _days[loop.index0] }} closing time">{% for h in range(24) %}{% for m in ['00','30'] %}{% set t = '%02d'|format(h) ~ ':' ~ m %}<option {% if t == d['to'] %}selected{% endif %}>{{ t }}</option>{% endfor %}{% endfor %}</select>
+            </span>
+            <span class="czClosed cz-h">Closed</span>
+          </div>
+          {% endfor %}
+          <button type="button" class="cb-btn line" id="czCopyMon" style="align-self:flex-start;min-height:34px;font-size:13px">Copy Monday to Tuesday–Friday</button>
+          <span class="cz-h"><b>Out of hours:</b> the AI Agent keeps answering visitors. If a visitor asks for a person, the chat box says when your team is back and asks for their email or WhatsApp number, so your team can reply then.</span>
+        </div>
+      </div>
+
+      <div class="cz-f">
         <span class="cz-l" id="czSzL">Window size</span>
         <div class="cz-seg" role="group" aria-labelledby="czSzL">
           <button type="button" class="czsz" data-sz="standard">Standard</button>
@@ -189,13 +221,13 @@ textarea.cz-in{resize:vertical;min-height:70px}
     </form>
 
     <div>
-      <div class="cz-pvh"><b>Preview</b><div class="cz-seg" role="group" aria-label="Device"><button type="button" id="czDvD" aria-pressed="true">Computer</button><button type="button" id="czDvP" aria-pressed="false">Phone</button></div></div>
+      <div class="cz-pvh"><b>Preview</b><div class="cz-seg" role="group" aria-label="Open or closed" id="czOC"><button type="button" id="czOpenNow" aria-pressed="true">Open now</button><button type="button" id="czClosedNow" aria-pressed="false">Closed now</button></div><div class="cz-seg" role="group" aria-label="Device"><button type="button" id="czDvD" aria-pressed="true">Computer</button><button type="button" id="czDvP" aria-pressed="false">Phone</button></div></div>
       <div class="cz-store" aria-label="Preview of your chat box on a website">
         <div class="nav"><b>{{ (business_name or 'Your website')|upper }}</b><span>Shop · Contact</span></div>
         <div class="hero">Your website</div>
         <div class="cz-chat" id="pvChat">
-          <div class="cz-top" id="pvTop"><div class="cz-logo" id="pvLogo"></div><div><div class="cz-t" id="pvT"></div><div class="cz-s"><span class="cz-gd"></span><span id="pvS"></span></div></div></div>
-          <div class="cz-body"><div class="cz-mr"><div class="cz-av" id="pvAv"></div><div class="cz-m" id="pvW"></div></div><div class="cz-qq" id="pvQ"></div></div>
+          <div class="cz-top" id="pvTop"><div class="cz-logo" id="pvLogo"></div><div><div class="cz-t" id="pvT"></div><div class="cz-s"><span class="cz-gd" id="pvDot"></span><span id="pvS"></span></div></div></div>
+          <div class="cz-body"><div class="cz-mr"><div class="cz-av" id="pvAv"></div><div class="cz-m" id="pvW"></div></div><div class="cz-qq" id="pvQ"></div><div class="cz-sys" id="pvSys" hidden></div><div class="cz-form" id="pvForm" hidden><div id="pvFp"></div><span>Your name</span><span>Phone number</span><span>Email address</span><b id="pvFb">Send my details</b></div></div>
           <div class="cz-pk" id="pvPick" hidden><div class="e">😀 😊 👍 🙏 🎉 ❤️ 👌 🤝</div><div class="s"><b>Thanks!</b><b>Great 👍</b><b>Deal 🤝</b><b>Hello 👋</b></div></div>
           <div class="cz-bar"><button type="button" class="eb" id="pvEb" aria-label="Emojis and stickers">🙂</button><span>Type your message</span><i id="pvSend">➤</i></div>
         </div>
@@ -213,7 +245,7 @@ textarea.cz-in{resize:vertical;min-height:70px}
   var DEF={welcome:{{ ('Hello! Send us a message and our team will reply here.' if ai_off else 'Hello! How can I help you today?')|tojson }},
            sub:{{ ('Our team replies here' if ai_off else 'We usually reply straight away')|tojson }},
            title:{{ (business_name or 'Chat with us')|tojson }}};
-  var dev='d';
+  var dev='d', closedView=false, AIOFF={{ 'true' if ai_off else 'false' }};
   var st={logo:{{ (cb.logo_url or '')|tojson }}, avimg:{{ (cb.avatar_url or '')|tojson }}, av:$('czAvMode').value, size:$('czSize').value};
   var BOT='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01"/></svg>';
   function fgOn(hex){var c=hex.replace('#','');var f=function(i){var v=parseInt(c.substr(i,2),16)/255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)};
@@ -250,13 +282,28 @@ textarea.cz-in{resize:vertical;min-height:70px}
     var Q=$('pvQ'); Q.innerHTML=''; document.querySelectorAll('.czqq').forEach(function(i){var v=i.value.trim(); if(v){var b=document.createElement('span'); b.textContent=v; Q.appendChild(b)}});
     document.querySelectorAll('.czpos').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.pos===pos?'true':'false')});
     document.querySelectorAll('.czsty').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.sty===sty?'true':'false')});
+    var hon=$('czHrs').checked; $('czHrsBox').style.display=hon?'flex':'none'; $('czOC').style.display=hon?'':'none';
+    document.querySelectorAll('.cz-day').forEach(function(r){var on=r.querySelector('.czOpen').checked; r.querySelector('.czTimes').style.display=on?'':'none'; r.querySelector('.czClosed').style.display=on?'none':''});
+    var closed=hon&&closedView, mon=document.querySelector('.cz-day'), back=(mon&&mon.querySelector('.czOpen').checked?mon.querySelector('.czFrom').value.replace(/^0/,''):'9:00')+' tomorrow';
+    $('pvDot').style.display=hon?'':'none'; $('pvDot').style.background=closed?'#A0A9B8':'#3DD68C';
+    if(closed){ $('pvS').textContent=AIOFF?'Closed now · back at '+back:'Team back at '+back+' · AI Agent here now'; }
+    $('pvSys').hidden=!closed; $('pvForm').hidden=!closed;
+    $('pvSys').textContent=AIOFF?'We are closed right now. We are back at '+back+'.':'You asked to talk to our team. They are back at '+back+'.';
+    $('pvFp').textContent=AIOFF?'Leave your details and we will reply when we are back:':'Leave your details and our team will reply when they are back:';
+    $('pvFb').style.background=col; $('pvFb').style.color=fg;
+    $('czOpenNow').setAttribute('aria-pressed',closedView?'false':'true'); $('czClosedNow').setAttribute('aria-pressed',closedView?'true':'false');
     $('czDvD').setAttribute('aria-pressed',dev==='d'?'true':'false'); $('czDvP').setAttribute('aria-pressed',dev==='p'?'true':'false');
   }
   document.querySelectorAll('.czpos').forEach(function(b){b.addEventListener('click',function(){$('czPos').value=b.dataset.pos;render()})});
   document.querySelectorAll('.czsty').forEach(function(b){b.addEventListener('click',function(){$('czSty').value=b.dataset.sty;render()})});
   ['czWords','czPhone'].forEach(function(i){$(i).addEventListener('input',render);$(i).addEventListener('change',render)});
   document.querySelectorAll('.czqq').forEach(function(i){i.addEventListener('input',render)});
-  $('czDvD').addEventListener('click',function(){dev='d';render()}); $('czDvP').addEventListener('click',function(){dev='p';render()});
+  $('czDvD').addEventListener('click',function(){dev='d';render()});
+  $('czHrs').addEventListener('change',render);
+  $('czOpenNow').addEventListener('click',function(){closedView=false;render()}); $('czClosedNow').addEventListener('click',function(){closedView=true;render()});
+  document.querySelectorAll('.czOpen,.czFrom,.czTo').forEach(function(i){i.addEventListener('change',render)});
+  $('czCopyMon').addEventListener('click',function(){var rows=document.querySelectorAll('.cz-day'), m=rows[0];
+    for(var i=1;i<5;i++){rows[i].querySelector('.czOpen').checked=m.querySelector('.czOpen').checked; rows[i].querySelector('.czFrom').value=m.querySelector('.czFrom').value; rows[i].querySelector('.czTo').value=m.querySelector('.czTo').value;} render();}); $('czDvP').addEventListener('click',function(){dev='p';render()});
   function setCol(c){$('czColour').value=c.toUpperCase();render()}
   document.querySelectorAll('.cz-dot').forEach(function(b){b.addEventListener('click',function(){setCol(b.dataset.c)})});
   $('czPick').addEventListener('input',function(e){setCol(e.target.value)});
