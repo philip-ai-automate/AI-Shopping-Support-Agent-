@@ -129,7 +129,9 @@ def fetch(shop: str):
     s = out["data"]["activeSubscription"]
     if not s:
         return None
-    handles = [i["handle"] for i in s.get("items") or [] if i.get("handle") in PLAN_MAP]
+    # Shopify's handles use dashes (b2b-growth); PLAN_MAP uses underscores.
+    handles = [h for h in ((i.get("handle") or "").strip().lower().replace("-", "_")
+                           for i in s.get("items") or []) if h in PLAN_MAP]
     return {"handle": handles[0] if handles else None,
             "period": "annual" if s.get("billingPeriod") == "ANNUAL" else "monthly",
             "trial_ends": s.get("trialEndsAt"),
