@@ -2601,6 +2601,11 @@ TRIAL_PLAN_NAMES = {"pro": "Retail Scale · WhatsApp", "web_enterprise": "Retail
 # AI Sales Agent for B2B (2026-10-29): a business that signed up from the B2B
 # sign-up has company_profiles.is_b2b; its 2-week trial runs on the 'b2b'
 # plan (see portal_migrations.ensure_b2b_tables). Everyone else is untouched.
+# "How do you use this number today?" on the sign-up form (2026-11-09).
+# biz_app / normal = keep the WhatsApp Business app (coming soon for everyone),
+# new = not on WhatsApp yet (connect straight after sign-up), later = add it later.
+WA_NUMBER_USAGES = ("biz_app", "normal", "new", "later")
+
 B2B_SELLS_OPTIONS = [
     ("food_drink", "Food and drink supplies"), ("packaging", "Packaging and disposables"),
     ("building", "Building and trade supplies"), ("industrial", "Industrial parts and machinery"),
@@ -4103,12 +4108,10 @@ def _register_b2b(first_name, last_name, email, password, hear_about_us, ref_cod
     site = _clean_domain(f.get("tenant_domain"))
     if not site:
         flash("Please enter your website address, for example example.com.", "danger"); return back()
-    mobile, _perr = _phone_from_form(f.get("phone_number"), g("phone_country", 2).upper())
-    if _perr:
-        flash(_perr, "danger"); return back()
-    _taken = _phone_account_msg(mobile)
-    if _taken:
-        flash(_taken, "warning"); return back()
+    mobile = None   # 2026-11-09: no mobile or WhatsApp code at sign-up
+    wa_usage = g("wa_usage", 20).lower()
+    if wa_usage not in WA_NUMBER_USAGES:
+        wa_usage = "later" if not g("wa_phone_number") else "new"
     if g("wa_phone_number"):
         wa, _werr = _phone_from_form(f.get("wa_phone_number"), g("wa_phone_country", 2).upper())
         if _werr:
@@ -4119,7 +4122,7 @@ def _register_b2b(first_name, last_name, email, password, hear_about_us, ref_cod
         phone_number=mobile, tenant_domain=site, hear_about_us=hear_about_us,
         ref_code=ref_code, business_country=company["reg_country"], signup_channel="both",
         business_name=business_name, website_platform=website_platform,
-        selling_currency=selling_currency, company=company,
+        selling_currency=selling_currency, company=company, wa_usage=wa_usage,
     ), password, back)
 
 
@@ -4207,15 +4210,7 @@ def register():
         if based not in _pn.SUPPORTED_REGIONS:
             flash("Please choose where your business is based.", "danger")
             return _register_page(request.form, form_data=request.form)
-        phone_country = (request.form.get("phone_country") or "").strip().upper()
-        mobile, _perr = _phone_from_form(request.form.get("phone_number"), phone_country)
-        if _perr:
-            flash(_perr, "danger")
-            return _register_page(request.form, form_data=request.form)
-        _taken = _phone_account_msg(mobile)
-        if _taken:
-            flash(_taken, "warning")
-            return _register_page(request.form, form_data=request.form)
+        mobile = None   # 2026-11-09: no mobile or WhatsApp code for website sign-ups
         return _hold_signup("web", "register", dict(
             first_name=first_name, last_name=last_name, email=email,
             phone_number=mobile, tenant_domain=site, hear_about_us=hear_about_us,
@@ -4227,14 +4222,23 @@ def register():
     # ── WhatsApp-only merchant registration ─────────────────────────────────
     if merchant_type in ("whatsapp", "both"):
         wa_phone_country = (request.form.get("wa_phone_country") or "").strip().upper()
-        wa_phone_number, _perr = _phone_from_form(request.form.get("wa_phone_number"), wa_phone_country)
-        if _perr:
-            flash(_perr, "danger")
+        # "How do you use this number today?" (2026-11-09)
+        wa_usage = (request.form.get("wa_usage") or "").strip().lower()
+        if wa_usage not in WA_NUMBER_USAGES:
+            flash("Please choose how you use this number today.", "danger")
             return _register_page(request.form, form_data=request.form)
-        _taken = _phone_account_msg(wa_phone_number)
-        if _taken:
-            flash(_taken, "warning")
-            return _register_page(request.form, form_data=request.form)
+        wa_phone_number = None
+        if wa_usage != "later" or (request.form.get("wa_phone_number") or "").strip():
+            wa_phone_number, _perr = _phone_from_form(request.form.get("wa_phone_number"), wa_phone_country)
+            if _perr:
+                flash(_perr, "danger")
+                return _register_page(request.form, form_data=request.form)
+            _taken = _phone_account_msg(wa_phone_number)
+            if _taken:
+                flash(_taken, "warning")
+                return _register_page(request.form, form_data=request.form)
+        if not wa_phone_country:
+            wa_phone_country = (request.form.get("business_based") or "").strip().upper() or None
         return _hold_signup("whatsapp", "register", dict(
             business_country=wa_phone_country,
             first_name=first_name, last_name=last_name,
@@ -4247,6 +4251,7 @@ def register():
             domain=site if merchant_type == "both" else None,
             website_platform=website_platform if merchant_type == "both" else None,
             selling_currency=selling_currency,
+            wa_usage=wa_usage,
         ), password, lambda: _register_page(request.form, form_data=request.form))
 
     # ── Website stores: WooCommerce merchants sign up only through the
@@ -4472,9 +4477,12 @@ def _hold_signup(creator, flow, args, password, on_error):
 
     form  = {k: v for k, v in request.form.items()
              if k not in ("password", "confirm_password", "g-recaptcha-response", "website")}
+    # 2026-11-09 (decision A): sign-up confirms the email only. The business
+    # WhatsApp number is checked by Meta when it's connected, so no WhatsApp
+    # code is sent here (wa_ok starts TRUE).
     token = signup_confirm.start(kind="signup", flow=flow, creator=creator, args=args, form=form,
                                  pw_hash=hash_password(password), phone=args.get("phone_number") or "",
-                                 email=email)
+                                 email=email, wa_ok=True)
     session["signup_token"] = token
     _confirm_send_missing(signup_confirm.get(token))
     return redirect(url_for("portal.register_confirm"))
@@ -4487,7 +4495,7 @@ def _confirm_needed(c):
     as confirmed (a code sent there would land in their own PhiXtra inbox)."""
     phone   = (c.get("phone_number") or "").strip()
     need_em = not c.get("email_verified")
-    need_wa = bool(phone) and not c.get("phone_verified")
+    need_wa = False   # 2026-11-09: owners log in with email + password only; no WhatsApp code
     if not (need_wa or need_em):
         return None
     import accounts_core
@@ -4555,6 +4563,7 @@ def _confirm_finish(row):
 
     args = dict(row["args"] or {})
     company = args.pop("company", None)   # B2B sign-up (2026-10-29)
+    wa_usage = args.pop("wa_usage", None)  # "How do you use this number today?" (2026-11-09)
     make = _register_whatsapp_merchant if row["creator"] == "whatsapp" else _register_web_merchant
     res  = make(**args, password="", pw_hash=row["pw_hash"], confirmed=True)
     if company and isinstance(res, dict) and res.get("ok"):
@@ -4576,9 +4585,21 @@ def _confirm_finish(row):
     cur.execute("SELECT id FROM customers WHERE tenant_id=%s ORDER BY id LIMIT 1", (int(res["tenant_id"]),))
     cid = int(cur.fetchone()[0])
     cur.close(); conn.close()
+    if wa_usage:
+        try:
+            conn = get_db_connection(); cur = conn.cursor()
+            cur.execute("UPDATE tenants SET wa_number_usage=%s WHERE id=%s", (wa_usage, int(res["tenant_id"])))
+            conn.commit(); cur.close(); conn.close()
+        except Exception as e:
+            print("⚠️ save wa_number_usage:", e)
     _send_welcome_after_confirm(cid)
     _log_in_owner(cid)
-    flash("Welcome to PhiXtra! Your WhatsApp number and email are confirmed.", "success")
+    # A new number goes straight to connecting it (plan screen 2); everyone
+    # else starts on the Dashboard, where step 1 waits for them.
+    if wa_usage == "new":
+        flash("Welcome to PhiXtra! Your email is confirmed. Next: connect your WhatsApp number.", "success")
+        return redirect(url_for("portal.whatsapp_connect"))
+    flash("Welcome to PhiXtra! Your email is confirmed.", "success")
     return redirect(url_for("portal.dashboard"))
 
 
@@ -6602,6 +6623,20 @@ def _product_sources(tenant_id: int, cur=None) -> dict:
             "source": "list" if n_lists else ("shop" if shop else ("site" if (reading or site) else ("own" if own else None)))}
 
 
+def _wa_step_title(t) -> str:
+    num = (t.get("wa_number") or "").strip()
+    return f"Connect {num if num.startswith('+') else '+' + num}" if num else "Connect your WhatsApp number"
+
+
+def _wa_step_text(t) -> str:
+    """Step 1 in plain words, from the sign-up answer (2026-11-09)."""
+    if (t.get("wa_number_usage") or "") in ("biz_app", "normal"):
+        return ("Keeping your WhatsApp Business app is coming soon. We'll email you when you can connect. "
+                "Meanwhile, add your products and start your trial.")
+    return ("Your customers message this number and your team and AI Agent answer in PhiXtra. "
+            "About 5 minutes; have a phone that can get one text or call, and a Facebook account.")
+
+
 def _wa_setup_checklist(t, wa_on: bool, prod: dict):
     """The Dashboard "Get set up" steps for WhatsApp sign-ups (2026-10-25).
 
@@ -6611,17 +6646,17 @@ def _wa_setup_checklist(t, wa_on: bool, prod: dict):
     n_prod = prod["list_products"] + prod["shop"] + prod["site"] + prod["own"]
     paid = t["plan_slug"] not in AI_OFF_FREE_PLAN_SLUGS
     steps = [
-        dict(key="whatsapp", title="Connect your WhatsApp number", done=wa_on,
-             text="Connected." if wa_on else "Use Meta's official sign-up window.",
+        dict(key="whatsapp", title=_wa_step_title(t), done=wa_on,
+             text="Connected." if wa_on else _wa_step_text(t),
              action="Connect WhatsApp", url=url_for("portal.whatsapp_connect")),
         dict(key="products", title="Add your products or services", done=prod["source"] is not None,
-             text=(f"Your AI knows {n_prod} of your products and services." if prod["source"] else
-                   "Tell your AI what you sell and your prices, so it can answer customers. Upload a list (Excel or CSV), "
-                   "or add them one by one in My Products & Services. Until then, the AI passes these questions to your team."),
+             text=(f"Your AI Agent knows {n_prod} of your products and services." if prod["source"] else
+                   "Tell your AI Agent what you sell and your prices, so it can answer customers. Upload a list (Excel or CSV), "
+                   "or add them one by one in My Products & Services. Until then, the AI Agent passes these questions to your team."),
              action="Upload a list", url=url_for("portal.data_sources"),
              action2="I sell services", url2=url_for("portal.product_add", service=1)),
         dict(key="trial", title="Start your free trial", done=bool(t["trial_granted_at"]) or paid,
-             text="Your AI answers WhatsApp customers for 14 days, free, no card needed. Until then your team answers from the Inbox.",
+             text="Your AI Agent answers WhatsApp customers for 14 days, free, no card needed. Until then your team answers from the Inbox.",
              trial=not t["trial_granted_at"] and not paid),
     ]
     _howto = {"whatsapp": "set-whatsapp", "products": "set-list", "trial": "set-trial"}
@@ -6632,9 +6667,8 @@ def _wa_setup_checklist(t, wa_on: bool, prod: dict):
         st["n"] = i
         st["howto"] = url_for("portal.tutorials", topic="setup") + "#" + _howto[st["key"]]
         st["state"] = "done" if st["done"] else "todo"
-        st["locked"] = (not st["done"]) and i > 1 and not wa_on
-        if st["locked"]:
-            st["text"] = st["text"] + " Available once WhatsApp is connected."
+        # 2026-11-09: products and the trial no longer wait for WhatsApp.
+        st["locked"] = False
     done = sum(1 for st in steps if st["done"])
     return {"steps": steps, "extras": [], "done": done, "total": len(steps), "complete": False,
             "chatbox_code": None, "checking": False, "domain": t["domain"]}
@@ -6686,7 +6720,9 @@ def _setup_checklist(tenant_id: int):
     try:
         conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""SELECT t.signup_channel, t.website_platform, t.domain, t.source_type, t.trial_granted_at,
-                              t.chatbox_seen_at, t.is_demo, p.slug AS plan_slug, COALESCE(p.channel_mode, 'whatsapp') AS channel_mode
+                              t.chatbox_seen_at, t.is_demo, p.slug AS plan_slug, COALESCE(p.channel_mode, 'whatsapp') AS channel_mode,
+                              t.wa_number_usage,
+                              (SELECT c.phone_number FROM customers c WHERE c.tenant_id = t.id ORDER BY c.id LIMIT 1) AS wa_number
                          FROM tenants t LEFT JOIN plans p ON p.id = t.plan_id WHERE t.id = %s""", (tenant_id,))
         t = cur.fetchone()
         if t and t["signup_channel"] not in ("website", "both") and t["source_type"] == "whatsapp" and not t["is_demo"]:
@@ -6741,7 +6777,7 @@ def _setup_checklist(tenant_id: int):
     # 2. Read it.
     if src and src.get("last_read_at"):
         steps.append(dict(key="sync", title="Sync your website", done=True,
-                          text=f"Your AI has read {src.get('pages_read') or 0} pages of your website."))
+                          text=f"Your AI Agent has read {src.get('pages_read') or 0} pages of your website."))
     elif src and src.get("status") in ("pending", "reading"):
         steps.append(dict(key="sync", title="Sync your website", done=False, state="checking",
                           text="Reading your website now. This usually takes a few minutes."))
@@ -6750,16 +6786,16 @@ def _setup_checklist(tenant_id: int):
         _why = ("because your store is password-protected" if "password-protected" in (src.get("status_detail") or "")
                 else "just now")
         steps.append(dict(key="sync", title="Sync your website", done=False, state="failed",
-                          text=f"We couldn't read your store's pages (about, delivery, returns) {_why}. Your AI agent will "
+                          text=f"We couldn't read your store's pages (about, delivery, returns) {_why}. Your AI Agent will "
                                "know less about delivery and returns until we can. We'll try again automatically.",
                           action="Try now", url=url_for("portal.store_info_website_sync"), post_sync=True))
     else:
         found = (src or {}).get("pages_found")
         steps.append(dict(key="sync", title="Sync your website", done=False,
-                          text=(f"We found {found} pages. Click Sync now so your AI reads them." if found
-                                else "Your AI reads your store's public pages (about, delivery, returns, FAQs). "
+                          text=(f"We found {found} pages. Click Sync now so your AI Agent reads them." if found
+                                else "Your AI Agent reads your store's public pages (about, delivery, returns, FAQs). "
                                      "Your products come from Shopify separately." if shopify_shop
-                                else "Your AI reads your website's public pages (about, delivery, prices, FAQs)."),
+                                else "Your AI Agent reads your website's public pages (about, delivery, prices, FAQs)."),
                           action="Sync now", url=url_for("portal.store_info_website_sync"), post_sync=True))
 
     # 3. Chat box (WordPress: the plugin is step 1, put first below).
@@ -6769,7 +6805,7 @@ def _setup_checklist(tenant_id: int):
                                   "Plugins › Add New, search PhiXtra, click Install Now, then Activate. "
                                   "In the plugin, click Connect to PhiXtra: that adds the chat box to your website. "
                                   "Then open the plugin's Products tab, choose All published products and click Save. Your WooCommerce "
-                                  "products go to your AI by themselves and stay up to date. No Excel, nothing to prepare.",
+                                  "products go to your AI Agent by themselves and stay up to date. No Excel, nothing to prepare.",
                              action="Get the plugin from WordPress.org", url=PLUGIN_PAGE_URL, check=True))
     elif shopify_shop:
         # Shopify app, Part 3 (2026-11-02): the chat is switched on from the app, no code.
@@ -6815,16 +6851,16 @@ def _setup_checklist(tenant_id: int):
     elif prod["source"] == "shop":
         p_text = f"Your products come from your {prod.get('shop_name') or 'WooCommerce shop'} ({prod['shop']} products)."
     elif prod["source"] == "site":
-        p_text = (f"Your AI reads your products from your website's pages ({prod['site']} products so far). "
+        p_text = (f"Your AI Agent reads your products from your website's pages ({prod['site']} products so far). "
                   "Prices update each time your website is read.")
     elif prod["source"] == "own":
-        p_text = f"Your AI knows the {prod['own']} products and services you added in My Products & Services."
+        p_text = f"Your AI Agent knows the {prod['own']} products and services you added in My Products & Services."
     else:
-        p_text = ("Your WooCommerce products reach your AI through the PhiXtra plugin (free, from WordPress.org: Plugins › Add New, "
+        p_text = ("Your WooCommerce products reach your AI Agent through the PhiXtra plugin (free, from WordPress.org: Plugins › Add New, "
                   "search PhiXtra). In the plugin's Products tab, choose All published products and click Save. Nothing to prepare."
-                  if wp else "Your AI can read your products and prices from your website's own product pages. One click, nothing to prepare.")
+                  if wp else "Your AI Agent can read your products and prices from your website's own product pages. One click, nothing to prepare.")
         if b2b:
-            p_text += " Then the AI answers trade buyers with your own prices."
+            p_text += " Then the AI Agent answers trade buyers with your own prices."
     extras = [dict(key="products", title="Your price list" if b2b else "Products", done=prod["source"] is not None, text=p_text,
                    plugin_url=(PLUGIN_PAGE_URL if wp and not t["chatbox_seen_at"] else None),
                    shop_url=shop_tab, list_url=url_for("portal.data_sources"), source=prod["source"],
@@ -6832,7 +6868,7 @@ def _setup_checklist(tenant_id: int):
     wa_ok = t["channel_mode"] in ("dual", "both")
     extras.append(dict(key="whatsapp", title="WhatsApp", done=wa_on,
                        text=("Connected." if wa_on else
-                             "Let the AI answer on WhatsApp too. Use Meta's official sign-up window." if wa_ok else
+                             "Let your AI Agent answer on WhatsApp too. About 5 minutes." if wa_ok else
                              "Answer customers on WhatsApp too. This needs a Dual-Agent plan."),
                        action=("Connect WhatsApp" if wa_ok else "See Dual-Agent plans"),
                        url=(url_for("portal.whatsapp_connect") if wa_ok else url_for("portal.billing_plans"))))

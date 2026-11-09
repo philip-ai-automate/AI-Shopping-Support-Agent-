@@ -5056,3 +5056,17 @@ def ensure_coexist_tables():
     finally:
         cur.close()
         conn.close()
+
+
+def ensure_wa_usage_column():
+    """tenants.wa_number_usage: the sign-up answer to "How do you use this
+    number today?" (biz_app / normal / new / later), 2026-11-09."""
+    from db import get_db_connection
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS wa_number_usage TEXT")
+        conn.commit()
+    except Exception as e:
+        conn.rollback(); print("⚠️  wa_number_usage migration error:", e)
+    finally:
+        cur.close(); conn.close()

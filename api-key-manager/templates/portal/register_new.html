@@ -103,6 +103,29 @@
   .rg-plat span{font-size:13px;color:var(--muted);line-height:1.4}
   .rg-back{align-self:flex-start;min-height:44px;padding:0 4px;border:0;background:none;color:var(--navy);font:inherit;font-weight:600;font-size:14px;cursor:pointer}
   @media(max-width:640px){.rg-aside{padding:30px 24px}.rg-main{padding:28px 20px 30px}.rg-dialog{padding:24px 18px}}
+  /* "How do you use this number today?" (2026-11-09) */
+  .wu{display:grid;gap:10px}
+  .wu-c{display:flex;gap:10px;align-items:flex-start;border:1.5px solid #D5DEEC;border-radius:12px;padding:12px 14px;cursor:pointer;background:#fff}
+  .wu-c:has(input:checked){border-color:#1FA855;background:#EEF9F2}
+  .rg-f .wu-c input[type=radio]{width:18px;height:18px;min-width:0;padding:0;margin:3px 0 0;border:0;box-shadow:none;flex:0 0 18px;accent-color:#1FA855}
+  .wu-t{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start}
+  .wu-t label{cursor:pointer;display:block;font-weight:400}
+  .wu-c b{display:block;font-size:14.5px;color:var(--ink,#111E2D)}
+  .wu-c .s{display:block;font-size:13px;color:var(--muted);line-height:1.45}
+  .wu-soon{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9A6700;background:#FFF5D6;border-radius:99px;padding:2px 8px;margin-left:6px;vertical-align:1px}
+  .wu-mean{font:inherit;font-size:12.8px;font-weight:700;color:var(--navy);background:none;border:0;padding:0;margin-top:4px;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+  .wu-mean:focus-visible{outline:2px solid #1FA855;outline-offset:2px}
+  dialog.wu-pop{margin:auto;border:0;padding:0;border-radius:16px;width:min(540px,calc(100vw - 32px));max-height:calc(100vh - 48px);box-shadow:0 20px 60px rgba(5,15,35,.35);color:#111E2D}
+  dialog.wu-pop::backdrop{background:rgba(8,16,30,.55)}
+  .wu-hd{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid #E3E8F1;position:sticky;top:0;background:#fff}
+  .wu-hd h3{margin:0;font-family:Poppins,system-ui,sans-serif;font-size:18px;color:var(--navy)}
+  .wu-x{font:inherit;font-size:16px;background:#EEF2F8;border:0;border-radius:50%;width:34px;height:34px;cursor:pointer;flex:0 0 auto}
+  .wu-bd{padding:4px 20px 18px;font-size:15px;line-height:1.6}
+  .wu-bd .pp{padding:11px 0;border-top:1px solid #E3E8F1}
+  .wu-bd .pp:first-child{border-top:0}
+  .wu-bd .lb{display:block;font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#1FA855;margin-bottom:4px}
+  .wu-bd p{margin:0}
+  .wu-bd .eg{background:#EEF2F8;border-radius:10px;padding:11px 13px;border:0;margin-top:6px}
 </style>
 {% endblock %}
 
@@ -216,15 +239,41 @@
       </div>
 
       <div class="rg-f" id="blkWa" hidden>
-        <label for="fPhoneWa">WhatsApp number for your business <span class="b2-opt" id="waOpt" hidden>(optional)</span></label>
+        <label for="fPhoneWa">Your business WhatsApp number <span class="b2-opt" id="waOpt" hidden>(optional)</span></label>
+        <p class="rg-hint">The number your customers send messages to.</p>
         <div class="rg-phone">
           {% set pc_name = 'wa_phone_country' %}{% set pc_id = 'fPhoneWaCountry' %}{% set pc_required = false %}
           {% set pc_selected = fd.get('wa_phone_country', '') %}{% set pc_style = '' %}{% set pc_placeholder = 'Country…' %}
           {% include "portal/_phone_country_select.html" %}
           <input type="tel" name="wa_phone_number" id="fPhoneWa" placeholder="801 234 5678" autocomplete="tel-national" value="{{ fd.get('wa_phone_number', '') }}"/>
         </div>
-        <p class="rg-hint" id="waHint">Use the number your customers already message, or a new one. Once connected, it works through PhiXtra, not in the WhatsApp app on your phone. Choose your country, then type your number. We add the country code for you.</p>
+        <p class="rg-hint" id="waHint">Choose your country, then type your number. We add the country code for you.</p>
         <p class="rg-err" id="hPhoneWa" hidden>Please choose the country and enter your WhatsApp number.</p>
+      </div>
+
+      {% set wu = fd.get('wa_usage', '') %}
+      <div class="rg-f" id="blkUsage" hidden>
+        <span class="rg-lbl" id="lblUsage">How do you use this number today?</span>
+        <div class="wu" role="radiogroup" aria-labelledby="lblUsage">
+          <div class="wu-c"><input type="radio" name="wa_usage" value="biz_app" id="wu_biz_app" {% if wu == 'biz_app' %}checked{% endif %}>
+            <div class="wu-t"><label for="wu_biz_app"><b>On the WhatsApp Business app <span class="wu-soon">Coming soon</span></b>
+            <span class="s">Keep your app and your chats, and answer the same chats in PhiXtra. Your account works now; we'll email you when you can connect.</span></label>
+            <button class="wu-mean" type="button" data-pop="wuBiz">What does this mean?</button></div></div>
+          <div class="wu-c"><input type="radio" name="wa_usage" value="normal" id="wu_normal" {% if wu == 'normal' %}checked{% endif %}>
+            <div class="wu-t"><label for="wu_normal"><b>On normal WhatsApp <span class="wu-soon">Coming soon</span></b>
+            <span class="s">Switch to the free WhatsApp Business app first. Your chats come with you.</span></label>
+            <button class="wu-mean" type="button" data-pop="wuNormal">What does this mean?</button></div></div>
+          <div class="wu-c"><input type="radio" name="wa_usage" value="new" id="wu_new" {% if wu == 'new' %}checked{% endif %}>
+            <div class="wu-t"><label for="wu_new"><b>It's not on WhatsApp yet</b>
+            <span class="s">For a new number, or one you don't use on a phone. Connect it straight after you sign up.</span></label>
+            <button class="wu-mean" type="button" data-pop="wuNew">What does this mean?</button></div></div>
+          <div class="wu-c"><input type="radio" name="wa_usage" value="later" id="wu_later" {% if wu == 'later' %}checked{% endif %}>
+            <div class="wu-t"><label for="wu_later"><b>I'll do this later</b>
+            <span class="s">Add your products and website chat first.</span></label>
+            <button class="wu-mean" type="button" data-pop="wuLater">What does this mean?</button></div></div>
+        </div>
+        <button class="wu-mean" type="button" data-pop="wuWhich" style="margin-top:8px;align-self:flex-start">Not sure which WhatsApp you have?</button>
+        <p class="rg-err" id="hUsage" hidden>Please choose how you use this number today.</p>
       </div>
 
       <div class="rg-f" id="blkBased" hidden>
@@ -307,6 +356,35 @@
       </section>
     </form>
 
+    <dialog class="wu-pop" id="wuBiz" aria-labelledby="wuBizT"><div class="wu-hd"><h3 id="wuBizT">You use the WhatsApp Business app</h3><button class="wu-x" type="button" aria-label="Close">✕</button></div><div class="wu-bd">
+      <div class="pp"><span class="lb">Coming soon</span><p>We're switching this on in the next few weeks. Your account works now: add your products and website chat, and we'll email you as soon as you can connect.</p></div>
+      <div class="pp"><span class="lb">What happens</span><p>Your number keeps working on your phone, just like today. The same chats also appear in PhiXtra, so your team and the AI Agent can answer them too.</p></div>
+      <div class="pp"><span class="lb">What you keep</span><p>Your number, your app, and your chats from the last 6 months. Your customers notice nothing.</p></div>
+      <div class="pp"><span class="lb">Good to know</span><p>WhatsApp Web will be logged out; use PhiXtra on your computer instead. Group chats stay on your phone. Customers' WhatsApp calls to this number ring on your phone, not in PhiXtra. Open the app at least once every 2 weeks.</p></div>
+      <div class="pp eg"><span class="lb">Think of it like</span><p>Adding a second screen to your WhatsApp. Your phone is still there; your team now sees the same chats on their computers.</p></div>
+    </div></dialog>
+    <dialog class="wu-pop" id="wuNormal" aria-labelledby="wuNormalT"><div class="wu-hd"><h3 id="wuNormalT">You use normal WhatsApp</h3><button class="wu-x" type="button" aria-label="Close">✕</button></div><div class="wu-bd">
+      <div class="pp"><span class="lb">What happens</span><p>PhiXtra connects to the <b>WhatsApp Business app</b>, not normal WhatsApp. So first you move your number to the Business app. It's free and made by WhatsApp.</p></div>
+      <div class="pp"><span class="lb">How to switch (2 minutes)</span><p>1. Install <b>WhatsApp Business</b> from the App Store or Google Play.<br>2. Open it and choose to use your current number.<br>3. It offers to bring your chats across. Say yes.</p></div>
+      <div class="pp"><span class="lb">Good to know</span><p>WhatsApp may ask you to use the Business app for about a week before it lets you connect it to PhiXtra. Connecting a Business app number is coming soon; we'll email you when it's ready.</p></div>
+      <div class="pp eg"><span class="lb">Meanwhile</span><p>Your account works now. Add your products and website chat.</p></div>
+    </div></dialog>
+    <dialog class="wu-pop" id="wuNew" aria-labelledby="wuNewT"><div class="wu-hd"><h3 id="wuNewT">Your number isn't on WhatsApp yet</h3><button class="wu-x" type="button" aria-label="Close">✕</button></div><div class="wu-bd">
+      <div class="pp"><span class="lb">What happens</span><p>Straight after you sign up, we set the number up on WhatsApp with you. Customers message it, and you and your team answer in PhiXtra, on your computer or the PhiXtra app.</p></div>
+      <div class="pp"><span class="lb">What you need</span><p>A phone number that can get one text message or phone call, so WhatsApp can check it's yours. It can be a mobile or an office landline. A Facebook account to log in to WhatsApp's window. About 5 minutes, on a computer if you can.</p></div>
+      <div class="pp"><span class="lb">Good to know</span><p>This number won't be in a WhatsApp app on a phone. You'll use it in PhiXtra only.</p></div>
+      <div class="pp eg"><span class="lb">Already have WhatsApp on this number?</span><p>Then choose one of the first two options instead, so you can keep your app and your chats.</p></div>
+    </div></dialog>
+    <dialog class="wu-pop" id="wuLater" aria-labelledby="wuLaterT"><div class="wu-hd"><h3 id="wuLaterT">Add WhatsApp later</h3><button class="wu-x" type="button" aria-label="Close">✕</button></div><div class="wu-bd">
+      <div class="pp"><span class="lb">What happens</span><p>Your account is ready straight away. You can add your products, put the chat box on your website, and start your free trial.</p></div>
+      <div class="pp"><span class="lb">When you're ready</span><p>Go to your Dashboard and click <b>Connect WhatsApp</b>.</p></div>
+    </div></dialog>
+    <dialog class="wu-pop" id="wuWhich" aria-labelledby="wuWhichT"><div class="wu-hd"><h3 id="wuWhichT">Which WhatsApp do I have?</h3><button class="wu-x" type="button" aria-label="Close">✕</button></div><div class="wu-bd">
+      <div class="pp"><span class="lb">Look at the app icon on your phone</span><p><b>WhatsApp Business:</b> green icon with a letter <b>B</b> inside the speech bubble.<br><b>Normal WhatsApp:</b> green icon with a phone inside the speech bubble.</p></div>
+      <div class="pp"><span class="lb">Or check inside the app</span><p>If you see <b>Business tools</b> in the app's settings, it's WhatsApp Business.</p></div>
+      <div class="pp"><span class="lb">Still not sure?</span><p>Email support@phixtra.com and we'll check with you.</p></div>
+    </div></dialog>
+
     <div class="rg-login">Already have an account? <a href="{{ url_for('portal.login') }}">Log in</a>{% if wa_login_ready() %} · <a href="{{ url_for('portal.wa_login') }}">Log in with WhatsApp</a>{% endif %}</div>
   </main>
 </div>
@@ -375,11 +453,11 @@ var ASIDE = {
   '':      ['PhiXtra AI Agent', 'Your WhatsApp, website and CRM on one platform.', 'Your AI Agent answers your customers, and your team sees every conversation in one place.',
             ['Official WhatsApp Business API, approved by Meta', 'AI Agent chat for WordPress, Shopify, Wix, Squarespace or any site', 'A free CRM with a sales pipeline', 'Try the AI Agent free for 2 weeks, whenever you are ready']],
   whatsapp:['WhatsApp AI Agent + CRM', 'Turn every WhatsApp message into a sale.', 'Your team works from one official WhatsApp number and a free CRM. Add the AI Agent when you are ready.',
-            ['Use the number your customers already message, or a new one', 'One shared inbox for your whole team', 'Every customer saved in a free CRM, with a sales pipeline', 'Try the AI Agent free for 2 weeks, whenever you are ready']],
+            ['Connect your business WhatsApp number in about 5 minutes', 'One shared inbox for your whole team', 'Every customer saved in a free CRM, with a sales pipeline', 'Try the AI Agent free for 2 weeks, whenever you are ready']],
   web:     ['Website AI Agent', 'Let your AI Agent answer every visitor on your website.', 'Works on WordPress, Shopify, Wix, Squarespace or a site built for you.',
             ['Answers from your own website pages and product list', 'Recommends products and passes serious buyers to your team', 'Every visitor conversation in one inbox, with a free CRM', 'Try the AI Agent free for 2 weeks, whenever you are ready']],
   both:    ['WhatsApp + Website AI Agent', 'One AI Agent on WhatsApp and your website.', 'The same AI Agent answers on both, and your team sees every conversation in one inbox.',
-            ['Use the number your customers already message, or a new one', 'Chat on WordPress, Shopify, Wix, Squarespace or any site', 'One shared inbox and a free CRM for both channels', 'Try the AI Agent free for 2 weeks, whenever you are ready']],
+            ['Connect your business WhatsApp number in about 5 minutes', 'Chat on WordPress, Shopify, Wix, Squarespace or any site', 'One shared inbox and a free CRM for both channels', 'Try the AI Agent free for 2 weeks, whenever you are ready']],
   b2b:     ['AI Sales Agent for B2B', 'Every Enquiry. Every Language. Every Sales Opportunity.', 'For wholesalers, distributors, exporters and manufacturers.',
             ["Website chat and WhatsApp answered in your buyer's language, day and night", 'Automatic follow-up by email and WhatsApp until they order', 'Every buyer and deal in a free CRM with a sales pipeline', 'Try it free for 2 weeks, whenever you are ready. No card needed']]
 };
@@ -389,17 +467,17 @@ function el(id){ return document.getElementById(id); }
 
 function steps() {
   var wp = PLAT === 'wordpress', short = PLAT_SHORT[PLAT] || 'your website';
-  var verify = ['Confirm your WhatsApp and email.', 'We send a code to each. Enter both and your account is ready.'];
-  var wa = ['Connect your WhatsApp.', "Use Meta's official sign-up window. The number then works through PhiXtra, not the phone app."];
+  var verify = ['Confirm your email.', 'We email you a code. Enter it and your account is ready.'];
+  var wa = ['Connect your WhatsApp number.', "Straight after sign-up, or later from your Dashboard. About 5 minutes."];
   var site = ['Connect your website.', 'You give permission first, then click Sync now and your AI Agent reads your public pages. If something blocks us, we tell you the reason and how to fix it.'];
   var box = wp ? ['Install the free PhiXtra plugin.', 'From WordPress.org (Plugins › Add New, search PhiXtra), then click Connect to PhiXtra inside it. That adds the chat box.'] : ['Add the chat box.', 'Copy one line of code into ' + short + ', with a step-by-step guide.'];
   var prod = wp ? ['Send your products with one click.', 'In the plugin, choose All published products and click Save. No Excel, nothing to prepare.'] : ['Add your products (optional).', "Your AI Agent reads them from your website's product pages. Nothing to prepare."];
   var free = ['Your team replies free', 'on PhiXtra Connect, with the shared inbox and CRM.'];
   var trial = ['Start your 2-week AI Agent trial', 'from your dashboard when you are ready. No card needed.'];
   var webFree = ['Your team replies free', 'on PhiXtra Connect: website chats come to your shared inbox, and replies show in the visitor\'s chat box.'];
-  var b2bVerify = ['Confirm your mobile and email.', 'We send a code to each: the mobile code comes on WhatsApp.'];
+  var b2bVerify = ['Confirm your email.', 'We email you a code. Enter it and your account is ready.'];
   var price = ['Your prices.', "From your WooCommerce shop through the PhiXtra plugin, or from your website's product pages. Nothing to prepare."];
-  var b2bWa = ['Connect WhatsApp', "whenever you are ready, through Meta's official window."];
+  var b2bWa = ['Connect your WhatsApp number', 'whenever you are ready, from your Dashboard. About 5 minutes.'];
   var b2bTrial = ['Start your 2-week B2B trial', 'from your dashboard when you are ready. No card needed.'];
   // WordPress: the plugin comes first, then the website (31 Oct 2026).
   var webSteps = wp ? [box, prod, site] : [site, box, prod];
@@ -424,15 +502,15 @@ function render() {
   el('blkWa').hidden = !(TYPE === 'whatsapp' || TYPE === 'both' || b2b);
   el('blkWeb').hidden = !isWeb;
   el('blkBased').hidden = !(TYPE === 'web' || b2b);
-  el('blkMobile').hidden = !(TYPE === 'web' || b2b);
+  el('blkMobile').hidden = true;   // 2026-11-09: no mobile / WhatsApp code at sign-up
+  el('blkUsage').hidden = el('blkWa').hidden;
   // B2B (2026-10-29): sections, company details, optional WhatsApp.
   ['secAbout', 'secCompany', 'secReach', 'secLogin', 'blkJob', 'blkCompany', 'b2Help', 'waOpt'].forEach(function(id){ el(id).hidden = !b2b; });
   if (b2b) el('basedSlot').appendChild(el('blkBased')); else BASED_HOME.parentNode.insertBefore(el('blkBased'), BASED_HOME);
   el('lblBusinessName').textContent = b2b ? 'Registered company name' : 'Business name';
   el('fBusinessName').placeholder = b2b ? 'e.g. Harbour Supplies Ltd' : 'e.g. Unity Foods Distribution';
   el('lblBased').textContent = b2b ? 'Country of registration' : 'Where is your business based?';
-  el('waHint').textContent = b2b ? 'Optional. Use a new number, or one not on the WhatsApp Business app. You can add it later.'
-    : 'Use the number your customers already message, or a new one. Once connected, it works through PhiXtra, not in the WhatsApp app on your phone. Choose your country, then type your number. We add the country code for you.';
+  el('waHint').textContent = (b2b ? 'Optional. You can add it later. ' : '') + 'Choose your country, then type your number. We add the country code for you.';
   el('lblSellCur').textContent = b2b ? 'What currency do you quote in?' : 'What currency do you sell in?';
   el('mainTitle').textContent = b2b ? 'Start your free B2B trial' : 'Create your free account';
   el('mainSub').textContent = b2b ? 'Free to start. Try the B2B agent free for 2 weeks. No credit card needed.' : 'Free to start. No credit card needed.';
@@ -470,7 +548,7 @@ var RULES = [
   ['fLastName', 'hLastName', function(v){ return v.trim().length > 0; }],
   ['fBusinessName', 'hBusinessName', function(v){ return v.trim().length > 0; }],
   ['fDomain', 'hDomain', function(v){ return /^[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}$/.test(v.trim().replace(/^https?:\/\//i,'').replace(/\/.*$/,'')); }],
-  ['fPhoneWa', 'hPhoneWa', function(v){ return TYPE === 'b2b' ? (v.trim() === '' || el('fPhoneWaCountry').value !== '') : (v.trim().length > 0 && el('fPhoneWaCountry').value !== ''); }],
+  ['fPhoneWa', 'hPhoneWa', function(v){ return (TYPE === 'b2b' || usage() === 'later') ? (v.trim() === '' || el('fPhoneWaCountry').value !== '') : (v.trim().length > 0 && el('fPhoneWaCountry').value !== ''); }],
   ['fAddr', 'hAddr', function(v){ return v.trim().length > 0; }],
   ['fCity', 'hCity', function(v){ return v.trim().length > 0; }],
   ['fSells', 'hSells', function(v){ return v !== ''; }],
@@ -482,6 +560,26 @@ var RULES = [
   ['fHearAboutUs', 'hHearAboutUs', function(v){ return v !== ''; }]
 ];
 function visible(e){ return !!(e && e.offsetParent !== null); }
+function usage(){ var r = document.querySelector('input[name="wa_usage"]:checked'); return r ? r.value : ''; }
+function checkUsage(){
+  if (el('blkUsage').hidden || (TYPE === 'b2b' && el('fPhoneWa').value.trim() === '')) { el('hUsage').hidden = true; return true; }
+  var ok = usage() !== ''; el('hUsage').hidden = ok; return ok;
+}
+document.querySelectorAll('input[name="wa_usage"]').forEach(function(r){
+  r.addEventListener('change', function(){ checkUsage(); if (el('fPhoneWa').classList.contains('f-invalid')) check(RULES[4]); });
+});
+// "What does this mean?" pop-ups (2026-11-09)
+document.querySelectorAll('.wu-mean').forEach(function(b){
+  // Open on mouse press: leaving a field above can show an error message
+  // that moves this link before the click finishes. Click covers keyboards.
+  function open(e){ e.preventDefault(); e.stopPropagation(); var d = el(b.dataset.pop); if (d && d.showModal && !d.open) d.showModal(); }
+  b.addEventListener('mousedown', function(e){ if (e.button === 0) open(e); });
+  b.addEventListener('click', open);
+});
+document.querySelectorAll('dialog.wu-pop').forEach(function(d){
+  d.querySelector('.wu-x').addEventListener('click', function(){ d.close(); });
+  d.addEventListener('click', function(e){ if (e.target === d) d.close(); });
+});
 function check(r){
   var f = el(r[0]); if (!visible(f)) return true;
   var ok = r[2](f.value); f.classList.toggle('f-invalid', !ok); el(r[1]).hidden = ok; return ok;
@@ -496,6 +594,7 @@ el('regForm').addEventListener('submit', function(e){
   if (!TYPE) { e.preventDefault(); openPicker(); return; }
   var first = null;
   RULES.forEach(function(r){ if (!check(r) && !first) first = el(r[0]); });
+  if (!checkUsage() && !first) first = el('blkUsage');
   if (first) { e.preventDefault(); first.focus(); first.scrollIntoView({behavior:'smooth', block:'center'}); return; }
   if (window.grecaptcha && grecaptcha.getResponse && grecaptcha.getResponse() === '') {
     e.preventDefault(); var rc = el('hRecaptcha'); rc.hidden = false; rc.scrollIntoView({behavior:'smooth', block:'center'}); return;

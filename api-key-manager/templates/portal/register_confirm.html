@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% if row and row.kind == 'login' %}Confirm your details{% else %}Confirm your WhatsApp and email{% endif %} — PhiXtra</title>
+  <title>{% if row and row.kind == 'login' %}Confirm your details{% else %}Confirm your email{% endif %} — PhiXtra</title>
   {#- 2026-10-27: no account until WhatsApp and email are both confirmed
       (signup_confirm). Approved mock-up: https://claude.ai/artifact/YA9JNRrwNURksofBSHUfc9 -#}
   <style>
@@ -62,7 +62,7 @@
 
   {% if not row %}
     <h1>Your sign-up has expired</h1>
-    <p class="sub">You didn't confirm both codes within 60 minutes, so we didn't create your account. Please sign up again. It takes about two minutes.</p>
+    <p class="sub">You didn't enter the code within 60 minutes, so we didn't create your account. Please sign up again. It takes about two minutes.</p>
     <a class="btn" href="{{ url_for('portal.register') }}">Sign up again</a>
     <p class="note">Were you logging in to an existing account? <a href="{{ url_for('portal.login') }}">Log in again</a></p>
   {% else %}
@@ -71,14 +71,14 @@
       <h1>Confirm your {% if not row.wa_ok and not row.email_ok %}WhatsApp number and email{% elif not row.wa_ok %}WhatsApp number{% else %}email{% endif %} to continue</h1>
       <p class="sub">We've sent you a code. Enter it to open your account.</p>
     {% else %}
-      <h1>Confirm your WhatsApp and email</h1>
-      <p class="sub">We've sent you two codes. Enter both to create your account.</p>
+      <h1>Confirm your email</h1>
+      <p class="sub">We've emailed you a code. Enter it to create your account.</p>
     {% endif %}
 
     <form method="POST" action="{{ url_for('portal.register_confirm') }}" id="codesForm">
       <input type="hidden" name="action" value="create">
 
-      {% if not (login and row.wa_ok and not row.phone) %}
+      {% if not row.wa_ok %}
       <div class="box{% if row.wa_ok %} ok{% endif %}" id="boxWa">
         <div class="top"><b>WhatsApp {% if row.wa_ok and login %}number{% else %}code{% endif %}</b><small>{% if row.wa_ok and login %}{{ row.phone or '' }}{% else %}Sent to {{ row.phone }}{% endif %}</small></div>
         {% if row.wa_ok %}
@@ -140,7 +140,7 @@
     {% endif %}
 
     <p class="note">Each code works for 10 minutes. Can't find the email? Check spam.</p>
-    <p class="why">We check both so your account is secure and our team can reach you to help you get set up.</p>
+    <p class="why">We check your email so your account is secure and our team can reach you to help you get set up.</p>
   {% endif %}
   </div>
 </div>
