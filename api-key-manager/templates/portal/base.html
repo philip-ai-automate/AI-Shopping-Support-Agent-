@@ -1556,7 +1556,7 @@
               {% endif %}
             </a>
             {% endif %}
-            {% if staff_can_open('portal.billing') %}
+            {% if staff_can_open('portal.billing') and not shopify_billed() %}
             <a href="{{ url_for('portal.billing') }}"
                class="{% if request.endpoint == 'portal.billing' %}active{% endif %}">
               Buy AI Credit
@@ -2240,7 +2240,7 @@
     { icon:'✅', title:'Verified Specs',         desc:'Product specs the AI can confirm accurately',  url:'{{ url_for("portal.verified_specs_settings") }}',    tags:'verified specs product guarantee confirm accuracy' },
     {% endif %}
     { icon:'📋', title:'Subscription Plans',     desc:'View and manage your subscription',            url:'{{ url_for("portal.billing_plans") }}',          tags:'subscription plan monthly upgrade downgrade' },
-    { icon:'💳', title:'Buy AI Credit',          desc:'Top up your AI credit balance',               url:'{{ url_for("portal.billing") }}',                    tags:'credits buy top up balance tokens recharge ai designs' },
+    {% if not shopify_billed() %}{ icon:'💳', title:'Buy AI Credit',          desc:'Top up your AI credit balance',               url:'{{ url_for("portal.billing") }}',                    tags:'credits buy top up balance tokens recharge ai designs' },{% endif %}
     { icon:'🧾', title:'Invoices',               desc:'Download your billing receipts',               url:'{{ url_for("portal.invoices") }}',                   tags:'invoice receipt billing history download pdf payment' },
     { icon:'📚', title:'How-To Guides',          desc:'Help & Tutorials: step-by-step guides, e.g. the full CRM guide',         url:'{{ url_for("portal.tutorials") }}',                  tags:'help guide tutorial support how to faq learn' },
     { icon:'🎬', title:'Video Tutorials',        desc:'Help & Tutorials: short walkthrough videos',    url:'{{ url_for("portal.video_tutorials") }}',            tags:'video tutorial watch walkthrough demo guide' },

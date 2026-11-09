@@ -765,7 +765,7 @@ document.getElementById('scqForm').addEventListener('submit', function(e){
     {% else %}
     <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-primary btn-sm">Connect WhatsApp →</a>
     {% endif %}
-    <a href="{{ url_for('portal.billing') }}" class="btn btn-sm">+ Buy Credits</a>
+{% if not shopify_billed() %}<a href="{{ url_for('portal.billing') }}" class="btn btn-sm">+ Buy Credits</a>{% endif %}
   </div>
 </div>
 
@@ -971,7 +971,7 @@ document.getElementById('scqForm').addEventListener('submit', function(e){
     <div class="kpi-card-label">Credits remaining{% if balance_credits <= 20 %} — Low balance{% endif %}</div>
     <div class="kpi-card-sub">
       <div class="progress" style="margin-bottom:8px"><div style="width:{{ [balance_credits/200*100,100]|min }}%"></div></div>
-      <a href="{{ url_for('portal.billing') }}" class="btn btn-primary btn-sm" style="font-size:12px;padding:5px 12px">Buy credits</a>
+{% if not shopify_billed() %}<a href="{{ url_for('portal.billing') }}" class="btn btn-primary btn-sm" style="font-size:12px;padding:5px 12px">Buy credits</a>{% endif %}
     </div>
   </div>
 

@@ -218,7 +218,7 @@
 {# ══ BOTTOM ACTIONS + INFO ══ #}
 <div style="margin-top:24px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
   <a href="{{ url_for('portal.billing_add_card') }}" class="btn btn-sm">💳 Manage payment cards</a>
-  <a href="{{ url_for('portal.billing') }}" class="btn btn-sm">⚡ Buy one-time credits</a>
+{% if not shopify_billed() %}<a href="{{ url_for('portal.billing') }}" class="btn btn-sm">⚡ Buy one-time credits</a>{% endif %}
 </div>
 
 <div style="margin-top:16px;padding:14px 16px;border-radius:12px;

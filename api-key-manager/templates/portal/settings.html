@@ -336,7 +336,7 @@
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <a href="{{ url_for('portal.billing_plans') }}" class="btn btn-sm btn-primary">⬆️ Upgrade Plan</a>
-              <a href="{{ url_for('portal.billing') }}" class="btn btn-sm">💳 Buy Credits</a>
+{% if not shopify_billed() %}<a href="{{ url_for('portal.billing') }}" class="btn btn-sm">💳 Buy Credits</a>{% endif %}
             </div>
           </div>
 
@@ -394,9 +394,9 @@
           </p>
           {% if plan_key.key_type == 'trial' %}
           <a href="{{ url_for('portal.billing_plans') }}" class="btn btn-primary btn-sm">View Paid Plans →</a>
-          <a href="{{ url_for('portal.billing') }}" class="btn btn-sm" style="margin-left:8px">Buy Credits</a>
+{% if not shopify_billed() %}<a href="{{ url_for('portal.billing') }}" class="btn btn-sm" style="margin-left:8px">Buy Credits</a>{% endif %}
           {% else %}
-          <a href="{{ url_for('portal.billing') }}" class="btn btn-primary btn-sm">Buy Credits →</a>
+{% if not shopify_billed() %}<a href="{{ url_for('portal.billing') }}" class="btn btn-primary btn-sm">Buy Credits →</a>{% endif %}
           <a href="{{ url_for('portal.billing_plans') }}" class="btn btn-sm" style="margin-left:8px">View Plans</a>
           {% endif %}
         </div>

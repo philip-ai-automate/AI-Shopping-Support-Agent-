@@ -7389,6 +7389,10 @@ def billing():
     _rperm = _require_team_permission("billing.credits_view")
     if _rperm: return _rperm
 
+    # 7B (9 Nov 2026): no credit top-ups for businesses billed through Shopify.
+    if shopify_billed():
+        return redirect(url_for("portal.billing_plans"))
+
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     _ensure_tenant_balance_row(tenant_id)
@@ -17522,6 +17526,26 @@ def _plan_currency(customer) -> str | None:
 def _plan_price(plan, currency) -> float:
     """Monthly price of a plan in this currency; 0 = no price set."""
     return float((plan or {}).get(_PLAN_PRICE_COL.get(currency, "price_ngn")) or 0)
+
+
+@portal_bp.app_template_global()
+def shopify_billed() -> bool:
+    """True when the logged-in business is billed through the Shopify app (7B,
+    9 Nov 2026): plans are fair use there, so credit top-ups are hidden."""
+    from flask import g
+    if hasattr(g, "_shopify_billed"):
+        return g._shopify_billed
+    g._shopify_billed = False
+    try:
+        cid = _customer_id()
+        cust = _get_customer(cid) if cid else None
+        if cust and cust.get("tenant_id"):
+            import shopify_billing
+            c = shopify_billing.card(int(cust["tenant_id"]))
+            g._shopify_billed = bool(c and c["kind"] != "other_paid")
+    except Exception as e:
+        print("⚠️ shopify_billed error:", e)
+    return g._shopify_billed
 
 
 @portal_bp.app_template_global()
