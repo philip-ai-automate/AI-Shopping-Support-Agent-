@@ -49,6 +49,10 @@
     .catch(function () {});
 
   function build(cfg) {
+    // Customise chat box Phase 2 (9 Nov 2026): the business can hide the chat on phones.
+    if (!PAGE && cfg.phones === false && window.matchMedia && window.matchMedia("(max-width: 767px)").matches) { return; }
+    var LEFT = !PAGE && cfg.position === "left";
+    if (!SUGG.length && cfg.questions && cfg.questions.length) { SUGG = cfg.questions.slice(0, 4); }
     var color = /^#[0-9a-fA-F]{6}$/.test(cfg.color || "") ? cfg.color : "#0B1D40";
     // Customise chat box (9 Nov 2026): text on the business's colour stays readable.
     var fg = (function (h) { var f = function (i) { var v = parseInt(h.substr(i, 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
@@ -66,7 +70,7 @@
     var host = document.createElement("div");
     host.id = "phixtra-chat-root";
     host.style.cssText = PAGE ? "position:fixed;left:0;right:0;bottom:0;top:" + TOPPX + "px;z-index:2147483000;"
-                              : "position:fixed;right:20px;bottom:20px;z-index:2147483000;";
+                              : "position:fixed;" + (LEFT ? "left" : "right") + ":20px;bottom:20px;z-index:2147483000;";
     // Many store themes (e.g. Shopify's Dawn: div:empty{display:none}) hide
     // empty boxes; ours looks empty because its content is in a shadow root
     // (2026-11-02). Keep it shown whatever the page's styles say.
@@ -80,7 +84,7 @@
       "*{box-sizing:border-box;font-family:" + font.replace(/"/g, "'") + "}",
       ".btn{width:60px;height:60px;border-radius:50%;border:0;background:" + color + ";color:" + fg + ";cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(11,29,64,.35)}",
       ".btn svg{width:28px;height:28px}",
-      ".panel{position:absolute;right:0;bottom:76px;width:" + (LARGE ? 440 : 370) + "px;max-width:calc(100vw - 32px);height:" + (LARGE ? 640 : 560) + "px;max-height:calc(100vh - 120px);background:#fff;border-radius:18px;box-shadow:0 24px 60px rgba(11,29,64,.35);display:flex;flex-direction:column;overflow:hidden}",
+      ".panel{position:absolute;" + (LEFT ? "left" : "right") + ":0;bottom:76px;width:" + (LARGE ? 440 : 370) + "px;max-width:calc(100vw - 32px);height:" + (LARGE ? 640 : 560) + "px;max-height:calc(100vh - 120px);background:#fff;border-radius:18px;box-shadow:0 24px 60px rgba(11,29,64,.35);display:flex;flex-direction:column;overflow:hidden}",
       ".panel[hidden]{display:none}",
       ".top{background:" + color + ";color:" + fg + ";padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}",
       ".top b{font-size:15px;display:block}",
@@ -155,6 +159,8 @@
       ".qok{background:#E6F4EC;color:#067647;border-radius:10px;padding:12px;font-weight:600;margin:0}",
       ".qhp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}",
       ".qmuted{color:#4A5B78;font-size:12.5px;margin:0}",
+      ".btn.w{width:auto;padding:0 20px 0 16px;border-radius:999px;gap:8px;font-size:15px;font-weight:700;white-space:nowrap}",
+      ".btn.w svg{width:22px;height:22px}",
       /* Customise chat box (9 Nov 2026): logo, avatar, emojis and stickers */
       ".lg{width:36px;height:36px;border-radius:50%;object-fit:cover;flex:0 0 auto;background:rgba(255,255,255,.2)}",
       ".tl{display:flex;align-items:center;gap:10px;min-width:0}",
@@ -178,7 +184,8 @@
     var chatIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.4 8.4 0 1 1 21 11.5z"/></svg>';
     var sendIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>';
 
-    var btn = el("button", "btn"); btn.type = "button"; btn.setAttribute("aria-label", "Chat with us"); btn.innerHTML = chatIcon;
+    var btn = el("button", "btn"); btn.type = "button"; btn.setAttribute("aria-label", cfg.button_words || "Chat with us"); btn.innerHTML = chatIcon;
+    if (cfg.button_words) { btn.className = "btn w"; var bwl = el("span"); bwl.textContent = cfg.button_words; btn.appendChild(bwl); }
     var badge = el("span", "badge"); badge.hidden = true; btn.appendChild(badge);
     var TEAM = cfg.mode === "team";
     var panel = el("div", "panel"); panel.hidden = true; panel.setAttribute("role", "dialog"); panel.setAttribute("aria-label", "Chat");

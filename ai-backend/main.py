@@ -2635,45 +2635,56 @@ def _cb_lang(lang: str) -> str:
     return l[:12] if _re.match(r"^[a-z]{2,3}(-[a-z0-9]{2,8})?$", l) else ""
 
 
-def _cb_translate(tenant_id: int, text: str, lang: str) -> str:
-    """The welcome message in the visitor's language — translated by the AI
-    Agent once per business and language, then reused. English visitors and
-    any failure get the text as written."""
+def _cb_translate(tenant_id: int, texts: dict, lang: str) -> dict:
+    """The chat box's own words (welcome, button words, quick questions) in the
+    visitor's language — translated by the AI Agent together, once per business
+    and language, then reused. Any failure gives the words as written."""
     lang = _cb_lang(lang)
-    if not text or not lang or lang.split("-")[0] == "en" and tenant_id == 0:
-        return text
+    texts = {k: v for k, v in texts.items() if v}
+    if not texts or not lang or (lang.split("-")[0] == "en" and tenant_id == 0):
+        return texts
     key = lang.split("-")[0]
+    src = _json.dumps(texts, sort_keys=True, ensure_ascii=False)
     conn = get_db_connection()
     if not conn:
-        return text
+        return texts
     try:
         cur = conn.cursor()
         try:
             cur.execute("SELECT src, text FROM chatbox_welcome_tr WHERE tenant_id=%s AND lang=%s", (tenant_id, key))
             r = cur.fetchone()
         except Exception:
-            conn.rollback(); return text
-        if r and r[0] == text:
-            return r[1]
+            conn.rollback(); return texts
+        if r and r[0] == src:
+            try:
+                return _json.loads(r[1])
+            except Exception:
+                pass
         try:
             resp = _llm_module._get_client().chat.completions.create(
                 model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"), timeout=15,
+                response_format={"type": "json_object"},
                 messages=[{"role": "system", "content":
-                           "You translate the welcome message of a shop or wholesaler's website chat box. Business terms keep their shop meaning (for example 'trade' means business customers, as in trade price or trade quote). Translate it into the language with this code: " + key +
-                           ". If it is already in that language, return it unchanged. Use the polite, formal way of addressing a customer where the language has one. Keep names, brands and emojis. "
-                           "Reply with the message only."},
-                          {"role": "user", "content": text}])
-            out = (resp.choices[0].message.content or "").strip().strip('"')
+                           "You translate the words of a shop or wholesaler's website chat box: a welcome message, "
+                           "the words on the chat button and short questions a visitor can tap. Business terms keep their "
+                           "shop meaning (for example 'trade' means business customers, as in trade price or trade quote). "
+                           "Translate every value into the language with this code: " + key + ". If a value is already in "
+                           "that language, keep it unchanged. Use the polite, formal way of addressing a customer where the "
+                           "language has one. Keep names, brands and emojis. Keep each value about as short as the original. "
+                           "Reply with the same JSON keys."},
+                          {"role": "user", "content": src}])
+            out = _json.loads(resp.choices[0].message.content or "{}")
         except Exception as e:
-            print("⚠️ chat box welcome translate:", e)
-            return text
-        if not out or len(out) > 600:
-            return text
+            print("⚠️ chat box words translate:", e)
+            return texts
+        good = {k: str(out.get(k) or "").strip() or v for k, v in texts.items()}
+        if any(len(v) > 600 for v in good.values()):
+            return texts
         cur.execute("""INSERT INTO chatbox_welcome_tr (tenant_id, lang, src, text) VALUES (%s,%s,%s,%s)
                        ON CONFLICT (tenant_id, lang) DO UPDATE SET src=EXCLUDED.src, text=EXCLUDED.text, created_at=NOW()""",
-                    (tenant_id, key, text, out))
+                    (tenant_id, key, src, _json.dumps(good, ensure_ascii=False)))
         conn.commit()
-        return out
+        return good
     finally:
         conn.close()
 
@@ -2694,7 +2705,16 @@ def widget_config(site: str, request: _WRequest, lang: str = ""):
     ai = bool(row["ai_on"])
     default_greet = "Hello! How can I help you today?" if ai else "Hello! Send us a message and our team will reply here."
     own = (cb.get("welcome") or "").strip()
-    greeting = _cb_translate(tid if own else 0, own or default_greet, lang)
+    words_own = (cb.get("btn_words") or "").strip() if cb.get("btn_style") == "words" else ""
+    qs = [q for q in (cb.get("quick_qs") or []) if isinstance(q, str) and q.strip()][:4]
+    custom = bool(own or words_own or qs)
+    src = {"welcome": own or default_greet}
+    if cb.get("btn_style") == "words":
+        src["button"] = words_own or "Chat with us"
+    for i, q in enumerate(qs):
+        src[f"q{i + 1}"] = q
+    tr = _cb_translate(tid if custom else 0, src, lang)
+    greeting = tr.get("welcome") or src["welcome"]
     colour = cb.get("colour") if _re.match(r"^#[0-9a-fA-F]{6}$", cb.get("colour") or "") else "#0B1D40"
     def _img(f):
         return f"{_CB_PORTAL}/media/chatbox/{tid}/{f}" if f and _re.match(r"^[0-9a-f]{32}\.png$", f) else None
@@ -2707,7 +2727,11 @@ def widget_config(site: str, request: _WRequest, lang: str = ""):
            "avatar": (cb.get("avatar_mode") or "logo") if cb else "none",
            "avatar_img": _img(cb.get("avatar_file")),
            "size": "large" if cb.get("size") == "large" else "standard",
-           "emojis": bool(cb.get("emojis_on")) if cb else False}
+           "emojis": bool(cb.get("emojis_on")) if cb else False,
+           "position": "left" if cb.get("btn_position") == "left" else "right",
+           "button_words": (tr.get("button") or src.get("button")) if cb.get("btn_style") == "words" else None,
+           "phones": True if cb.get("show_on_phones") is None else bool(cb.get("show_on_phones")),
+           "questions": [tr.get(f"q{i + 1}") or q for i, q in enumerate(qs)]}
     return out
 
 

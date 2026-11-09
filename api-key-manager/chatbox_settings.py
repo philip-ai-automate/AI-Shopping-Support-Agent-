@@ -9,6 +9,7 @@ Images (logo, avatar) are public â€” any website visitor's browser loads them â€
 and live on the big disk under CHATBOX_MEDIA_DIR with random names.
 """
 import io
+import json
 import os
 import re
 import uuid
@@ -26,7 +27,10 @@ AVATARS = ["logo", "bot", "upload", "none"]
 DEFAULT_COLOUR = "#0B1D40"
 MAX_IMG_BYTES = 5 * 1024 * 1024
 IMG_EDGE = 256
-LIMITS = {"welcome": 200, "title": 40, "subtitle": 60}
+LIMITS = {"welcome": 200, "title": 40, "subtitle": 60, "btn_words": 24, "question": 40}
+# Phase 2 (9 Nov 2026): chat button + quick-question buttons.
+_P2_COLS = {"btn_position": "VARCHAR(5) NOT NULL DEFAULT 'right'", "btn_style": "VARCHAR(6) NOT NULL DEFAULT 'round'",
+            "btn_words": "VARCHAR(24)", "show_on_phones": "BOOLEAN NOT NULL DEFAULT TRUE", "quick_qs": "JSONB"}
 
 _COLOUR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 _LINK_RE = re.compile(r"(https?://|www\.)", re.I)
@@ -51,6 +55,13 @@ def ensure(cur):
             updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_by   VARCHAR(120)
         )""")
+    # Phase 2 columns: added only when missing (an ALTER on every page load
+    # would queue behind any open read of the table).
+    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='chatbox_settings'")
+    have = {(r[0] if not isinstance(r, dict) else r["column_name"]) for r in cur.fetchall()}
+    for col, typ in _P2_COLS.items():
+        if col not in have:
+            cur.execute(f"ALTER TABLE chatbox_settings ADD COLUMN IF NOT EXISTS {col} {typ}")
     # Welcome message in the visitor's language, translated once by the AI
     # Agent and reused (tenant 0 = the standard welcome).
     cur.execute("""
@@ -98,6 +109,11 @@ def get(tenant_id: int) -> dict:
         "size": row.get("size") or "standard",
         "emojis_on": True if row.get("emojis_on") is None else bool(row.get("emojis_on")),
         "ai_emojis": bool(row.get("ai_emojis")),
+        "btn_position": "left" if row.get("btn_position") == "left" else "right",
+        "btn_style": "words" if row.get("btn_style") == "words" else "round",
+        "btn_words": row.get("btn_words") or "",
+        "show_on_phones": True if row.get("show_on_phones") is None else bool(row.get("show_on_phones")),
+        "quick_qs": [q for q in (row.get("quick_qs") or []) if isinstance(q, str)][:4],
         "saved": bool(row),
     }
 
@@ -166,6 +182,19 @@ def save(tenant_id: int, form, files, actor: str) -> list:
     size = "large" if form.get("size") == "large" else "standard"
     emojis_on = form.get("emojis_on") == "1"
     ai_emojis = form.get("ai_emojis") == "1"
+    btn_position = "left" if form.get("btn_position") == "left" else "right"
+    btn_style = "words" if form.get("btn_style") == "words" else "round"
+    btn_words = " ".join((form.get("btn_words") or "").split())
+    show_on_phones = form.get("show_on_phones") == "1"
+    quick_qs = [" ".join((q or "").split()) for q in form.getlist("quick_q")][:4]
+    quick_qs = [q for q in quick_qs if q]
+    if len(btn_words) > LIMITS["btn_words"]:
+        errs.append("The words on the button can be up to 24 characters.")
+    for i, q in enumerate(quick_qs, 1):
+        if len(q) > LIMITS["question"]:
+            errs.append(f"Quick question {i} can be up to 40 characters.")
+    if any(_LINK_RE.search(v) for v in [btn_words] + quick_qs):
+        errs.append("Please take web links out of the button words and quick questions.")
     if errs:
         return errs
 
@@ -173,10 +202,13 @@ def save(tenant_id: int, form, files, actor: str) -> list:
     try:
         cur = conn.cursor()
         ensure(cur)
-        cur.execute("SELECT logo_file, avatar_file, welcome FROM chatbox_settings WHERE tenant_id=%s", (int(tenant_id),))
+        cur.execute("SELECT logo_file, avatar_file, welcome, btn_words, quick_qs FROM chatbox_settings WHERE tenant_id=%s", (int(tenant_id),))
         r = cur.fetchone()
-        old_logo, old_avatar, old_welcome = (r[0], r[1], r[2]) if r and not isinstance(r, dict) else \
-            ((r or {}).get("logo_file"), (r or {}).get("avatar_file"), (r or {}).get("welcome"))
+        if r and not isinstance(r, dict):
+            r = dict(zip(["logo_file", "avatar_file", "welcome", "btn_words", "quick_qs"], r))
+        r = r or {}
+        old_logo, old_avatar, old_welcome = r.get("logo_file"), r.get("avatar_file"), r.get("welcome")
+        old_texts = (old_welcome or None, r.get("btn_words") or None, list(r.get("quick_qs") or []))
         if reset:
             cur.execute("DELETE FROM chatbox_settings WHERE tenant_id=%s", (int(tenant_id),))
             cur.execute("DELETE FROM chatbox_welcome_tr WHERE tenant_id=%s", (int(tenant_id),))
@@ -202,16 +234,20 @@ def save(tenant_id: int, form, files, actor: str) -> list:
             avatar_mode = "logo"
         cur.execute("""
             INSERT INTO chatbox_settings (tenant_id, welcome, colour, font, title, subtitle, logo_file, avatar_mode,
-                                          avatar_file, size, emojis_on, ai_emojis, updated_at, updated_by)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
+                                          avatar_file, size, emojis_on, ai_emojis, btn_position, btn_style, btn_words,
+                                          show_on_phones, quick_qs, updated_at, updated_by)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
             ON CONFLICT (tenant_id) DO UPDATE SET
               welcome=EXCLUDED.welcome, colour=EXCLUDED.colour, font=EXCLUDED.font, title=EXCLUDED.title,
               subtitle=EXCLUDED.subtitle, logo_file=EXCLUDED.logo_file, avatar_mode=EXCLUDED.avatar_mode,
               avatar_file=EXCLUDED.avatar_file, size=EXCLUDED.size, emojis_on=EXCLUDED.emojis_on,
-              ai_emojis=EXCLUDED.ai_emojis, updated_at=NOW(), updated_by=EXCLUDED.updated_by
+              ai_emojis=EXCLUDED.ai_emojis, btn_position=EXCLUDED.btn_position, btn_style=EXCLUDED.btn_style,
+              btn_words=EXCLUDED.btn_words, show_on_phones=EXCLUDED.show_on_phones, quick_qs=EXCLUDED.quick_qs,
+              updated_at=NOW(), updated_by=EXCLUDED.updated_by
         """, (int(tenant_id), welcome or None, colour.upper(), font, title or None, subtitle or None, logo,
-              avatar_mode, avatar, size, emojis_on, ai_emojis, (actor or "")[:120]))
-        if (welcome or None) != (old_welcome or None):
+              avatar_mode, avatar, size, emojis_on, ai_emojis, btn_position, btn_style, btn_words or None,
+              show_on_phones, json.dumps(quick_qs) if quick_qs else None, (actor or "")[:120]))
+        if old_texts != (welcome or None, btn_words or None, quick_qs):
             cur.execute("DELETE FROM chatbox_welcome_tr WHERE tenant_id=%s", (int(tenant_id),))
         conn.commit()
     finally:
