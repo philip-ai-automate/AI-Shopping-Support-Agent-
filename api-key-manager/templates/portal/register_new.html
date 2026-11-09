@@ -110,6 +110,8 @@
   .rg-f .wu-c input[type=radio]{width:18px;height:18px;min-width:0;padding:0;margin:3px 0 0;border:0;box-shadow:none;flex:0 0 18px;accent-color:#1FA855}
   .wu-t{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start}
   .wu-t label{cursor:pointer;display:block;font-weight:400}
+  .wu-t #blkWa{align-self:stretch;width:100%;margin-top:12px;padding-top:12px;border-top:1px solid #CFE9D9;cursor:default}
+  .wu-t #blkWa > label{cursor:default;font-weight:600}
   .wu-c b{display:block;font-size:14.5px;color:var(--ink,#111E2D)}
   .wu-c .s{display:block;font-size:13px;color:var(--muted);line-height:1.45}
   .wu-soon{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9A6700;background:#FFF5D6;border-radius:99px;padding:2px 8px;margin-left:6px;vertical-align:1px}
@@ -574,7 +576,12 @@ var WA_BOX = {
 function updateWa(){
   var u = usage(), box = WA_BOX[u];
   el('blkWa').hidden = el('blkUsage').hidden || !box;
-  if (box) { el('lblPhoneWa').textContent = box[0]; el('waSub').textContent = box[1]; }
+  if (box) {
+    el('lblPhoneWa').textContent = box[0]; el('waSub').textContent = box[1];
+    // The number box sits inside the chosen card, under its text (user 2026-11-09).
+    var card = document.querySelector('input[name="wa_usage"]:checked').closest('.wu-c').querySelector('.wu-t');
+    if (el('blkWa').parentNode !== card) card.appendChild(el('blkWa'));
+  }
 }
 document.querySelectorAll('input[name="wa_usage"]').forEach(function(r){
   r.addEventListener('change', function(){ if (TRIED) checkUsage(); updateWa(); });
