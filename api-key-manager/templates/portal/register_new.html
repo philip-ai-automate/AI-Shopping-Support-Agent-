@@ -238,9 +238,34 @@
         <p class="rg-err" id="hDomain" hidden>Please enter your website address, for example example.com.</p>
       </div>
 
+      {% set wu = fd.get('wa_usage', '') %}
+      <div class="rg-f" id="blkUsage" hidden>
+        <span class="rg-lbl" id="lblUsage">How do your customers reach you on WhatsApp today?</span>
+        <div class="wu" role="radiogroup" aria-labelledby="lblUsage">
+          <div class="wu-c"><input type="radio" name="wa_usage" value="biz_app" id="wu_biz_app" {% if wu == 'biz_app' %}checked{% endif %}>
+            <div class="wu-t"><label for="wu_biz_app"><b>On my WhatsApp Business app</b>
+            <span class="s">Keep your app and your chats, and answer the same chats in PhiXtra.</span></label>
+            <button class="wu-mean" type="button" data-pop="wuBiz">What does this mean?</button></div></div>
+          <div class="wu-c"><input type="radio" name="wa_usage" value="normal" id="wu_normal" {% if wu == 'normal' %}checked{% endif %}>
+            <div class="wu-t"><label for="wu_normal"><b>On normal WhatsApp</b>
+            <span class="s">Switch to the free WhatsApp Business app first. Your chats come with you.</span></label>
+            <button class="wu-mean" type="button" data-pop="wuNormal">What does this mean?</button></div></div>
+          <div class="wu-c"><input type="radio" name="wa_usage" value="new" id="wu_new" {% if wu == 'new' %}checked{% endif %}>
+            <div class="wu-t"><label for="wu_new"><b>They don't yet – I'll use a new number</b>
+            <span class="s">For a new number, or one you don't use on a phone. Connect it straight after you sign up.</span></label>
+            <button class="wu-mean" type="button" data-pop="wuNew">What does this mean?</button></div></div>
+          <div class="wu-c"><input type="radio" name="wa_usage" value="later" id="wu_later" {% if wu == 'later' %}checked{% endif %}>
+            <div class="wu-t"><label for="wu_later"><b>I'll add WhatsApp later</b>
+            <span class="s">Add your products and website chat first.</span></label>
+            <button class="wu-mean" type="button" data-pop="wuLater">What does this mean?</button></div></div>
+        </div>
+        <button class="wu-mean" type="button" data-pop="wuWhich" style="margin-top:8px;align-self:flex-start">Not sure which WhatsApp you have?</button>
+        <p class="rg-err" id="hUsage" hidden>Please choose how your customers reach you on WhatsApp today.</p>
+      </div>
+
       <div class="rg-f" id="blkWa" hidden>
-        <label for="fPhoneWa">Your business WhatsApp number <span class="b2-opt" id="waOpt" hidden>(optional)</span></label>
-        <p class="rg-hint">The number your customers send messages to.</p>
+        <label for="fPhoneWa" id="lblPhoneWa">Your WhatsApp number</label><span id="waOpt" hidden></span>
+        <p class="rg-hint" id="waSub"></p>
         <div class="rg-phone">
           {% set pc_name = 'wa_phone_country' %}{% set pc_id = 'fPhoneWaCountry' %}{% set pc_required = false %}
           {% set pc_selected = fd.get('wa_phone_country', '') %}{% set pc_style = '' %}{% set pc_placeholder = 'Country…' %}
@@ -251,30 +276,6 @@
         <p class="rg-err" id="hPhoneWa" hidden>Please choose the country and enter your WhatsApp number.</p>
       </div>
 
-      {% set wu = fd.get('wa_usage', '') %}
-      <div class="rg-f" id="blkUsage" hidden>
-        <span class="rg-lbl" id="lblUsage">How do you use this number today?</span>
-        <div class="wu" role="radiogroup" aria-labelledby="lblUsage">
-          <div class="wu-c"><input type="radio" name="wa_usage" value="biz_app" id="wu_biz_app" {% if wu == 'biz_app' %}checked{% endif %}>
-            <div class="wu-t"><label for="wu_biz_app"><b>On the WhatsApp Business app</b>
-            <span class="s">Keep your app and your chats, and answer the same chats in PhiXtra.</span></label>
-            <button class="wu-mean" type="button" data-pop="wuBiz">What does this mean?</button></div></div>
-          <div class="wu-c"><input type="radio" name="wa_usage" value="normal" id="wu_normal" {% if wu == 'normal' %}checked{% endif %}>
-            <div class="wu-t"><label for="wu_normal"><b>On normal WhatsApp</b>
-            <span class="s">Switch to the free WhatsApp Business app first. Your chats come with you.</span></label>
-            <button class="wu-mean" type="button" data-pop="wuNormal">What does this mean?</button></div></div>
-          <div class="wu-c"><input type="radio" name="wa_usage" value="new" id="wu_new" {% if wu == 'new' %}checked{% endif %}>
-            <div class="wu-t"><label for="wu_new"><b>It's not on WhatsApp yet</b>
-            <span class="s">For a new number, or one you don't use on a phone. Connect it straight after you sign up.</span></label>
-            <button class="wu-mean" type="button" data-pop="wuNew">What does this mean?</button></div></div>
-          <div class="wu-c"><input type="radio" name="wa_usage" value="later" id="wu_later" {% if wu == 'later' %}checked{% endif %}>
-            <div class="wu-t"><label for="wu_later"><b>I'll do this later</b>
-            <span class="s">Add your products and website chat first.</span></label>
-            <button class="wu-mean" type="button" data-pop="wuLater">What does this mean?</button></div></div>
-        </div>
-        <button class="wu-mean" type="button" data-pop="wuWhich" style="margin-top:8px;align-self:flex-start">Not sure which WhatsApp you have?</button>
-        <p class="rg-err" id="hUsage" hidden>Please choose how you use this number today.</p>
-      </div>
 
       <div class="rg-f" id="blkBased" hidden>
         <label for="fBased" id="lblBased">Where is your business based?</label>
@@ -498,18 +499,18 @@ function render() {
   el('chosenBar').hidden = false;
   el('chosenLabel').textContent = TYPE ? (TYPE_NAMES[TYPE] || '') + (isWeb && PLAT ? ' · ' + PLAT_NAMES[PLAT] : '') : 'Nothing chosen yet';
   el('chosenBtn').textContent = TYPE ? 'Change' : 'Choose';
-  el('blkWa').hidden = !(TYPE === 'whatsapp' || TYPE === 'both' || b2b);
+  el('blkUsage').hidden = !(TYPE === 'whatsapp' || TYPE === 'both' || b2b);
   el('blkWeb').hidden = !isWeb;
   el('blkBased').hidden = !(TYPE === 'web' || b2b);
   el('blkMobile').hidden = true;   // 2026-11-09: no mobile / WhatsApp code at sign-up
-  el('blkUsage').hidden = el('blkWa').hidden;
+  updateWa();
   // B2B (2026-10-29): sections, company details, optional WhatsApp.
-  ['secAbout', 'secCompany', 'secReach', 'secLogin', 'blkJob', 'blkCompany', 'b2Help', 'waOpt'].forEach(function(id){ el(id).hidden = !b2b; });
+  ['secAbout', 'secCompany', 'secReach', 'secLogin', 'blkJob', 'blkCompany', 'b2Help'].forEach(function(id){ el(id).hidden = !b2b; });
   if (b2b) el('basedSlot').appendChild(el('blkBased')); else BASED_HOME.parentNode.insertBefore(el('blkBased'), BASED_HOME);
   el('lblBusinessName').textContent = b2b ? 'Registered company name' : 'Business name';
   el('fBusinessName').placeholder = b2b ? 'e.g. Harbour Supplies Ltd' : 'e.g. Unity Foods Distribution';
   el('lblBased').textContent = b2b ? 'Country of registration' : 'Where is your business based?';
-  el('waHint').textContent = (b2b ? 'Optional. You can add it later. ' : '') + 'Choose your country, then type your number. We add the country code for you.';
+  el('waHint').textContent = 'Choose your country, then type your number. We add the country code for you.';
   el('lblSellCur').textContent = b2b ? 'What currency do you quote in?' : 'What currency do you sell in?';
   el('mainTitle').textContent = b2b ? 'Start your free B2B trial' : 'Create your free account';
   el('mainSub').textContent = b2b ? 'Free to start. Try the B2B agent free for 2 weeks. No credit card needed.' : 'Free to start. No credit card needed.';
@@ -547,7 +548,7 @@ var RULES = [
   ['fLastName', 'hLastName', function(v){ return v.trim().length > 0; }],
   ['fBusinessName', 'hBusinessName', function(v){ return v.trim().length > 0; }],
   ['fDomain', 'hDomain', function(v){ return /^[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}$/.test(v.trim().replace(/^https?:\/\//i,'').replace(/\/.*$/,'')); }],
-  ['fPhoneWa', 'hPhoneWa', function(v){ return (TYPE === 'b2b' || usage() === 'later') ? (v.trim() === '' || el('fPhoneWaCountry').value !== '') : (v.trim().length > 0 && el('fPhoneWaCountry').value !== ''); }],
+  ['fPhoneWa', 'hPhoneWa', function(v){ return v.trim().length > 0 && el('fPhoneWaCountry').value !== ''; }],
   ['fAddr', 'hAddr', function(v){ return v.trim().length > 0; }],
   ['fCity', 'hCity', function(v){ return v.trim().length > 0; }],
   ['fSells', 'hSells', function(v){ return v !== ''; }],
@@ -561,11 +562,22 @@ var RULES = [
 function visible(e){ return !!(e && e.offsetParent !== null); }
 function usage(){ var r = document.querySelector('input[name="wa_usage"]:checked'); return r ? r.value : ''; }
 function checkUsage(){
-  if (el('blkUsage').hidden || (TYPE === 'b2b' && el('fPhoneWa').value.trim() === '')) { el('hUsage').hidden = true; return true; }
+  if (el('blkUsage').hidden) { el('hUsage').hidden = true; return true; }
   var ok = usage() !== ''; el('hUsage').hidden = ok; return ok;
 }
+// The number box shows after the WhatsApp answer, worded for it (2026-11-09).
+var WA_BOX = {
+  biz_app: ['Your WhatsApp Business number', 'The number on your WhatsApp Business app.'],
+  normal:  ['Your WhatsApp number', "The number on your WhatsApp app. You'll switch it to the free WhatsApp Business app before connecting."],
+  'new':   ['Your new business number', "Customers will message this number. It mustn't be on WhatsApp yet, and it must be able to get one text or call."]
+};
+function updateWa(){
+  var u = usage(), box = WA_BOX[u];
+  el('blkWa').hidden = el('blkUsage').hidden || !box;
+  if (box) { el('lblPhoneWa').textContent = box[0]; el('waSub').textContent = box[1]; }
+}
 document.querySelectorAll('input[name="wa_usage"]').forEach(function(r){
-  r.addEventListener('change', function(){ checkUsage(); if (el('fPhoneWa').classList.contains('f-invalid')) check(RULES[4]); });
+  r.addEventListener('change', function(){ checkUsage(); updateWa(); });
 });
 // "What does this mean?" pop-ups (2026-11-09)
 document.querySelectorAll('.wu-mean').forEach(function(b){
