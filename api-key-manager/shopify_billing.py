@@ -61,6 +61,12 @@ def ensure(cur):
                      ("bill_period", "TEXT"), ("bill_trial_ends", "TIMESTAMPTZ"),
                      ("bill_cancel_at_end", "BOOLEAN"), ("bill_checked_at", "TIMESTAMPTZ"),
                      ("bill_source", "TEXT"), ("bill_error", "TEXT")):
+        # Only ALTER when the column is really missing: even a no-op ALTER takes a table
+        # lock that queues every page reading shopify_shops behind any open read (9 Nov 2026).
+        cur.execute("SELECT 1 FROM information_schema.columns WHERE table_name='shopify_shops' AND column_name=%s",
+                    (col,))
+        if cur.fetchone():
+            continue
         cur.execute(f"ALTER TABLE shopify_shops ADD COLUMN IF NOT EXISTS {col} {typ}")
     _ready = True
 
