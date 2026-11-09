@@ -326,7 +326,7 @@
         <div class="plan-card">
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
             <div>
-              {% if plan_key.key_type == 'trial' %}
+              {% if on_trial %}
                 <span class="plan-badge plan-trial">🧪 Free Trial</span>
               {% elif plan_key.is_active %}
                 <span class="plan-badge plan-paid">✅ Active Paid Plan</span>
@@ -344,14 +344,14 @@
             <div>
               <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Plan</div>
               <div style="font-size:15px;font-weight:700">
-                {{ (current_plan or {}).get('plan_name') or 'Free' }}{% if plan_key.key_type == 'trial' %} <span class="muted" style="font-size:12px;font-weight:600">(14-day free trial)</span>{% endif %}
+                {{ (current_plan or {}).get('plan_name') or 'Free' }}{% if on_trial %} <span class="muted" style="font-size:12px;font-weight:600">(14-day free trial)</span>{% endif %}
               </div>
             </div>
             <div>
               <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Credit Balance</div>
               <div style="font-size:15px;font-weight:700">{{ "%.1f"|format(balance_credits) }} credits</div>
             </div>
-            {% if plan_key.key_type == 'trial' and plan_key.trial_expires_at %}
+            {% if on_trial %}
             <div>
               <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Trial Expires</div>
               <div style="font-size:15px;font-weight:700{% if plan_days_left is not none and plan_days_left <= 3 %};color:var(--bad){% endif %}">
@@ -386,13 +386,13 @@
         {% if plan_key.is_active %}
         <div style="background:linear-gradient(135deg,rgba(3,12,24,.04),rgba(3,12,24,.02));border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:18px">
           <div style="font-size:14px;font-weight:700;margin-bottom:4px">
-            {% if plan_key.key_type == 'trial' %}Ready to upgrade?{% else %}Need more credits?{% endif %}
+            {% if on_trial %}Ready to upgrade?{% else %}Need more credits?{% endif %}
           </div>
           <p class="muted" style="font-size:13px;margin-bottom:12px">
-            {% if plan_key.key_type == 'trial' %}Move to a paid plan to keep your AI assistant running after your trial ends.
+            {% if on_trial %}Move to a paid plan to keep your AI assistant running after your trial ends.
             {% else %}Top up to keep your AI assistant running without interruption.{% endif %}
           </p>
-          {% if plan_key.key_type == 'trial' %}
+          {% if on_trial %}
           <a href="{{ url_for('portal.billing_plans') }}" class="btn btn-primary btn-sm">View Paid Plans →</a>
 {% if not shopify_billed() %}<a href="{{ url_for('portal.billing') }}" class="btn btn-sm" style="margin-left:8px">Buy Credits</a>{% endif %}
           {% else %}
@@ -405,7 +405,7 @@
         <div class="danger-zone">
           <h3>⚠️ Cancel Plan</h3>
           <p class="muted" style="font-size:13px;margin-bottom:14px">
-            {% if plan_key.key_type == 'trial' %}
+            {% if on_trial %}
               Cancelling will immediately disable AI features on your store.
             {% else %}
               Your plan will remain active until your next renewal date. No further charges will be made and your AI assistant will be paused automatically when the period ends.

@@ -13720,6 +13720,12 @@ def settings():
     # Fall back to most recent key even if inactive
     if not plan_key and keys:
         plan_key = keys[0]
+    # 9 Nov 2026: "free trial" follows the business's REAL plan trial, not the
+    # key's sign-up marker (key_type stays 'trial' forever after sign-up, so a
+    # business moved to a normal or paid plan kept seeing "(14-day free trial)").
+    _tp = _get_tenant_plan(tenant_id)
+    on_trial = bool(_tp.get("is_trial"))
+    plan_days_left = _tp.get("trial_days_left") if on_trial else None
 
     # Build feature labels from tenant features JSON
     _FEATURE_LABELS = {
@@ -13788,6 +13794,7 @@ def settings():
                            timezones=ALLOWED_TIMEZONES,
                            plan_key=plan_key,
                            plan_days_left=plan_days_left,
+                           on_trial=on_trial,
                            balance_credits=balance_credits,
                            plan_features=plan_features,
                            current_plan=_get_tenant_plan(tenant_id),
