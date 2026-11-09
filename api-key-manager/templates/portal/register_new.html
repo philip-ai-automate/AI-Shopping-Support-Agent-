@@ -256,11 +256,11 @@
         <span class="rg-lbl" id="lblUsage">How do you use this number today?</span>
         <div class="wu" role="radiogroup" aria-labelledby="lblUsage">
           <div class="wu-c"><input type="radio" name="wa_usage" value="biz_app" id="wu_biz_app" {% if wu == 'biz_app' %}checked{% endif %}>
-            <div class="wu-t"><label for="wu_biz_app"><b>On the WhatsApp Business app <span class="wu-soon">Coming soon</span></b>
-            <span class="s">Keep your app and your chats, and answer the same chats in PhiXtra. Your account works now; we'll email you when you can connect.</span></label>
+            <div class="wu-t"><label for="wu_biz_app"><b>On the WhatsApp Business app</b>
+            <span class="s">Keep your app and your chats, and answer the same chats in PhiXtra.</span></label>
             <button class="wu-mean" type="button" data-pop="wuBiz">What does this mean?</button></div></div>
           <div class="wu-c"><input type="radio" name="wa_usage" value="normal" id="wu_normal" {% if wu == 'normal' %}checked{% endif %}>
-            <div class="wu-t"><label for="wu_normal"><b>On normal WhatsApp <span class="wu-soon">Coming soon</span></b>
+            <div class="wu-t"><label for="wu_normal"><b>On normal WhatsApp</b>
             <span class="s">Switch to the free WhatsApp Business app first. Your chats come with you.</span></label>
             <button class="wu-mean" type="button" data-pop="wuNormal">What does this mean?</button></div></div>
           <div class="wu-c"><input type="radio" name="wa_usage" value="new" id="wu_new" {% if wu == 'new' %}checked{% endif %}>
@@ -357,7 +357,6 @@
     </form>
 
     <dialog class="wu-pop" id="wuBiz" aria-labelledby="wuBizT"><div class="wu-hd"><h3 id="wuBizT">You use the WhatsApp Business app</h3><button class="wu-x" type="button" aria-label="Close">✕</button></div><div class="wu-bd">
-      <div class="pp"><span class="lb">Coming soon</span><p>We're switching this on in the next few weeks. Your account works now: add your products and website chat, and we'll email you as soon as you can connect.</p></div>
       <div class="pp"><span class="lb">What happens</span><p>Your number keeps working on your phone, just like today. The same chats also appear in PhiXtra, so your team and the AI Agent can answer them too.</p></div>
       <div class="pp"><span class="lb">What you keep</span><p>Your number, your app, and your chats from the last 6 months. Your customers notice nothing.</p></div>
       <div class="pp"><span class="lb">Good to know</span><p>WhatsApp Web will be logged out; use PhiXtra on your computer instead. Group chats stay on your phone. Customers' WhatsApp calls to this number ring on your phone, not in PhiXtra. Open the app at least once every 2 weeks.</p></div>
@@ -366,8 +365,8 @@
     <dialog class="wu-pop" id="wuNormal" aria-labelledby="wuNormalT"><div class="wu-hd"><h3 id="wuNormalT">You use normal WhatsApp</h3><button class="wu-x" type="button" aria-label="Close">✕</button></div><div class="wu-bd">
       <div class="pp"><span class="lb">What happens</span><p>PhiXtra connects to the <b>WhatsApp Business app</b>, not normal WhatsApp. So first you move your number to the Business app. It's free and made by WhatsApp.</p></div>
       <div class="pp"><span class="lb">How to switch (2 minutes)</span><p>1. Install <b>WhatsApp Business</b> from the App Store or Google Play.<br>2. Open it and choose to use your current number.<br>3. It offers to bring your chats across. Say yes.</p></div>
-      <div class="pp"><span class="lb">Good to know</span><p>WhatsApp may ask you to use the Business app for about a week before it lets you connect it to PhiXtra. Connecting a Business app number is coming soon; we'll email you when it's ready.</p></div>
-      <div class="pp eg"><span class="lb">Meanwhile</span><p>Your account works now. Add your products and website chat.</p></div>
+      <div class="pp"><span class="lb">Good to know</span><p>WhatsApp may ask you to use the Business app for about a week before it lets you connect it to PhiXtra.</p></div>
+      <div class="pp eg"><span class="lb">Then</span><p>Connect it from your Dashboard and choose <b>Connect and keep my app</b>.</p></div>
     </div></dialog>
     <dialog class="wu-pop" id="wuNew" aria-labelledby="wuNewT"><div class="wu-hd"><h3 id="wuNewT">Your number isn't on WhatsApp yet</h3><button class="wu-x" type="button" aria-label="Close">✕</button></div><div class="wu-bd">
       <div class="pp"><span class="lb">What happens</span><p>Straight after you sign up, we set the number up on WhatsApp with you. Customers message it, and you and your team answer in PhiXtra, on your computer or the PhiXtra app.</p></div>

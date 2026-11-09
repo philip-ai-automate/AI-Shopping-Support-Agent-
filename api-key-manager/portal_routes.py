@@ -2602,7 +2602,7 @@ TRIAL_PLAN_NAMES = {"pro": "Retail Scale · WhatsApp", "web_enterprise": "Retail
 # sign-up has company_profiles.is_b2b; its 2-week trial runs on the 'b2b'
 # plan (see portal_migrations.ensure_b2b_tables). Everyone else is untouched.
 # "How do you use this number today?" on the sign-up form (2026-11-09).
-# biz_app / normal = keep the WhatsApp Business app (coming soon for everyone),
+# biz_app / normal = keep the WhatsApp Business app (switched on for everyone 9 Nov),
 # new = not on WhatsApp yet (connect straight after sign-up), later = add it later.
 WA_NUMBER_USAGES = ("biz_app", "normal", "new", "later")
 
@@ -4596,7 +4596,7 @@ def _confirm_finish(row):
     _log_in_owner(cid)
     # A new number goes straight to connecting it (plan screen 2); everyone
     # else starts on the Dashboard, where step 1 waits for them.
-    if wa_usage == "new":
+    if wa_usage in ("new", "biz_app"):
         flash("Welcome to PhiXtra! Your email is confirmed. Next: connect your WhatsApp number.", "success")
         return redirect(url_for("portal.whatsapp_connect"))
     flash("Welcome to PhiXtra! Your email is confirmed.", "success")
@@ -6630,9 +6630,13 @@ def _wa_step_title(t) -> str:
 
 def _wa_step_text(t) -> str:
     """Step 1 in plain words, from the sign-up answer (2026-11-09)."""
-    if (t.get("wa_number_usage") or "") in ("biz_app", "normal"):
-        return ("Keeping your WhatsApp Business app is coming soon. We'll email you when you can connect. "
-                "Meanwhile, add your products and start your trial.")
+    u = t.get("wa_number_usage") or ""
+    if u == "biz_app":
+        return ("You keep your WhatsApp Business app and your chats. About 5 minutes; have your phone with you, "
+                "with WhatsApp Business updated, and a Facebook account.")
+    if u == "normal":
+        return ("First switch this number to the free WhatsApp Business app (your chats come with you), "
+                "then connect it here and keep your app.")
     return ("Your customers message this number and your team and AI Agent answer in PhiXtra. "
             "About 5 minutes; have a phone that can get one text or call, and a Facebook account.")
 
@@ -16788,7 +16792,7 @@ def _save_wa_embedded_connection(tenant_id: int, phone_number_id: str, waba_id: 
 
 def _coexist_allowed(tenant_id: int) -> bool:
     ids = {x.strip() for x in os.getenv("WA_COEXIST_TENANTS", "").split(",") if x.strip()}
-    return str(int(tenant_id)) in ids
+    return "all" in ids or str(int(tenant_id)) in ids
 
 
 def _coexist_after_connect(tenant_id: int, phone_number_id: str, token: str, want_contacts: bool) -> dict:
