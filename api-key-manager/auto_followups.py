@@ -42,8 +42,26 @@ TRIGGERS = [
     ("stage_no_reply", "When a deal moves into a stage and there's no reply"),
     ("booking_click", "When the customer clicks my booking link but doesn't book"),
     ("wa_price_quiet", "When the customer asks for a price on WhatsApp and goes quiet"),
+    # Quote follow-ups (2026-11-10): Quotations businesses only (see triggers_for).
+    ("quote_no_reply", "When a quote is sent and the buyer doesn't answer"),
+    ("quote_expiring", "When a sent quote is about to run out with no answer"),
 ]
 TRIGGER_KEYS = {k for k, _ in TRIGGERS}
+QUOTE_TRIGGERS = ("quote_no_reply", "quote_expiring")
+# Days each quote rule starts at for a new business. Only a starting value:
+# every business changes it on its own rules (user, 2026-11-10: never hard-coded).
+QUOTE_RULE_DEFAULT_DAYS = {"quote_no_reply": 3, "quote_expiring": 3}
+
+
+def triggers_for(tenant_id: int) -> list:
+    """The rule choices this business sees: quote ones only with Quotations."""
+    try:
+        import quote_requests as _qr
+        if _qr.allowed(tenant_id):
+            return TRIGGERS
+    except Exception:
+        pass
+    return [t for t in TRIGGERS if t[0] not in QUOTE_TRIGGERS]
 
 # What fills each blank ({{1}}, {{2}} …) of a WhatsApp template.
 BLANK_FIELDS = [
@@ -52,6 +70,9 @@ BLANK_FIELDS = [
     ("company", "Their company or deal name"),
     ("business", "Your business name"),
     ("owner", "Deal owner's first name"),
+    ("quote_number", "Their quote number"),
+    ("quote_value", "Their quote value"),
+    ("quote_valid_until", "Date their quote is valid until"),
     ("text", "Words I type"),
 ]
 BLANK_KEYS = {k for k, _ in BLANK_FIELDS}
@@ -285,6 +306,51 @@ def seed_rules(tenant_id: int) -> None:
         conn.commit()
     finally:
         cur.close(); conn.close()
+
+
+def seed_quote_rules(tenant_id: int) -> None:
+    """Once per business with Quotations: the two quote rules, switched OFF,
+    reminding the deal owner, at the starting days above. After that they are
+    the business's own (edit, switch on, delete); never re-added."""
+    try:
+        import quote_requests as _qr
+        if not _qr.allowed(tenant_id):
+            return
+    except Exception:
+        return
+    ensure_tables()
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("""INSERT INTO followup_settings (tenant_id, settings) VALUES (%s,'{}'::jsonb)
+                       ON CONFLICT (tenant_id) DO NOTHING""", (tenant_id,))
+        cur.execute("""UPDATE followup_settings SET settings = settings || '{"quote_rules_seeded": true}'::jsonb
+                       WHERE tenant_id=%s AND NOT COALESCE((settings->>'quote_rules_seeded')::boolean, FALSE)
+                       RETURNING tenant_id""", (tenant_id,))
+        if cur.fetchone():
+            cur.execute("SELECT COALESCE(max(position),0) FROM followup_rules WHERE tenant_id=%s", (tenant_id,))
+            pos = cur.fetchone()[0]
+            for i, trig in enumerate(QUOTE_TRIGGERS, start=1):
+                cur.execute("""INSERT INTO followup_rules (tenant_id, enabled, position, trigger, days, notify, do_what,
+                                   remind_action, created_by)
+                               VALUES (%s,FALSE,%s,%s,%s,'owner','remind','call','Suggested by PhiXtra')""",
+                            (tenant_id, pos + i, trig, QUOTE_RULE_DEFAULT_DAYS[trig]))
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+
+
+def quote_rule(tenant_id: int, trigger: str, cur=None):
+    """The business's first rule of this quote kind (dict) or None."""
+    own = cur is None
+    if own:
+        conn = _conn(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""SELECT * FROM followup_rules WHERE tenant_id=%s AND trigger=%s
+                       ORDER BY enabled DESC, position, id LIMIT 1""", (tenant_id, trigger))
+        return cur.fetchone()
+    finally:
+        if own:
+            cur.close(); conn.close()
 
 
 def list_rules(tenant_id: int) -> list:
@@ -548,7 +614,35 @@ def person_context(cur, tenant_id: int, lead_id=None, contact_id=None) -> dict:
             ctx["contact_name"] = c["contact_person"] or ""
             ctx["company"] = ctx["company"] or c["display_name"] or ""
     ctx["first_name"] = (ctx["contact_name"] or "").split(" ")[0]
+    ctx.update(quote_fields(cur, tenant_id, lead_id))
     return ctx
+
+
+def quote_fields(cur, tenant_id: int, lead_id) -> dict:
+    """Fill-ins for follow-up messages about a quote (2026-11-10): the deal's
+    latest sent quote (or latest quote if none is out). Blank when the deal
+    has no quote."""
+    out = {"quote_number": "", "quote_value": "", "quote_valid_until": ""}
+    if not lead_id:
+        return out
+    try:
+        cur.execute("""SELECT ref_no, quote_number, quote_value, quote_currency, quote_valid_until
+                         FROM quote_requests WHERE tenant_id=%s AND lead_id=%s AND quote_sent_at IS NOT NULL
+                        ORDER BY (status='quote_sent') DESC, quote_sent_at DESC LIMIT 1""", (tenant_id, lead_id))
+        q = cur.fetchone()
+    except Exception:
+        return out
+    if not q:
+        return out
+    if not isinstance(q, dict):
+        q = dict(zip(("ref_no", "quote_number", "quote_value", "quote_currency", "quote_valid_until"), q))
+    import quote_requests as _qr
+    out["quote_number"] = q["quote_number"] or f"R-{q['ref_no']}"
+    if q["quote_value"] is not None:
+        out["quote_value"] = _qr.money(q["quote_value"], q["quote_currency"])
+    if q["quote_valid_until"]:
+        out["quote_valid_until"] = q["quote_valid_until"].strftime("%d %B %Y").lstrip("0")
+    return out
 
 
 def fill_values(wa: dict, ctx: dict) -> list:
@@ -556,7 +650,8 @@ def fill_values(wa: dict, ctx: dict) -> list:
     because WhatsApp refuses empty blanks."""
     out = []
     fall = {"first_name": "there", "contact_name": "there", "company": "your business",
-            "business": "us", "owner": "our team"}
+            "business": "us", "owner": "our team", "quote_number": "our quotation",
+            "quote_value": "the quoted price", "quote_valid_until": "the date on the quotation"}
     for b in (wa.get("blanks") or []):
         kind = (b or {}).get("kind")
         if kind == "text":
@@ -805,7 +900,9 @@ PRICE_RE = (r"(price|prices|pricing|how much|cost|quote|quotation|rate card|per 
             r"|prix|combien|tarif|devis|precio|cuánto|cuanto|cotización|preço|quanto|orçamento|سعر|كم|بكم)")
 TRIGGER_WORDS = {"stage_no_reply": "no reply after moving into {stage}",
                  "booking_click": "clicked your booking link but didn't book",
-                 "wa_price_quiet": "asked for a price on WhatsApp, then went quiet"}
+                 "wa_price_quiet": "asked for a price on WhatsApp, then went quiet",
+                 "quote_no_reply": "haven't answered quotation {quote}, sent {days} days ago",
+                 "quote_expiring": "haven't answered quotation {quote}, which runs out on {until}"}
 
 
 def _open_deal_sql(alias="l"):
@@ -938,6 +1035,8 @@ def _candidates(cur, rule) -> list:
             if _team_contacted(cur, tid, e["lead_id"], phone, e["created_at"]):
                 continue
             out.append((e["lead_id"], e["wa_contact_id"], phone, f"click:{e['id']}", TRIGGER_WORDS[t]))
+    elif t in QUOTE_TRIGGERS:
+        out = _quote_candidates(cur, rule)
     elif t == "wa_price_quiet":
         cur.execute("""
             SELECT DISTINCT ON (m.customer_phone) m.id, m.customer_phone, m.created_at
@@ -965,6 +1064,65 @@ def _candidates(cur, rule) -> list:
                 continue
             out.append(((l or {}).get("id"), (l or {}).get("wa_contact_id") or cid, phone, f"price:{m['id']}",
                         TRIGGER_WORDS[t]))
+    return out
+
+
+def _buyer_answered(cur, tid, lead_id, phone, since) -> bool:
+    cur.execute("""SELECT 1 FROM email_events WHERE tenant_id=%s AND lead_id=%s AND kind='replied'
+                   AND created_at >= %s LIMIT 1""", (tid, lead_id, since))
+    if cur.fetchone():
+        return True
+    if phone:
+        cur.execute("""SELECT 1 FROM wa_message_log WHERE tenant_id=%s AND customer_phone=%s
+                       AND direction='inbound' AND created_at >= %s LIMIT 1""", (tid, phone, since))
+        if cur.fetchone():
+            return True
+    return False
+
+
+def _quote_candidates(cur, rule) -> list:
+    """Sent quotes (status Quote sent, deal still open) the rule matches now.
+    quote_no_reply: {days} after the LATEST send, so a new version restarts
+    the wait. quote_expiring: {days} before valid-until, so extending the
+    quote restarts it. Skipped when the buyer answered or the team was in
+    touch since the quote was sent (manual wins)."""
+    t, days, tid = rule["trigger"], int(rule["days"] or 0), rule["tenant_id"]
+    import quote_requests as _qr
+    if not _qr.allowed(tid):
+        return []
+    from team_performance import tz_for
+    today = _dt.datetime.now(tz_for(tid)).date()
+    now = _dt.datetime.now(_dt.timezone.utc)
+    if t == "quote_no_reply":
+        cur.execute(f"""SELECT q.id, q.ref_no, q.quote_number, q.quote_sent_at, q.quote_valid_until,
+                               l.id AS lead_id, l.wa_contact_id, l.whatsapp_number
+                          FROM quote_requests q JOIN merchant_pipeline_leads l ON l.id=q.lead_id AND l.tenant_id=q.tenant_id
+                         WHERE q.tenant_id=%s AND q.status='quote_sent' AND q.quote_sent_at IS NOT NULL
+                           AND q.quote_sent_at <= %s AND q.quote_sent_at >= %s AND {_open_deal_sql()}""",
+                    (tid, now - _dt.timedelta(days=days), now - _dt.timedelta(days=days + LOOKBACK_DAYS)))
+    else:
+        cur.execute(f"""SELECT q.id, q.ref_no, q.quote_number, q.quote_sent_at, q.quote_valid_until,
+                               l.id AS lead_id, l.wa_contact_id, l.whatsapp_number
+                          FROM quote_requests q JOIN merchant_pipeline_leads l ON l.id=q.lead_id AND l.tenant_id=q.tenant_id
+                         WHERE q.tenant_id=%s AND q.status='quote_sent' AND q.quote_valid_until IS NOT NULL
+                           AND q.quote_valid_until >= %s AND q.quote_valid_until <= %s AND {_open_deal_sql()}""",
+                    (tid, today, today + _dt.timedelta(days=days)))
+    out = []
+    for q in cur.fetchall():
+        since = q["quote_sent_at"] or now
+        phone = digits(q["whatsapp_number"]) or person_whatsapp(cur, tid, q["lead_id"], q["wa_contact_id"])
+        if _buyer_answered(cur, tid, q["lead_id"], phone, since):
+            continue
+        if _team_contacted(cur, tid, q["lead_id"], phone, since):
+            continue
+        num = q["quote_number"] or f"R-{q['ref_no']}"
+        if t == "quote_no_reply":
+            mark = f"quote:{q['id']}:{since.isoformat()}"
+            words = TRIGGER_WORDS[t].format(quote=num, days=max(days, (now - since).days))
+        else:
+            mark = f"qexp:{q['id']}:{q['quote_valid_until']}"
+            words = TRIGGER_WORDS[t].format(quote=num, until=q["quote_valid_until"].strftime("%d %b"))
+        out.append((q["lead_id"], q["wa_contact_id"], phone, mark, words))
     return out
 
 

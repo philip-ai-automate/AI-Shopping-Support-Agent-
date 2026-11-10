@@ -29,14 +29,16 @@
 {% macro rule_sentence(r, fid) %}
   When
   <select class="ar-pick" name="trigger" form="{{ fid }}" data-trig aria-label="What starts it">
-    {% for k, l in fu_triggers %}<option value="{{ k }}" {% if r.trigger == k %}selected{% endif %}>{{ {'stage_no_reply':'a deal moves into','booking_click':'the customer clicks my booking link','wa_price_quiet':'the customer asks for a price on WhatsApp'}[k] }}</option>{% endfor %}
+    {% for k, l in fu_triggers %}<option value="{{ k }}" {% if r.trigger == k %}selected{% endif %}>{{ {'stage_no_reply':'a deal moves into','booking_click':'the customer clicks my booking link','wa_price_quiet':'the customer asks for a price on WhatsApp','quote_no_reply':'a quote is sent','quote_expiring':'a sent quote is about to run out'}[k] }}</option>{% endfor %}
   </select>
   <span data-show="stage_no_reply"><select class="ar-pick" name="stage" form="{{ fid }}" aria-label="Stage">
     {% for k, l in fu_stages %}<option value="{{ k }}" {% if r.stage == k %}selected{% endif %}>{{ l }}</option>{% endfor %}
   </select> and there's no reply for</span>
   <span data-show="booking_click">but doesn't book within</span>
   <span data-show="wa_price_quiet">and goes quiet for</span>
-  <input class="ar-pick" type="number" min="0" max="90" name="days" form="{{ fid }}" value="{{ r.days if r.days is not none else 3 }}" aria-label="Days"> days,
+  <span data-show="quote_no_reply">and the buyer doesn't answer for</span>
+  <span data-show="quote_expiring">with no answer from the buyer,</span>
+  <input class="ar-pick" type="number" min="0" max="90" name="days" form="{{ fid }}" value="{{ r.days if r.days is not none else 3 }}" aria-label="Days"> <span data-show-not="quote_expiring">days,</span><span data-show="quote_expiring">days before it runs out,</span>
   <select class="ar-pick" name="do_what" form="{{ fid }}" data-do aria-label="What happens">
     <option value="remind" {% if r.do_what == 'remind' %}selected{% endif %}>remind</option>
     <option value="followup" {% if r.do_what != 'remind' %}selected{% endif %}>start a follow-up</option>
@@ -163,6 +165,7 @@
     var d = box.querySelector('[data-do]')
     function show() {
       box.querySelectorAll('[data-show]').forEach(function (s) { s.hidden = s.dataset.show !== t.value })
+      box.querySelectorAll('[data-show-not]').forEach(function (s) { s.hidden = s.dataset.showNot === t.value })
       box.querySelectorAll('[data-do-show]').forEach(function (s) { s.hidden = s.dataset.doShow !== d.value })
     }
     t.addEventListener('change', show); d.addEventListener('change', show); show()

@@ -1458,30 +1458,45 @@ def extend(tenant_id: int, request_id: int, new_date, actor: dict) -> tuple:
 
 
 def _expiry_once():
-    """2 days before a quote expires: remind the salesperson. On the day
-    after: ask them to extend it or close it as Lost (PhiXtra never extends
-    a price by itself)."""
+    """Before a quote expires: remind the salesperson, on the business's own
+    number of days (its "quote is about to run out" follow-up rule; 3 for a
+    new business, never hard-coded, 2026-11-10). When that rule is switched
+    on, the rule does the reminding or the follow-up instead, so nobody gets
+    it twice. On the day after: ask them to extend it or close it as Lost
+    (PhiXtra never extends a price by itself)."""
     import auto_followups as _af
     from team_performance import tz_for
     conn, cur = _db()
     try:
         cur.execute(f"""SELECT {_LIST_COLS} FROM quote_requests WHERE status='quote_sent' AND quote_valid_until IS NOT NULL
-                          AND quote_valid_until BETWEEN CURRENT_DATE - 7 AND CURRENT_DATE + 3 LIMIT 500""")
+                          AND quote_valid_until BETWEEN CURRENT_DATE - 7 AND CURRENT_DATE + 91 LIMIT 2000""")
         rows = cur.fetchall()
     finally:
         cur.close(); conn.close()
+    before = {}   # tenant_id → (days, rule switched on)
+
+    def _before(tid):
+        if tid not in before:
+            r = _af.quote_rule(tid, "quote_expiring")
+            before[tid] = (int(r["days"]) if r and r.get("days") is not None
+                           else _af.QUOTE_RULE_DEFAULT_DAYS["quote_expiring"], bool(r and r.get("enabled")))
+        return before[tid]
+
     for q in rows:
         try:
             if not allowed(q["tenant_id"]):
                 continue
             today = datetime.now(tz_for(q["tenant_id"])).date()
             left = (q["quote_valid_until"] - today).days
+            days_before, rule_on = _before(q["tenant_id"])
             buyer = q.get("buyer_company") or q.get("buyer_name") or "the buyer"
             num = q.get("quote_number") or f"R-{q['ref_no']}"
             link = f"{_af.PORTAL}/quotations/requests/{q['id']}"
             vu = q["quote_valid_until"]
-            if left == 2:
-                ref, subj = f"quote_exp2:{q['id']}:{vu}", f"{num} for {buyer} expires in 2 days"
+            if left == days_before and left >= 0 and not rule_on:
+                ref = f"quote_exp2:{q['id']}:{vu}"
+                subj = (f"{num} for {buyer} expires today" if left == 0 else
+                        f"{num} for {buyer} expires in {left} day{'s' if left != 1 else ''}")
                 lines = [f"Your quotation {num} to {buyer} ({money(q['quote_value'], q['quote_currency'])}) is valid until "
                          f"{vu.strftime('%A %d %B')}, with no answer yet.", "A call now often decides it."]
             elif left < 0:

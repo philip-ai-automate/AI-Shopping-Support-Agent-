@@ -41592,6 +41592,7 @@ def _fu_settings_context(customer, tenant_id: int) -> dict:
     """Everything the Automatic Follow-up Rules card needs."""
     _af.ensure_tables()
     _af.seed_rules(tenant_id)
+    _af.seed_quote_rules(tenant_id)
     conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute("SELECT id, name, status FROM email_sequences WHERE tenant_id=%s ORDER BY lower(name)", (tenant_id,))
@@ -41603,8 +41604,11 @@ def _fu_settings_context(customer, tenant_id: int) -> dict:
     labels = dict(pipeline_effective_stage_labels(tenant_id))
     numbers = [{"id": c["id"], "label": (c.get("display_phone_number") or "") + (f" · {c['label']}" if c.get("label") else "")}
                for c in _get_wa_connections_all(tenant_id) if c.get("active")]
-    return {"fu_rules": _af.list_rules(tenant_id), "fu_settings": _af.get_settings(tenant_id),
-            "fu_seqs": seqs, "fu_team": team, "fu_numbers": numbers, "fu_triggers": _af.TRIGGERS,
+    _trig = _af.triggers_for(tenant_id)
+    _tkeys = {k for k, _ in _trig}
+    return {"fu_rules": [r for r in _af.list_rules(tenant_id) if r["trigger"] in _tkeys],
+            "fu_settings": _af.get_settings(tenant_id),
+            "fu_seqs": seqs, "fu_team": team, "fu_numbers": numbers, "fu_triggers": _trig,
             "fu_stages": [(k, labels.get(k, k)) for k in PIPELINE_STAGE_ORDER if k not in ("won",)],
             "fu_days": _af.DAY_NAMES, "fu_tz_choices": staff_activity.tz_choices(_tid_for_tz()), "fu_remind_actions": _af.REMIND_ACTIONS,
             "fu_can_edit": _team_member_has_permission("crm.pipeline_settings_edit"),
@@ -44070,10 +44074,57 @@ def quotes_settings():
                                       "maker": f.get("maker"),
                                       "website_prices": f.get("website_prices")},
                           _current_actor(customer)["label"])
+        problem = _quote_fu_save(tenant_id, f)
+        if problem:
+            flash(problem, "warning")
         flash("Quotation settings saved. New requests use them; requests already waiting keep their time.", "success")
         return redirect(url_for("portal.quotes_settings"))
     return render_template("portal/quotes_settings.html", s=_qr.settings(tenant_id), qr=_qr, can_edit=can_edit,
-                           tzname=str(_tp.tz_for(tenant_id)))
+                           tzname=str(_tp.tz_for(tenant_id)), **_quote_fu_context(customer, tenant_id))
+
+
+def _quote_fu_rules(tenant_id: int) -> list:
+    """[(trigger, rule or None)] for the two quote follow-up rules."""
+    _af.seed_quote_rules(tenant_id)
+    rules = {r["trigger"]: r for r in reversed(_af.list_rules(tenant_id)) if r["trigger"] in _af.QUOTE_TRIGGERS}
+    return [(t, rules.get(t)) for t in _af.QUOTE_TRIGGERS]
+
+
+def _quote_fu_context(customer, tenant_id: int) -> dict:
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("SELECT id, name FROM team_members WHERE tenant_id=%s", (tenant_id,))
+        team = {f"team:{m['id']}": m["name"] for m in cur.fetchall()}
+    finally:
+        cur.close(); conn.close()
+    owner = " ".join(x for x in (customer.get("first_name"), customer.get("last_name")) if x) or "the account owner"
+    who = lambda k: {"owner": "the deal owner", "account_owner": owner}.get(k) or team.get(k, "the deal owner")
+    return {"qfu": _quote_fu_rules(tenant_id), "qfu_who": who, "qfu_actions": dict(_af.REMIND_ACTIONS)}
+
+
+def _quote_fu_save(tenant_id: int, f) -> str:
+    """Switch + days of the two quote rules from Quotation settings. Returns
+    a problem to show, or ''."""
+    problems = []
+    for trig, r in _quote_fu_rules(tenant_id):
+        if not r:
+            continue
+        try:
+            days = max(0, min(90, int(f.get(f"qfu_days_{trig}") or r["days"])))
+        except (TypeError, ValueError):
+            days = r["days"]
+        on = f.get(f"qfu_on_{trig}") == "1"
+        if on and r.get("do_what") != "remind" and not r.get("sequence_id"):
+            problems.append("Choose which follow-up to start in Pipeline Settings before switching that quote rule on.")
+            on = False
+        conn = get_db_connection(); cur = conn.cursor()
+        try:
+            cur.execute("""UPDATE followup_rules SET days=%s, enabled=%s, updated_at=NOW()
+                           WHERE id=%s AND tenant_id=%s""", (days, on, r["id"], tenant_id))
+            conn.commit()
+        finally:
+            cur.close(); conn.close()
+    return " ".join(problems)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

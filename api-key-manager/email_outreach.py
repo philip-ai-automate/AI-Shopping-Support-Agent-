@@ -214,11 +214,20 @@ MERGE_FIELDS = [
     ("Full Name", "there"),
     ("Business Name", "your business"),
     ("Email", ""),
+    # Quote follow-ups (2026-11-10): the deal's latest sent quote.
+    ("Quote Number", "our quotation"),
+    ("Quote Value", "the quoted price"),
+    ("Valid Until", "the date on the quotation"),
 ]
 _ALIASES = {"firstname": "first", "first": "first", "lastname": "last", "fullname": "full", "name": "full",
             "contactname": "full", "businessname": "business", "company": "business",
-            "companyname": "business", "business": "business", "email": "email"}
-_DEFAULTS = {"first": "there", "last": "", "full": "there", "business": "your business", "email": ""}
+            "companyname": "business", "business": "business", "email": "email",
+            "quotenumber": "quote_number", "quoteno": "quote_number",
+            "quotevalue": "quote_value", "quotetotal": "quote_value",
+            "validuntil": "quote_valid_until", "quotevaliduntil": "quote_valid_until"}
+_DEFAULTS = {"first": "there", "last": "", "full": "there", "business": "your business", "email": "",
+             "quote_number": "our quotation", "quote_value": "the quoted price",
+             "quote_valid_until": "the date on the quotation"}
 _TOKEN = re.compile(r"\{\{\s*([A-Za-z][A-Za-z _]*?)\s*(?:\|\s*([^{}]*?)\s*)?\}\}")
 _TITLES = {"mr", "mrs", "ms", "miss", "dr", "chief", "engr", "prof", "sir", "madam", "alhaji", "alhaja", "pastor"}
 
@@ -263,6 +272,12 @@ def recipient_context(cur, tenant_id: int, email: str) -> dict:
         full = ""
     ctx["first"], ctx["last"] = _split_name(full)
     ctx["full"] = full if ctx["first"] else ""
+    if ctx.get("lead_id"):
+        try:
+            import auto_followups as _af
+            ctx.update(_af.quote_fields(cur, tenant_id, ctx["lead_id"]))
+        except Exception as e:
+            print("⚠️ email merge quote fields:", e)
     return ctx
 
 

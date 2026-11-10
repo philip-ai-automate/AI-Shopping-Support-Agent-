@@ -50,11 +50,27 @@
         <input type="checkbox" name="{{ k }}" value="1" {% if s[k] %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:0"> {{ w }}</label>
       {% endfor %}
     </div>
-    <div class="qt-card">
-      <h2>Follow-ups after a quote</h2>
-      <div class="qt-small" style="color:var(--ink)">When you click Quote sent, the deal moves to <b>Proposal sent</b>. Messages to buyers who go quiet are set in
-        <a href="{{ url_for('portal.sales_pipeline_settings') }}#followups">Pipeline Settings › Automatic follow-ups</a> (rule: "When a deal moves into a stage and there's no reply", stage Proposal sent).
-        The salesperson is also reminded 2 days before a quote expires, and asked to extend or close it when it does.</div>
+    <!-- Quote follow-ups (2026-11-10): the business's own two quote rules from
+         Pipeline Settings › Automatic Follow-up Rules. Switch and days here; the
+         rest (who, what, which follow-up) there. Nothing is fixed by PhiXtra. -->
+    <div class="qt-card" id="quote-followups">
+      <h2>Quote follow-ups</h2>
+      {% for trig, r in qfu %}
+      <label style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13.5px;font-weight:400">
+        <input type="checkbox" name="qfu_on_{{ trig }}" value="1" {% if r and r.enabled %}checked{% endif %} {% if not r %}disabled{% endif %}
+               style="width:18px;height:18px;min-height:0;margin:0" aria-label="Switch on">
+        <input type="number" name="qfu_days_{{ trig }}" min="0" max="90" value="{{ r.days if r else 3 }}" {% if not r %}disabled{% endif %}
+               style="width:70px" aria-label="Days">
+        <span>{% if trig == 'quote_no_reply' %}days after a quote is sent with no answer{% else %}days before a quote runs out with no answer{% endif %}
+          → {% if not r %}<i>rule deleted in Pipeline Settings</i>
+          {% elif r.do_what == 'remind' %}remind {{ qfu_who(r.notify) }} to {{ qfu_actions.get(r.remind_action or 'call', 'follow up') }}
+          {% else %}start the follow-up "{{ r.sequence_name or 'not chosen' }}"{% endif %}</span>
+      </label>
+      {% endfor %}
+      <div class="qt-small">Each one can also start one of your own automatic follow-ups (emails and WhatsApp messages). It stops when the buyer replies, your team gets in touch, or the quote is marked Won or Lost.
+        In your messages you can use <b>{{ '{{' }}Quote Number{{ '}}' }}</b>, <b>{{ '{{' }}Quote Value{{ '}}' }}</b> and <b>{{ '{{' }}Valid Until{{ '}}' }}</b>.
+        When "before a quote runs out" is off, the salesperson still gets an email that many days before. The day after a quote runs out, they're asked to extend it or close it as Lost.
+        <a href="{{ url_for('portal.sales_pipeline_settings') }}#followups">Edit in Pipeline Settings →</a></div>
     </div>
     <div class="qt-card">
       <h2>Your quoting software</h2>
