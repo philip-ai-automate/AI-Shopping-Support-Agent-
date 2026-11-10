@@ -44081,14 +44081,18 @@ def quotes_settings():
     if err: return err
     can_edit = _role_sees_all("leads.see_all")
     if request.method == "POST":
+        # Tabs (2026-11-10): back on the tab the person saved from.
+        _tab = request.form.get("tab") if request.form.get("tab") in (
+            "general", "response-time", "website", "online-quotations", "follow-ups") else None
+        back = redirect(url_for("portal.quotes_settings", _anchor=_tab))
         if not can_edit:
             flash("Only people who can see all leads can change Quotation settings.", "warning")
-            return redirect(url_for("portal.quotes_settings"))
+            return back
         f = request.form
         ws, we = (f.get("work_start") or "").strip(), (f.get("work_end") or "").strip()
         if ws and we and we <= ws:
             flash("Working hours must end after they start.", "danger")
-            return redirect(url_for("portal.quotes_settings"))
+            return back
         _qr.save_settings(tenant_id, {"target": f.get("target"), "work_start": f.get("work_start"),
                                       "work_end": f.get("work_end"), "software": f.get("software") or "",
                                       "alert_new": f.get("alert_new") == "1", "alert_due": f.get("alert_due") == "1",
@@ -44106,7 +44110,7 @@ def quotes_settings():
             if problem:
                 flash(problem, "warning")
         flash("Quotation settings saved. New requests use them; requests already waiting keep their time.", "success")
-        return redirect(url_for("portal.quotes_settings"))
+        return back
     return render_template("portal/quotes_settings.html", s=_qr.settings(tenant_id), qr=_qr, can_edit=can_edit,
                            tzname=str(_tp.tz_for(tenant_id)), **_quote_fu_context(customer, tenant_id))
 

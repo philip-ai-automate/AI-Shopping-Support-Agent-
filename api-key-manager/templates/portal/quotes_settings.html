@@ -1,6 +1,15 @@
 {% extends "portal/base.html" %}
 {% block title %}Quotation settings — PhiXtra Portal{% endblock %}
-{% block head %}{% include "portal/_quotes_css.html" %}{% endblock %}
+{% block head %}{% include "portal/_quotes_css.html" %}
+<style>
+  .qs-tabs{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin}
+  .qs-tabs .qt-tab{white-space:nowrap;cursor:pointer;font:inherit;font-weight:600;font-size:13px}
+  .qs-tabs .qt-tab[aria-selected="true"]{background:var(--navy);color:#fff}
+  .qs-tabs .qt-tab:focus-visible{outline:3px solid var(--navy);outline-offset:2px}
+  .qs-panel{display:grid;gap:14px}
+  .qs-panel[hidden]{display:none}
+</style>
+{% endblock %}
 {% block content %}
 <div class="qt" style="max-width:820px">
   <div>
@@ -8,7 +17,18 @@
     <div class="qt-sub">How you make quotations, how fast requests should be answered, and who is told.</div>
   </div>
   <form method="post" class="qt" style="gap:14px">
+    <!-- Tabs (2026-11-10, user OK): same boxes and wording, grouped. One form,
+         one Save for every tab; the page reopens on the tab you were on. -->
+    <input type="hidden" name="tab" id="qsTab" value="general">
+    <div class="qt-tabs qs-tabs" role="tablist" aria-label="Quotation settings">
+      <button type="button" class="qt-tab" role="tab" id="qs-tab-general" aria-controls="qs-general" data-tab="general">General</button>
+      <button type="button" class="qt-tab" role="tab" id="qs-tab-response-time" aria-controls="qs-response-time" data-tab="response-time">Response time</button>
+      <button type="button" class="qt-tab" role="tab" id="qs-tab-website" aria-controls="qs-website" data-tab="website">Website</button>
+      <button type="button" class="qt-tab" role="tab" id="qs-tab-online-quotations" aria-controls="qs-online-quotations" data-tab="online-quotations">Online quotations</button>
+      <button type="button" class="qt-tab" role="tab" id="qs-tab-follow-ups" aria-controls="qs-follow-ups" data-tab="follow-ups">Follow-ups</button>
+    </div>
     <fieldset {% if not can_edit %}disabled{% endif %} style="border:0;padding:0;margin:0;display:grid;gap:14px">
+    <div class="qs-panel" role="tabpanel" id="qs-general" aria-labelledby="qs-tab-general" data-panel="general">
     <div class="qt-card">
       <h2>How do you make quotations?</h2>
       <label style="display:flex;gap:10px;align-items:flex-start;font-size:13.5px">
@@ -20,17 +40,13 @@
           Set it up in <a href="{{ url_for('portal.quotes_design') }}">Quotation design</a>.</span></label>
     </div>
     <div class="qt-card">
-      <h2>"Add to quote" on your website</h2>
-      <label style="display:flex;gap:10px;align-items:center;font-size:13.5px">
-        <input type="checkbox" name="website_on" value="1" {% if s.website_on %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:0">
-        Show "Add to quote" and a quote list on my website</label>
-      <div class="qt-f"><label class="wide">What buyers see before your quotation
-        <select name="website_prices">{% for k, w in qr.WEBSITE_PRICES %}<option value="{{ k }}" {% if s.website_prices == k %}selected{% endif %}>{{ w }}</option>{% endfor %}</select></label></div>
-      <div class="qt-small" style="color:var(--ink)"><b>WordPress / WooCommerce:</b> the PhiXtra plugin adds an "Add to quote" button on every product page.
-        <b>Any other website:</b> the PhiXtra chat button gets a "Request a quote" option. Buyers send their list with their name and email; no account needed.
-        An estimate is always called an estimate: your quotation is the only price that counts.
-        After you switch it on or off, a WordPress shop shows the change within 10 minutes.</div>
+      <h2>Your quoting software</h2>
+      <div class="qt-f"><label class="wide">We make quotations in
+        <select name="software"><option value="">—</option>{% for k, w in qr.SOFTWARE %}<option value="{{ k }}" {% if s.software == k %}selected{% endif %}>{{ w }}</option>{% endfor %}</select></label></div>
+      <div class="qt-small">For now this is a note for your team. Copy lines and Download Excel work with any software.</div>
     </div>
+    </div>
+    <div class="qs-panel" role="tabpanel" id="qs-response-time" aria-labelledby="qs-tab-response-time" data-panel="response-time">
     <div class="qt-card">
       <h2>How fast you send quotations</h2>
       <div class="qt-f">
@@ -50,6 +66,22 @@
         <input type="checkbox" name="{{ k }}" value="1" {% if s[k] %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:0"> {{ w }}</label>
       {% endfor %}
     </div>
+    </div>
+    <div class="qs-panel" role="tabpanel" id="qs-website" aria-labelledby="qs-tab-website" data-panel="website">
+    <div class="qt-card">
+      <h2>"Add to quote" on your website</h2>
+      <label style="display:flex;gap:10px;align-items:center;font-size:13.5px">
+        <input type="checkbox" name="website_on" value="1" {% if s.website_on %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:0">
+        Show "Add to quote" and a quote list on my website</label>
+      <div class="qt-f"><label class="wide">What buyers see before your quotation
+        <select name="website_prices">{% for k, w in qr.WEBSITE_PRICES %}<option value="{{ k }}" {% if s.website_prices == k %}selected{% endif %}>{{ w }}</option>{% endfor %}</select></label></div>
+      <div class="qt-small" style="color:var(--ink)"><b>WordPress / WooCommerce:</b> the PhiXtra plugin adds an "Add to quote" button on every product page.
+        <b>Any other website:</b> the PhiXtra chat button gets a "Request a quote" option. Buyers send their list with their name and email; no account needed.
+        An estimate is always called an estimate: your quotation is the only price that counts.
+        After you switch it on or off, a WordPress shop shows the change within 10 minutes.</div>
+    </div>
+    </div>
+    <div class="qs-panel" role="tabpanel" id="qs-online-quotations" aria-labelledby="qs-tab-online-quotations" data-panel="online-quotations">
     <!-- Online quotations (Step 5, 2026-11-10): starting ON, each business decides. -->
     <div class="qt-card" id="online-quotations">
       <h2>Online quotations</h2>
@@ -61,6 +93,8 @@
       {% endfor %}
       <div class="qt-small">The link goes in the email or WhatsApp message the quotation is sent with, and can go in follow-ups as <b>{{ '{{' }}Quote Link{{ '}}' }}</b>. It only opens that quotation, stops working when it expires, is replaced by a new version, or is Won or Lost, and is never kept by search engines. Accepting needs the buyer's name and a tick; the salesperson is told and can press Undo. If you make quotations in your own software, the link is made when you upload the PDF at Quote sent.</div>
     </div>
+    </div>
+    <div class="qs-panel" role="tabpanel" id="qs-follow-ups" aria-labelledby="qs-tab-follow-ups" data-panel="follow-ups">
     <!-- Quote follow-ups (2026-11-10): the business's own two quote rules from
          Pipeline Settings › Automatic Follow-up Rules. Switch and days here; the
          rest (who, what, which follow-up) there. Nothing is fixed by PhiXtra. -->
@@ -84,15 +118,36 @@
         <a href="{{ url_for('portal.sales_pipeline_settings') }}#followups">Edit in Pipeline Settings →</a>
         {% if not qfu_can_edit %}<br>Only people who can edit Pipeline Settings can change these two rules.{% endif %}</div>
     </div>
-    <div class="qt-card">
-      <h2>Your quoting software</h2>
-      <div class="qt-f"><label class="wide">We make quotations in
-        <select name="software"><option value="">—</option>{% for k, w in qr.SOFTWARE %}<option value="{{ k }}" {% if s.software == k %}selected{% endif %}>{{ w }}</option>{% endfor %}</select></label></div>
-      <div class="qt-small">For now this is a note for your team. Copy lines and Download Excel work with any software.</div>
     </div>
     </fieldset>
     {% if can_edit %}<div><button class="qt-btn dark">Save settings</button></div>
     {% else %}<div class="qt-small">Only people who can see all leads can change these settings.</div>{% endif %}
   </form>
 </div>
+<script>
+(function () {
+  var tabs = document.querySelectorAll('.qs-tabs [data-tab]'), panels = document.querySelectorAll('[data-panel]');
+  var keys = Array.prototype.map.call(tabs, function (t) { return t.dataset.tab; });
+  var hidden = document.getElementById('qsTab');
+  // Old links (#online-quotations, #quote-followups) still land on their tab.
+  var alias = {'quote-followups': 'follow-ups', 'online-quotations': 'online-quotations'};
+  function show(k, focus) {
+    if (keys.indexOf(k) < 0) k = 'general';
+    tabs.forEach(function (t) { var on = t.dataset.tab === k; t.setAttribute('aria-selected', on ? 'true' : 'false'); t.tabIndex = on ? 0 : -1; if (on && focus) t.focus(); });
+    panels.forEach(function (p) { p.hidden = p.dataset.panel !== k; });
+    hidden.value = k;
+    if (location.hash.slice(1) !== k) history.replaceState(null, '', '#' + k);
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { show(t.dataset.tab); });
+    t.addEventListener('keydown', function (e) {
+      var d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (d) { e.preventDefault(); show(keys[(i + d + keys.length) % keys.length], true); }
+    });
+  });
+  var h = location.hash.slice(1);
+  show(alias[h] || h || 'general');
+  window.addEventListener('hashchange', function () { var x = location.hash.slice(1); show(alias[x] || x); });
+})();
+</script>
 {% endblock %}
