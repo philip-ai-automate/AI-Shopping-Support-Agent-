@@ -203,6 +203,11 @@
   .dq-tile{flex:1 1 170px;background:#fff;border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
   .dq-tile span{font-size:12px;color:#667085}
   .dq-tile b{font-size:18px;color:#0B1D40;font-variant-numeric:tabular-nums}
+  .dq-t-green{background:#ECFDF3;border-color:#ABEFC6} .dq-t-green span,.dq-t-green b{color:#067647}
+  .dq-t-amber{background:#FFFAEB;border-color:#FEDF89} .dq-t-amber span,.dq-t-amber b{color:#B54708}
+  .dq-t-blue{background:#EFF8FF;border-color:#B2DDFF} .dq-t-blue span,.dq-t-blue b{color:#175CD3}
+  .dq-t-purple{background:#F4F3FF;border-color:#D9D6FE} .dq-t-purple span,.dq-t-purple b{color:#5925DC}
+  a.dq-tile:hover{filter:brightness(.97)}
   .row-actions-wrap { position:relative; flex-shrink:0 }
   .kebab-btn {
     width:28px; height:28px; border-radius:7px; border:1px solid transparent; background:transparent;
@@ -424,10 +429,10 @@
 {% if quote_on and dq_tiles %}
 {# One Sales Pipeline (2026-11-10): quote figures, this month #}
 <div class="dq-tiles">
-  <div class="dq-tile"><span>Quotes sent this month</span><b>{{ '{:,}'.format(dq_tiles.sent_month or 0) }}</b></div>
-  <div class="dq-tile"><span>Waiting for the buyer</span><b>{{ '{:,}'.format(dq_tiles.waiting_n or 0) }}{% if dq_tiles.waiting_v %} · {{ dq_tiles.waiting_v|money_total }}{% endif %}</b></div>
-  <div class="dq-tile"><span>Quote win rate this month</span><b>{{ (dq_tiles.win_rate ~ '%') if dq_tiles.win_rate is not none else '—' }}</b></div>
-  <a class="dq-tile" href="{{ url_for('portal.sales_pipeline', quote_status='sent_opened') }}" style="text-decoration:none;color:inherit"><span>Buyer opened, no reply</span><b>{{ dq_tiles.opened_no_reply }}</b></a>
+  <div class="dq-tile dq-t-green"><span>Quotes sent this month</span><b>{{ '{:,}'.format(dq_tiles.sent_month or 0) }}</b></div>
+  <div class="dq-tile dq-t-amber"><span>Waiting for the buyer</span><b>{{ '{:,}'.format(dq_tiles.waiting_n or 0) }}{% if dq_tiles.waiting_v %} · {{ dq_tiles.waiting_v|money_total }}{% endif %}</b></div>
+  <div class="dq-tile dq-t-blue"><span>Quote win rate this month</span><b>{{ (dq_tiles.win_rate ~ '%') if dq_tiles.win_rate is not none else '—' }}</b></div>
+  <a class="dq-tile dq-t-purple" href="{{ url_for('portal.sales_pipeline', quote_status='sent_opened') }}" style="text-decoration:none;color:inherit"><span>Buyer opened, no reply</span><b>{{ dq_tiles.opened_no_reply }}</b></a>
 </div>
 {% endif %}
 
