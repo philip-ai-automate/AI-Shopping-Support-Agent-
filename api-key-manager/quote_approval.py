@@ -47,7 +47,9 @@ def fingerprint(d: dict) -> str:
              for ln in d.get("lines") or []]
     charges = [(c.get("name") or "", float(c.get("qty") or 0), round(float(c.get("price") or 0), 4))
                for c in d.get("charges") or []]
-    return hashlib.sha256(json.dumps([lines, charges], sort_keys=True).encode()).hexdigest()[:24]
+    # the tax rate changes the total the "total over" rule was approved on
+    tax_rate = round(float((d.get("tax") or {}).get("rate") or 0), 4)
+    return hashlib.sha256(json.dumps([lines, charges, tax_rate], sort_keys=True).encode()).hexdigest()[:24]
 
 
 def _new_buyer(cur, tenant_id: int, req: dict) -> bool:
@@ -56,6 +58,9 @@ def _new_buyer(cur, tenant_id: int, req: dict) -> bool:
         conds.append("lead_id = %s"); args.append(req["lead_id"])
     if req.get("buyer_email"):
         conds.append("lower(buyer_email) = lower(%s)"); args.append(req["buyer_email"])
+    phone = "".join(ch for ch in str(req.get("buyer_phone") or "") if ch.isdigit())
+    if len(phone) >= 7:
+        conds.append("regexp_replace(COALESCE(buyer_phone, ''), '\\D', '', 'g') = %s"); args.append(phone)
     if not conds:
         return True
     cur.execute(f"""SELECT 1 FROM quote_requests WHERE tenant_id=%s AND id <> %s AND status='won'
@@ -129,15 +134,18 @@ def blocks_send(tenant_id: int, q: dict, req: dict, can_approve: bool) -> list:
     return [] if state(q).get("status") == "approved" else why
 
 
-def _save(tenant_id: int, qid: int, approval):
+def _save(tenant_id: int, qid: int, approval, only_if_asked: bool = False):
+    """only_if_asked: change it only while it is still waiting, so two
+    approvers (or an approver and a Withdraw) can't overwrite each other."""
+    cond = " AND data->'approval'->>'status' = 'asked'" if only_if_asked else ""
     conn, cur = _db()
     try:
         if approval is None:
             cur.execute("""UPDATE quotations SET data = data - 'approval', updated_at=NOW()
-                            WHERE id=%s AND tenant_id=%s AND status='draft'""", (qid, tenant_id))
+                            WHERE id=%s AND tenant_id=%s AND status='draft'""" + cond, (qid, tenant_id))
         else:
             cur.execute("""UPDATE quotations SET data = jsonb_set(data, '{approval}', %s::jsonb), updated_at=NOW()
-                            WHERE id=%s AND tenant_id=%s AND status='draft'""",
+                            WHERE id=%s AND tenant_id=%s AND status='draft'""" + cond,
                         (json.dumps(approval), qid, tenant_id))
         ok = cur.rowcount == 1
         conn.commit()
@@ -166,7 +174,11 @@ def _perms(cur, tenant_id, role_id) -> dict:
         return {}
     cur.execute("SELECT permissions FROM tenant_roles WHERE id=%s AND tenant_id=%s", (role_id, tenant_id))
     r = cur.fetchone()
-    p = (r or {}).get("permissions") or {}
+    return _parse_perms((r or {}).get("permissions"))
+
+
+def _parse_perms(p) -> dict:
+    p = p or {}
     if isinstance(p, str):
         try:
             p = json.loads(p)
@@ -188,9 +200,12 @@ def approvers(tenant_id: int, asker_member_id=None) -> list:
             lm = cur.fetchone()
             if lm and _perms(cur, tenant_id, lm["role_id"]).get("quotes.approve"):
                 return [{"key": f"team:{lm['id']}", "label": lm["name"], "email": lm["email"]}]
-        cur.execute("SELECT id, name, email, role_id FROM team_members WHERE tenant_id=%s AND is_active", (tenant_id,))
+        # one query for every active member and their role's ticks (no per-member lookups)
+        cur.execute("""SELECT m.id, m.name, m.email, r.permissions FROM team_members m
+                         LEFT JOIN tenant_roles r ON r.id = m.role_id AND r.tenant_id = m.tenant_id
+                        WHERE m.tenant_id=%s AND m.is_active""", (tenant_id,))
         out = [{"key": f"team:{m['id']}", "label": m["name"], "email": m["email"]}
-               for m in cur.fetchall() if m["id"] != asker_member_id and _perms(cur, tenant_id, m["role_id"]).get("quotes.approve")]
+               for m in cur.fetchall() if m["id"] != asker_member_id and _parse_perms(m["permissions"]).get("quotes.approve")]
         if out:
             return out
         cur.execute("""SELECT id, first_name, last_name, COALESCE(handoff_notify_email, email) AS email
@@ -236,7 +251,8 @@ def ask(tenant_id: int, q: dict, req: dict, actor: dict, member_id=None, portal_
 def withdraw(tenant_id: int, q: dict, req: dict, actor: dict) -> tuple:
     if state(q).get("status") != "asked":
         return False, "There is no request to withdraw."
-    _save(tenant_id, q["id"], None)
+    if not _save(tenant_id, q["id"], None, only_if_asked=True):
+        return False, "This request was already answered."
     _event(req["id"], "Approval request withdrawn", actor.get("label") or "")
     return True, "Request withdrawn. You can edit the quotation again."
 
@@ -254,7 +270,8 @@ def decide(tenant_id: int, q: dict, req: dict, actor: dict, approve: bool, note:
     a.update({"status": "approved" if approve else "sent_back", "by_label": actor.get("label") or "",
               "by_key": actor.get("key") or "", "at": _now(), "note": note,
               "fp": fingerprint(q.get("data") or {})})
-    _save(tenant_id, q["id"], a)
+    if not _save(tenant_id, q["id"], a, only_if_asked=True):
+        return False, "This request was already answered or withdrawn."
     _event(req["id"], ("Approved by " if approve else "Sent back by ") + (actor.get("label") or "")
            + ("" if approve else f": {note}"), actor.get("label") or "")
     _tell_asker(tenant_id, q, req, a)

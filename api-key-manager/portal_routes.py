@@ -44368,6 +44368,13 @@ def _qq_load(customer, tenant_id, qid):
     if not q or not q["request_id"]:
         return None, None
     req = _qr.get(tenant_id, q["request_id"], _quotes_scope(customer))
+    if not req and _can_approve():
+        # Approvals (2026-11-10): the person asked to approve may open it even
+        # when the request isn't theirs (staff without "See all leads").
+        _a = (q.get("data") or {}).get("approval") or {}
+        if _a.get("status") == "asked" and _current_actor(customer)["key"] in [
+                x.get("key") for x in _a.get("approvers") or []]:
+            req = _qr.get(tenant_id, q["request_id"])
     return (q, req) if req else (None, None)
 
 
@@ -44449,13 +44456,14 @@ def quotes_quotation(qid: int):
                     ok, msg = _qa.decide(tenant_id, q, req, actor, action == "appr_approve", request.form.get("note") or "")
             flash(msg, "success" if ok else "warning")
             return redirect(url_for("portal.quotes_quotation", qid=qid))
+        # Locked while waiting for approval: nothing below may change the lines.
+        if ((q.get("data") or {}).get("approval") or {}).get("status") == "asked":
+            flash("This quotation is waiting for approval. Withdraw the request to change it.", "warning")
+            return redirect(url_for("portal.quotes_quotation", qid=qid))
         if action == "ai_reset":
             import quote_ai_draft as _qad
             if _qad.start_again(tenant_id, qid):
                 flash("Started again without the AI Agent.", "success")
-            return redirect(url_for("portal.quotes_quotation", qid=qid))
-        if ((q.get("data") or {}).get("approval") or {}).get("status") == "asked":
-            flash("This quotation is waiting for approval. Withdraw the request to change it.", "warning")
             return redirect(url_for("portal.quotes_quotation", qid=qid))
         try:
             raw = _json.loads(request.form.get("data_json") or "{}")
@@ -44490,15 +44498,18 @@ def quotes_quotation(qid: int):
     _ids = {ln.get("product_id") for ln in (q["data"] or {}).get("lines") or []}
     costs = {k: v for k, v in _qp.costs_only(_book).items()} if can_costs else {}
     low = [n for n, _, _ in _qq.low_margin(tenant_id, q["data"] or {})] if not can_costs else []
+    import quote_approval as _qa
+    _me, _can_appr = _current_actor(customer), _can_approve()
+    appr_why = _qa.reasons(tenant_id, q, req) if q["status"] == "draft" else []
+    # who it would go to: only needed when this person has to ask
+    appr_to = ([w["label"] for w in _qa.approvers(tenant_id, _me.get("team_member_id"))]
+               if appr_why and not _can_appr else [])
     return render_template("portal/quotes_quotation.html", q=q, req=req, doc=doc, s=s, qq=_qq, qr=_qr,
                            checks=_qq.checks(tenant_id, q, req, can_costs=can_costs),
                            products_json=_quote_products_json(products, _qp.breaks_only(_book)),
                            can_costs=can_costs, costs=costs, low_lines=low,
-                           appr=__import__("quote_approval").state(q),
-                           appr_why=__import__("quote_approval").reasons(tenant_id, q, req) if q["status"] == "draft" else [],
-                           can_approve=_can_approve(), me_key=_current_actor(customer)["key"],
-                           appr_to=[w["label"] for w in __import__("quote_approval").approvers(
-                               tenant_id, _current_actor(customer).get("team_member_id"))] if q["status"] == "draft" else [],
+                           appr=_qa.state(q), appr_why=appr_why,
+                           can_approve=_can_appr, me_key=_me["key"], appr_to=appr_to,
                            min_margin=_qr.settings(tenant_id).get("min_margin"),
                            versions=_qq.for_request(tenant_id, req["id"]), cur=q["currency"] or _biz_currency(tenant_id),
                            changes=_qq.changes_from_last(tenant_id, q),
