@@ -66,6 +66,9 @@ textarea.cz-in{resize:vertical;min-height:70px}
 .cz-qq span{font-size:13px;font-weight:600;border:1px solid #C3CEDF;background:#fff;color:#0B1D40;border-radius:999px;padding:7px 12px}
 .cz-btn.w{width:auto;padding:0 18px 0 14px;border-radius:999px;gap:8px;font-family:Inter,system-ui,sans-serif;font-weight:700;font-size:14.5px}
 .cz-btn.l{right:auto;left:14px}.cz-chat.l{right:auto;left:14px}
+.cz-mu{align-self:flex-end;max-width:80%;padding:9px 12px;border-radius:14px;border-bottom-right-radius:4px;font-size:14px;line-height:1.5;margin-left:auto}
+.cz-btn.vm{bottom:auto;top:calc(50% - 29px)}.cz-btn.vt{bottom:auto;top:64px}
+.cz-chat.vt{bottom:auto;top:130px}.cz-chat.vm{bottom:14px}.cz-chat.vm:not(.l){right:84px}.cz-chat.vm.l{left:84px}
 .cz-store.ph{max-width:380px;margin:0 auto}.cz-store.ph .cz-chat{width:calc(100% - 24px);left:12px;right:12px;height:420px}
 .cz-off{position:absolute;right:14px;bottom:20px;font-family:Inter,system-ui,sans-serif;font-size:12px;color:#4A5B78;background:#fff;border:1px dashed #C3CEDF;border-radius:8px;padding:6px 10px}
 @media (max-width:520px){.cz-chat,.cz-chat.lg{width:calc(100% - 28px);height:400px}.cz-store .hero{max-width:100%}}
@@ -74,6 +77,7 @@ textarea.cz-in{resize:vertical;min-height:70px}
 <div class="cb-card" id="customise" style="max-width:1180px">
   <h2 class="cb-h">Customise chat box</h2>
   <p class="cb-p">Change how the chat box looks on your website. Nothing changes until you press Save. Leave a box empty to keep today's look.</p>
+  <p class="cb-p" style="background:#E6F4EC;color:#067647;border-radius:10px;padding:10px 12px"><b>Used everywhere your chat box is:</b> your WooCommerce shop (PhiXtra plugin 3.10 or newer), Shopify and any other website.</p>
 
   <div class="cz-wrap">
     <form method="POST" action="{{ url_for('portal.store_info_website_chatbox_customise') }}" enctype="multipart/form-data" id="czForm" autocomplete="off">
@@ -84,6 +88,7 @@ textarea.cz-in{resize:vertical;min-height:70px}
       <input type="hidden" name="avatar_remove" id="czAvRm" value="0">
       <input type="hidden" name="reset" id="czReset" value="0">
       <input type="hidden" name="btn_position" id="czPos" value="{{ cb.btn_position }}">
+      <input type="hidden" name="btn_vpos" id="czVpos" value="{{ cb.btn_vpos }}">
       <input type="hidden" name="btn_style" id="czSty" value="{{ cb.btn_style }}">
 
       <div class="cz-f">
@@ -155,9 +160,11 @@ textarea.cz-in{resize:vertical;min-height:70px}
       <div class="cz-f">
         <span class="cz-l">Chat button</span>
         <span class="cz-h" id="czPosL">Position</span>
-        <div class="cz-seg" role="group" aria-labelledby="czPosL">
-          <button type="button" class="czpos" data-pos="right">Bottom right</button>
-          <button type="button" class="czpos" data-pos="left">Bottom left</button>
+        <div class="cz-seg" role="group" aria-labelledby="czPosL" style="flex-wrap:wrap">
+          {% for v, side, w in [('bottom','right','Bottom right'),('bottom','left','Bottom left'),('middle','right','Middle right'),
+                                ('middle','left','Middle left'),('top','right','Top right'),('top','left','Top left')] %}
+          <button type="button" class="czpos" data-pos="{{ side }}" data-vpos="{{ v }}">{{ w }}</button>
+          {% endfor %}
         </div>
         <span class="cz-h" id="czStyL">Style</span>
         <div class="cz-seg" role="group" aria-labelledby="czStyL">
@@ -207,6 +214,20 @@ textarea.cz-in{resize:vertical;min-height:70px}
       </div>
 
       <div class="cz-f">
+        <span class="cz-l">Text colours and size</span>
+        <label class="cz-tick"><input type="checkbox" id="czAtOn" name="agent_text_on" value="1" {% if cb.agent_text %}checked{% endif %}> Choose the AI Agent's text colour</label>
+        <input type="color" class="cz-pick" id="czAt" name="agent_text" value="{{ cb.agent_text or '#111E2D' }}" aria-label="AI Agent's text colour">
+        <label class="cz-tick"><input type="checkbox" id="czVtOn" name="visitor_text_on" value="1" {% if cb.visitor_text %}checked{% endif %}> Choose the visitor's text colour</label>
+        <input type="color" class="cz-pick" id="czVt" name="visitor_text" value="{{ cb.visitor_text or '#FFFFFF' }}" aria-label="Visitor's text colour">
+        <label class="cz-l" for="czVs" style="font-weight:600">Visitor's text size</label>
+        <select class="cz-in" id="czVs" name="visitor_size">
+          <option value="">Automatic (14 px)</option>
+          {% for n in range(10, 25) %}<option value="{{ n }}" {% if cb.visitor_size == n %}selected{% endif %}>{{ n }} px</option>{% endfor %}
+        </select>
+        <span class="cz-h">Leave unticked and PhiXtra picks colours that are easy to read on your colour.</span>
+      </div>
+
+      <div class="cz-f">
         <span class="cz-l" id="czSzL">Window size</span>
         <div class="cz-seg" role="group" aria-labelledby="czSzL">
           <button type="button" class="czsz" data-sz="standard">Standard</button>
@@ -227,7 +248,7 @@ textarea.cz-in{resize:vertical;min-height:70px}
         <div class="hero">Your website</div>
         <div class="cz-chat" id="pvChat">
           <div class="cz-top" id="pvTop"><div class="cz-logo" id="pvLogo"></div><div><div class="cz-t" id="pvT"></div><div class="cz-s"><span class="cz-gd" id="pvDot"></span><span id="pvS"></span></div></div></div>
-          <div class="cz-body"><div class="cz-mr"><div class="cz-av" id="pvAv"></div><div class="cz-m" id="pvW"></div></div><div class="cz-qq" id="pvQ"></div><div class="cz-sys" id="pvSys" hidden></div><div class="cz-form" id="pvForm" hidden><div id="pvFp"></div><span>Your name</span><span>Phone number</span><span>Email address</span><b id="pvFb">Send my details</b></div></div>
+          <div class="cz-body"><div class="cz-mr"><div class="cz-av" id="pvAv"></div><div class="cz-m" id="pvW"></div></div><div class="cz-mu" id="pvU">Do you have this in stock?</div><div class="cz-qq" id="pvQ"></div><div class="cz-sys" id="pvSys" hidden></div><div class="cz-form" id="pvForm" hidden><div id="pvFp"></div><span>Your name</span><span>Phone number</span><span>Email address</span><b id="pvFb">Send my details</b></div></div>
           <div class="cz-pk" id="pvPick" hidden><div class="e">😀 😊 👍 🙏 🎉 ❤️ 👌 🤝</div><div class="s"><b>Thanks!</b><b>Great 👍</b><b>Deal 🤝</b><b>Hello 👋</b></div></div>
           <div class="cz-bar"><button type="button" class="eb" id="pvEb" aria-label="Emojis and stickers">🙂</button><span>Type your message</span><i id="pvSend">➤</i></div>
         </div>
@@ -277,10 +298,15 @@ textarea.cz-in{resize:vertical;min-height:70px}
     $('czWordsBox').style.display=sty==='words'?'flex':'none';
     $('pvBtn').classList.toggle('w',sty==='words'); $('pvBw').textContent=sty==='words'?bw:'';
     $('pvBtn').classList.toggle('l',pos==='left'); $('pvChat').classList.toggle('l',pos==='left');
+    var vp=$('czVpos').value; ['pvBtn','pvChat'].forEach(function(i){$(i).classList.toggle('vm',vp==='middle');$(i).classList.toggle('vt',vp==='top')});
+    $('pvU').style.background=col; $('pvU').style.color=$('czVtOn').checked?$('czVt').value:fg;
+    $('pvU').style.fontSize=($('czVs').value||14)+'px';
+    $('pvW').style.color=$('czAtOn').checked?$('czAt').value:'';
+    $('czAt').style.display=$('czAtOn').checked?'':'none'; $('czVt').style.display=$('czVtOn').checked?'':'none';
     var store=document.querySelector('.cz-store'); store.classList.toggle('ph',dev==='p');
     var off=dev==='p'&&!$('czPhone').checked; $('pvBtn').hidden=off; $('pvChat').hidden=off; $('pvOff').hidden=!off;
     var Q=$('pvQ'); Q.innerHTML=''; document.querySelectorAll('.czqq').forEach(function(i){var v=i.value.trim(); if(v){var b=document.createElement('span'); b.textContent=v; Q.appendChild(b)}});
-    document.querySelectorAll('.czpos').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.pos===pos?'true':'false')});
+    document.querySelectorAll('.czpos').forEach(function(b){b.setAttribute('aria-pressed',(b.dataset.pos===pos&&b.dataset.vpos===vp)?'true':'false')});
     document.querySelectorAll('.czsty').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.sty===sty?'true':'false')});
     var hon=$('czHrs').checked; $('czHrsBox').style.display=hon?'flex':'none'; $('czOC').style.display=hon?'':'none';
     document.querySelectorAll('.cz-day').forEach(function(r){var on=r.querySelector('.czOpen').checked; r.querySelector('.czTimes').style.display=on?'':'none'; r.querySelector('.czClosed').style.display=on?'none':''});
@@ -294,7 +320,8 @@ textarea.cz-in{resize:vertical;min-height:70px}
     $('czOpenNow').setAttribute('aria-pressed',closedView?'false':'true'); $('czClosedNow').setAttribute('aria-pressed',closedView?'true':'false');
     $('czDvD').setAttribute('aria-pressed',dev==='d'?'true':'false'); $('czDvP').setAttribute('aria-pressed',dev==='p'?'true':'false');
   }
-  document.querySelectorAll('.czpos').forEach(function(b){b.addEventListener('click',function(){$('czPos').value=b.dataset.pos;render()})});
+  document.querySelectorAll('.czpos').forEach(function(b){b.addEventListener('click',function(){$('czPos').value=b.dataset.pos;$('czVpos').value=b.dataset.vpos;render()})});
+  ['czAtOn','czVtOn','czAt','czVt','czVs'].forEach(function(i){$(i).addEventListener('input',render);$(i).addEventListener('change',render)});
   document.querySelectorAll('.czsty').forEach(function(b){b.addEventListener('click',function(){$('czSty').value=b.dataset.sty;render()})});
   ['czWords','czPhone'].forEach(function(i){$(i).addEventListener('input',render);$(i).addEventListener('change',render)});
   document.querySelectorAll('.czqq').forEach(function(i){i.addEventListener('input',render)});

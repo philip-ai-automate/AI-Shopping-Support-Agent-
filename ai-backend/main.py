@@ -2730,6 +2730,38 @@ def widget_config(site: str, request: _WRequest, lang: str = ""):
         _w_mark_seen(int(row["tenant_id"]))
     if row.get("shopify_shop"):
         _w_shopify_seen(row["shopify_shop"])
+    return _widget_look(row, lang)
+
+
+@app.get("/widget/plugin-config")
+def widget_plugin_config(key: str, request: _WRequest, lang: str = ""):
+    """The PhiXtra WordPress / WooCommerce plugin (3.10+, 10 Nov 2026): the
+    same chat box look as every other platform, found by the plugin's API key
+    (the key the plugin already sends with every chat). Look settings only:
+    nothing secret is returned."""
+    k = (key or "").strip()
+    if not k or len(k) > 128:
+        return _WJSON({"enabled": False, "detail": "Missing key"}, status_code=400)
+    conn = get_db_connection()
+    if not conn:
+        return _WJSON({"enabled": False, "detail": "Please try again in a moment"}, status_code=503)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""SELECT t.id AS tenant_id, t.name, t.ai_enabled, COALESCE(p.slug, 'free') AS plan_slug
+                         FROM api_keys ak JOIN tenants t ON t.id = ak.tenant_id LEFT JOIN plans p ON p.id = t.plan_id
+                        WHERE ak.api_key_plain = %s AND ak.is_active AND t.status IN ('active', 'pending') LIMIT 1""", (k,))
+        r = cur.fetchone()
+    finally:
+        cur.close(); conn.close()
+    if not r:
+        return _WJSON({"enabled": False, "detail": "Unknown key"}, status_code=403)
+    row = dict(r)
+    row["api_key"] = k
+    row["ai_on"] = row["plan_slug"] not in _W_AI_OFF_PLANS and row["ai_enabled"] is not False
+    return _widget_look(row, lang)
+
+
+def _widget_look(row: dict, lang: str) -> dict:
     tid = int(row["tenant_id"])
     cb = _cb_settings(tid)
     # The box always shows (2026-10-06). AI off (PhiXtra Connect) = "team"
@@ -2772,6 +2804,11 @@ def widget_config(site: str, request: _WRequest, lang: str = ""):
            "size": "large" if cb.get("size") == "large" else "standard",
            "emojis": bool(cb.get("emojis_on")) if cb else False,
            "position": "left" if cb.get("btn_position") == "left" else "right",
+           "vpos": cb.get("btn_vpos") if cb.get("btn_vpos") in ("bottom", "middle", "top") else "bottom",
+           "agent_text": cb.get("agent_text") if _re.match(r"^#[0-9a-fA-F]{6}$", cb.get("agent_text") or "") else None,
+           "visitor_text": cb.get("visitor_text") if _re.match(r"^#[0-9a-fA-F]{6}$", cb.get("visitor_text") or "") else None,
+           "visitor_size": int(cb["visitor_size"]) if cb.get("visitor_size") and 10 <= int(cb["visitor_size"]) <= 24 else None,
+           "customised": bool(cb),
            "button_words": (tr.get("button") or src.get("button")) if cb.get("btn_style") == "words" else None,
            "phones": True if cb.get("show_on_phones") is None else bool(cb.get("show_on_phones")),
            "questions": [tr.get(f"q{i + 1}") or q for i, q in enumerate(qs)],

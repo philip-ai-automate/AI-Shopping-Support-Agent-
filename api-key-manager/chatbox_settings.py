@@ -32,7 +32,13 @@ LIMITS = {"welcome": 200, "title": 40, "subtitle": 60, "btn_words": 24, "questio
 _P2_COLS = {"btn_position": "VARCHAR(5) NOT NULL DEFAULT 'right'", "btn_style": "VARCHAR(6) NOT NULL DEFAULT 'round'",
             "btn_words": "VARCHAR(24)", "show_on_phones": "BOOLEAN NOT NULL DEFAULT TRUE", "quick_qs": "JSONB",
             # Phase 3 (10 Nov 2026): business hours, Monday first, in the business's own time zone.
-            "hours_on": "BOOLEAN NOT NULL DEFAULT FALSE", "hours": "JSONB", "hours_tz": "VARCHAR(64)"}
+            "hours_on": "BOOLEAN NOT NULL DEFAULT FALSE", "hours": "JSONB", "hours_tz": "VARCHAR(64)",
+            # WooCommerce in one place (10 Nov 2026): every position the plugin had,
+            # for every platform, and the plugin's text colours / size. NULL = automatic.
+            "btn_vpos": "VARCHAR(6) NOT NULL DEFAULT 'bottom'", "agent_text": "VARCHAR(7)",
+            "visitor_text": "VARCHAR(7)", "visitor_size": "SMALLINT"}
+VPOS = ["bottom", "middle", "top"]
+TEXT_SIZES = list(range(10, 25))
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 DEFAULT_HOURS = [{"on": i < 5, "from": "09:00", "to": "17:30"} for i in range(7)]
 _TIME_RE = re.compile(r"^([01]\d|2[0-3]):[03]0$")
@@ -136,6 +142,10 @@ def get(tenant_id: int) -> dict:
         "emojis_on": True if row.get("emojis_on") is None else bool(row.get("emojis_on")),
         "ai_emojis": bool(row.get("ai_emojis")),
         "btn_position": "left" if row.get("btn_position") == "left" else "right",
+        "btn_vpos": row.get("btn_vpos") if row.get("btn_vpos") in VPOS else "bottom",
+        "agent_text": row.get("agent_text") or "",
+        "visitor_text": row.get("visitor_text") or "",
+        "visitor_size": int(row["visitor_size"]) if row.get("visitor_size") else None,
         "btn_style": "words" if row.get("btn_style") == "words" else "round",
         "btn_words": row.get("btn_words") or "",
         "show_on_phones": True if row.get("show_on_phones") is None else bool(row.get("show_on_phones")),
@@ -212,6 +222,18 @@ def save(tenant_id: int, form, files, actor: str) -> list:
     emojis_on = form.get("emojis_on") == "1"
     ai_emojis = form.get("ai_emojis") == "1"
     btn_position = "left" if form.get("btn_position") == "left" else "right"
+    btn_vpos = form.get("btn_vpos") if form.get("btn_vpos") in VPOS else "bottom"
+    agent_text = (form.get("agent_text") or "").strip() if form.get("agent_text_on") == "1" else ""
+    visitor_text = (form.get("visitor_text") or "").strip() if form.get("visitor_text_on") == "1" else ""
+    for v in (agent_text, visitor_text):
+        if v and not _COLOUR_RE.match(v):
+            errs.append("Pick the text colour from the colour box.")
+    try:
+        visitor_size = int(form.get("visitor_size") or 0) or None
+    except ValueError:
+        visitor_size = None
+    if visitor_size is not None and visitor_size not in TEXT_SIZES:
+        visitor_size = None
     btn_style = "words" if form.get("btn_style") == "words" else "round"
     btn_words = " ".join((form.get("btn_words") or "").split())
     show_on_phones = form.get("show_on_phones") == "1"
@@ -274,8 +296,9 @@ def save(tenant_id: int, form, files, actor: str) -> list:
         cur.execute("""
             INSERT INTO chatbox_settings (tenant_id, welcome, colour, font, title, subtitle, logo_file, avatar_mode,
                                           avatar_file, size, emojis_on, ai_emojis, btn_position, btn_style, btn_words,
-                                          show_on_phones, quick_qs, hours_on, hours, hours_tz, updated_at, updated_by)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
+                                          show_on_phones, quick_qs, hours_on, hours, hours_tz, btn_vpos, agent_text,
+                                          visitor_text, visitor_size, updated_at, updated_by)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
             ON CONFLICT (tenant_id) DO UPDATE SET
               welcome=EXCLUDED.welcome, colour=EXCLUDED.colour, font=EXCLUDED.font, title=EXCLUDED.title,
               subtitle=EXCLUDED.subtitle, logo_file=EXCLUDED.logo_file, avatar_mode=EXCLUDED.avatar_mode,
@@ -283,11 +306,14 @@ def save(tenant_id: int, form, files, actor: str) -> list:
               ai_emojis=EXCLUDED.ai_emojis, btn_position=EXCLUDED.btn_position, btn_style=EXCLUDED.btn_style,
               btn_words=EXCLUDED.btn_words, show_on_phones=EXCLUDED.show_on_phones, quick_qs=EXCLUDED.quick_qs,
               hours_on=EXCLUDED.hours_on, hours=EXCLUDED.hours, hours_tz=EXCLUDED.hours_tz,
+              btn_vpos=EXCLUDED.btn_vpos, agent_text=EXCLUDED.agent_text, visitor_text=EXCLUDED.visitor_text,
+              visitor_size=EXCLUDED.visitor_size,
               updated_at=NOW(), updated_by=EXCLUDED.updated_by
         """, (int(tenant_id), welcome or None, colour.upper(), font, title or None, subtitle or None, logo,
               avatar_mode, avatar, size, emojis_on, ai_emojis, btn_position, btn_style, btn_words or None,
               show_on_phones, json.dumps(quick_qs) if quick_qs else None, hours_on, json.dumps(hours),
-              tz_name(tenant_id), (actor or "")[:120]))
+              tz_name(tenant_id), btn_vpos, agent_text.upper() or None, visitor_text.upper() or None, visitor_size,
+              (actor or "")[:120]))
         if old_texts != (welcome or None, btn_words or None, quick_qs):
             cur.execute("DELETE FROM chatbox_welcome_tr WHERE tenant_id=%s", (int(tenant_id),))
         conn.commit()

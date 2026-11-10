@@ -52,6 +52,12 @@
     // Customise chat box Phase 2 (9 Nov 2026): the business can hide the chat on phones.
     if (!PAGE && cfg.phones === false && window.matchMedia && window.matchMedia("(max-width: 767px)").matches) { return; }
     var LEFT = !PAGE && cfg.position === "left";
+    // All six positions (10 Nov 2026): bottom / middle / top, right or left.
+    var VPOS = PAGE ? "bottom" : (cfg.vpos === "middle" || cfg.vpos === "top" ? cfg.vpos : "bottom");
+    var HEX = /^#[0-9a-fA-F]{6}$/;
+    var agentText = HEX.test(cfg.agent_text || "") ? cfg.agent_text : null;
+    var visitorText = HEX.test(cfg.visitor_text || "") ? cfg.visitor_text : null;
+    var visitorSize = (cfg.visitor_size >= 10 && cfg.visitor_size <= 24) ? cfg.visitor_size : null;
     if (!SUGG.length && cfg.questions && cfg.questions.length) { SUGG = cfg.questions.slice(0, 4); }
     var color = /^#[0-9a-fA-F]{6}$/.test(cfg.color || "") ? cfg.color : "#0B1D40";
     // Customise chat box (9 Nov 2026): text on the business's colour stays readable.
@@ -70,7 +76,9 @@
     var host = document.createElement("div");
     host.id = "phixtra-chat-root";
     host.style.cssText = PAGE ? "position:fixed;left:0;right:0;bottom:0;top:" + TOPPX + "px;z-index:2147483000;"
-                              : "position:fixed;" + (LEFT ? "left" : "right") + ":20px;bottom:20px;z-index:2147483000;";
+                              : "position:fixed;" + (LEFT ? "left" : "right") + ":20px;" +
+                                (VPOS === "top" ? "top:20px;" : VPOS === "middle" ? "top:calc(50% - 30px);" : "bottom:20px;") +
+                                "z-index:2147483000;";
     // Many store themes (e.g. Shopify's Dawn: div:empty{display:none}) hide
     // empty boxes; ours looks empty because its content is in a shadow root
     // (2026-11-02). Keep it shown whatever the page's styles say.
@@ -86,6 +94,9 @@
       ".btn svg{width:28px;height:28px}",
       ".panel{position:absolute;" + (LEFT ? "left" : "right") + ":0;bottom:76px;width:" + (LARGE ? 440 : 370) + "px;max-width:calc(100vw - 32px);height:" + (LARGE ? 640 : 560) + "px;max-height:calc(100vh - 120px);background:#fff;border-radius:18px;box-shadow:0 24px 60px rgba(11,29,64,.35);display:flex;flex-direction:column;overflow:hidden}",
       ".panel[hidden]{display:none}",
+      // Top: the window opens below the button. Middle: beside it, from the bottom of the screen.
+      (VPOS === "top" ? ".panel{bottom:auto;top:76px}" : ""),
+      (VPOS === "middle" ? ".panel{position:fixed;bottom:20px;" + (LEFT ? "left" : "right") + ":96px;max-width:calc(100vw - 120px)}" : ""),
       ".top{background:" + color + ";color:" + fg + ";padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}",
       ".top b{font-size:15px;display:block}",
       ".top small{font-size:12px;opacity:.85}",
@@ -93,8 +104,8 @@
       ".x:hover{background:rgba(255,255,255,.12)}",
       ".msgs{flex:1;overflow-y:auto;padding:14px;background:#F4F6FA;display:flex;flex-direction:column;gap:10px}",
       ".m{max-width:85%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.5;color:#111E2D;white-space:pre-wrap;word-wrap:break-word}",
-      ".m.me{align-self:flex-end;background:" + color + ";color:" + fg + ";border-bottom-right-radius:4px}",
-      ".m.ai{align-self:flex-start;background:#fff;border:1px solid #D9E1EE;border-bottom-left-radius:4px}",
+      ".m.me{align-self:flex-end;background:" + color + ";color:" + (visitorText || fg) + ";border-bottom-right-radius:4px" + (visitorSize ? ";font-size:" + visitorSize + "px" : "") + "}",
+      ".m.ai{align-self:flex-start;background:#fff;border:1px solid #D9E1EE;border-bottom-left-radius:4px" + (agentText ? ";color:" + agentText : "") + "}",
       ".m.ai a{color:" + color + ";font-weight:600}",
       ".m.typing{color:#4A5B78;font-style:italic}",
       ".m.sys{align-self:center;max-width:95%;background:#EEF2F8;border:1px dashed #C3CEDF;color:#4A5B78;font-size:12.5px;text-align:center}",
@@ -133,6 +144,8 @@
       ".foot{font-size:11px;color:#4A5B78;text-align:center;padding:0 0 8px;background:#fff}",
       "input:focus,button:focus-visible{outline:2px solid " + color + ";outline-offset:1px}",
       "@media (max-width:480px){.panel{position:fixed;right:8px;left:8px;bottom:86px;width:auto;height:calc(100vh - 110px)}}",
+      // Phones: whatever the button's height, the window fills the screen above the bottom edge.
+      (VPOS !== "bottom" ? "@media (max-width:480px){.panel{top:auto;bottom:12px;height:calc(100vh - 40px);max-width:none}}" : ""),
       ".sugg{display:flex;flex-direction:column;align-items:flex-start;gap:7px}",
       ".sugg button{border:1px solid #C3CEDF;background:#fff;color:#0B1D40;border-radius:999px;padding:8px 12px;font-size:13.5px;font-weight:600;cursor:pointer;text-align:left;max-width:100%}",
       ".sugg button:hover{border-color:" + color + "}",
