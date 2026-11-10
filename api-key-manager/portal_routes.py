@@ -40653,10 +40653,16 @@ def sales_pipeline():
         except Exception as e:
             print("⚠️ pipeline woo orders:", e)
             _wmap = {}
+        try:
+            import xero_link as _xlp
+            _xmap = _xlp.invoices_for_requests(tenant_id, [v["id"] for v in dq_all.values() if v["key"] == "accepted"])
+        except Exception as e:
+            print("⚠️ pipeline xero invoices:", e)
+            _xmap = {}
         for l in leads:
             l["dq"] = dq_all.get(l["id"])
             if l["dq"]:
-                l["dq"] = dict(l["dq"], woo=_wmap.get(l["dq"]["id"]))
+                l["dq"] = dict(l["dq"], woo=_wmap.get(l["dq"]["id"]), xero=_xmap.get(l["dq"]["id"]))
     od_on = _od.pilot(tenant_id)
     od_counts = _od.pipeline_counts(tenant_id) if od_on else {}
     od_chips = _od.row_chips(tenant_id, [l["id"] for l in leads]) if od_on else {}
@@ -42006,7 +42012,13 @@ def lead_detail(lead_id: int, opp_view: bool = False):
                 except Exception as e:
                     print("⚠️ deal woo order:", e)
                     _woo = {"state": "none"}
-                deal_quote = {**_dqi, "woo": _woo, "latest": _sent[0] if _sent else None, "earlier": _sent[1:4],
+                try:
+                    import xero_link as _xld
+                    _xr = _xld.for_request(tenant_id, _dqi["id"])
+                except Exception as e:
+                    print("⚠️ deal xero invoice:", e)
+                    _xr = {"state": "none"}
+                deal_quote = {**_dqi, "woo": _woo, "xero": _xr, "latest": _sent[0] if _sent else None, "earlier": _sent[1:4],
                               "events": _evs, "link": _link, "approved_by": _appr,
                               "last_opened_local": _dqi["last_opened_at"].astimezone(_qtz) if _dqi.get("last_opened_at") else None}
     except Exception as e:
@@ -43802,6 +43814,14 @@ def quotes_request_detail(request_id: int):
         print("⚠️ quote online box:", e)
         online = None
     _woo_state = {"state": "none"}
+    _xero_state = {"state": "none"}
+    try:
+        import xero_link as _xlr
+        _xero_state = _xlr.for_request(tenant_id, r["id"])
+        if _xlr.chosen(tenant_id) == "xero" and not (shopify_order.get("draft")):
+            shopify_order["on"] = False   # one place only: Xero instead of a Shopify draft order
+    except Exception as e:
+        print("⚠️ quote request xero:", e)
     if not shopify_order.get("on"):
         try:
             import woo_orders as _wor
@@ -43816,7 +43836,7 @@ def quotes_request_detail(request_id: int):
                            not_quoted_reasons=_qr.NOT_QUOTED_REASONS, cur=r.get("currency") or _biz_currency(tenant_id),
                            country_name=dict(_addr.ADDRESS_COUNTRIES), today=now.date(), dt=_quote_dt(tz),
                            maker=_qr.settings(tenant_id)["maker"], quotations=_qq.for_request(tenant_id, r["id"]),
-                           sent_q=sent_q, shopify_order=shopify_order, woo=_woo_state,
+                           sent_q=sent_q, shopify_order=shopify_order, woo=_woo_state, xr=_xero_state,
                            orders_on=_plan_grants_feature(_get_tenant_plan(tenant_id), "ecom.orders_view"))
 
 

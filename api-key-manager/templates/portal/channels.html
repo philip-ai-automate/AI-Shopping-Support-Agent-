@@ -76,6 +76,25 @@
   {% endif %}
 
 
+  {% set _xc = xero_card() if not mailbox_only else none %}
+  {% if _xc %}
+  <!-- Xero (2026-11-10, B2B plans) — accepted quotations become draft invoices -->
+  <div class="channel-card">
+    <div class="channel-card-top">
+      <div class="channel-logo" style="background:#13B5EA;color:#fff;font-weight:800;font-size:20px">x</div>
+      <div>
+        <div class="channel-name">Xero</div>
+        {% if _xc.link and _xc.link.status == 'active' %}<div class="channel-status on">🟢 {{ _xc.link.org_name }}</div>
+        {% elif _xc.link %}<div class="channel-status" style="color:#B54708;font-weight:600">🟠 Needs reconnecting</div>
+        {% else %}<div class="channel-status">Not connected. Accepted quotations become draft invoices in Xero.</div>{% endif %}
+      </div>
+    </div>
+    <div class="channel-card-foot">
+      <a href="{{ url_for('xero.page') }}" class="btn {% if not _xc.link %}btn-primary{% endif %}">{{ 'Manage' if _xc.link else 'Connect Xero' }} →</a>
+    </div>
+  </div>
+  {% endif %}
+
   {% if bookings_card %}
   <!-- Microsoft Bookings (2026-10-18) — the business's Bookings page; booked demos land on leads -->
   <div class="channel-card">

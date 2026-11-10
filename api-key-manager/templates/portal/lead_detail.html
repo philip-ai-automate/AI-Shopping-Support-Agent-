@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% from "portal/_xero_invoice_box.html" import xero_invoice_box with context %}
 {% from "portal/_woo_order_box.html" import woo_order_box with context %}
 {% from "portal/_phone_box.html" import phone_box, phone_flag with context %}
 {% from "portal/_address_box.html" import emails_cell, other_emails_box, address_box, location_cell with context %}
@@ -445,6 +446,7 @@
       {% if dq.link and dq.link.live %}<button type="button" class="lc-edit-btn" data-url="{{ dq.link.url }}" onclick="dqxCopy(this)">Copy online link</button>{% endif %}
     </div>
     {% if dq.woo and dq.woo.state != 'none' %}{{ woo_order_box(dq.woo, dq.id, 'deal') }}{% endif %}
+    {% if dq.xero and dq.xero.state != 'none' %}{{ xero_invoice_box(dq.xero, dq.id, 'deal') }}{% endif %}
     {% if dq.earlier %}<div class="dqx-note">Earlier: {% for v in dq.earlier %}{{ v.number }}{% if (v.version or 1) > 1 %} v{{ v.version }}{% endif %}{% if v.total is not none %}, {{ v.total|money(v.currency) }}{% endif %}{% if v.sent_at %}, sent {{ v.sent_at.strftime('%d %b') }}{% endif %}{{ '; ' if not loop.last }}{% endfor %}.</div>{% endif %}
     {% if dq.events %}
     <div class="dqx-h">What happened on this quotation</div>

@@ -1,0 +1,33 @@
+{# Accepted quotation → Xero draft invoice (2026-11-10). xr = xero_link.for_request(); back = 'deal' | 'request' #}
+{% macro xero_invoice_box(xr, request_id, back, po_field=false) -%}
+{% if xr and xr.state == 'made' %}{% set o = xr.invoice %}
+<div class="xr-inv">
+  <div class="xr-top"><b>Xero invoice {{ o.number or '(draft)' }}</b>
+    <span class="xr-pill {{ 'paid' if o.paid else ('bad' if o.key in ('OVERDUE','VOIDED','DELETED') else 'pend') }}">{{ o.word }}</span>
+    {% if o.url %}<a class="xr-btn" href="{{ o.url }}" target="_blank" rel="noopener">Open in Xero</a>{% endif %}</div>
+  <div class="xr-small">{% if o.total is not none %}{{ '%.2f'|format(o.total|float) }} {{ o.currency or '' }}{% endif %}{% if o.due %} · due {{ o.due }}{% endif %}{% if o.amount_due is not none and not o.paid and o.key != 'DRAFT' %} · {{ '%.2f'|format(o.amount_due|float) }} still to pay{% endif %}{% if o.created_at %} · created {{ o.created_at[:10] }}{% endif %}{% if o.by %} by {{ o.by }}{% endif %}{% if o.contact == 'created' %} · new Xero contact made{% endif %}</div>
+  {% if o.key == 'DRAFT' %}<div class="xr-small">Check and approve it in Xero; Xero sends it and chases payment.</div>{% endif %}
+</div>
+{% elif xr and xr.state == 'ready' and staff_can_open('xero.create_invoice') %}
+<form method="post" action="{{ url_for('xero.create_invoice', request_id=request_id) }}" class="xr-form2">
+  <input type="hidden" name="back" value="{{ back }}">
+  {% if po_field %}<label class="xr-small" for="xrPo" style="margin:0">Buyer's PO number (optional, if not already given)</label>
+  <input id="xrPo" name="po_number" maxlength="60" placeholder="e.g. PO-4471">{% endif %}
+  <button class="xr-btn dark" type="submit">Create Xero invoice</button>
+  <div class="xr-small">Makes a draft invoice in your Xero with the quoted lines and prices. Your accountant approves it in Xero. One invoice per quotation.</div>
+</form>
+{% elif xr and xr.state == 'reconnect' %}
+<div class="xr-warn">PhiXtra no longer has access to your Xero. <a href="{{ url_for('xero.page') }}" style="color:inherit;font-weight:700">Connect Xero again</a> to create the invoice.</div>
+{% endif %}
+<style>
+  .xr-inv{border:2px solid #13B5EA;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+  .xr-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .xr-pill{display:inline-block;font-size:11.5px;font-weight:700;border-radius:6px;padding:3px 8px}
+  .xr-pill.pend{background:#FFFAEB;color:#93370D} .xr-pill.paid{background:#ECFDF3;color:#067647} .xr-pill.bad{background:#FEF3F2;color:#B42318}
+  .xr-btn{font:inherit;font-size:13px;font-weight:700;border:1px solid #D0D5DD;border-radius:8px;padding:7px 12px;background:#fff;color:#101828;cursor:pointer;text-decoration:none}
+  .xr-btn.dark{background:#0B1D40;border-color:#0B1D40;color:#fff;justify-self:start}
+  .xr-small{font-size:12.5px;color:#667085;line-height:1.45}
+  .xr-warn{background:#FFFAEB;border:1px solid #FEDF89;color:#93370D;border-radius:8px;padding:9px 11px;font-size:12.5px;line-height:1.45}
+  .xr-form2{display:grid;gap:8px;margin:0}
+</style>
+{%- endmacro %}

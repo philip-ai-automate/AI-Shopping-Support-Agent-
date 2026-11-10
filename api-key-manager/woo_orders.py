@@ -233,6 +233,12 @@ def for_request(tenant_id: int, request_id: int) -> dict:
         return {"state": "none"}          # Shopify trade customer: Shopify draft order instead
     if _shopify_on(tenant_id):
         return {"state": "none"}          # a Shopify store: its own draft order flow
+    try:
+        import xero_link as _xl
+        if _xl.chosen(tenant_id) == "xero":
+            return {"state": "none"}      # the business sends accepted quotes to Xero instead
+    except Exception as e:
+        print("⚠️ woo xero choice:", e)
     if not has_shop(tenant_id):
         return {"state": "none"}
     shop = shop_for(tenant_id)

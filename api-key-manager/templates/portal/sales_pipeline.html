@@ -473,7 +473,7 @@
 {%- if dq.key == 'to_quote' %}{{ dq.n_lines }} product{{ 's' if dq.n_lines != 1 }}{% if dq.due_at %} · due {{ dq.due_at.strftime('%d %b') }}{% endif %}
 {%- elif dq.key == 'approval' %}Asked {{ dq.asked.to or 'a manager' }}
 {%- elif dq.key in ('sent_unopened', 'sent_opened', 'replied', 'expired') %}{{ dq.quote_value|money(dq.quote_currency) if dq.quote_value else '' }}{% if dq.open_count %} · opened {{ dq.open_count }}×{% elif dq.key == 'sent_unopened' %} · not opened{% endif %}{% if dq.quote_valid_until %} · valid to {{ dq.quote_valid_until.strftime('%d %b') }}{% endif %}
-{%- elif dq.key == 'accepted' %}{% if dq.woo %}Order #{{ dq.woo.number }} · {{ 'paid' if dq.woo.paid else dq.woo.word|lower }}{% else %}{{ dq.quote_value|money(dq.quote_currency) if dq.quote_value else '' }}{% if dq.closed_at %} · {{ dq.closed_at.strftime('%d %b') }}{% endif %}{% endif %}
+{%- elif dq.key == 'accepted' %}{% if dq.xero %}Invoice {{ dq.xero.number or '(draft)' }} · {{ dq.xero.word|lower }}{% elif dq.woo %}Order #{{ dq.woo.number }} · {{ 'paid' if dq.woo.paid else dq.woo.word|lower }}{% else %}{{ dq.quote_value|money(dq.quote_currency) if dq.quote_value else '' }}{% if dq.closed_at %} · {{ dq.closed_at.strftime('%d %b') }}{% endif %}{% endif %}
 {%- elif dq.key == 'declined' %}{{ (dq.close_reason or '')|replace('Lost: ', '')|truncate(40, True) }}
 {%- endif %}</div>
 {% elif staff_can_open('portal.quotes_request_new') %}
