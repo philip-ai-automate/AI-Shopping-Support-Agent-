@@ -95,6 +95,25 @@
   </div>
   {% endif %}
 
+  {% set _qc = qbo_card() if not mailbox_only else none %}
+  {% if _qc %}
+  <!-- QuickBooks (2026-11-10, B2B plans) — accepted quotations become invoices -->
+  <div class="channel-card">
+    <div class="channel-card-top">
+      <div class="channel-logo" style="background:#2CA01C;color:#fff;font-weight:800;font-size:16px">qb</div>
+      <div>
+        <div class="channel-name">QuickBooks</div>
+        {% if _qc.link and _qc.link.status == 'active' %}<div class="channel-status on">🟢 {{ _qc.link.company_name or 'Connected' }}</div>
+        {% elif _qc.link %}<div class="channel-status" style="color:#B54708;font-weight:600">🟠 Needs reconnecting</div>
+        {% else %}<div class="channel-status">Not connected. Accepted quotations become invoices in QuickBooks.</div>{% endif %}
+      </div>
+    </div>
+    <div class="channel-card-foot">
+      <a href="{{ url_for('qbo.page') }}" class="btn {% if not _qc.link %}btn-primary{% endif %}">{{ 'Manage' if _qc.link else 'Connect QuickBooks' }} →</a>
+    </div>
+  </div>
+  {% endif %}
+
   {% if bookings_card %}
   <!-- Microsoft Bookings (2026-10-18) — the business's Bookings page; booked demos land on leads -->
   <div class="channel-card">

@@ -237,6 +237,9 @@ def for_request(tenant_id: int, request_id: int) -> dict:
         import xero_link as _xl
         if _xl.chosen(tenant_id) == "xero":
             return {"state": "none"}      # the business sends accepted quotes to Xero instead
+        import qbo_link as _ql
+        if _ql.chosen(tenant_id) == "qbo":
+            return {"state": "none"}      # … or to QuickBooks
     except Exception as e:
         print("⚠️ woo xero choice:", e)
     if not has_shop(tenant_id):

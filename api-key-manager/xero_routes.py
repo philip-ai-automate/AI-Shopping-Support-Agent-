@@ -77,6 +77,13 @@ def connect():
     customer, tenant_id, err = _guard()
     if err:
         return err
+    try:
+        import qbo_link as _Q
+        if _Q.connected(tenant_id):
+            flash("QuickBooks is connected. PhiXtra works with one accounts package at a time: disconnect QuickBooks first.", "warning")
+            return redirect(url_for("xero.page"))
+    except Exception as e:
+        print("⚠️ xero connect qbo check:", e)
     if not X.configured():
         flash("The Xero connection isn't available yet. PhiXtra is finishing its set-up.", "warning")
         return redirect(url_for("xero.page"))
