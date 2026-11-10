@@ -25,7 +25,7 @@ import io
 import re
 import threading
 import time
-from datetime import datetime, timedelta, time as dtime
+from datetime import date, datetime, timedelta, time as dtime
 
 import psycopg2.extras
 
@@ -464,69 +464,10 @@ def counts(tenant_id: int, scope_key: str = None) -> dict:
         cur.close(); conn.close()
 
 
-def sent_kpis(tenant_id: int, today, scope_key: str = None) -> dict:
-    """Quote Sent page: quotes waiting for the buyer, their value in the
-    business's currency, and how many run out within 3 days / already have."""
-    conn, cur = _db()
-    try:
-        cur.execute("""SELECT COUNT(*) AS n,
-                              COALESCE(SUM(fx_to_selling(quote_value, quote_currency, tenant_id)), 0) AS v,
-                              COUNT(*) FILTER (WHERE quote_valid_until >= %s AND quote_valid_until <= %s + 3) AS expiring,
-                              COUNT(*) FILTER (WHERE quote_valid_until < %s) AS expired
-                         FROM quote_requests WHERE tenant_id=%s AND status='quote_sent'
-                          AND (%s::text IS NULL OR assigned_key=%s)""",
-                    (today, today, today, tenant_id, scope_key, scope_key))
-        r = cur.fetchone()
-        return {"n": r["n"], "v": float(r["v"] or 0), "expiring": r["expiring"], "expired": r["expired"]}
-    finally:
-        cur.close(); conn.close()
 
 
-def won_value(tenant_id: int, since=None, scope_key: str = None) -> dict:
-    """Quote Won page: how many won (since a date, or ever) and their value."""
-    conn, cur = _db()
-    try:
-        cur.execute("""SELECT COUNT(*) AS n,
-                              COALESCE(SUM(fx_to_selling(quote_value, quote_currency, tenant_id)), 0) AS v
-                         FROM quote_requests WHERE tenant_id=%s AND status='won'
-                          AND (%s::timestamptz IS NULL OR closed_at >= %s)
-                          AND (%s::text IS NULL OR assigned_key=%s)""",
-                    (tenant_id, since, since, scope_key, scope_key))
-        r = cur.fetchone()
-        return {"n": r["n"], "v": float(r["v"] or 0)}
-    finally:
-        cur.close(); conn.close()
 
 
-def order_info(tenant_id: int, request_ids: list) -> dict:
-    """{request_id: {...}} from each request's latest quotation: a PhiXtra
-    order (kind 'phixtra', order_id) or, for Shopify-linked businesses only,
-    the Shopify draft order (kind 'shopify', name, status). No entry = no
-    order yet."""
-    if not request_ids:
-        return {}
-    conn, cur = _db()
-    try:
-        # shopify_draft only exists once the Shopify add-on has run.
-        cur.execute("""SELECT 1 FROM information_schema.columns
-                        WHERE table_name='quotations' AND column_name='shopify_draft'""")
-        draft_col = "shopify_draft" if cur.fetchone() else "NULL::jsonb AS shopify_draft"
-        cur.execute(f"""SELECT DISTINCT ON (request_id) request_id, order_id, {draft_col}
-                          FROM quotations WHERE tenant_id=%s AND request_id = ANY(%s)
-                         ORDER BY request_id, version DESC, id DESC""", (tenant_id, list(request_ids)))
-        out = {}
-        for r in cur.fetchall():
-            dr = r.get("shopify_draft") or {}
-            if r.get("order_id"):
-                out[r["request_id"]] = {"kind": "phixtra", "order_id": r["order_id"]}
-            elif dr.get("name") and dr.get("status") != "deleted":
-                out[r["request_id"]] = {"kind": "shopify", "name": dr["name"],
-                                        "placed": dr.get("status") == "completed",
-                                        "status": {"completed": "order placed", "invoice_sent": "invoice sent"}
-                                                  .get(dr.get("status"), "draft")}
-        return out
-    finally:
-        cur.close(); conn.close()
 
 
 def kpis(tenant_id: int, since: datetime, scope_key: str = None) -> dict:
@@ -1678,156 +1619,8 @@ def start():
 _REPLY_EVENTS = ("The buyer asked about the quotation%", "The buyer may have%")
 
 
-def _lost_reason_word(reason: str) -> str:
-    r = (reason or "").strip()
-    r = re.sub(r"^(Lost|Not quoted):\s*", "", r)
-    if not r:
-        return "No reason given"
-    if r.lower().startswith("declined"):
-        return "Declined by the buyer"
-    return r[:60]
 
 
-def overview(tenant_id: int, since: datetime, until: datetime, now: datetime, scope_key: str = None) -> dict:
-    ensure_tables()
-    sc = (scope_key, scope_key)
-    today = now.date()
-    conn, cur = _db()
-    try:
-        out = {}
-        # Q1: requests that arrived in the period, by where they came from.
-        cur.execute("""SELECT channel, COUNT(*) AS n FROM quote_requests
-                        WHERE tenant_id=%s AND created_at >= %s AND created_at < %s
-                          AND (%s::text IS NULL OR assigned_key=%s) GROUP BY channel ORDER BY n DESC""",
-                    (tenant_id, since, until, *sc))
-        ch = cur.fetchall()
-        out["arrived"] = sum(r["n"] for r in ch)
-        out["by_channel"] = [(CHANNEL_WORDS.get(r["channel"], r["channel"]), r["n"]) for r in ch]
-
-        # Q3: pipeline now = quotes with buyers + estimate of requests not quoted yet.
-        cur.execute("""SELECT COUNT(*) FILTER (WHERE status='quote_sent') AS sent_n,
-                              COALESCE(SUM(fx_to_selling(quote_value, quote_currency, tenant_id))
-                                       FILTER (WHERE status='quote_sent'), 0) AS sent_v,
-                              COUNT(*) FILTER (WHERE status='to_quote') AS todo_n,
-                              COALESCE(SUM(fx_to_selling(estimate, currency, tenant_id))
-                                       FILTER (WHERE status='to_quote'), 0) AS todo_v
-                         FROM quote_requests WHERE tenant_id=%s AND status IN ('quote_sent','to_quote')
-                          AND (%s::text IS NULL OR assigned_key=%s)""", (tenant_id, *sc))
-        p = cur.fetchone()
-        out["pipe"] = {"sent_n": p["sent_n"], "sent_v": float(p["sent_v"] or 0),
-                       "todo_n": p["todo_n"], "todo_v": float(p["todo_v"] or 0),
-                       "total": float(p["sent_v"] or 0) + float(p["todo_v"] or 0)}
-
-        # Q5: decided (won or lost) in the period.
-        cur.execute("""SELECT COUNT(*) FILTER (WHERE status='won') AS won_n,
-                              COUNT(*) FILTER (WHERE status='lost') AS lost_n,
-                              COALESCE(SUM(fx_to_selling(quote_value, quote_currency, tenant_id))
-                                       FILTER (WHERE status='won'), 0) AS won_v,
-                              COALESCE(SUM(fx_to_selling(COALESCE(quote_value, estimate),
-                                                         COALESCE(quote_currency, currency), tenant_id))
-                                       FILTER (WHERE status='lost'), 0) AS lost_v
-                         FROM quote_requests WHERE tenant_id=%s AND status IN ('won','lost')
-                          AND closed_at >= %s AND closed_at < %s
-                          AND (%s::text IS NULL OR assigned_key=%s)""", (tenant_id, since, until, *sc))
-        d = cur.fetchone()
-        decided = d["won_n"] + d["lost_n"]
-        out["won"] = {"n": d["won_n"], "lost_n": d["lost_n"], "decided": decided,
-                      "rate": round(100 * d["won_n"] / decided) if decided else None,
-                      "v": float(d["won_v"] or 0), "lost_v": float(d["lost_v"] or 0)}
-
-        # Response time for requests that arrived in the period.
-        cur.execute("""SELECT COUNT(*) FILTER (WHERE first_quote_at IS NOT NULL) AS quoted,
-                              percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM first_quote_at - created_at))
-                                  FILTER (WHERE first_quote_at IS NOT NULL) AS median_secs,
-                              COUNT(*) FILTER (WHERE first_quote_at IS NOT NULL AND due_at IS NOT NULL
-                                                 AND first_quote_at <= due_at) AS on_time,
-                              COUNT(*) FILTER (WHERE first_quote_at IS NOT NULL AND due_at IS NOT NULL) AS timed
-                         FROM quote_requests WHERE tenant_id=%s AND created_at >= %s AND created_at < %s
-                          AND (%s::text IS NULL OR assigned_key=%s)""", (tenant_id, since, until, *sc))
-        t = cur.fetchone()
-        out["resp"] = {"median_secs": float(t["median_secs"]) if t["median_secs"] is not None else None,
-                       "on_time_pct": round(100 * t["on_time"] / t["timed"]) if t["timed"] else None}
-
-        # Q2: needs attention now. One row per request, most urgent reason first.
-        cols = """r.id, r.ref_no, r.status, r.buyer_company, r.buyer_name, r.assigned_key, r.assigned_to,
-                  r.due_at, r.quote_valid_until, r.quote_value, r.quote_currency, r.estimate, r.currency"""
-        att = {}
-
-        def add(rows, kind):
-            for r in rows:
-                if r["id"] not in att:
-                    att[r["id"]] = {**r, "kind": kind}
-
-        cur.execute(f"""SELECT {cols} FROM quote_requests r WHERE r.tenant_id=%s AND r.status='to_quote'
-                           AND r.due_at < %s AND (%s::text IS NULL OR r.assigned_key=%s)
-                         ORDER BY r.due_at LIMIT 100""", (tenant_id, now, *sc))
-        add(cur.fetchall(), "late")
-        cur.execute(f"""SELECT {cols}, e.what AS said FROM quote_requests r
-                          JOIN LATERAL (SELECT what, created_at FROM quote_request_events
-                                         WHERE request_id=r.id AND by_label IN (%s, 'Buyer (online)') AND (what LIKE %s OR what LIKE %s)
-                                           AND created_at >= COALESCE(r.quote_sent_at, r.created_at)
-                                         ORDER BY created_at DESC LIMIT 1) e ON TRUE
-                         WHERE r.tenant_id=%s AND r.status='quote_sent' AND (%s::text IS NULL OR r.assigned_key=%s)
-                         ORDER BY e.created_at DESC LIMIT 100""",
-                    (AI_ACTOR["label"], *_REPLY_EVENTS, tenant_id, *sc))
-        add(cur.fetchall(), "replied")
-        cur.execute(f"""SELECT {cols} FROM quote_requests r WHERE r.tenant_id=%s AND r.status='quote_sent'
-                           AND r.quote_valid_until >= %s AND r.quote_valid_until <= %s
-                           AND (%s::text IS NULL OR r.assigned_key=%s) ORDER BY r.quote_valid_until LIMIT 100""",
-                    (tenant_id, today, today + timedelta(days=3), *sc))
-        add(cur.fetchall(), "expiring")
-        cur.execute(f"""SELECT {cols} FROM quote_requests r WHERE r.tenant_id=%s AND r.status='quote_sent'
-                           AND r.quote_valid_until < %s AND (%s::text IS NULL OR r.assigned_key=%s)
-                         ORDER BY r.quote_valid_until LIMIT 100""", (tenant_id, today, *sc))
-        add(cur.fetchall(), "expired")
-        if to_regclass_ok(cur, "quotations"):
-            cur.execute(f"""SELECT {cols}, q.updated_at AS draft_at FROM quote_requests r
-                              JOIN LATERAL (SELECT status, updated_at FROM quotations
-                                             WHERE request_id=r.id AND tenant_id=r.tenant_id
-                                             ORDER BY version DESC, id DESC LIMIT 1) q ON q.status='draft'
-                             WHERE r.tenant_id=%s AND r.status='to_quote' AND q.updated_at < %s
-                               AND (%s::text IS NULL OR r.assigned_key=%s) ORDER BY q.updated_at LIMIT 100""",
-                        (tenant_id, now - timedelta(days=1), *sc))
-            add(cur.fetchall(), "draft")
-        order = {"late": 0, "replied": 1, "expiring": 2, "expired": 3, "draft": 4}
-        out["attention"] = sorted(att.values(), key=lambda r: order[r["kind"]])
-        for r in out["attention"]:
-            r["late_secs"] = (now - r["due_at"]).total_seconds() if r["kind"] == "late" else 0
-
-        # Q4: buyers still waiting for a quote, longest first.
-        cur.execute("""SELECT id, ref_no, buyer_company, buyer_name, channel, created_at, due_at, lines,
-                              assigned_key, assigned_to
-                         FROM quote_requests WHERE tenant_id=%s AND status='to_quote'
-                          AND (%s::text IS NULL OR assigned_key=%s) ORDER BY created_at LIMIT 50""",
-                    (tenant_id, *sc))
-        waiting = cur.fetchall()
-        for w in waiting:
-            w["n_lines"] = len(w.get("lines") or [])
-            w["waited_secs"] = (now - w["created_at"]).total_seconds()
-            w["late_secs"] = (now - w["due_at"]).total_seconds() if w.get("due_at") and w["due_at"] < now else 0
-        out["waiting"] = waiting
-
-        # From request to order, for requests that arrived in the period.
-        cur.execute("""SELECT id, status, first_quote_at FROM quote_requests
-                        WHERE tenant_id=%s AND created_at >= %s AND created_at < %s
-                          AND (%s::text IS NULL OR assigned_key=%s)""", (tenant_id, since, until, *sc))
-        made = cur.fetchall()
-        won_ids = [r["id"] for r in made if r["status"] == "won"]
-
-        # Lost reasons for quotes lost in the period.
-        cur.execute("""SELECT close_reason FROM quote_requests WHERE tenant_id=%s AND status='lost'
-                          AND closed_at >= %s AND closed_at < %s AND (%s::text IS NULL OR assigned_key=%s)""",
-                    (tenant_id, since, until, *sc))
-        reasons = {}
-        for r in cur.fetchall():
-            w = _lost_reason_word(r["close_reason"])
-            reasons[w] = reasons.get(w, 0) + 1
-        out["lost_reasons"] = sorted(reasons.items(), key=lambda x: -x[1])[:6]
-    finally:
-        cur.close(); conn.close()
-    out["funnel"] = {"requests": len(made), "quoted": sum(1 for r in made if r["first_quote_at"]),
-                     "won": len(won_ids), "orders": len(order_info(tenant_id, won_ids))}
-    return out
 
 
 def to_regclass_ok(cur, name: str) -> bool:
@@ -1835,24 +1628,128 @@ def to_regclass_ok(cur, name: str) -> bool:
     return bool(cur.fetchone()["ok"])
 
 
-def lost_kpis(tenant_id: int, since=None, scope_key: str = None) -> dict:
-    """Quote Lost page: how many lost (since a date, or ever), their value
-    (the quote, or the estimate if never quoted) and the most common reason."""
-    conn, cur = _db()
+
+
+# ── One Sales Pipeline (2026-11-10) ─────────────────────────────────────────
+# After a quotation is sent the deal is followed on the Sales Pipeline. Each
+# deal gets one quote status from its latest quote request.
+DEAL_QUOTE_STATUSES = [
+    ("none", "No quotation"), ("to_quote", "To quote"), ("approval", "Waiting for approval"),
+    ("sent_unopened", "Sent, not opened"), ("sent_opened", "Sent, opened"), ("replied", "Buyer replied"),
+    ("expired", "Expired"), ("accepted", "Accepted"), ("declined", "Declined"),
+]
+DEAL_QUOTE_WORDS = dict(DEAL_QUOTE_STATUSES)
+# colour group for the badge: q (blue) a (amber) s (purple) w (green) l (red)
+DEAL_QUOTE_TONE = {"to_quote": "q", "approval": "a", "sent_unopened": "s", "sent_opened": "s",
+                   "replied": "a", "expired": "l", "accepted": "w", "declined": "l"}
+
+
+def sync_for_lead(lead_id: int):
+    """Right after a deal is marked Won or Lost on the Sales Pipeline: close its
+    sent quotation the same way (the page-load sync below catches the rest)."""
     try:
-        cur.execute("""SELECT close_reason,
-                              COALESCE(fx_to_selling(COALESCE(quote_value, estimate),
-                                                     COALESCE(quote_currency, currency), tenant_id), 0) AS v
-                         FROM quote_requests WHERE tenant_id=%s AND status='lost'
-                          AND (%s::timestamptz IS NULL OR closed_at >= %s)
-                          AND (%s::text IS NULL OR assigned_key=%s)""",
-                    (tenant_id, since, since, scope_key, scope_key))
-        rows = cur.fetchall()
+        conn, cur = _db()
+    except Exception:
+        return
+    try:
+        cur.execute("SELECT tenant_id FROM merchant_pipeline_leads WHERE id=%s AND outcome IN ('won','lost')", (lead_id,))
+        r = cur.fetchone()
     finally:
         cur.close(); conn.close()
-    reasons = {}
+    if r:
+        sync_from_deals(r["tenant_id"])
+
+
+def deal_quotes(tenant_id: int, lead_ids=None, today=None) -> dict:
+    """{lead_id: {...}} for deals with a quote request: the LATEST request per
+    deal, its status key/word/tone (DEAL_QUOTE_STATUSES), quotation number,
+    value, valid until, opens, who approval was asked of. lead_ids=None = all."""
+    if not allowed(tenant_id):
+        return {}
+    ensure_tables()
+    today = today or date.today()
+    conn, cur = _db()
+    try:
+        cur.execute(f"""SELECT DISTINCT ON (r.lead_id) r.lead_id, r.id, r.ref_no, r.status, r.quote_number,
+                               r.quote_value, r.quote_currency, r.quote_valid_until, r.quote_sent_at, r.due_at,
+                               r.close_reason, r.closed_at, r.lines, r.created_at
+                          FROM quote_requests r
+                         WHERE r.tenant_id=%s AND r.lead_id IS NOT NULL
+                           {"AND r.lead_id = ANY(%s)" if lead_ids is not None else ""}
+                         ORDER BY r.lead_id, r.id DESC""",
+                    [tenant_id] + ([list(lead_ids)] if lead_ids is not None else []))
+        rows = cur.fetchall()
+        if not rows:
+            return {}
+        ids = [r["id"] for r in rows]
+        asked = {}
+        if to_regclass_ok(cur, "quotations"):
+            cur.execute("""SELECT DISTINCT ON (request_id) request_id, number, version, status, data->'approval' AS a
+                             FROM quotations WHERE tenant_id=%s AND request_id = ANY(%s)
+                            ORDER BY request_id, version DESC, id DESC""", (tenant_id, ids))
+            for q in cur.fetchall():
+                a = q["a"] or {}
+                if q["status"] == "draft" and a.get("status") == "asked":
+                    asked[q["request_id"]] = {"number": q["number"] + (f" v{q['version']}" if (q["version"] or 1) > 1 else ""),
+                                              "asked_at": a.get("asked_at"),
+                                              "to": ", ".join(w.get("label", "") for w in (a.get("approvers") or [])[:2])}
+        cur.execute("""SELECT DISTINCT r.id FROM quote_requests r JOIN quote_request_events e ON e.request_id=r.id
+                        WHERE r.id = ANY(%s) AND r.status='quote_sent' AND e.by_label IN (%s, 'Buyer (online)')
+                          AND (e.what LIKE %s OR e.what LIKE %s)
+                          AND e.created_at >= COALESCE(r.quote_sent_at, r.created_at)""",
+                    (ids, AI_ACTOR["label"], *_REPLY_EVENTS))
+        replied = {r["id"] for r in cur.fetchall()}
+    finally:
+        cur.close(); conn.close()
+    try:
+        import quote_online as _qon
+        opens = _qon.opens_for(tenant_id, ids)
+    except Exception:
+        opens = {}
+    out = {}
     for r in rows:
-        w = _lost_reason_word(r["close_reason"])
-        reasons[w] = reasons.get(w, 0) + 1
-    top = max(reasons.items(), key=lambda x: x[1]) if reasons else None
-    return {"n": len(rows), "v": sum(float(r["v"] or 0) for r in rows), "top": top}
+        o = opens.get(r["id"]) or {}
+        if r["status"] == "to_quote":
+            key = "approval" if r["id"] in asked else "to_quote"
+        elif r["status"] == "quote_sent":
+            if r["quote_valid_until"] and r["quote_valid_until"] < today:
+                key = "expired"
+            elif r["id"] in replied:
+                key = "replied"
+            elif o.get("open_count"):
+                key = "sent_opened"
+            else:
+                key = "sent_unopened"
+        elif r["status"] == "won":
+            key = "accepted"
+        else:
+            key = "declined" if r["quote_sent_at"] else "none"
+        out[r["lead_id"]] = {**r, "key": key, "word": DEAL_QUOTE_WORDS[key], "tone": DEAL_QUOTE_TONE.get(key, ""),
+                             "ref": f"R-{r['ref_no']}", "open_count": o.get("open_count") or 0,
+                             "last_opened_at": o.get("last_opened_at"), "asked": asked.get(r["id"]),
+                             "n_lines": len(r["lines"] or [])}
+    return out
+
+
+def deal_quote_tiles(tenant_id: int, since, scope_key: str = None, today=None) -> dict:
+    """Four figures for the top of the Sales Pipeline."""
+    today = today or date.today()
+    conn, cur = _db()
+    try:
+        cur.execute("""SELECT
+              COUNT(*) FILTER (WHERE quote_sent_at >= %s) AS sent_month,
+              COUNT(*) FILTER (WHERE status='quote_sent') AS waiting_n,
+              COALESCE(SUM(fx_to_selling(quote_value, quote_currency, tenant_id)) FILTER (WHERE status='quote_sent'), 0) AS waiting_v,
+              COUNT(*) FILTER (WHERE status='won' AND closed_at >= %s) AS won_month,
+              COUNT(*) FILTER (WHERE status='lost' AND quote_sent_at IS NOT NULL AND closed_at >= %s) AS lost_month
+            FROM quote_requests WHERE tenant_id=%s AND (%s::text IS NULL OR assigned_key=%s)""",
+                    (since, since, since, tenant_id, scope_key, scope_key))
+        t = dict(cur.fetchone() or {})
+    finally:
+        cur.close(); conn.close()
+    closed = (t.get("won_month") or 0) + (t.get("lost_month") or 0)
+    t["win_rate"] = round(100 * t["won_month"] / closed) if closed else None
+    t["waiting_v"] = float(t.get("waiting_v") or 0)
+    dq = deal_quotes(tenant_id, today=today)
+    t["opened_no_reply"] = sum(1 for v in dq.values() if v["key"] == "sent_opened")
+    return t

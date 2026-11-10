@@ -7,7 +7,7 @@
 <div class="qt">
   <div class="qt-top">
     <div>
-      <div class="qt-sub">{% if r.status == 'won' %}<a href="{{ url_for('portal.quotes_won', period=('all' if not r.closed_at or r.closed_at < now_month_start else None)) }}">← Quote Won</a>{% elif r.status == 'quote_sent' %}<a href="{{ url_for('portal.quotes_sent') }}">← Quote Sent</a>{% elif r.status == 'lost' %}<a href="{{ url_for('portal.quotes_lost', period=('all' if not r.closed_at or r.closed_at < now_month_start else None)) }}">← Quote Lost</a>{% else %}<a href="{{ url_for('portal.quotes_requests') }}">← Requests</a>{% endif %}</div>
+      <div class="qt-sub">{% if r.status != 'to_quote' and r.lead_id %}<a href="{{ url_for('portal.opportunity_detail', lead_id=r.lead_id) }}">← Deal in Sales Pipeline</a>{% else %}<a href="{{ url_for('portal.quotes_requests') }}">← Requests to quote</a>{% endif %}</div>
       <h1>R-{{ r.ref_no }} · {{ buyer }}</h1>
       <div class="qt-sub">{{ qr.CHANNEL_WORDS.get(r.channel, r.channel) }} · {{ dt(r.created_at) }}
         · Salesperson: <b>{{ r.assigned_to|who(r.assigned_key) if r.assigned_to else 'nobody yet' }}</b></div>

@@ -163,6 +163,14 @@ def record_stage_change(lead_id: int, from_stage: str | None, to_stage: str,
     conn.commit()
     cur.close(); conn.close()
     staff_activity.log_stage_change(lead_id, from_stage, to_stage, notes)
+    # One Sales Pipeline (2026-11-10): Won / Lost here also closes the deal's
+    # sent quotation (and so stops its quote follow-ups) straight away.
+    if to_stage in ("won", "lost"):
+        try:
+            import quote_requests as _qr
+            _qr.sync_for_lead(lead_id)
+        except Exception as e:
+            print("⚠️ quote sync after stage change:", e)
 
 
 def get_stage_history(lead_id: int) -> list[dict]:

@@ -194,6 +194,15 @@
 
   /* ── Row action kebab menu (replaces the loose button row) ──────────── */
   table td[data-col="deal_value"], table th[data-col="deal_value"] { text-align:right }
+  /* One Sales Pipeline (2026-11-10): quote status badge, figures */
+  .dq-badge{display:inline-block;font-size:11.5px;font-weight:700;border-radius:6px;padding:3px 8px;white-space:nowrap}
+  .dq-q{background:#EEF4FF;color:#1D3A7A} .dq-a{background:#FFF6E5;color:#93370D} .dq-s{background:#F4F3FF;color:#3E1C96}
+  .dq-w{background:#ECFDF3;color:#067647} .dq-l{background:#FEF3F2;color:#B42318}
+  .dq-new{font-size:12px;font-weight:600;border:1px solid var(--line,#e5e7eb);border-radius:7px;padding:3px 8px;text-decoration:none;color:inherit;white-space:nowrap}
+  .dq-tiles{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 14px}
+  .dq-tile{flex:1 1 170px;background:#fff;border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+  .dq-tile span{font-size:12px;color:#667085}
+  .dq-tile b{font-size:18px;color:#0B1D40;font-variant-numeric:tabular-nums}
   .row-actions-wrap { position:relative; flex-shrink:0 }
   .kebab-btn {
     width:28px; height:28px; border-radius:7px; border:1px solid transparent; background:transparent;
@@ -412,6 +421,16 @@
   {% endfor %}
 </div>
 
+{% if quote_on and dq_tiles %}
+{# One Sales Pipeline (2026-11-10): quote figures, this month #}
+<div class="dq-tiles">
+  <div class="dq-tile"><span>Quotes sent this month</span><b>{{ '{:,}'.format(dq_tiles.sent_month or 0) }}</b></div>
+  <div class="dq-tile"><span>Waiting for the buyer</span><b>{{ '{:,}'.format(dq_tiles.waiting_n or 0) }}{% if dq_tiles.waiting_v %} · {{ dq_tiles.waiting_v|money_total }}{% endif %}</b></div>
+  <div class="dq-tile"><span>Quote win rate this month</span><b>{{ (dq_tiles.win_rate ~ '%') if dq_tiles.win_rate is not none else '—' }}</b></div>
+  <a class="dq-tile" href="{{ url_for('portal.sales_pipeline', quote_status='sent_opened') }}" style="text-decoration:none;color:inherit"><span>Buyer opened, no reply</span><b>{{ dq_tiles.opened_no_reply }}</b></a>
+</div>
+{% endif %}
+
 <!-- Lead Score summary — click Hot/Warm/Cold to filter. Score = up to 50 points
      for this deal's value relative to your own other deals, plus up to 50 for
      how actively it's being worked (recently touched, how far along the
@@ -423,6 +442,21 @@
 
 </style>
 
+{# One Sales Pipeline (2026-11-10): the Quotation cell — details, opens the request #}
+{% macro dq_cell(dq, l) -%}
+{% if dq and dq.key != 'none' %}
+<a href="{{ url_for('portal.quotes_request_detail', request_id=dq.id) }}" style="font-weight:700;color:inherit">{{ dq.asked.number if dq.key == 'approval' and dq.asked else (dq.quote_number or dq.ref) }}</a>
+<div class="muted" style="font-size:11.5px;margin-top:2px">
+{%- if dq.key == 'to_quote' %}{{ dq.n_lines }} product{{ 's' if dq.n_lines != 1 }}{% if dq.due_at %} · due {{ dq.due_at.strftime('%d %b') }}{% endif %}
+{%- elif dq.key == 'approval' %}Asked {{ dq.asked.to or 'a manager' }}
+{%- elif dq.key in ('sent_unopened', 'sent_opened', 'replied', 'expired') %}{{ dq.quote_value|money(dq.quote_currency) if dq.quote_value else '' }}{% if dq.open_count %} · opened {{ dq.open_count }}×{% elif dq.key == 'sent_unopened' %} · not opened{% endif %}{% if dq.quote_valid_until %} · valid to {{ dq.quote_valid_until.strftime('%d %b') }}{% endif %}
+{%- elif dq.key == 'accepted' %}{{ dq.quote_value|money(dq.quote_currency) if dq.quote_value else '' }}{% if dq.closed_at %} · {{ dq.closed_at.strftime('%d %b') }}{% endif %}
+{%- elif dq.key == 'declined' %}{{ (dq.close_reason or '')|replace('Lost: ', '')|truncate(40, True) }}
+{%- endif %}</div>
+{% elif staff_can_open('portal.quotes_request_new') %}
+<a href="{{ url_for('portal.quotes_request_new', lead_id=l.id) }}" class="dq-new">+ Quote request</a>
+{% else %}<span class="muted">—</span>{% endif %}
+{%- endmacro %}
 {% macro cust_color(name) %}{% set _p=['#5C6BC0','#26A69A','#0288D1','#388E3C','#F57C00','#8E24AA','#E53935','#00838F'] %}{{ _p[(name|length)%8] }}{% endmacro %}
 {% macro cust_initials(name) %}{% set _w=name.split() %}{% if _w|length>=2 %}{{ _w[0][0]|upper }}{{ _w[1][0]|upper }}{% else %}{{ name[:2]|upper }}{% endif %}{% endmacro %}
 {% set pipeline_has_any_leads = stage_counts.values()|sum > 0 %}
@@ -536,6 +570,8 @@
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="email">Email</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="deal_value" checked>Deal Value</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="stage" checked>Stage</label>
+          {% if quote_on %}<label class="col-picker-item"><input type="checkbox" data-col-toggle="quote_status" checked>Quote status</label>
+          <label class="col-picker-item"><input type="checkbox" data-col-toggle="quotation" checked>Quotation</label>{% endif %}
           {% if od_on %}<label class="col-picker-item"><input type="checkbox" data-col-toggle="ai_drafts" checked>AI drafts</label>{% endif %}
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="added" checked>Added</label>
           <label class="col-picker-item"><input type="checkbox" data-col-toggle="assigned" checked>Assigned To</label>
@@ -602,6 +638,16 @@
         {{ fs_demo(biz_state, opt_counts) }}
 
         {{ fs_followup(biz_state, opt_counts) }}
+
+        {% if quote_on %}
+        {# One Sales Pipeline (2026-11-10): the deal's quotation #}
+        <section>
+          <h3>Quote status</h3>
+          {%- for v, label in qs_statuses %}
+          <label class="spf-opt"><span>{{ label }}</span><small>{{ '{:,}'.format(qs_counts.get(v, 0)) }}</small><input type="checkbox" name="quote_status" value="{{ v }}" {% if v in qs_sel %}checked{% endif %}></label>
+          {%- endfor %}
+        </section>
+        {% endif %}
 
         {% if can_filter_assigned %}
         <section>
@@ -734,6 +780,7 @@
           <th data-col="email" class="col-hidden">Email</th>
           <th data-col="deal_value">Deal Value</th>
           <th data-col="stage">Stage</th>
+          {% if quote_on %}<th data-col="quote_status">Quote status</th><th data-col="quotation">Quotation</th>{% endif %}
           {% if od_on %}<th data-col="ai_drafts">AI drafts</th>{% endif %}
           <th data-col="added">Added</th>
           <th data-col="assigned">Assigned To</th>
@@ -801,6 +848,10 @@
           <td data-col="email" class="col-hidden muted" style="font-size:12px">{{ emails_cell(l.email, l.other_emails) }}</td>
           <td data-m="Value" data-col="deal_value" class="muted">{{ (l.deal_value)|money(l.currency) if l.deal_value else '—' }}</td>
           <td data-m="Stage" data-col="stage"><span class="stage-pill st-{{ l.stage }}">{{ stage_labels[l.stage] }}</span></td>
+          {% if quote_on %}{% set dq = l.dq %}
+          <td data-m="Quote status" data-col="quote_status">{% if dq and dq.key != 'none' %}<span class="dq-badge dq-{{ dq.tone }}">{{ dq.word }}</span>{% else %}<span class="muted" style="font-size:12px">No quotation</span>{% endif %}</td>
+          <td data-m="Quotation" data-col="quotation" style="font-size:12.5px">{{ dq_cell(dq, l) }}</td>
+          {% endif %}
           {% if od_on %}{% set oc = od_chips.get(l.id) %}<td data-m="AI drafts" data-col="ai_drafts" style="white-space:nowrap">{% if oc %}{% if oc.link %}<a href="{{ oc.link }}" class="od-rc od-rc-{{ oc.kind }}">{{ oc.text }}</a>{% else %}<span class="od-rc od-rc-{{ oc.kind }}">{{ oc.text }}</span>{% endif %}{% else %}<span class="muted" style="font-size:12px">Not started</span>{% endif %}</td>{% endif %}
           <td data-col="added" class="muted">{{ l.created_at.strftime('%d %b %Y') if l.created_at else '—' }}</td>
           <td data-m="Assigned" data-col="assigned" class="muted">{{ (l.assigned_to|who(l.assigned_key)) if l.assigned_to else '—' }}</td>

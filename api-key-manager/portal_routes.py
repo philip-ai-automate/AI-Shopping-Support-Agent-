@@ -40331,6 +40331,25 @@ def sales_pipeline():
         clauses.append(_odc); params += _odp
         as_clauses = as_clauses + [_odc]; as_params = as_params + _odp
     ai_drafts_label = _od.PIPELINE_FILTER_LABELS.get(ai_drafts) if _odc else None
+    # One Sales Pipeline (2026-11-10): each deal's quote status (Quotations
+    # businesses only), a "Quote status" section in the Filters panel.
+    quote_on = bool(_qr.allowed(tenant_id))
+    dq_all, qs_sel = {}, []
+    if quote_on:
+        import datetime as _dtq
+        from team_performance import tz_for as _tzq
+        _qr.sync_from_deals(tenant_id)
+        dq_all = _qr.deal_quotes(tenant_id, today=_dtq.datetime.now(_tzq(tenant_id)).date())
+        qs_sel = [v for v in request.args.getlist("quote_status") if v in _qr.DEAL_QUOTE_WORDS]
+    if qs_sel:
+        _hit = [lid for lid, v in dq_all.items() if v["key"] in qs_sel]
+        _qparts, _qp = ["mpl.id = ANY(%s)"], [_hit]
+        if "none" in qs_sel:
+            _qparts.append("NOT (mpl.id = ANY(%s))"); _qp.append([lid for lid, v in dq_all.items() if v["key"] != "none"])
+        _qc = "(" + " OR ".join(_qparts) + ")"
+        clauses.append(_qc); params += _qp
+        as_clauses = as_clauses + [_qc]; as_params = as_params + _qp
+        addr_fargs = dict(addr_fargs or {}, quote_status=qs_sel)
     # Every filter except the stage one: the board, and the counts on the stage row.
     extra_clauses = a_clauses + b_clauses + as_clauses
     extra_params  = a_params + b_params + as_params
@@ -40609,6 +40628,27 @@ def sales_pipeline():
     if ai_drafts_label:
         _oa = request.args.to_dict(flat=False); _oa.pop("ai_drafts", None); _oa.pop("page", None)
         filter_chips.append({"label": "AI drafts", "value": ai_drafts_label, "url": url_for("portal.sales_pipeline", **_oa)})
+    # Quote status: chip, counts for the Filters panel, figures, a cell per row.
+    qs_counts, dq_tiles = {}, None
+    if quote_on:
+        if qs_sel:
+            _qa = request.args.to_dict(flat=False); _qa.pop("quote_status", None); _qa.pop("page", None)
+            filter_chips.append({"label": "Quote status", "value": ", ".join(_qr.DEAL_QUOTE_WORDS[v] for v in qs_sel),
+                                 "url": url_for("portal.sales_pipeline", **_qa)})
+        cur.execute("SELECT mpl.id FROM merchant_pipeline_leads mpl WHERE mpl.tenant_id=%s AND mpl.is_opportunity "
+                    "AND mpl.dropped_at IS NULL" + _ssql, [tenant_id] + _sparams)
+        _open_ids = [r["id"] for r in cur.fetchall()]
+        qs_counts = {k: 0 for k, _ in _qr.DEAL_QUOTE_STATUSES}
+        for _lid in _open_ids:
+            qs_counts[(dq_all.get(_lid) or {}).get("key", "none")] += 1
+        try:
+            _now_t = _dtq.datetime.now(_tzq(tenant_id))
+            dq_tiles = _qr.deal_quote_tiles(tenant_id, _now_t.replace(day=1, hour=0, minute=0, second=0, microsecond=0),
+                                            None if _leads_see_all() else actor_key, today=_now_t.date())
+        except Exception as e:
+            print("⚠️ pipeline quote figures:", e)
+        for l in leads:
+            l["dq"] = dq_all.get(l["id"])
     od_on = _od.pilot(tenant_id)
     od_counts = _od.pipeline_counts(tenant_id) if od_on else {}
     od_chips = _od.row_chips(tenant_id, [l["id"] for l in leads]) if od_on else {}
@@ -40621,6 +40661,11 @@ def sales_pipeline():
         "portal/sales_pipeline.html",
         ai_drafts_label       = ai_drafts_label,
         ai_drafts             = ai_drafts if ai_drafts_label else "",
+        quote_on              = quote_on,
+        qs_sel                = qs_sel,
+        qs_counts             = qs_counts,
+        qs_statuses           = _qr.DEAL_QUOTE_STATUSES,
+        dq_tiles              = dq_tiles,
         od_on                 = od_on,
         od_counts             = od_counts,
         od_chips              = od_chips,
@@ -41922,8 +41967,39 @@ def lead_detail(lead_id: int, opp_view: bool = False):
     except Exception as e:
         print("⚠️ lead Shopify trade card:", e)
         shopify_trade = {}
+    # One Sales Pipeline (2026-11-10): the deal's quotation and what happened on it.
+    deal_quote = None
+    try:
+        if _qr.allowed(tenant_id):
+            from team_performance import tz_for as _tzdq
+            import datetime as _dtdq
+            _qtz = _tzdq(tenant_id)
+            _qr.sync_from_deals(tenant_id)
+            _dqi = _qr.deal_quotes(tenant_id, [lead_id], today=_dtdq.datetime.now(_qtz).date()).get(lead_id)
+            if _dqi:
+                import quote_quotes as _qqd
+                _vers = _qqd.for_request(tenant_id, _dqi["id"])
+                _sent = [v for v in _vers if v["status"] != "draft"]
+                _evs = list(reversed(_qr.events(_dqi["id"])))[-12:]
+                for _e in _evs:
+                    if _e.get("created_at"):
+                        _e["created_at"] = _e["created_at"].astimezone(_qtz)
+                _link = None
+                try:
+                    import quote_online as _qond
+                    _link = _qond.latest_for_request(tenant_id, _dqi["id"])
+                except Exception as e:
+                    print("⚠️ deal quote link:", e)
+                _appr = next((e["what"].replace("Approved by ", "", 1) for e in reversed(_evs)
+                              if (e["what"] or "").startswith("Approved by ")), None)
+                deal_quote = {**_dqi, "latest": _sent[0] if _sent else None, "earlier": _sent[1:4],
+                              "events": _evs, "link": _link, "approved_by": _appr,
+                              "last_opened_local": _dqi["last_opened_at"].astimezone(_qtz) if _dqi.get("last_opened_at") else None}
+    except Exception as e:
+        print("⚠️ deal quotation box:", e)
     return render_template(
         "portal/lead_detail.html",
+        deal_quote=deal_quote,
         shopify_trade=shopify_trade, shopify_trade_lead_id=lead_id,
         auto_fu=auto_fu,
         aiq=aiq, aiq_decisions=aiq_decisions, aiq_business_types=_lq.BUSINESS_TYPES,
@@ -43438,8 +43514,8 @@ def _inject_quotes_menu():
         return g._aiq_dash_on
 
     def quotes_menu_counts():
-        """Numbers beside Requests / Quote Sent / Quote Won in the side menu
-        (2026-11-05). Same scope as the pages: staff without "See all leads"
+        """The number beside Requests to quote in the side menu (2026-11-05;
+        Quote Sent / Won moved to the Sales Pipeline 2026-11-10). Same scope as the pages: staff without "See all leads"
         count only their own."""
         if "_quotes_menu_counts" not in g:
             g._quotes_menu_counts = {}
@@ -43447,12 +43523,7 @@ def _inject_quotes_menu():
                 if quotes_on():
                     cust = _get_customer(_customer_id())
                     tid, scope = int(cust["tenant_id"]), _quotes_scope(cust)
-                    c = _qr.counts(tid, scope)
-                    # Quote Won opens on "This month", so its number matches that.
-                    now = _tp.now_local(_tp.tz_for(tid))
-                    c["won"] = _qr.won_value(tid, now.replace(day=1, hour=0, minute=0, second=0, microsecond=0),
-                                             scope)["n"]
-                    g._quotes_menu_counts = c
+                    g._quotes_menu_counts = _qr.counts(tid, scope)
             except Exception as e:
                 print(f"⚠️ quotes menu counts: {e}")
         return g._quotes_menu_counts
@@ -43565,8 +43636,9 @@ def quotes_requests():
     if err: return err
     scope = _quotes_scope(customer)
     status = request.args.get("status") or "to_quote"
-    if status not in _qr.STATUS_WORDS:
-        status = "to_quote"
+    if status in _QUOTE_STATUS_TO_PIPELINE:      # sent / won / lost live on the Sales Pipeline now
+        return _quotes_to_pipeline(status)
+    status = "to_quote"
     q = (request.args.get("q") or "").strip()[:100]
     _qr.sync_from_deals(tenant_id)
     tz = _tp.tz_for(tenant_id)
@@ -43585,149 +43657,42 @@ def quotes_requests():
                            target_words=dict(_qr.TARGETS), dt=_quote_dt(tz))
 
 
-def _quotes_menu_list(view: str):
-    """Quote Sent / Quote Won pages (side menu, 2026-11-05): the request list
-    already filtered, with its own numbers. Works for every business; the
-    Shopify order name only shows for Shopify-linked ones."""
-    customer, tenant_id, err = _quotes_guard()
-    if err: return err
-    scope = _quotes_scope(customer)
-    see_all = scope is None
-    people = _lead_assignees(tenant_id, customer) if see_all else []
-    who = (request.args.get("who") or "").strip()
-    if see_all and who and any(p["key"] == who for p in people):
-        scope = who
-    else:
-        who = ""
-    q = (request.args.get("q") or "").strip()[:100]
-    _qr.sync_from_deals(tenant_id)
-    tz = _tp.tz_for(tenant_id)
-    now = _tp.now_local(tz)
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    period = ""
-    opens = {}
-    if view == "sent":
-        rows = _qr.list_requests(tenant_id, "quote_sent", scope, q)
-        k = _qr.sent_kpis(tenant_id, now.date(), scope)
-        orders = {}
-        try:
-            import quote_online as _qon
-            opens = _qon.opens_for(tenant_id, [r["id"] for r in rows])
-        except Exception as e:
-            print("⚠️ quote online opens:", e)
-    elif view == "lost":
-        # Quote Lost (2026-11-10): lost requests, this month by default.
-        period = "all" if request.args.get("period") == "all" else "month"
-        since = month_start if period == "month" else None
-        rows = _qr.list_requests(tenant_id, "lost", scope, q, closed_since=since)
-        k = _qr.lost_kpis(tenant_id, since, scope)
-        orders = {}
-        for r in rows:
-            r["reason_word"] = _qr._lost_reason_word(r.get("close_reason"))
-    else:
-        period = "all" if request.args.get("period") == "all" else "month"
-        since = month_start if period == "month" else None
-        rows = _qr.list_requests(tenant_id, "won", scope, q, closed_since=since)
-        orders = _qr.order_info(tenant_id, [r["id"] for r in rows])
-        k = _qr.won_value(tenant_id, since, scope)
-        k["orders"] = sum(1 for r in rows if r["id"] in orders)
-    today = now.date()
-    for r in rows:
-        vu = r.get("quote_valid_until")
-        r["days_left"] = (vu - today).days if vu else None
-    return render_template("portal/quotes_menu_list.html", view=view, rows=rows, k=k, q=q, who=who,
-                           people=people, see_all=see_all, period=period, orders=orders, opens=opens,
-                           qr=_qr, dt=_quote_dt(tz))
+# One Sales Pipeline (2026-11-10): once a quotation is sent the deal is
+# followed on the Sales Pipeline. The old Quote Sent / Won / Lost / Overview
+# pages (and Requests tabs) send people to the pipeline with the matching
+# Quote status filter, so old links and emails keep working.
+_QUOTE_STATUS_TO_PIPELINE = {
+    "quote_sent": ["sent_unopened", "sent_opened", "replied", "expired"],
+    "won": ["accepted"], "lost": ["declined"],
+}
+
+
+def _quotes_to_pipeline(status: str = None):
+    return redirect(url_for("portal.sales_pipeline", quote_status=_QUOTE_STATUS_TO_PIPELINE.get(status) or None))
 
 
 @portal_bp.route("/quotations/sent")
 @team_feature("leads.page")
 def quotes_sent():
-    _rperm = _require_team_permission("leads.page")
-    if _rperm: return _rperm
-    return _quotes_menu_list("sent")
+    return _quotes_to_pipeline("quote_sent")
 
 
 @portal_bp.route("/quotations/won")
 @team_feature("leads.page")
 def quotes_won():
-    _rperm = _require_team_permission("leads.page")
-    if _rperm: return _rperm
-    return _quotes_menu_list("won")
+    return _quotes_to_pipeline("won")
 
 
 @portal_bp.route("/quotations/lost")
 @team_feature("leads.page")
 def quotes_lost():
-    _rperm = _require_team_permission("leads.page")
-    if _rperm: return _rperm
-    return _quotes_menu_list("lost")
-
-
-_QOV_PERIODS = [("month", "This month"), ("last_month", "Last month"), ("7d", "Last 7 days"),
-                ("year", "This year"), ("custom", "Your own dates")]
-
-
-def _quotes_period(now):
-    """(key, since, until, words, from_str, to_str) in the business's time zone.
-    Default = this month (2026-11-10, user decision)."""
-    key = request.args.get("period") or "month"
-    keys = dict(_QOV_PERIODS)
-    if key not in keys:
-        key = "month"
-    day0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    month0 = day0.replace(day=1)
-    f_str, t_str = (request.args.get("from") or "")[:10], (request.args.get("to") or "")[:10]
-    if key == "custom":
-        try:
-            f = datetime.strptime(f_str, "%Y-%m-%d")
-            t = datetime.strptime(t_str, "%Y-%m-%d")
-            if t < f:
-                f, t = t, f
-            since = day0.replace(year=f.year, month=f.month, day=f.day)
-            until = day0.replace(year=t.year, month=t.month, day=t.day) + timedelta(days=1)
-            return key, since, until, f"{f.strftime('%d %b %Y')} to {t.strftime('%d %b %Y')}", f_str, t_str
-        except ValueError:
-            key = "month"
-    if key == "last_month":
-        until = month0
-        since = (month0 - timedelta(days=1)).replace(day=1)
-    elif key == "7d":
-        since, until = day0 - timedelta(days=6), now + timedelta(seconds=1)
-    elif key == "year":
-        since, until = month0.replace(month=1), now + timedelta(seconds=1)
-    else:
-        since, until = month0, now + timedelta(seconds=1)
-    return key, since, until, keys[key].lower(), f_str, t_str
+    return _quotes_to_pipeline("lost")
 
 
 @portal_bp.route("/quotations/overview")
 @team_feature("leads.page")
 def quotes_overview():
-    """Quotations › Overview (2026-11-10): RFQs arrived, pipeline value, win
-    rate, response time, needs attention, buyers waiting, request → order.
-    Owners and see-all staff see the team (with a salesperson filter);
-    everyone else sees only their own figures. Every platform alike."""
-    _rperm = _require_team_permission("leads.page")
-    if _rperm: return _rperm
-    customer, tenant_id, err = _quotes_guard()
-    if err: return err
-    scope = _quotes_scope(customer)
-    see_all = scope is None
-    people = _lead_assignees(tenant_id, customer) if see_all else []
-    who = (request.args.get("who") or "").strip()
-    if see_all and who and any(p["key"] == who for p in people):
-        scope = who
-    else:
-        who = ""
-    _qr.sync_from_deals(tenant_id)
-    tz = _tp.tz_for(tenant_id)
-    now = _tp.now_local(tz)
-    period, since, until, period_words, f_str, t_str = _quotes_period(now)
-    o = _qr.overview(tenant_id, since, until, now, scope)
-    return render_template("portal/quotes_overview.html", o=o, period=period, periods=_QOV_PERIODS,
-                           period_words=period_words, f_str=f_str, t_str=t_str, who=who, people=people,
-                           see_all=see_all, qr=_qr, dt=_quote_dt(tz), today=now.date())
+    return _quotes_to_pipeline()
 
 
 @portal_bp.route("/quotations/requests/new", methods=["GET", "POST"])

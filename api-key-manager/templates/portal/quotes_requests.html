@@ -1,13 +1,13 @@
 {% extends "portal/base.html" %}
-{% block title %}Quotation requests — PhiXtra Portal{% endblock %}
+{% block title %}Requests to quote — PhiXtra Portal{% endblock %}
 {% block wrap_class %}page-wide{% endblock %}
 {% block head %}{% include "portal/_quotes_css.html" %}{% endblock %}
 {% block content %}
 <div class="qt">
   <div class="qt-top">
     <div>
-      <h1>Quotation requests</h1>
-      <div class="qt-sub">Every buyer who asked for prices. {% if s.maker == 'phixtra' %}Open a request and click <b>Make quotation</b>: PhiXtra makes it, you set the prices and send it.{% else %}Make the quotation in your own software, send it, then click <b>Quote sent</b> here.{% endif %}
+      <h1>Requests to quote</h1>
+      <div class="qt-sub">Buyers waiting for a quotation. Once it is sent, follow the deal in <a href="{{ url_for('portal.sales_pipeline') }}">Sales Pipeline</a>. {% if s.maker == 'phixtra' %}Open a request and click <b>Make quotation</b>: PhiXtra makes it, you set the prices and send it.{% else %}Make the quotation in your own software, send it, then click <b>Quote sent</b> here.{% endif %}
         Target: {{ target_words[s.target]|lower }} (working hours).</div>
     </div>
     <a class="qt-btn dark" href="{{ url_for('portal.quotes_request_new') }}">+ New request</a>
@@ -26,21 +26,13 @@
     <div class="qt-kpi"><span class="qt-kl">Request to quote sent</span>
       <span class="qt-kv">{% if k.median_secs is not none %}{% set m = (k.median_secs / 60)|round|int %}{% if m < 60 %}{{ m }} min{% elif m < 2880 %}{{ (m / 60)|round(1) }} h{% else %}{{ (m / 1440)|round|int }} days{% endif %}{% else %}—{% endif %}</span>
       <span class="qt-small">median{% if k.quoted %} · {{ k.on_time }} of {{ k.quoted }} on time{% endif %}</span></div>
-    <div class="qt-kpi"><span class="qt-kl">Quotes with buyers</span><span class="qt-kv">{{ k.with_buyers_v|money_total }}</span>
-      <span class="qt-small">{{ k.with_buyers_n }} waiting for an answer</span></div>
-    <div class="qt-kpi"><span class="qt-kl">Request to order</span>
-      <span class="qt-kv">{% if k.requests %}{{ ((k.won / k.requests) * 100)|round|int }}%{% else %}—{% endif %}</span>
-      <span class="qt-small">{{ k.won or 0 }} won this month</span></div>
+    <div class="qt-kpi"><span class="qt-kl">Waiting to be quoted</span><span class="qt-kv">{{ counts.to_quote }}</span>
+      <span class="qt-small">Sent, won and lost: <a href="{{ url_for('portal.sales_pipeline') }}">Sales Pipeline</a></span></div>
   </div>
 
   <div class="qt-card">
     <div class="qt-row">
-      <div class="qt-tabs" role="tablist">
-        {% for key, word in qr.STATUSES %}
-        <a class="qt-tab {% if status == key %}on{% endif %}" role="tab" aria-selected="{{ 'true' if status == key else 'false' }}"
-           href="{{ url_for('portal.quotes_requests', status=key, q=q or None) }}">{{ word }} · {{ counts[key] }}</a>
-        {% endfor %}
-      </div>
+      <b style="font-size:14px">To quote · {{ counts.to_quote }}</b>
       <form method="get" class="qt-btns" style="margin:0">
         <input type="hidden" name="status" value="{{ status }}">
         <input type="search" name="q" value="{{ q }}" placeholder="Buyer, email, R-1001 or quote no." aria-label="Search requests"
@@ -80,7 +72,7 @@
       {% endfor %}
       </tbody></table></div>
     {% elif q %}
-    <div class="qt-empty">Nothing matches "{{ q }}" here. Try another tab, or clear the search.</div>
+    <div class="qt-empty">Nothing matches "{{ q }}" here. Clear the search, or look for sent quotations in Sales Pipeline.</div>
     {% elif status == 'to_quote' %}
     <div class="qt-empty">No requests waiting for a quotation. When a buyer asks for prices by email, WhatsApp or phone,
       click <b>+ New request</b>, add what they asked for, and hand it to a salesperson.</div>
