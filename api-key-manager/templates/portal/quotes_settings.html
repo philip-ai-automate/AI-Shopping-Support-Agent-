@@ -68,9 +68,9 @@
       <h2>Quote follow-ups</h2>
       {% for trig, r in qfu %}
       <label style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13.5px;font-weight:400">
-        <input type="checkbox" name="qfu_on_{{ trig }}" value="1" {% if r and r.enabled %}checked{% endif %} {% if not r %}disabled{% endif %}
+        <input type="checkbox" name="qfu_on_{{ trig }}" value="1" {% if r and r.enabled %}checked{% endif %} {% if not r or not qfu_can_edit %}disabled{% endif %}
                style="width:18px;height:18px;min-height:0;margin:0" aria-label="Switch on">
-        <input type="number" name="qfu_days_{{ trig }}" min="0" max="90" value="{{ r.days if r else 3 }}" {% if not r %}disabled{% endif %}
+        <input type="number" name="qfu_days_{{ trig }}" min="0" max="90" value="{{ r.days if r else 3 }}" {% if not r or not qfu_can_edit %}disabled{% endif %}
                style="width:70px" aria-label="Days">
         <span>{% if trig == 'quote_no_reply' %}days after a quote is sent with no answer{% else %}days before a quote runs out with no answer{% endif %}
           → {% if not r %}<i>rule deleted in Pipeline Settings</i>
@@ -81,7 +81,8 @@
       <div class="qt-small">Each one can also start one of your own automatic follow-ups (emails and WhatsApp messages). It stops when the buyer replies, your team gets in touch, or the quote is marked Won or Lost.
         In your messages you can use <b>{{ '{{' }}Quote Number{{ '}}' }}</b>, <b>{{ '{{' }}Quote Value{{ '}}' }}</b>, <b>{{ '{{' }}Valid Until{{ '}}' }}</b> and <b>{{ '{{' }}Quote Link{{ '}}' }}</b>.
         When "before a quote runs out" is off, the salesperson still gets an email that many days before. The day after a quote runs out, they're asked to extend it or close it as Lost.
-        <a href="{{ url_for('portal.sales_pipeline_settings') }}#followups">Edit in Pipeline Settings →</a></div>
+        <a href="{{ url_for('portal.sales_pipeline_settings') }}#followups">Edit in Pipeline Settings →</a>
+        {% if not qfu_can_edit %}<br>Only people who can edit Pipeline Settings can change these two rules.{% endif %}</div>
     </div>
     <div class="qt-card">
       <h2>Your quoting software</h2>

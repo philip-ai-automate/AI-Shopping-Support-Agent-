@@ -622,22 +622,26 @@ def person_context(cur, tenant_id: int, lead_id=None, contact_id=None) -> dict:
 def quote_fields(cur, tenant_id: int, lead_id) -> dict:
     """Fill-ins for follow-up messages about a quote (2026-11-10): the deal's
     latest sent quote (or latest quote if none is out). Blank when the deal
-    has no quote."""
+    has no quote. Uses its own connection (never the caller's cursor), so a
+    failure here can't break the caller's transaction."""
     out = {"quote_number": "", "quote_value": "", "quote_valid_until": "", "quote_link": ""}
     if not lead_id:
         return out
+    import quote_requests as _qr
     try:
-        cur.execute("""SELECT ref_no, quote_number, quote_value, quote_currency, quote_valid_until
-                         FROM quote_requests WHERE tenant_id=%s AND lead_id=%s AND quote_sent_at IS NOT NULL
-                        ORDER BY (status='quote_sent') DESC, quote_sent_at DESC LIMIT 1""", (tenant_id, lead_id))
-        q = cur.fetchone()
-    except Exception:
+        conn, c2 = _qr._db()
+        try:
+            c2.execute("""SELECT ref_no, quote_number, quote_value, quote_currency, quote_valid_until
+                            FROM quote_requests WHERE tenant_id=%s AND lead_id=%s AND quote_sent_at IS NOT NULL
+                           ORDER BY (status='quote_sent') DESC, quote_sent_at DESC LIMIT 1""", (tenant_id, lead_id))
+            q = c2.fetchone()
+        finally:
+            c2.close(); conn.close()
+    except Exception as e:
+        print("⚠️ quote fill-ins:", e)
         return out
     if not q:
-        return out
-    if not isinstance(q, dict):
-        q = dict(zip(("ref_no", "quote_number", "quote_value", "quote_currency", "quote_valid_until"), q))
-    import quote_requests as _qr
+        return out      # no quote: no link lookup either
     out["quote_number"] = q["quote_number"] or f"R-{q['ref_no']}"
     if q["quote_value"] is not None:
         out["quote_value"] = _qr.money(q["quote_value"], q["quote_currency"])
@@ -645,7 +649,7 @@ def quote_fields(cur, tenant_id: int, lead_id) -> dict:
         out["quote_valid_until"] = q["quote_valid_until"].strftime("%d %B %Y").lstrip("0")
     try:
         import quote_online
-        out["quote_link"] = quote_online.live_url_for_lead(cur, tenant_id, lead_id)
+        out["quote_link"] = quote_online.live_url_for_lead(None, tenant_id, lead_id)
     except Exception as e:
         print("⚠️ quote link fill-in:", e)
     return out
@@ -1023,6 +1027,9 @@ def _candidates(cur, rule) -> list:
             # …or did someone on the team get in touch? Then it isn't quiet.
             if _team_contacted(cur, tid, l["id"], phone, ent):
                 continue
+            # …or did a quote rule already step in for this deal? One each.
+            if _other_rule_ran(cur, tid, rule["id"], l["id"], ent):
+                continue
             out.append((l["id"], l["wa_contact_id"], phone, f"stage:{rule['stage']}:{ent.isoformat()}",
                         TRIGGER_WORDS[t].format(stage=rule.get("stage_label") or rule["stage"])))
     elif t == "booking_click":
@@ -1087,6 +1094,17 @@ def _buyer_answered(cur, tid, lead_id, phone, since) -> bool:
     return False
 
 
+def _other_rule_ran(cur, tid, rule_id, lead_id, since) -> bool:
+    """Another rule already stepped in for this deal since `since` (e.g. a
+    "Proposal Sent, no reply" rule and the quote rule both switched on): one
+    reminder or follow-up per quote, never two."""
+    if not lead_id:
+        return False
+    cur.execute("""SELECT 1 FROM followup_rule_runs WHERE tenant_id=%s AND lead_id=%s AND rule_id<>%s
+                   AND created_at >= %s LIMIT 1""", (tid, lead_id, rule_id, since))
+    return bool(cur.fetchone())
+
+
 def _quote_candidates(cur, rule) -> list:
     """Sent quotes (status Quote sent, deal still open) the rule matches now.
     quote_no_reply: {days} after the LATEST send, so a new version restarts
@@ -1117,6 +1135,8 @@ def _quote_candidates(cur, rule) -> list:
     out = []
     for q in cur.fetchall():
         since = q["quote_sent_at"] or now
+        if _other_rule_ran(cur, tid, rule["id"], q["lead_id"], since):
+            continue
         phone = digits(q["whatsapp_number"]) or person_whatsapp(cur, tid, q["lead_id"], q["wa_contact_id"])
         if _buyer_answered(cur, tid, q["lead_id"], phone, since):
             continue

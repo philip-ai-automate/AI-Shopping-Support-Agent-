@@ -1466,6 +1466,15 @@ def extend(tenant_id: int, request_id: int, new_date, actor: dict) -> tuple:
         cur.close(); conn.close()
 
 
+def _seq_exists(tenant_id, seq_id) -> bool:
+    conn, cur = _db()
+    try:
+        cur.execute("SELECT 1 FROM email_sequences WHERE id=%s AND tenant_id=%s", (seq_id, tenant_id))
+        return bool(cur.fetchone())
+    finally:
+        cur.close(); conn.close()
+
+
 def _expiry_once():
     """Before a quote expires: remind the salesperson, on the business's own
     number of days (its "quote is about to run out" follow-up rule; 3 for a
@@ -1477,19 +1486,43 @@ def _expiry_once():
     from team_performance import tz_for
     conn, cur = _db()
     try:
-        cur.execute(f"""SELECT {_LIST_COLS} FROM quote_requests WHERE status='quote_sent' AND quote_valid_until IS NOT NULL
-                          AND quote_valid_until BETWEEN CURRENT_DATE - 7 AND CURRENT_DATE + 91 LIMIT 2000""")
+        # Only quotes due a message today: expired in the last week, or about
+        # the business's own number of days from expiry (±1 for time zones;
+        # the exact day is checked below in the business's zone).
+        cur.execute(f"""SELECT {_LIST_COLS} FROM quote_requests q WHERE q.status='quote_sent' AND q.quote_valid_until IS NOT NULL
+                          AND (q.quote_valid_until BETWEEN CURRENT_DATE - 8 AND CURRENT_DATE
+                               OR abs((q.quote_valid_until - CURRENT_DATE) - COALESCE(
+                                    (SELECT r.days FROM followup_rules r WHERE r.tenant_id=q.tenant_id
+                                        AND r.trigger='quote_expiring' ORDER BY r.enabled DESC, r.position, r.id LIMIT 1),
+                                    3)) <= 1)
+                        ORDER BY q.quote_valid_until, q.id LIMIT 5000""")
         rows = cur.fetchall()
     finally:
         cur.close(); conn.close()
-    before = {}   # tenant_id → (days, rule switched on)
+    before = {}   # tenant_id → (days, rule switched on AND able to act)
 
     def _before(tid):
         if tid not in before:
             r = _af.quote_rule(tid, "quote_expiring")
+            works = bool(r and r.get("enabled"))
+            if works and r.get("do_what") != "remind":
+                works = bool(r.get("sequence_id")) and _seq_exists(tid, r["sequence_id"])
             before[tid] = (int(r["days"]) if r and r.get("days") is not None
-                           else _af.QUOTE_RULE_DEFAULT_DAYS["quote_expiring"], bool(r and r.get("enabled")))
+                           else _af.QUOTE_RULE_DEFAULT_DAYS["quote_expiring"], works)
         return before[tid]
+
+    def _rule_covers(q):
+        """The rule only acts on quotes with an open deal; others still get the email."""
+        if not q.get("lead_id"):
+            return False
+        c2, k2 = _db()
+        try:
+            k2.execute(f"""SELECT 1 FROM merchant_pipeline_leads l JOIN tenants tn ON tn.id=l.tenant_id
+                            WHERE l.id=%s AND l.tenant_id=%s AND NOT COALESCE(tn.is_training, FALSE)
+                              AND {_af._open_deal_sql()}""", (q["lead_id"], q["tenant_id"]))
+            return bool(k2.fetchone())
+        finally:
+            k2.close(); c2.close()
 
     for q in rows:
         try:
@@ -1502,7 +1535,7 @@ def _expiry_once():
             num = q.get("quote_number") or f"R-{q['ref_no']}"
             link = f"{_af.PORTAL}/quotations/requests/{q['id']}"
             vu = q["quote_valid_until"]
-            if left == days_before and left >= 0 and not rule_on:
+            if left == days_before and left >= 0 and not (rule_on and _rule_covers(q)):
                 ref = f"quote_exp2:{q['id']}:{vu}"
                 subj = (f"{num} for {buyer} expires today" if left == 0 else
                         f"{num} for {buyer} expires in {left} day{'s' if left != 1 else ''}")

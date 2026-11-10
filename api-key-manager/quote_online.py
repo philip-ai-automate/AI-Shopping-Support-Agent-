@@ -292,8 +292,14 @@ def _blocked() -> bool:
 
 
 def _miss():
+    now = time.time()
     with _mlock:
-        _misses.setdefault(_ip(), []).append(time.time())
+        if len(_misses) > 5000:        # never grows without end
+            for k in [k for k, v in _misses.items() if not v or now - v[-1] > 600]:
+                _misses.pop(k, None)
+            if len(_misses) > 5000:
+                _misses.clear()
+        _misses.setdefault(_ip(), []).append(now)
 
 
 def _private(resp):
@@ -471,6 +477,10 @@ def _biz(tenant_id: int) -> dict:
         return {"name": "", "logo": False, "colour": "#0B1D40"}
 
 
+STAFF_NOTE = ("You're logged in to PhiXtra for this business, so the buyer's buttons don't work for you. "
+              "This is what your buyer sees.")
+
+
 def _page(link, st, lang, msg=None, error=None, open_form=None):
     tid = link["tenant_id"] if link else None
     biz = _biz(tid) if tid else {"name": "", "logo": False, "colour": "#0B1D40"}
@@ -489,6 +499,7 @@ def _page(link, st, lang, msg=None, error=None, open_form=None):
         "public/quote_online.html", t=t, lang=lang, biz=biz, kind=kind, words=words, req=req, q=(st or {}).get("q"),
         token=request.view_args.get("token"), msg=msg, error=error, open_form=open_form,
         accept_on=bool(tid and qr.settings(tid).get("online_accept")),
+        staff=bool(tid and _staff_of(tid)), staff_note=STAFF_NOTE,
         number=(req.get("quote_number") or (f"R-{req['ref_no']}" if req.get("ref_no") else "")),
         total=(qr.money(req.get("quote_value"), req.get("quote_currency")) if req.get("quote_value") is not None else ""),
         company=req.get("buyer_company") or req.get("buyer_name") or ""))
@@ -688,6 +699,9 @@ def act(token, action):
         return _page(link, st, lang)
     tid, req = link["tenant_id"], st["req"]
     biz = _biz(tid)["name"] or "the business"
+    if _staff_of(tid):
+        # The business's own staff previewing the link never answer for the buyer.
+        return _page(link, st, lang, error=STAFF_NOTE)
     if _too_many(link["id"]):
         return _page(link, st, lang, error=t["busy"])
     f = request.form
@@ -715,15 +729,18 @@ def act(token, action):
             return _page(link, st, lang, error=t["need_tick"], open_form="accept")
         before = _snapshot(tid, req, "accept", f"accepted online by {name}", po or None)
         note = f"Accepted online by {name}" + (f", order number {po}" if po else "")
+        # Undo record first: if Won is then saved, Undo is always there.
+        old_answer = req.get("ai_answer")
+        _save_snapshot(req["id"], before)
         ok, _msg, won_lead = qr.mark_won(tid, req["id"], None, ONLINE_ACTOR, note[:300])
         if not ok:
+            _save_snapshot(req["id"], old_answer)
             conn, cur = _db()
             try:
                 st = _state(cur, link)
             finally:
                 cur.close(); conn.close()
             return _page(link, st, lang)
-        _save_snapshot(req["id"], before)
         _log_action(link["id"], "accept", name=name, po=po or None)
         if won_lead:
             try:
@@ -737,11 +754,13 @@ def act(token, action):
     # decline
     reason = (f.get("reason") or "").strip()[:300]
     before = _snapshot(tid, req, "decline", reason or "declined online", None)
+    old_answer = req.get("ai_answer")
+    _save_snapshot(req["id"], before)
     ok, _msg = qr.close(tid, req["id"], ("Declined online: " + reason) if reason else "Declined online by the buyer",
                         ONLINE_ACTOR)
     if not ok:
+        _save_snapshot(req["id"], old_answer)
         return _page(link, st, lang)
-    _save_snapshot(req["id"], before)
     _log_action(link["id"], "decline", name=name or None, text=reason or None)
     _tell(tid, req, "decline", name=name, text=reason)
     return _page(link, {"kind": "lost", "req": req}, lang, msg=t["thanks_decline"].format(biz=biz))

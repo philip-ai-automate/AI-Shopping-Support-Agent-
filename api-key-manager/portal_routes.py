@@ -44100,9 +44100,11 @@ def quotes_settings():
                                       "online_accept": f.get("online_accept") == "1",
                                       "online_open_alert": f.get("online_open_alert") == "1"},
                           _current_actor(customer)["label"])
-        problem = _quote_fu_save(tenant_id, f)
-        if problem:
-            flash(problem, "warning")
+        # The quote rules are Pipeline Settings rules: same permission as there.
+        if _team_member_has_permission("crm.pipeline_settings_edit"):
+            problem = _quote_fu_save(tenant_id, f)
+            if problem:
+                flash(problem, "warning")
         flash("Quotation settings saved. New requests use them; requests already waiting keep their time.", "success")
         return redirect(url_for("portal.quotes_settings"))
     return render_template("portal/quotes_settings.html", s=_qr.settings(tenant_id), qr=_qr, can_edit=can_edit,
@@ -44112,8 +44114,16 @@ def quotes_settings():
 def _quote_fu_rules(tenant_id: int) -> list:
     """[(trigger, rule or None)] for the two quote follow-up rules."""
     _af.seed_quote_rules(tenant_id)
-    rules = {r["trigger"]: r for r in reversed(_af.list_rules(tenant_id)) if r["trigger"] in _af.QUOTE_TRIGGERS}
-    return [(t, rules.get(t)) for t in _af.QUOTE_TRIGGERS]
+    # The same rule the reminders follow (switched-on first), so this box
+    # and what PhiXtra does always agree.
+    seqs = {r["id"]: r.get("sequence_name") for r in _af.list_rules(tenant_id)}
+    out = []
+    for t in _af.QUOTE_TRIGGERS:
+        r = _af.quote_rule(tenant_id, t)
+        if r:
+            r = dict(r); r["sequence_name"] = seqs.get(r["id"])
+        out.append((t, r))
+    return out
 
 
 def _quote_fu_context(customer, tenant_id: int) -> dict:
@@ -44125,7 +44135,8 @@ def _quote_fu_context(customer, tenant_id: int) -> dict:
         cur.close(); conn.close()
     owner = " ".join(x for x in (customer.get("first_name"), customer.get("last_name")) if x) or "the account owner"
     who = lambda k: {"owner": "the deal owner", "account_owner": owner}.get(k) or team.get(k, "the deal owner")
-    return {"qfu": _quote_fu_rules(tenant_id), "qfu_who": who, "qfu_actions": dict(_af.REMIND_ACTIONS)}
+    return {"qfu": _quote_fu_rules(tenant_id), "qfu_who": who, "qfu_actions": dict(_af.REMIND_ACTIONS),
+            "qfu_can_edit": _team_member_has_permission("crm.pipeline_settings_edit")}
 
 
 def _quote_fu_save(tenant_id: int, f) -> str:

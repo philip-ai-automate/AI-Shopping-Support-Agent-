@@ -61,6 +61,7 @@
       {% if company %}<div class="sub">{{ t.for }} {{ company }}</div>{% endif %}
       {% if msg %}<div class="note ok" role="status">{{ msg }}</div>{% endif %}
       {% if error %}<div class="note bad" role="alert">{{ error }}</div>{% endif %}
+      {% if staff and not error %}<div class="note info">{{ staff_note }}</div>{% endif %}
       <div class="facts">
         <div class="fact"><b>{{ t.total }}</b><span>{{ total or '—' }}</span></div>
         <div class="fact"><b>{{ t.valid }}</b><span>{{ req.quote_valid_until.strftime('%d %b %Y') if req.quote_valid_until else '—' }}</span></div>
