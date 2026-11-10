@@ -246,7 +246,6 @@ def _store_buyer_message(tenant_id: int, customer_phone: str, content: str):
         return
     cur = conn.cursor()
     try:
-        from data_crypto import enc as _enc   # chat words encrypted at rest (10 Nov 2026)
         cur.execute("INSERT INTO re_chat_messages (tenant_id, customer_id, role, content) VALUES (%s,%s,'user',%s)",
                     (tenant_id, cid, _enc(content)))
         conn.commit()

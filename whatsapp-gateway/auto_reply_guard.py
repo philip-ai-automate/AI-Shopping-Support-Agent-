@@ -29,6 +29,9 @@ LOOP_WINDOW = timedelta(minutes=10)
 # Repeated identical text from the same person (only longer texts count).
 REPEAT_MIN_LEN = 40
 REPEAT_WINDOW = timedelta(days=7)
+# Newest inbound messages read per check (words are encrypted, so they are
+# opened here; a loop shows up long before this many).
+REPEAT_SCAN_MAX = 300
 
 _AWAY = re.compile(
     r"thanks? (you )?for (contacting|messaging|reaching out|your message|getting in touch)"
@@ -92,8 +95,9 @@ def check(tenant_id: int, customer_phone: str, text: str):
             cur.execute("""
                 SELECT content, created_at FROM wa_message_log
                  WHERE tenant_id = %s AND customer_phone = %s AND direction = 'inbound'
-                   AND NOT is_historical AND created_at >= %s""",
-                (tenant_id, customer_phone, now - REPEAT_WINDOW))
+                   AND NOT is_historical AND created_at >= %s
+                 ORDER BY created_at DESC LIMIT %s""",
+                (tenant_id, customer_phone, now - REPEAT_WINDOW, REPEAT_SCAN_MAX))
             hits = [at for c, at in cur.fetchall() if _norm(_dec(c)) == norm]
             a, b = len(hits), sum(1 for at in hits if at >= now - LOOP_WINDOW)
             same, same_recent = max(int(a or 0) - 1, 0), max(int(b or 0) - 1, 0)

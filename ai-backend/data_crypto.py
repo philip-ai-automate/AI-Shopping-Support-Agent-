@@ -48,7 +48,13 @@ def enc(s):
         return s
     s = str(s)
     if s.startswith(PREFIX):
-        return s
+        # Already encrypted? Only if it really opens — a visitor can type
+        # text that happens to start with "v1:" (review 10 Nov 2026).
+        try:
+            _fernet().decrypt(s[len(PREFIX):].encode())
+            return s
+        except Exception:
+            pass
     return PREFIX + _fernet().encrypt(s.encode()).decode()
 
 
@@ -61,6 +67,16 @@ def dec(s):
         return _fernet().decrypt(s[len(PREFIX):].encode()).decode()
     except Exception:
         return ""
+
+
+def ready() -> bool:
+    """True when the data key loads and works. Services call this at start
+    so a missing key shows as a loud error, not as silently lost messages."""
+    try:
+        return dec(enc("phixtra-key-check")) == "phixtra-key-check"
+    except Exception as e:
+        print(f"❌❌ DATA KEY NOT USABLE ({KEY_FILE}): {e} — messages cannot be saved", flush=True)
+        return False
 
 
 def is_enc(s) -> bool:

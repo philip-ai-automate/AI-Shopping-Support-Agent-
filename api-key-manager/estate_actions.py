@@ -18,6 +18,7 @@ Tables (new, created once):
                      message it follows (anchor_at), so nothing is sent twice
   re_wa_optouts      buyers who replied STOP (also left out of broadcasts)
 """
+import data_crypto   # message words encrypted at rest (10 Nov 2026)
 import re
 from datetime import datetime, timedelta, timezone, time as dtime
 from zoneinfo import ZoneInfo
@@ -828,7 +829,6 @@ def run_tenant(tenant: dict, now=None, http=None, dry=False) -> dict:
                                ON CONFLICT DO NOTHING""",
                             (tid, tenant["wa_phone_number_id"], c["wa_phone"], data_crypto.enc(body[:2000]),
                              "text" if plain else "template", None if dry else info))
-                import data_crypto   # chat words encrypted at rest (10 Nov 2026)
                 cur.execute("INSERT INTO re_chat_messages (tenant_id, customer_id, role, content) VALUES (%s,%s,'assistant',%s)",
                             (tid, c["id"], data_crypto.enc(body)))
                 out["sent"] += 1

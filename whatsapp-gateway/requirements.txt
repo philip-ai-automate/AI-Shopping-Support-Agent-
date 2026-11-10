@@ -6,3 +6,4 @@ python-dotenv
 pydantic
 apscheduler
 Pillow
+cryptography==44.0.3

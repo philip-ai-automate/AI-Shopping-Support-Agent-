@@ -6,6 +6,7 @@ conversations, orders, and usage data so they can explore the portal freely
 and show clients what they will experience.
 """
 import secrets
+import data_crypto   # message words encrypted at rest (10 Nov 2026)
 import string
 import random
 import bcrypt
@@ -214,7 +215,7 @@ def _seed_demo_data(cur, tenant_id: int, customer_id: int, first_name: str):
                 INSERT INTO wa_message_log
                     (tenant_id, phone_number_id, customer_phone, direction, content, message_type, created_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (tenant_id, fake_pid, phone, direction, __import__("data_crypto").enc(content), mtype,  # words encrypted at rest
+            """, (tenant_id, fake_pid, phone, direction, data_crypto.enc(content), mtype,  # words encrypted at rest
                   datetime.utcnow() - timedelta(hours=hrs)))
 
     # Handoff states
@@ -244,7 +245,7 @@ def _seed_demo_data(cur, tenant_id: int, customer_id: int, first_name: str):
                  visitor_name, visitor_email, status, created_at)
             VALUES (%s, %s, %s, %s, %s, %s, 'pending', %s)
         """, (tenant_id, f"sess-{phone[-6:]}-{tenant_id}",
-              __import__("data_crypto").enc(phone), __import__("data_crypto").enc(msg), __import__("data_crypto").enc(vname), __import__("data_crypto").enc(vemail), created))  # encrypted at rest
+              data_crypto.enc(phone), data_crypto.enc(msg), data_crypto.enc(vname), data_crypto.enc(vemail), created))  # encrypted at rest
 
     # AI usage events — 30 days, deterministic per tenant
     phones = [p for p, _ in contacts]

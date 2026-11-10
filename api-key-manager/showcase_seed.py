@@ -21,6 +21,7 @@ Nothing can reach a real person:
   - AI is off, staff alerts are off, the owner gets no hand-over emails.
 """
 import argparse, json, secrets, string, sys
+import data_crypto   # message words encrypted at rest (10 Nov 2026)
 from datetime import datetime, timedelta
 
 import psycopg2.extras
@@ -219,7 +220,7 @@ def seed_data(cur, tid: int) -> dict:
                 direction, mtype, label = "outbound", "agent_reply", sender
             cur.execute("""INSERT INTO wa_message_log (tenant_id, phone_number_id, customer_phone, direction, content,
                                                        message_type, created_at, sent_by_label)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""", (tid, PNID, phone, direction, __import__("data_crypto").enc(text), mtype, t, label))  # words encrypted at rest
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""", (tid, PNID, phone, direction, data_crypto.enc(text), mtype, t, label))  # words encrypted at rest
             t += timedelta(minutes=2)
         if who:
             cur.execute("""INSERT INTO wa_conversation_assignments (tenant_id, customer_phone, assigned_to_key, assigned_to_label)

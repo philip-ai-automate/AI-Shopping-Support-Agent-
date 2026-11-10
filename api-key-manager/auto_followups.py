@@ -1053,21 +1053,20 @@ def _candidates(cur, rule) -> list:
     elif t in QUOTE_TRIGGERS:
         out = _quote_candidates(cur, rule)
     elif t == "wa_price_quiet":
-        # The words are encrypted (10 Nov 2026): the price check runs here,
-        # keeping each number's latest price question, as before.
+        # The words are encrypted (10 Nov 2026), so the price check runs here.
+        # Only each number's LATEST message can qualify (an older price
+        # question always has a later message, which counts as a reply), so
+        # one message per number is opened — same result as before.
         cur.execute("""
-            SELECT m.id, m.customer_phone, m.created_at, m.content
-            FROM wa_message_log m
-            WHERE m.tenant_id=%s AND m.direction='inbound'
-              AND m.created_at <= NOW() - make_interval(days => %s)
-              AND m.created_at >= NOW() - make_interval(days => %s)
-            ORDER BY m.customer_phone, m.created_at DESC""", (tid, days, days + LOOKBACK_DAYS))
-        _price_rows, _seen_ph = [], set()
-        for m in cur.fetchall():
-            if m["customer_phone"] in _seen_ph or not re.search(PRICE_RE, data_crypto.dec(m["content"]) or "", re.I):
-                continue
-            _seen_ph.add(m["customer_phone"])
-            _price_rows.append(m)
+            SELECT * FROM (
+                SELECT DISTINCT ON (m.customer_phone) m.id, m.customer_phone, m.created_at, m.content
+                FROM wa_message_log m
+                WHERE m.tenant_id=%s AND m.direction='inbound'
+                  AND m.created_at >= NOW() - make_interval(days => %s)
+                ORDER BY m.customer_phone, m.created_at DESC) last_in
+            WHERE last_in.created_at <= NOW() - make_interval(days => %s)""", (tid, days + LOOKBACK_DAYS, days))
+        _price_rows = [m for m in cur.fetchall()
+                       if re.search(PRICE_RE, data_crypto.dec(m["content"]) or "", re.I)]
         for m in _price_rows:
             phone = digits(m["customer_phone"])
             cur.execute("""SELECT 1 FROM wa_message_log WHERE tenant_id=%s AND customer_phone=%s

@@ -23,6 +23,7 @@ Run it again to reset: it deletes the demo tenant first, then re-creates everyth
 """
 
 import os, sys, secrets, string, bcrypt
+import data_crypto   # message words encrypted at rest (10 Nov 2026)
 from datetime import datetime, timedelta, date
 from dotenv import load_dotenv
 import psycopg2
@@ -267,7 +268,7 @@ for phone, messages in conversations:
             INSERT INTO wa_message_log
                 (tenant_id, phone_number_id, customer_phone, direction, content, message_type, created_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (tenant_id, FAKE_PID, phone, direction, __import__("data_crypto").enc(content), mtype,  # words encrypted at rest
+        """, (tenant_id, FAKE_PID, phone, direction, data_crypto.enc(content), mtype,  # words encrypted at rest
               datetime.utcnow() - timedelta(hours=hrs)))
 
 # ── 9. Handoff states ─────────────────────────────────────────────────────────
@@ -304,7 +305,7 @@ for phone, msg, vname, vemail, created in handoff_reqs:
              visitor_name, visitor_email, status, created_at)
         VALUES (%s, %s, %s, %s, %s, %s, 'pending', %s)
     """, (tenant_id, f"sess-{phone[-6:]}-{tenant_id}",
-          __import__("data_crypto").enc(phone), __import__("data_crypto").enc(msg), __import__("data_crypto").enc(vname), __import__("data_crypto").enc(vemail), created))  # encrypted at rest
+          data_crypto.enc(phone), data_crypto.enc(msg), data_crypto.enc(vname), data_crypto.enc(vemail), created))  # encrypted at rest
 
 # ── 11. AI usage events (30 days) ─────────────────────────────────────────────
 print("📊  Seeding AI usage events...")

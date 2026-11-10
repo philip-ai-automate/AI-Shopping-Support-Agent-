@@ -116,6 +116,7 @@ async def lifespan(app: FastAPI):
     import asyncio
     init_wa_tables()
     init_staff_alert_tables()
+    __import__("data_crypto").ready()   # loud error at start if the data key is missing
     _scheduler.start()
     print("✅ [SCHEDULER] Plan resets: 00:05 UTC | Auto-close handoffs: every hour", flush=True)
     yield

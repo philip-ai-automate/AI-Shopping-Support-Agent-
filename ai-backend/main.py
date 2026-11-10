@@ -84,6 +84,26 @@ app.add_middleware(
 
 init_memory_tables()
 ensure_billing_tables()
+__import__("data_crypto").ready()   # loud error at start if the data key is missing
+def _ensure_handoff_text_columns():
+    """Encrypted visitor details are longer than the old VARCHAR limits; the
+    portal widens them too, this covers the AI backend starting first."""
+    _c = get_db_connection()
+    if not _c:
+        return
+    try:
+        _k = _c.cursor()
+        _k.execute("""SELECT count(*) FROM information_schema.columns WHERE table_name='handoff_requests'
+                        AND column_name IN ('visitor_name','visitor_email','whatsapp_number') AND data_type <> 'text'""")
+        if _k.fetchone()[0]:
+            _k.execute("""ALTER TABLE handoff_requests ALTER COLUMN visitor_name TYPE TEXT,
+                          ALTER COLUMN visitor_email TYPE TEXT, ALTER COLUMN whatsapp_number TYPE TEXT""")
+        _c.commit()
+    except Exception as _e:
+        _c.rollback(); print("⚠️ handoff text columns:", _e)
+    finally:
+        _c.close()
+_ensure_handoff_text_columns()
 # Expire any stale recovery queue entries from previous server runs
 try:
     expire_stale_queue_entries()

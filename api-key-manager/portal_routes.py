@@ -12697,6 +12697,8 @@ def _get_chat_sessions(tenant_id: int, date_from=None, date_to=None, q=None, lim
         if date_to:
             where.append("cs.created_at <= %s")
             params.append(date_to + " 23:59:59")
+        # Same period/retention filters for the search inside messages (review 10 Nov 2026)
+        msg_where_sql, msg_params = " AND ".join(where), list(params)
         if q:
             where.append("cs.session_id LIKE %s")
             params.append(f"%{q}%")
@@ -12733,10 +12735,13 @@ def _get_chat_sessions(tenant_id: int, date_from=None, date_to=None, q=None, lim
                 SELECT cm.session_id, cm.content
                 FROM chat_messages cm
                 JOIN chat_sessions cs ON cs.session_id = cm.session_id AND cs.tenant_id = cm.tenant_id
-                WHERE cm.tenant_id = %s
-            """, (tenant_id,))
-            extra_sids = {r["session_id"] for r in (cur.fetchall() or [])
-                          if q in (data_crypto.dec(r["content"]) or "")}
+                WHERE cm.tenant_id = %s AND {msg_where_sql}
+                ORDER BY cm.id DESC LIMIT 20000
+            """, [tenant_id] + msg_params)
+            extra_sids = set()
+            for r in (cur.fetchall() or []):
+                if r["session_id"] not in extra_sids and q in (data_crypto.dec(r["content"]) or ""):
+                    extra_sids.add(r["session_id"])
             existing   = {r["session_id"] for r in rows}
             missing    = extra_sids - existing
             if missing:

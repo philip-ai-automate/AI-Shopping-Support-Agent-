@@ -116,6 +116,7 @@ def log_message(
             meta_message_id = pop_sent_id(phone_number_id, customer_phone)
         except Exception:
             pass
+    stored = _enc(content)   # raises if the data key is missing: never treated as a duplicate
     conn = get_db_connection()
     if not conn:
         return False
@@ -128,7 +129,7 @@ def log_message(
             VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (meta_message_id) WHERE meta_message_id IS NOT NULL DO NOTHING
             """,
-            (tenant_id, phone_number_id, customer_phone, direction, _enc(content), message_type, meta_message_id),
+            (tenant_id, phone_number_id, customer_phone, direction, stored, message_type, meta_message_id),
         )
         conn.commit()
         return cur.rowcount > 0

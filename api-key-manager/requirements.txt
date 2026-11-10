@@ -11,3 +11,4 @@ openai
 pypdf
 python-docx
 phonenumbers==9.0.40
+cryptography==48.0.0

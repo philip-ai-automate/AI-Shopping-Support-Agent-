@@ -96,8 +96,12 @@ def check():
                                COUNT(*) FILTER (WHERE {col} IS NOT NULL AND {col} <> '' AND {col} NOT LIKE 'v1:%%')
                           FROM {table}""")
         enc_n, plain_n = cur.fetchone()
-        cur.execute(f"SELECT {col} FROM {table} WHERE {col} LIKE 'v1:%%'")
-        bad = sum(1 for (v,) in cur.fetchall() if data_crypto.dec(v) == "")
+        # read in batches with a server-side cursor (big tables, review 10 Nov 2026)
+        sc = conn.cursor(name=f"chk_{table}_{col}")
+        sc.itersize = 2000
+        sc.execute(f"SELECT {col} FROM {table} WHERE {col} LIKE 'v1:%%'")
+        bad = sum(1 for (v,) in sc if data_crypto.dec(v) == "")
+        sc.close()
         bad_total += bad
         print(f"{table}.{col}: encrypted {enc_n}, plain {plain_n}, cannot open {bad}")
     cur.close(); conn.close()
@@ -106,6 +110,10 @@ def check():
 
 if __name__ == "__main__":
     cmd = (sys.argv[1:] or ["check"])[0]
+    if cmd in ("convert", "undo"):
+        # hand-over fields must be wide enough for scrambled values first
+        from portal_migrations import ensure_handoff_text_columns
+        ensure_handoff_text_columns()
     if cmd == "convert":
         convert(); check()
     elif cmd == "undo":

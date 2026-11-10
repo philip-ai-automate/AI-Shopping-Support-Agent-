@@ -26,6 +26,7 @@ instead of doing anything.
 ──────────────────────────────────────────────────────────────────────────────
 """
 import os
+import data_crypto   # message words encrypted at rest (10 Nov 2026)
 import sys
 import time
 import argparse
@@ -129,7 +130,7 @@ def _log_outbound(cur, conn, tenant_id: int, phone_number_id: str, to_phone: str
                    (tenant_id, phone_number_id, customer_phone, direction, content, message_type)
                VALUES (%s, %s, %s, 'outbound', %s, 'campaign')""",
             (tenant_id, phone_number_id, to_phone,
-             __import__("data_crypto").enc(f"📣 Prospect campaign: \"{TEMPLATE_NAME}\"")),  # words encrypted at rest
+             data_crypto.enc(f"📣 Prospect campaign: \"{TEMPLATE_NAME}\"")),  # words encrypted at rest
         )
         conn.commit()
     except Exception as e:
