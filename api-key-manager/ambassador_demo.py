@@ -244,7 +244,7 @@ def _seed_demo_data(cur, tenant_id: int, customer_id: int, first_name: str):
                  visitor_name, visitor_email, status, created_at)
             VALUES (%s, %s, %s, %s, %s, %s, 'pending', %s)
         """, (tenant_id, f"sess-{phone[-6:]}-{tenant_id}",
-              phone, msg, vname, vemail, created))
+              __import__("data_crypto").enc(phone), __import__("data_crypto").enc(msg), __import__("data_crypto").enc(vname), __import__("data_crypto").enc(vemail), created))  # encrypted at rest
 
     # AI usage events — 30 days, deterministic per tenant
     phones = [p for p, _ in contacts]

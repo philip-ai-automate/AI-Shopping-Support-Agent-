@@ -18,6 +18,7 @@ import re
 import smtplib
 import psycopg2.extras
 from email.message import EmailMessage
+from data_crypto import enc as _enc, dec as _dec   # visitor details encrypted at rest (10 Nov 2026)
 from db import get_db_connection
 
 # Regex to extract phone / WhatsApp numbers from text.
@@ -75,8 +76,8 @@ def _log_handoff_db(
             (
                 tenant_id,
                 session_id,
-                whatsapp_number or None,
-                (visitor_message or "")[:1000],
+                _enc(whatsapp_number or None),          # visitor details encrypted at rest (10 Nov 2026)
+                _enc((visitor_message or "")[:1000]),
             ),
         )
         conn.commit()
@@ -446,8 +447,8 @@ def update_handoff_contact(
                 (session_id, tenant_id),
             )
             row = cur.fetchone() or {}
-            original_message = (row.get("visitor_message") or "")[:300]
-            existing_phone   = row.get("whatsapp_number") or ""
+            original_message = (_dec(row.get("visitor_message")) or "")[:300]
+            existing_phone   = _dec(row.get("whatsapp_number")) or ""
             cur.close()
             conn.close()
     except Exception as e:
@@ -478,9 +479,9 @@ def update_handoff_contact(
                     )
                     """,
                     (
-                        (visitor_name  or "")[:200],
-                        (visitor_email or "")[:254],
-                        final_phone,
+                        _enc((visitor_name  or "")[:200]),
+                        _enc((visitor_email or "")[:254]),
+                        _enc(final_phone),
                         session_id,
                         tenant_id,
                     ),
@@ -498,7 +499,7 @@ def update_handoff_contact(
                     )
                     """,
                     (
-                        final_phone,
+                        _enc(final_phone),
                         session_id,
                         tenant_id,
                     ),

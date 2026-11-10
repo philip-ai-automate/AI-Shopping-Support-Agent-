@@ -6392,6 +6392,10 @@ def _get_pending_handoffs(tenant_id: int) -> list:
             """, (tenant_id,))
         rows = cur.fetchall() or []
         cur.close(); conn.close()
+        for r in rows:   # visitor details encrypted at rest (10 Nov 2026)
+            for f in ("whatsapp_number", "visitor_message", "visitor_name", "visitor_email"):
+                if f in r:
+                    r[f] = data_crypto.dec(r[f])
         return rows
     except Exception as e:
         print("⚠️ _get_pending_handoffs error:", e)
@@ -35206,6 +35210,8 @@ def _get_webchat_conversations(tenant_id: int) -> list:
         cur.close(); conn.close()
         for r in rows:
             r["last_content"] = data_crypto.dec(r.get("last_content"))
+            for f in ("visitor_name", "visitor_email", "whatsapp_number"):   # encrypted at rest (10 Nov 2026)
+                r[f] = data_crypto.dec(r.get(f))
             r["needs_reply"] = (r["status"] == "pending")
             r["online"] = bool(r.get("online"))
             r["presence_words"] = _webchat_presence_words(r["online"], r.get("last_seen_at"))
@@ -35299,7 +35305,7 @@ def _send_webchat_reply(tenant_id: int, key: str, text: str, actor: dict):
                (ARRAY_AGG(whatsapp_number ORDER BY id DESC) FILTER (WHERE COALESCE(whatsapp_number,'') <> ''))[1] AS phone
           FROM handoff_requests WHERE tenant_id=%s AND session_id=%s
     """, (tenant_id, session_id))
-    contact = cur.fetchone() or {}
+    contact = {k: data_crypto.dec(v) for k, v in (cur.fetchone() or {}).items()}   # encrypted at rest
     cur.execute("""SELECT last_seen_at > NOW() - INTERVAL '30 seconds' AS online
                      FROM web_chat_presence WHERE tenant_id=%s AND session_id=%s""", (tenant_id, session_id))
     online = bool((cur.fetchone() or {}).get("online"))
@@ -38887,7 +38893,7 @@ def _inbox_chat_identity(tenant_id: int, key: str):
                               (ARRAY_AGG(visitor_email ORDER BY created_at DESC) FILTER (WHERE visitor_email IS NOT NULL))[1],
                               (ARRAY_AGG(visitor_name ORDER BY created_at DESC) FILTER (WHERE visitor_name IS NOT NULL))[1]
                          FROM handoff_requests WHERE tenant_id=%s AND session_id=%s""", (tenant_id, key[4:]))
-        wa, em, name = cur.fetchone() or (None, None, None)
+        wa, em, name = (data_crypto.dec(x) for x in (cur.fetchone() or (None, None, None)))   # encrypted at rest
         cur.close(); conn.close()
         return [wa] if wa else [], [em] if em else [], name
     return [key], [], None

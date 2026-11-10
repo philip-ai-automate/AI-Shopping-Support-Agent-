@@ -34,6 +34,7 @@ import psycopg2.extras
 import push_notify
 
 from wa_db import get_db_connection, get_active_template
+from data_crypto import enc as _enc, dec as _dec   # visitor details + previews encrypted at rest (10 Nov 2026)
 from meta_sender import send_text, send_template
 
 NEW_CHAT_WINDOW = timedelta(hours=2)   # one alert per chat per 2 hours
@@ -185,7 +186,8 @@ def _web_identity(cur, tenant_id: int, session_id: str):
                           (ARRAY_AGG(visitor_email ORDER BY created_at DESC) FILTER (WHERE visitor_email IS NOT NULL))[1] AS em
                      FROM handoff_requests WHERE tenant_id=%s AND session_id=%s""", (tenant_id, session_id))
     r = cur.fetchone() or {}
-    return [r["wa"]] if r.get("wa") else [], [r["em"]] if r.get("em") else []
+    wa, em = _dec(r.get("wa")), _dec(r.get("em"))
+    return [wa] if wa else [], [em] if em else []
 
 
 def _owner_fallback(cur, tenant_id: int) -> list:
@@ -396,8 +398,8 @@ async def alert_chat_needs_reply(tenant_id: int, phone_number_id: str, customer_
             INSERT INTO chat_alerts (tenant_id, channel, chat_key, phone_number_id, reason,
                                      customer_label, preview, recipients)
             VALUES (%s, 'whatsapp', %s, %s, %s, %s, %s, %s)
-        """, (tenant_id, _digits(customer_phone), phone_number_id, reason, label,
-              (text or "")[:500], psycopg2.extras.Json(recips)))
+        """, (tenant_id, _digits(customer_phone), phone_number_id, reason, _enc(label),
+              _enc((text or "")[:500]), psycopg2.extras.Json(recips)))
         conn.commit()
     except Exception as e:
         conn.rollback()
@@ -512,6 +514,7 @@ async def process_web_chat_alerts() -> int:
         """)
         seen = set()
         for q in sorted(cur.fetchall() or [], key=lambda r: r["id"]):
+            q["label"], q["preview"] = _dec(q["label"]), _dec(q["preview"])
             k = (q["tenant_id"], q["session_id"])
             if k in seen:
                 continue
@@ -534,7 +537,7 @@ async def process_web_chat_alerts() -> int:
             cur.execute("""
                 INSERT INTO chat_alerts (tenant_id, channel, chat_key, reason, customer_label, preview, recipients)
                 VALUES (%s, 'web', %s, %s, %s, %s, %s)
-            """, (q["tenant_id"], q["session_id"], q["reason"], q["label"], q["preview"],
+            """, (q["tenant_id"], q["session_id"], q["reason"], _enc(q["label"]), _enc(q["preview"]),
                   psycopg2.extras.Json(recips)))
             todo.append((recips, account, q))
         cur.execute("DELETE FROM web_chat_alert_queue WHERE processed_at < NOW() - INTERVAL '7 days'")
@@ -565,6 +568,7 @@ def web_reply_email(cur, tenant_id: int, session_id: str, text: str, staff_label
           FROM handoff_requests WHERE tenant_id=%s AND session_id=%s
     """, (tenant_id, session_id))
     v = cur.fetchone() or {}
+    v = {"email": _dec(v.get("email")), "name": _dec(v.get("name"))}
     if not v.get("email"):
         return None
     cur.execute("""SELECT t.name, t.domain, COALESCE(c.handoff_notify_email, c.email) AS owner_email

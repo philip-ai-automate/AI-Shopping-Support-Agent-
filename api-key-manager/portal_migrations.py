@@ -5070,3 +5070,23 @@ def ensure_wa_usage_column():
         conn.rollback(); print("⚠️  wa_number_usage migration error:", e)
     finally:
         cur.close(); conn.close()
+
+
+def ensure_handoff_text_columns():
+    """handoff_requests visitor details are stored encrypted (10 Nov 2026);
+    scrambled values are longer than the old VARCHAR limits, so the three
+    fields are plain TEXT. No-op once done."""
+    from db import get_db_connection
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("""SELECT count(*) FROM information_schema.columns WHERE table_name='handoff_requests'
+                         AND column_name IN ('visitor_name','visitor_email','whatsapp_number')
+                         AND data_type <> 'text'""")
+        if cur.fetchone()[0]:
+            cur.execute("""ALTER TABLE handoff_requests ALTER COLUMN visitor_name TYPE TEXT,
+                           ALTER COLUMN visitor_email TYPE TEXT, ALTER COLUMN whatsapp_number TYPE TEXT""")
+        conn.commit()
+    except Exception as e:
+        conn.rollback(); print("⚠️  handoff text columns migration error:", e)
+    finally:
+        cur.close(); conn.close()

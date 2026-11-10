@@ -221,13 +221,13 @@ CREATE TABLE IF NOT EXISTS handoff_requests (
     id              BIGSERIAL PRIMARY KEY,
     tenant_id       INTEGER      NOT NULL,
     session_id      VARCHAR(128) NOT NULL,
-    whatsapp_number VARCHAR(50),
+    whatsapp_number TEXT,          -- encrypted at rest (10 Nov 2026)
     visitor_message TEXT,
     status          VARCHAR(20)  NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','handled')),
     created_at      TIMESTAMPTZ  DEFAULT NOW(),
     handled_at      TIMESTAMPTZ,
-    visitor_name    VARCHAR(200),
-    visitor_email   VARCHAR(254)
+    visitor_name    TEXT,          -- encrypted at rest
+    visitor_email   TEXT           -- encrypted at rest
 );
 
 -- ── handoff_rules ─────────────────────────────────────────────────────────────

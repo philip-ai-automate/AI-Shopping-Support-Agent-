@@ -35,6 +35,15 @@ TABLES = [
     # step 3: saved translations
     ("message_translations", "ctid", "translated"),
     ("sent_translations", "ctid", "original"),
+    # hand-over details + staff alert previews (second plan, 10 Nov 2026)
+    ("handoff_requests", "id", "visitor_name"),
+    ("handoff_requests", "id", "visitor_email"),
+    ("handoff_requests", "id", "whatsapp_number"),
+    ("handoff_requests", "id", "visitor_message"),
+    ("web_chat_alert_queue", "id", "label"),
+    ("web_chat_alert_queue", "id", "preview"),
+    ("chat_alerts", "id", "customer_label"),
+    ("chat_alerts", "id", "preview"),
 ]
 
 
@@ -90,7 +99,7 @@ def check():
         cur.execute(f"SELECT {col} FROM {table} WHERE {col} LIKE 'v1:%%'")
         bad = sum(1 for (v,) in cur.fetchall() if data_crypto.dec(v) == "")
         bad_total += bad
-        print(f"{table}: encrypted {enc_n}, plain {plain_n}, cannot open {bad}")
+        print(f"{table}.{col}: encrypted {enc_n}, plain {plain_n}, cannot open {bad}")
     cur.close(); conn.close()
     return bad_total
 

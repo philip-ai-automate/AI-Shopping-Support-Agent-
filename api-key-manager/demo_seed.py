@@ -304,7 +304,7 @@ for phone, msg, vname, vemail, created in handoff_reqs:
              visitor_name, visitor_email, status, created_at)
         VALUES (%s, %s, %s, %s, %s, %s, 'pending', %s)
     """, (tenant_id, f"sess-{phone[-6:]}-{tenant_id}",
-          phone, msg, vname, vemail, created))
+          __import__("data_crypto").enc(phone), __import__("data_crypto").enc(msg), __import__("data_crypto").enc(vname), __import__("data_crypto").enc(vemail), created))  # encrypted at rest
 
 # ── 11. AI usage events (30 days) ─────────────────────────────────────────────
 print("📊  Seeding AI usage events...")

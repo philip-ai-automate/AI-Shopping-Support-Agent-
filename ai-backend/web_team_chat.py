@@ -49,7 +49,7 @@ def contact_for(cur, tenant_id: int, session_id: str) -> dict:
           FROM handoff_requests WHERE tenant_id = %s AND session_id = %s
     """, (tenant_id, session_id))
     r = cur.fetchone() or {}
-    return {"name": r.get("name") or "", "email": r.get("email") or "", "phone": r.get("phone") or ""}
+    return {"name": _dec(r.get("name")) or "", "email": _dec(r.get("email")) or "", "phone": _dec(r.get("phone")) or ""}
 
 
 def queue_alert(cur, tenant_id: int, session_id: str, label: str, preview: str,
@@ -59,7 +59,7 @@ def queue_alert(cur, tenant_id: int, session_id: str, label: str, preview: str,
     cur.execute("""
         INSERT INTO web_chat_alert_queue (tenant_id, session_id, label, preview, reason, allow_owner)
         VALUES (%s, %s, %s, %s, %s, %s)
-    """, (tenant_id, session_id[:64], (label or "Website visitor")[:200], (preview or "")[:500],
+    """, (tenant_id, session_id[:64], _enc((label or "Website visitor")[:200]), _enc((preview or "")[:500]),
           reason, allow_owner))
 
 
@@ -96,12 +96,12 @@ def save_visitor_message(tenant_id: int, session_id: str, text: str) -> dict:
                 cur.execute("""UPDATE handoff_requests
                                   SET visitor_email   = COALESCE(NULLIF(%s,''), visitor_email),
                                       whatsapp_number = COALESCE(NULLIF(%s,''), whatsapp_number)
-                                WHERE id = %s""", (typed_email, typed_phone, pending["id"]))
+                                WHERE id = %s""", (_enc(typed_email), _enc(typed_phone), pending["id"]))
         else:
             cur.execute("""INSERT INTO handoff_requests
                                (tenant_id, session_id, whatsapp_number, visitor_message, status, visitor_email)
                            VALUES (%s, %s, %s, %s, 'pending', %s)""",
-                        (tenant_id, session_id, typed_phone or None, (text or "")[:1000], typed_email or None))
+                        (tenant_id, session_id, _enc(typed_phone or None), _enc((text or "")[:1000]), _enc(typed_email or None)))
         contact = contact_for(cur, tenant_id, session_id)
         out["contact"] = contact
         queue_alert(cur, tenant_id, session_id, visitor_label(contact), text)

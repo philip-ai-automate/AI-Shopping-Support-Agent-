@@ -2866,7 +2866,7 @@ def _w_list_demo_chat(tenant_id: int, sid: str, msg: str) -> None:
             SELECT %s, %s, 'handled', NOW(), %s
              WHERE EXISTS (SELECT 1 FROM chat_links WHERE tenant_id=%s AND enabled AND is_demo)
                AND NOT EXISTS (SELECT 1 FROM handoff_requests WHERE tenant_id=%s AND session_id=%s)
-        """, (tenant_id, sid[:64], msg[:1000], tenant_id, tenant_id, sid[:64]))
+        """, (tenant_id, sid[:64], __import__("data_crypto").enc(msg[:1000]), tenant_id, tenant_id, sid[:64]))  # encrypted at rest
         conn.commit()
     except Exception as e:
         print("⚠️ _w_list_demo_chat:", e)
