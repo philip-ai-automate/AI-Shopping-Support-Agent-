@@ -240,6 +240,9 @@ def for_request(tenant_id: int, request_id: int) -> dict:
         import qbo_link as _ql
         if _ql.chosen(tenant_id) == "qbo":
             return {"state": "none"}      # … or to QuickBooks
+        import sage_link as _sl
+        if _sl.chosen(tenant_id) == "sage":
+            return {"state": "none"}      # … or to Sage
     except Exception as e:
         print("⚠️ woo xero choice:", e)
     if not has_shop(tenant_id):

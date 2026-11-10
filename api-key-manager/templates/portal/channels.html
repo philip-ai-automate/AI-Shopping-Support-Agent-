@@ -95,6 +95,25 @@
   </div>
   {% endif %}
 
+  {% set _sc = sage_card() if not mailbox_only else none %}
+  {% if _sc %}
+  <!-- Sage Accounting (2026-11-10, B2B plans) — accepted quotations become draft invoices -->
+  <div class="channel-card">
+    <div class="channel-card-top">
+      <div class="channel-logo" style="background:#00D639;color:#fff;font-weight:800;font-size:16px">S</div>
+      <div>
+        <div class="channel-name">Sage Accounting</div>
+        {% if _sc.link and _sc.link.status == 'active' %}<div class="channel-status on">🟢 {{ _sc.link.business_name or 'Connected' }}</div>
+        {% elif _sc.link %}<div class="channel-status" style="color:#B54708;font-weight:600">🟠 Needs reconnecting</div>
+        {% else %}<div class="channel-status">Not connected. Accepted quotations become draft invoices in Sage.</div>{% endif %}
+      </div>
+    </div>
+    <div class="channel-card-foot">
+      <a href="{{ url_for('sage.page') }}" class="btn {% if not _sc.link %}btn-primary{% endif %}">{{ 'Manage' if _sc.link else 'Connect Sage' }} →</a>
+    </div>
+  </div>
+  {% endif %}
+
   {% set _qc = qbo_card() if not mailbox_only else none %}
   {% if _qc %}
   <!-- QuickBooks (2026-11-10, B2B plans) — accepted quotations become invoices -->

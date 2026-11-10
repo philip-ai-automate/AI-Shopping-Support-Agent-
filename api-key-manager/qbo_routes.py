@@ -43,6 +43,11 @@ def _guard():
     return customer, tenant_id, None
 
 
+def _other_pkg(tenant_id: int) -> str:
+    from sage_routes import other_accounts
+    return other_accounts(tenant_id, "qbo")
+
+
 def _xero_on(tenant_id: int) -> bool:
     link = X.link_for(tenant_id)
     return bool(link and link["status"] != "disconnected")
@@ -79,7 +84,7 @@ def page():
             items_err = str(e)
     return render_template("portal/quickbooks.html", customer=customer, link=link, configured=Q.configured(),
                            has_shop=Q._has_shop(tenant_id), settings=(link or {}).get("settings") or {},
-                           items=item_list, items_err=items_err, xero_on=_xero_on(tenant_id))
+                           items=item_list, items_err=items_err, xero_on=_other_pkg(tenant_id))
 
 
 @qbo_bp.route("/integrations/quickbooks/connect", methods=["GET"])
@@ -88,8 +93,10 @@ def connect():
     customer, tenant_id, err = _guard()
     if err:
         return err
-    if _xero_on(tenant_id):
-        flash("Xero is connected. PhiXtra works with one accounts package at a time: disconnect Xero first.", "warning")
+    from sage_routes import other_accounts as _other
+    _o = _other(tenant_id, "qbo")
+    if _o:
+        flash(f"{_o} is connected. PhiXtra works with one accounts package at a time: disconnect {_o} first.", "warning")
         return redirect(url_for("qbo.page"))
     if not Q.configured():
         flash("The QuickBooks connection isn't available yet. PhiXtra is finishing its set-up.", "warning")

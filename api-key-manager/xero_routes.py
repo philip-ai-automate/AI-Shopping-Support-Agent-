@@ -78,9 +78,10 @@ def connect():
     if err:
         return err
     try:
-        import qbo_link as _Q
-        if _Q.connected(tenant_id):
-            flash("QuickBooks is connected. PhiXtra works with one accounts package at a time: disconnect QuickBooks first.", "warning")
+        from sage_routes import other_accounts as _other
+        _o = _other(tenant_id, "xero")
+        if _o:
+            flash(f"{_o} is connected. PhiXtra works with one accounts package at a time: disconnect {_o} first.", "warning")
             return redirect(url_for("xero.page"))
     except Exception as e:
         print("⚠️ xero connect qbo check:", e)

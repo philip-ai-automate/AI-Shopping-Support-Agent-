@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% from "portal/_sage_invoice_box.html" import sage_invoice_box with context %}
 {% from "portal/_qbo_invoice_box.html" import qbo_invoice_box with context %}
 {% from "portal/_xero_invoice_box.html" import xero_invoice_box with context %}
 {% from "portal/_woo_order_box.html" import woo_order_box with context %}
@@ -216,6 +217,7 @@
         {% endif %}
         {% if xr and xr.state != 'none' %}{{ xero_invoice_box(xr, r.id, 'request', true) }}{% endif %}
         {% if qb and qb.state != 'none' %}{{ qbo_invoice_box(qb, r.id, 'request', true) }}{% endif %}
+        {% if sg and sg.state != 'none' %}{{ sage_invoice_box(sg, r.id, 'request', true) }}{% endif %}
         {% if not (ai and not ai.undone and ai.answer == 'accept') %}<div class="qt-small">To undo, use the deal on the Sales Pipeline.</div>{% endif %}
       {% else %}
         <div style="font-size:13px;line-height:1.7"><b style="color:var(--hot)">{{ r.close_reason }}</b><br>{{ dt(r.closed_at) }}</div>

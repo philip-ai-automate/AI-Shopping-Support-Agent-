@@ -40665,10 +40665,16 @@ def sales_pipeline():
         except Exception as e:
             print("⚠️ pipeline qbo invoices:", e)
             _qmap = {}
+        try:
+            import sage_link as _slp
+            _smap = _slp.invoices_for_requests(tenant_id, [v["id"] for v in dq_all.values() if v["key"] == "accepted"])
+        except Exception as e:
+            print("⚠️ pipeline sage invoices:", e)
+            _smap = {}
         for l in leads:
             l["dq"] = dq_all.get(l["id"])
             if l["dq"]:
-                l["dq"] = dict(l["dq"], woo=_wmap.get(l["dq"]["id"]), xero=_xmap.get(l["dq"]["id"]) or _qmap.get(l["dq"]["id"]))
+                l["dq"] = dict(l["dq"], woo=_wmap.get(l["dq"]["id"]), xero=_xmap.get(l["dq"]["id"]) or _qmap.get(l["dq"]["id"]) or _smap.get(l["dq"]["id"]))
     od_on = _od.pilot(tenant_id)
     od_counts = _od.pipeline_counts(tenant_id) if od_on else {}
     od_chips = _od.row_chips(tenant_id, [l["id"] for l in leads]) if od_on else {}
@@ -42030,7 +42036,13 @@ def lead_detail(lead_id: int, opp_view: bool = False):
                 except Exception as e:
                     print("⚠️ deal qbo invoice:", e)
                     _qb = {"state": "none"}
-                deal_quote = {**_dqi, "woo": _woo, "xero": _xr, "qbo": _qb, "latest": _sent[0] if _sent else None, "earlier": _sent[1:4],
+                try:
+                    import sage_link as _sld
+                    _sg = _sld.for_request(tenant_id, _dqi["id"])
+                except Exception as e:
+                    print("⚠️ deal sage invoice:", e)
+                    _sg = {"state": "none"}
+                deal_quote = {**_dqi, "woo": _woo, "xero": _xr, "qbo": _qb, "sage": _sg, "latest": _sent[0] if _sent else None, "earlier": _sent[1:4],
                               "events": _evs, "link": _link, "approved_by": _appr,
                               "last_opened_local": _dqi["last_opened_at"].astimezone(_qtz) if _dqi.get("last_opened_at") else None}
     except Exception as e:
@@ -43842,6 +43854,14 @@ def quotes_request_detail(request_id: int):
             shopify_order["on"] = False   # one place only: QuickBooks instead of a Shopify draft order
     except Exception as e:
         print("⚠️ quote request qbo:", e)
+    _sage_state = {"state": "none"}
+    try:
+        import sage_link as _slr
+        _sage_state = _slr.for_request(tenant_id, r["id"])
+        if _slr.chosen(tenant_id) == "sage" and not (shopify_order.get("draft")):
+            shopify_order["on"] = False   # one place only: Sage instead of a Shopify draft order
+    except Exception as e:
+        print("⚠️ quote request sage:", e)
     if not shopify_order.get("on"):
         try:
             import woo_orders as _wor
@@ -43856,7 +43876,7 @@ def quotes_request_detail(request_id: int):
                            not_quoted_reasons=_qr.NOT_QUOTED_REASONS, cur=r.get("currency") or _biz_currency(tenant_id),
                            country_name=dict(_addr.ADDRESS_COUNTRIES), today=now.date(), dt=_quote_dt(tz),
                            maker=_qr.settings(tenant_id)["maker"], quotations=_qq.for_request(tenant_id, r["id"]),
-                           sent_q=sent_q, shopify_order=shopify_order, woo=_woo_state, xr=_xero_state, qb=_qbo_state,
+                           sent_q=sent_q, shopify_order=shopify_order, woo=_woo_state, xr=_xero_state, qb=_qbo_state, sg=_sage_state,
                            orders_on=_plan_grants_feature(_get_tenant_plan(tenant_id), "ecom.orders_view"))
 
 

@@ -55,6 +55,8 @@ def create_app():
     flask_app.register_blueprint(xero_bp)
     from qbo_routes import qbo_bp             # Integration › QuickBooks (2026-11-10)
     flask_app.register_blueprint(qbo_bp)
+    from sage_routes import sage_bp           # Integration › Sage (2026-11-10)
+    flask_app.register_blueprint(sage_bp)
     # AI outreach drafts in Outlook (2026-11-04, PhiXtra pilot): CRM › AI Email Drafts.
     import outreach_drafts
     flask_app.register_blueprint(outreach_drafts.outreach_bp)

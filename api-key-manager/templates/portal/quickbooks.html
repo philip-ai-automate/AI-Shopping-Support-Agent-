@@ -37,7 +37,7 @@
     </div>
   </div>
   {% if not configured %}<div class="xr-note warn">The QuickBooks connection is being set up by PhiXtra and isn't available yet.</div>{% endif %}
-  {% if xero_on and not link %}<div class="xr-note warn">Xero is connected. PhiXtra works with one accounts package at a time; disconnect Xero first to use QuickBooks.</div>{% endif %}
+  {% if xero_on and not link %}<div class="xr-note warn">{{ xero_on }} is connected. PhiXtra works with one accounts package at a time; disconnect {{ xero_on }} first to use QuickBooks.</div>{% endif %}
   <div class="xr-acts">
     {% if configured and not xero_on and (not link or link.status != 'active') %}
     <a class="btn btn-primary" href="{{ url_for('qbo.connect') }}">{{ 'Connect QuickBooks again' if link else 'Connect QuickBooks' }} →</a>

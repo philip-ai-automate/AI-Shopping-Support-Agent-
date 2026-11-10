@@ -1,0 +1,89 @@
+{% extends "portal/base.html" %}
+{% block title %}Sage — PhiXtra Portal{% endblock %}
+{% block head %}
+<style>
+  .xr-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;margin-bottom:16px;max-width:820px}
+  .xr-row{display:flex;align-items:center;gap:12px}
+  .xr-logo{width:44px;height:44px;border-radius:50%;background:#00A033;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .xr-title{font-weight:800;color:var(--ink)} .xr-sub{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .xr-ok{color:#027A48;font-weight:700} .xr-warn{color:#B54708;font-weight:700}
+  .xr-note{font-size:13px;line-height:1.55;border-radius:12px;padding:12px 14px}
+  .xr-note.warn{background:#FFFAEB;border:1px solid #FEDF89;color:#7A2E0E}
+  .xr-acts{display:flex;gap:10px;flex-wrap:wrap;align-items:center} .xr-acts form{margin:0}
+  .xr-how{margin:0;padding-left:18px;font-size:13px;line-height:1.7}
+  .xr-form{display:grid;gap:14px;margin:0}
+  .xr-form label{font-size:12.5px;font-weight:700;display:block;margin-bottom:5px}
+  .xr-form select{max-width:360px}
+  .xr-radio{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;font-weight:400 !important}
+  .xr-radio input{width:18px;height:18px;margin:2px 0 0}
+</style>
+{% endblock %}
+{% block content %}
+<div class="wizard-header"><div>
+  <div class="wizard-title">Sage Accounting</div>
+  <div class="wizard-sub">Accepted quotations become draft invoices in your Sage Accounting (online), and paid or overdue shows on the deal. Part of the AI Sales Agent for B2B plan. Sage 50 (desktop) isn't supported.</div>
+</div></div>
+
+<div class="xr-card">
+  <div class="xr-row">
+    <div class="xr-logo">S</div>
+    <div>
+      <div class="xr-title">{% if link %}{{ link.business_name or 'Your Sage business' }}{% else %}Not connected{% endif %}</div>
+      <div class="xr-sub">
+        {% if link and link.status == 'active' %}<span class="xr-ok">Connected</span> by {{ link.connected_by }} on {{ link.connected_at.strftime('%d %b %Y') }}
+        {% elif link %}<span class="xr-warn">Needs reconnecting</span> — {{ link.last_error or 'Sage sign-in expired' }}
+        {% else %}Connect once for the whole business. PhiXtra creates draft invoices and contacts; it never deletes anything in Sage.{% endif %}
+      </div>
+    </div>
+  </div>
+  {% if not configured %}<div class="xr-note warn">The Sage connection is being set up by PhiXtra and isn't available yet.</div>{% endif %}
+  {% if other and not link %}<div class="xr-note warn">{{ other }} is connected. PhiXtra works with one accounts package at a time; disconnect {{ other }} first to use Sage.</div>{% endif %}
+  <div class="xr-acts">
+    {% if configured and not other and (not link or link.status != 'active') %}
+    <a class="btn btn-primary" href="{{ url_for('sage.connect') }}">{{ 'Connect Sage again' if link else 'Connect Sage' }} →</a>
+    {% endif %}
+    {% if link %}<form method="post" action="{{ url_for('sage.disconnect') }}"><button class="btn" type="submit">Disconnect</button></form>{% endif %}
+  </div>
+</div>
+
+{% if link %}
+<div class="xr-card">
+  <div class="xr-title">Settings</div>
+  <form method="post" action="{{ url_for('sage.settings') }}" class="xr-form">
+    {% if link.businesses and link.businesses|length > 1 %}
+    <div><label for="sgBiz">Sage business</label>
+      <select id="sgBiz" name="business">{% for b in link.businesses %}<option value="{{ b.id }}" {% if b.id == link.business_id %}selected{% endif %}>{{ b.name }}</option>{% endfor %}</select></div>
+    {% endif %}
+    {% if opts_err %}<div class="xr-sub">{{ opts_err }}</div>{% endif %}
+    <div><label for="sgAcct">Sales account for invoice lines</label>
+      <select id="sgAcct" name="ledger_account_id"><option value="">Choose…</option>
+        {% for a in accounts %}<option value="{{ a.id }}" {% if a.id == settings.ledger_account_id %}selected{% endif %}>{{ a.name }}</option>{% endfor %}</select>
+      <div class="xr-sub">Usually “4000 Sales”. Products that exist in Sage with the same name or code are linked too.</div></div>
+    <div><label for="sgVat">VAT rate</label>
+      <select id="sgVat" name="tax_rate_id"><option value="">Choose…</option>
+        {% for t in rates %}<option value="{{ t.id }}" {% if t.id == settings.tax_rate_id %}selected{% endif %}>{{ t.name }}</option>{% endfor %}</select>
+      <div class="xr-sub">Your accountant can change it on the draft before releasing it.</div></div>
+    {% if has_shop %}
+    <div><label>Accepted quotations go to</label>
+      <label class="xr-radio"><input type="radio" name="accepted_to" value="shop" {% if settings.accepted_to != 'accounts' %}checked{% endif %}>
+        <span><b>Your online shop</b> (WooCommerce or Shopify order).</span></label>
+      <label class="xr-radio"><input type="radio" name="accepted_to" value="accounts" {% if settings.accepted_to == 'accounts' %}checked{% endif %}>
+        <span><b>Sage</b> (draft invoice). No shop order is made from quotations.</span></label>
+      <div class="xr-sub">One place only, so the same sale is never counted twice.</div></div>
+    {% else %}<input type="hidden" name="accepted_to" value="accounts">{% endif %}
+    <div><button class="btn btn-primary" type="submit">Save</button></div>
+  </form>
+</div>
+{% endif %}
+
+<div class="xr-card">
+  <div class="xr-title">How it works</div>
+  <ol class="xr-how">
+    <li>A buyer accepts a quotation (online, by reply, or you mark the deal Won).</li>
+    <li>On the deal or the quotation request, press <b>Create Sage invoice</b>.</li>
+    <li>PhiXtra makes a <b>draft</b> invoice in Sage with the quoted lines and prices, for the buyer's Sage contact (found by email or name, or made new).</li>
+    <li>Your accountant checks it and releases it in Sage. Sage sends it and chases payment as usual.</li>
+    <li>PhiXtra checks the invoice every hour: the deal shows awaiting payment, paid or overdue.</li>
+  </ol>
+</div>
+{% endblock %}
