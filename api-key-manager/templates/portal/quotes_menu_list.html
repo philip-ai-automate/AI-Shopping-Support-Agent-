@@ -1,7 +1,7 @@
 {% extends "portal/base.html" %}
-{# Quote Sent / Quote Won pages from the Quotations side menu (2026-11-05).
+{# Quote Sent / Quote Won / Quote Lost (2026-11-10) pages from the Quotations side menu (2026-11-05).
    The same requests as the Requests tabs, already filtered, with their own numbers. #}
-{% block title %}{{ 'Quote Sent' if view == 'sent' else 'Quote Won' }} — PhiXtra Portal{% endblock %}
+{% block title %}{{ {'sent': 'Quote Sent', 'won': 'Quote Won', 'lost': 'Quote Lost'}[view] }} — PhiXtra Portal{% endblock %}
 {% block wrap_class %}page-wide{% endblock %}
 {% block head %}{% include "portal/_quotes_css.html" %}
 <style>
@@ -12,12 +12,13 @@
 </style>
 {% endblock %}
 {% block content %}
-{% set this_page = 'portal.quotes_sent' if view == 'sent' else 'portal.quotes_won' %}
+{% set this_page = 'portal.quotes_' ~ view %}
+{% set page_title = {'sent': 'Quote Sent', 'won': 'Quote Won', 'lost': 'Quote Lost'}[view] %}
 <div class="qt">
   <div class="qt-top">
     <div>
-      <h1>{{ 'Quote Sent' if view == 'sent' else 'Quote Won' }}</h1>
-      <div class="qt-sub">{% if view == 'sent' %}Quotes waiting for the buyer's answer. Open one to mark it Won or Lost.{% else %}Quotes the buyer accepted.{% endif %}</div>
+      <h1>{{ page_title }}</h1>
+      <div class="qt-sub">{% if view == 'sent' %}Quotes waiting for the buyer's answer. Open one to mark it Won or Lost.{% elif view == 'lost' %}Requests that didn't become a sale, and why. Open one to reopen it.{% else %}Quotes the buyer accepted.{% endif %}</div>
     </div>
   </div>
 
@@ -29,6 +30,13 @@
       <span class="qt-small">in your currency</span></div>
     <div class="qt-kpi"><span class="qt-kl">Expiring in 3 days</span><span class="qt-kv">{{ k.expiring }}</span>
       <span class="qt-small">{% if k.expired %}{{ k.expired }} already expired{% else %}none expired{% endif %}</span></div>
+    {% elif view == 'lost' %}
+    <div class="qt-kpi"><span class="qt-kl">Lost {{ 'this month' if period == 'month' else 'in total' }}</span><span class="qt-kv">{{ k.n }}</span>
+      <span class="qt-small">requests not won</span></div>
+    <div class="qt-kpi"><span class="qt-kl">Lost value {{ 'this month' if period == 'month' else 'in total' }}</span><span class="qt-kv">{{ k.v|money_total }}</span>
+      <span class="qt-small">quote value, or the estimate if not quoted</span></div>
+    <div class="qt-kpi"><span class="qt-kl">Most common reason</span><span class="qt-kv" style="font-size:17px">{{ k.top[0] if k.top else '—' }}</span>
+      <span class="qt-small">{% if k.top %}{{ k.top[1] }} of {{ k.n }}{% else %}none yet{% endif %}</span></div>
     {% else %}
     <div class="qt-kpi"><span class="qt-kl">Won {{ 'this month' if period == 'month' else 'in total' }}</span><span class="qt-kv">{{ k.n }}</span>
       <span class="qt-small">quotes accepted</span></div>
@@ -41,7 +49,7 @@
 
   <div class="qt-card">
     <form method="get" class="qm-tools" style="margin-bottom:10px">
-      {% if view == 'won' %}
+      {% if view in ('won', 'lost') %}
       <select name="period" aria-label="Period" onchange="this.form.submit()">
         <option value="month" {% if period == 'month' %}selected{% endif %}>This month</option>
         <option value="all" {% if period == 'all' %}selected{% endif %}>All time</option>
@@ -59,7 +67,7 @@
     {% if rows %}
     <div class="qt-scroll"><table>
       <thead><tr><th>Request</th><th>Buyer</th><th>Quote</th><th class="r">Value</th>
-        {% if view == 'sent' %}<th>Sent</th><th>Valid until</th>{% else %}<th>Won on</th><th>Order</th>{% endif %}
+        {% if view == 'sent' %}<th>Sent</th><th>Valid until</th>{% elif view == 'lost' %}<th>Lost on</th><th>Reason</th>{% else %}<th>Won on</th><th>Order</th>{% endif %}
         <th>Salesperson</th></tr></thead>
       <tbody>
       {% for r in rows %}
@@ -77,6 +85,9 @@
               <span class="qt-pill {{ 'p-bad' if dl < 0 else ('p-warn' if dl <= 3 else 'p-ok') }}">{{ r.quote_valid_until.strftime('%d %b %Y') }}</span>
               <span class="s">{% if dl < 0 %}expired{% elif dl == 0 %}last day{% elif dl <= 3 %}{{ dl }} day{{ 's' if dl != 1 }} left{% endif %}</span>
             {% else %}—{% endif %}</td>
+          {% elif view == 'lost' %}
+          <td>{{ dt(r.closed_at) if r.closed_at else '—' }}</td>
+          <td>{{ r.reason_word }}{% if r.close_reason and r.close_reason != r.reason_word %}<span class="s">{{ r.close_reason[:120] }}</span>{% endif %}</td>
           {% else %}
           <td>{{ dt(r.closed_at) if r.closed_at else '—' }}</td>
           <td>{% set o = orders.get(r.id) %}
@@ -92,6 +103,8 @@
     <div class="qt-empty">Nothing matches "{{ q }}" here. Clear the search to see them all.</div>
     {% elif view == 'sent' %}
     <div class="qt-empty">No quotes waiting for an answer. When you send a quotation, it shows here until you mark it Won or Lost.</div>
+    {% elif view == 'lost' %}
+    <div class="qt-empty">No lost requests {{ 'this month' if period == 'month' else 'yet' }}.{% if period == 'month' %} Choose <b>All time</b> to see earlier ones.{% endif %}</div>
     {% else %}
     <div class="qt-empty">No won quotes {{ 'this month' if period == 'month' else 'yet' }}.{% if period == 'month' %} Choose <b>All time</b> to see earlier ones.{% endif %}</div>
     {% endif %}

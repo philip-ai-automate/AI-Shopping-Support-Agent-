@@ -43548,6 +43548,15 @@ def _quotes_menu_list(view: str):
         rows = _qr.list_requests(tenant_id, "quote_sent", scope, q)
         k = _qr.sent_kpis(tenant_id, now.date(), scope)
         orders = {}
+    elif view == "lost":
+        # Quote Lost (2026-11-10): lost requests, this month by default.
+        period = "all" if request.args.get("period") == "all" else "month"
+        since = month_start if period == "month" else None
+        rows = _qr.list_requests(tenant_id, "lost", scope, q, closed_since=since)
+        k = _qr.lost_kpis(tenant_id, since, scope)
+        orders = {}
+        for r in rows:
+            r["reason_word"] = _qr._lost_reason_word(r.get("close_reason"))
     else:
         period = "all" if request.args.get("period") == "all" else "month"
         since = month_start if period == "month" else None
@@ -43578,6 +43587,80 @@ def quotes_won():
     _rperm = _require_team_permission("leads.page")
     if _rperm: return _rperm
     return _quotes_menu_list("won")
+
+
+@portal_bp.route("/quotations/lost")
+@team_feature("leads.page")
+def quotes_lost():
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    return _quotes_menu_list("lost")
+
+
+_QOV_PERIODS = [("month", "This month"), ("last_month", "Last month"), ("7d", "Last 7 days"),
+                ("year", "This year"), ("custom", "Your own dates")]
+
+
+def _quotes_period(now):
+    """(key, since, until, words, from_str, to_str) in the business's time zone.
+    Default = this month (2026-11-10, user decision)."""
+    key = request.args.get("period") or "month"
+    keys = dict(_QOV_PERIODS)
+    if key not in keys:
+        key = "month"
+    day0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    month0 = day0.replace(day=1)
+    f_str, t_str = (request.args.get("from") or "")[:10], (request.args.get("to") or "")[:10]
+    if key == "custom":
+        try:
+            f = datetime.strptime(f_str, "%Y-%m-%d")
+            t = datetime.strptime(t_str, "%Y-%m-%d")
+            if t < f:
+                f, t = t, f
+            since = day0.replace(year=f.year, month=f.month, day=f.day)
+            until = day0.replace(year=t.year, month=t.month, day=t.day) + timedelta(days=1)
+            return key, since, until, f"{f.strftime('%d %b %Y')} to {t.strftime('%d %b %Y')}", f_str, t_str
+        except ValueError:
+            key = "month"
+    if key == "last_month":
+        until = month0
+        since = (month0 - timedelta(days=1)).replace(day=1)
+    elif key == "7d":
+        since, until = day0 - timedelta(days=6), now + timedelta(seconds=1)
+    elif key == "year":
+        since, until = month0.replace(month=1), now + timedelta(seconds=1)
+    else:
+        since, until = month0, now + timedelta(seconds=1)
+    return key, since, until, keys[key].lower(), f_str, t_str
+
+
+@portal_bp.route("/quotations/overview")
+@team_feature("leads.page")
+def quotes_overview():
+    """Quotations › Overview (2026-11-10): RFQs arrived, pipeline value, win
+    rate, response time, needs attention, buyers waiting, request → order.
+    Owners and see-all staff see the team (with a salesperson filter);
+    everyone else sees only their own figures. Every platform alike."""
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _quotes_guard()
+    if err: return err
+    scope = _quotes_scope(customer)
+    see_all = scope is None
+    people = _lead_assignees(tenant_id, customer) if see_all else []
+    who = (request.args.get("who") or "").strip()
+    if see_all and who and any(p["key"] == who for p in people):
+        scope = who
+    else:
+        who = ""
+    _qr.sync_from_deals(tenant_id)
+    tz = _tp.tz_for(tenant_id)
+    now = _tp.now_local(tz)
+    period, since, until, period_words, f_str, t_str = _quotes_period(now)
+    o = _qr.overview(tenant_id, since, until, now, scope)
+    return render_template("portal/quotes_overview.html", o=o, period=period, periods=_QOV_PERIODS,
+                           period_words=period_words, f_str=f_str, t_str=t_str, who=who, people=people,
+                           see_all=see_all, qr=_qr, dt=_quote_dt(tz), today=now.date())
 
 
 @portal_bp.route("/quotations/requests/new", methods=["GET", "POST"])

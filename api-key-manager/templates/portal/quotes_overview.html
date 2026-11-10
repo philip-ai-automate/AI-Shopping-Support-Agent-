@@ -1,0 +1,170 @@
+{% extends "portal/base.html" %}
+{# Quotations › Overview (2026-11-10). One page for owners and managers:
+   RFQs arrived, pipeline value, quotes won, response time, needs attention,
+   buyers still waiting, and request → order. Salespeople without "See all
+   leads" see only their own figures. Same for every website platform. #}
+{% block title %}Quotations overview — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-wide{% endblock %}
+{% block head %}{% include "portal/_quotes_css.html" %}
+<style>
+  .qo-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .qo-tools select,.qo-tools input{font:inherit;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-height:38px;margin:0;max-width:100%}
+  a.qt-kpi{text-decoration:none;color:inherit;transition:border-color .15s}
+  a.qt-kpi:hover{border-color:var(--navy)}
+  .qo-q{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.04em}
+  .qo-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .qo-h h2{font-size:15px;margin:0;color:var(--navy)}
+  .qo-funnel{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .qo-step{border:1px solid var(--line);border-radius:10px;padding:10px;display:grid;gap:4px;text-decoration:none;color:inherit}
+  a.qo-step:hover{border-color:var(--navy)}
+  .qo-bar{height:6px;border-radius:99px;background:var(--line);overflow:hidden}
+  .qo-bar span{display:block;height:100%;background:var(--navy)}
+  .qo-two{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:14px;align-items:start}
+  @media (max-width:1000px){.qo-two{grid-template-columns:1fr}}
+  @media (max-width:640px){.qo-funnel{grid-template-columns:1fr 1fr}}
+</style>
+{% endblock %}
+{% macro dur(secs) -%}
+  {%- set m = ((secs or 0) / 60)|round(0, 'floor')|int -%}
+  {%- if m < 60 -%}{{ m }} min
+  {%- elif m < 1440 -%}{{ m // 60 }}h{% if m % 60 %} {{ m % 60 }}m{% endif %}
+  {%- else -%}{{ m // 1440 }} day{{ 's' if m // 1440 != 1 }}{% if (m % 1440) // 60 %} {{ (m % 1440) // 60 }} h{% endif %}
+  {%- endif -%}
+{%- endmacro %}
+{% block content %}
+{% set this_page = 'portal.quotes_overview' %}
+{% set pq = {'period': 'month'} if period == 'month' else {'period': 'all'} %}
+<div class="qt">
+  <div class="qt-top">
+    <div>
+      <h1>Quotations overview</h1>
+      <div class="qt-sub">{% if see_all %}Your team's quotations{% else %}Your own quotations{% endif %}, {{ period_words }}. Values in your business currency.</div>
+    </div>
+    <form method="get" class="qo-tools" id="qo-form">
+      <select name="period" aria-label="Period" onchange="qoPeriod(this)">
+        {% for k, w in periods %}<option value="{{ k }}" {% if period == k %}selected{% endif %}>{{ w }}</option>{% endfor %}
+      </select>
+      <span id="qo-dates" style="display:{{ 'inline-flex' if period == 'custom' else 'none' }};gap:6px;align-items:center">
+        <input type="date" name="from" value="{{ f_str }}" aria-label="From">
+        <input type="date" name="to" value="{{ t_str }}" aria-label="To">
+        <button class="qt-btn" type="submit">Show</button>
+      </span>
+      {% if see_all %}
+      <select name="who" aria-label="Salesperson" onchange="this.form.submit()">
+        <option value="">Everyone</option>
+        {% for p in people %}<option value="{{ p.key }}" {% if who == p.key %}selected{% endif %}>{{ p.display }}</option>{% endfor %}
+      </select>
+      {% endif %}
+    </form>
+  </div>
+
+  <div class="qt-kpis">
+    <a class="qt-kpi" href="{{ url_for('portal.quotes_requests') }}">
+      <span class="qo-q">RFQs ARRIVED</span>
+      <span class="qt-kv">{{ o.arrived }}</span>
+      <span class="qt-small">{% if o.by_channel %}{% for w, n in o.by_channel %}{{ w }} {{ n }}{{ ' · ' if not loop.last }}{% endfor %}{% else %}none {{ period_words }}{% endif %}</span>
+    </a>
+    <a class="qt-kpi" href="{{ url_for('portal.quotes_sent') }}">
+      <span class="qo-q">PIPELINE VALUE</span>
+      <span class="qt-kv">{{ o.pipe.total|money_total }}</span>
+      <span class="qt-small">{{ o.pipe.sent_v|money_total }} in {{ o.pipe.sent_n }} quote{{ 's' if o.pipe.sent_n != 1 }} with buyers{% if o.pipe.todo_n %} · {% if o.pipe.todo_v %}{{ o.pipe.todo_v|money_total }} estimated, not quoted yet{% else %}{{ o.pipe.todo_n }} request{{ 's' if o.pipe.todo_n != 1 }} not quoted yet, no estimate{% endif %}{% endif %}</span>
+    </a>
+    <a class="qt-kpi" href="{{ url_for('portal.quotes_won', **pq) }}">
+      <span class="qo-q">QUOTES WON</span>
+      <span class="qt-kv">{{ (o.won.rate ~ '%') if o.won.rate is not none else '—' }}</span>
+      <span class="qt-small">{% if o.won.decided %}{{ o.won.n }} of {{ o.won.decided }} decided · {{ o.won.v|money_total }} won · {{ o.won.lost_v|money_total }} lost{% else %}none won or lost {{ period_words }}{% endif %}</span>
+    </a>
+    <div class="qt-kpi">
+      <span class="qo-q">RESPONSE TIME</span>
+      <span class="qt-kv">{{ dur(o.resp.median_secs) if o.resp.median_secs is not none else '—' }}</span>
+      <span class="qt-small">{% if o.resp.median_secs is not none %}Typical time from request to quote{% if o.resp.on_time_pct is not none %} · {{ o.resp.on_time_pct }}% on time{% endif %}{% else %}no quotes sent yet for requests {{ period_words }}{% endif %}</span>
+    </div>
+  </div>
+
+  <div class="qt-card">
+    <div class="qo-h"><h2>Needs attention{% if o.attention %} · {{ o.attention|length }}{% endif %}</h2>
+      <span class="qt-small">Right now, whatever the period</span></div>
+    {% if o.attention %}
+    <div class="qt-scroll"><table>
+      <thead><tr><th>Why</th><th>Request</th><th>Buyer</th><th>Salesperson</th><th class="r">Value</th></tr></thead>
+      <tbody>
+      {% for r in o.attention %}
+        <tr class="link" onclick="location.href='{{ url_for('portal.quotes_request_detail', request_id=r.id) }}'">
+          <td>
+            {% if r.kind == 'late' %}<span class="qt-pill p-bad">Late quote</span><span class="s">was due {{ dur(r.late_secs) }} ago</span>
+            {% elif r.kind == 'replied' %}<span class="qt-pill p-warn">Buyer replied</span><span class="s">{{ (r.said or '')|replace('The buyer asked about the quotation ', 'asked ')|replace('The buyer may have ', 'may have ')|truncate(110) }}</span>
+            {% elif r.kind == 'expiring' %}{% set dl = (r.quote_valid_until - today).days %}<span class="qt-pill p-warn">{% if dl == 0 %}Expires today{% else %}Expires in {{ dl }} day{{ 's' if dl != 1 }}{% endif %}</span>
+            {% elif r.kind == 'expired' %}<span class="qt-pill p-bad">Expired</span><span class="s">extend it or mark it Lost</span>
+            {% else %}<span class="qt-pill p-warn">Draft not sent</span><span class="s">since {{ dt(r.draft_at) }}</span>{% endif %}
+          </td>
+          <td><a class="rowlink" href="{{ url_for('portal.quotes_request_detail', request_id=r.id) }}">R-{{ r.ref_no }}</a></td>
+          <td><b>{{ r.buyer_company or r.buyer_name or '—' }}</b></td>
+          <td>{{ r.assigned_to|who(r.assigned_key) if r.assigned_to else 'Not assigned' }}</td>
+          <td class="r">{% if r.quote_value is not none %}{{ qr.money(r.quote_value, r.quote_currency) }}{% elif r.estimate is not none %}est. {{ qr.money(r.estimate, r.currency) }}{% else %}—{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody></table></div>
+    {% else %}
+    <div class="qt-empty">Nothing needs attention. No late quotes, no buyer replies waiting, nothing expiring and no unsent drafts.</div>
+    {% endif %}
+  </div>
+
+  <div class="qo-two">
+    <div class="qt-card">
+      <div class="qo-h"><h2>Buyers still waiting for a quote{% if o.waiting %} · {{ o.waiting|length }}{% endif %}</h2>
+        <a class="qt-small" href="{{ url_for('portal.quotes_requests') }}">Open Requests</a></div>
+      {% if o.waiting %}
+      <div class="qt-scroll"><table>
+        <thead><tr><th>Buyer</th><th>Asked for</th><th>Came in by</th><th>Waiting</th><th>Salesperson</th></tr></thead>
+        <tbody>
+        {% for w in o.waiting %}
+          <tr class="link" onclick="location.href='{{ url_for('portal.quotes_request_detail', request_id=w.id) }}'">
+            <td><a class="rowlink" href="{{ url_for('portal.quotes_request_detail', request_id=w.id) }}"><b>{{ w.buyer_company or w.buyer_name or '—' }}</b></a><span class="s">R-{{ w.ref_no }}</span></td>
+            <td>{{ w.n_lines }} product{{ 's' if w.n_lines != 1 }}</td>
+            <td>{{ qr.CHANNEL_WORDS.get(w.channel, w.channel) }}</td>
+            <td>{{ dur(w.waited_secs) }}{% if w.late_secs %}<span class="s" style="color:var(--hot)">{{ dur(w.late_secs) }} late</span>{% endif %}</td>
+            <td>{{ w.assigned_to|who(w.assigned_key) if w.assigned_to else 'Not assigned' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody></table></div>
+      {% else %}
+      <div class="qt-empty">No buyer is waiting for a quote.</div>
+      {% endif %}
+    </div>
+
+    <div class="qt-card">
+      <div class="qo-h"><h2>From request to order</h2><span class="qt-small">Requests that arrived {{ period_words }}</span></div>
+      {% set f = o.funnel %}
+      {% set top = f.requests or 1 %}
+      <div class="qo-funnel">
+        {% for label, n, link in [('Requests', f.requests, url_for('portal.quotes_requests')),
+                                  ('Quoted', f.quoted, url_for('portal.quotes_sent')),
+                                  ('Won', f.won, url_for('portal.quotes_won', **pq)),
+                                  ('Order made', f.orders, url_for('portal.quotes_won', **pq))] %}
+        <a class="qo-step" href="{{ link }}">
+          <span class="qt-kl">{{ label }}</span>
+          <span class="qt-kv" style="font-size:20px">{{ n }}</span>
+          <span class="qo-bar"><span style="width:{{ (100 * n / top)|round|int }}%"></span></span>
+        </a>
+        {% endfor %}
+      </div>
+      <div class="qt-small">Order made = an order in Products &amp; Orders, or a Shopify order for stores linked to Shopify.</div>
+      <div class="qo-h" style="margin-top:6px"><h2 style="font-size:14px">Why quotes were lost</h2>
+        <a class="qt-small" href="{{ url_for('portal.quotes_lost', **pq) }}">Open Quote Lost</a></div>
+      {% if o.lost_reasons %}
+      <div class="qt-small" style="color:var(--ink)">{% for w, n in o.lost_reasons %}{{ w }} <b>{{ n }}</b>{{ ' · ' if not loop.last }}{% endfor %}</div>
+      {% else %}
+      <div class="qt-small">Nothing lost {{ period_words }}.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+<script>
+function qoPeriod(sel){
+  var d = document.getElementById('qo-dates');
+  if (sel.value === 'custom') { d.style.display = 'inline-flex'; return; }
+  d.style.display = 'none';
+  sel.form.submit();
+}
+</script>
+{% endblock %}

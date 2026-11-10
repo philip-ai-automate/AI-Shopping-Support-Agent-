@@ -1053,7 +1053,7 @@
     <!-- Quotations (2026-10-30, Intelligent RFQ): its own menu after Leads —
          where a sale goes next. B2B plan + PhiXtra only, like AI Lead Qualification. -->
     {% if quotes_on() and staff_can_open('portal.quotes_requests') %}
-    {% set _quotes_group = request.endpoint in ('portal.quotes_requests', 'portal.quotes_request_new', 'portal.quotes_request_detail', 'portal.quotes_request_edit', 'portal.quotes_settings', 'portal.quotes_design', 'portal.quotes_sent', 'portal.quotes_won', 'portal.quotes_quotation', 'portal.quotes_quotation_send') %}
+    {% set _quotes_group = request.endpoint in ('portal.quotes_requests', 'portal.quotes_request_new', 'portal.quotes_request_detail', 'portal.quotes_request_edit', 'portal.quotes_settings', 'portal.quotes_design', 'portal.quotes_sent', 'portal.quotes_won', 'portal.quotes_lost', 'portal.quotes_overview', 'portal.quotes_quotation', 'portal.quotes_quotation_send') %}
     {% set _qmc = quotes_menu_counts() %}
     {# One request's pages (request, edit, quotation, send) sit under the menu
        item for the request's status: Quote sent → Quote Sent, Won → Quote Won,
@@ -1061,7 +1061,7 @@
     {% set _qreq = r if request.endpoint == 'portal.quotes_request_detail'
                    else (editing if request.endpoint == 'portal.quotes_request_edit'
                    else (req if request.endpoint in ('portal.quotes_quotation', 'portal.quotes_quotation_send') else none)) %}
-    {% set _qview = {'quote_sent': 'sent', 'won': 'won'}.get(_qreq.status, 'requests') if _qreq else none %}
+    {% set _qview = {'quote_sent': 'sent', 'won': 'won', 'lost': 'lost'}.get(_qreq.status, 'requests') if _qreq else none %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _quotes_group %}open{% endif %}" onclick="sbToggle(this)">
         <span class="sb-gtitle">
@@ -1070,8 +1070,13 @@
         <span class="sb-arrow">▾</span>
       </div>
       <div class="sb-sub {% if _quotes_group %}open{% endif %}">
+        <!-- Overview (2026-11-10): the whole picture for owners and managers; salespeople see their own. -->
+        <a href="{{ url_for('portal.quotes_overview') }}"
+           class="{% if request.endpoint == 'portal.quotes_overview' %}active{% endif %}">
+          Overview
+        </a>
         <a href="{{ url_for('portal.quotes_requests') }}"
-           class="{% if request.endpoint in ('portal.quotes_requests', 'portal.quotes_request_new') or _qview == 'requests' %}active{% endif %}">
+           class="{% if (request.endpoint in ('portal.quotes_requests', 'portal.quotes_request_new') and request.args.get('status') != 'lost') or _qview == 'requests' %}active{% endif %}">
           Requests
           {% if _qmc.get('to_quote') %}<span class="sb-count plain" title="{{ _qmc.to_quote }} waiting to be quoted">{{ _qmc.to_quote }}</span>{% endif %}
         </a>
@@ -1085,6 +1090,11 @@
            class="{% if request.endpoint == 'portal.quotes_won' or _qview == 'won' %}active{% endif %}">
           Quote Won
           {% if _qmc.get('won') %}<span class="sb-count plain" title="{{ _qmc.won }} won this month">{{ _qmc.won }}</span>{% endif %}
+        </a>
+        <!-- Quote Lost (2026-11-10): no count, like Overview. -->
+        <a href="{{ url_for('portal.quotes_lost') }}"
+           class="{% if request.endpoint == 'portal.quotes_lost' or _qview == 'lost' or (request.endpoint == 'portal.quotes_requests' and request.args.get('status') == 'lost') %}active{% endif %}">
+          Quote Lost
         </a>
         <a href="{{ url_for('portal.quotes_design') }}"
            class="{% if request.endpoint == 'portal.quotes_design' %}active{% endif %}">
