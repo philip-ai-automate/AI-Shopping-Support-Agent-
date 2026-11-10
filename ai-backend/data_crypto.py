@@ -10,7 +10,7 @@ Stored values look like "v1:<Fernet token>". Anything without the "v1:"
 prefix is old plain text and is returned as it is, so readers work before,
 during and after the one-off conversion.
 
-The same file is in ai-backend/ and api-key-manager/ — keep them identical.
+The same file is in ai-backend/, api-key-manager/ and whatsapp-gateway/ — keep them identical.
 """
 import base64
 import hashlib

@@ -172,7 +172,8 @@ def _get_chat_summary(tenant_id: int, session_id: str) -> str:
         row = cur.fetchone()
         cur.close()
         conn.close()
-        return (row or {}).get("summary_text") or ""
+        from data_crypto import dec as _dec
+        return _dec((row or {}).get("summary_text")) or ""
     except Exception:
         return ""
 

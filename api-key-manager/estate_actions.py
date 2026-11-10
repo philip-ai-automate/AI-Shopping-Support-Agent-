@@ -828,8 +828,9 @@ def run_tenant(tenant: dict, now=None, http=None, dry=False) -> dict:
                                ON CONFLICT DO NOTHING""",
                             (tid, tenant["wa_phone_number_id"], c["wa_phone"], body[:2000],
                              "text" if plain else "template", None if dry else info))
+                import data_crypto   # chat words encrypted at rest (10 Nov 2026)
                 cur.execute("INSERT INTO re_chat_messages (tenant_id, customer_id, role, content) VALUES (%s,%s,'assistant',%s)",
-                            (tid, c["id"], body))
+                            (tid, c["id"], data_crypto.enc(body)))
                 out["sent"] += 1
             else:
                 _log(cur, tid, c["id"], p["anchor"], s["position"], "failed", info)

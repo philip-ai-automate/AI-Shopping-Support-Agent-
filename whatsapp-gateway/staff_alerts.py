@@ -630,7 +630,8 @@ async def email_unseen_web_replies() -> int:
              ORDER BY id LIMIT 50
         """)
         for r in cur.fetchall() or []:
-            mail = web_reply_email(cur, r["tenant_id"], r["session_id"], r["content"], r["sent_by_label"])
+            from data_crypto import dec as _dec   # chat words encrypted at rest (10 Nov 2026)
+            mail = web_reply_email(cur, r["tenant_id"], r["session_id"], _dec(r["content"]), r["sent_by_label"])
             if not mail:
                 continue
             if await asyncio.to_thread(_send_visitor_email, *mail):

@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import psycopg2
 import psycopg2.extras
 from db import get_db_connection
+from data_crypto import enc as _enc, dec as _dec   # chat words encrypted at rest (10 Nov 2026)
 
 try:
     from openai import OpenAI as _OAI
@@ -104,13 +105,13 @@ def add_message(tenant_id: int, customer_id: int, role: str,
                 INSERT INTO re_chat_messages
                     (tenant_id, customer_id, role, content, embedding)
                 VALUES (%s, %s, %s, %s, %s::vector)
-            """, (tenant_id, customer_id, role, content, vec))
+            """, (tenant_id, customer_id, role, _enc(content), vec))
         else:
             cur.execute("""
                 INSERT INTO re_chat_messages
                     (tenant_id, customer_id, role, content)
                 VALUES (%s, %s, %s, %s)
-            """, (tenant_id, customer_id, role, content))
+            """, (tenant_id, customer_id, role, _enc(content)))
         conn.commit()
         cur.close()
     except Exception as e:
@@ -140,7 +141,7 @@ def _upsert_summary(cur, tenant_id: int, customer_id: int,
             summary_text  = EXCLUDED.summary_text,
             message_count = EXCLUDED.message_count,
             updated_at    = NOW()
-    """, (tenant_id, customer_id, summary_text, message_count))
+    """, (tenant_id, customer_id, _enc(summary_text), message_count))
 
 
 def maybe_summarize(tenant_id: int, customer_id: int, keep_last_n: int = 4):
@@ -181,7 +182,7 @@ def maybe_summarize(tenant_id: int, customer_id: int, keep_last_n: int = 4):
         lines = []
         for r in rows:
             role    = (r.get("role") or "").strip()
-            content = (r.get("content") or "").strip()
+            content = (_dec(r.get("content")) or "").strip()
             if content:
                 lines.append(f"{'Buyer' if role == 'user' else 'Agent'}: {content}")
 
@@ -251,7 +252,7 @@ def _get_summary_text(tenant_id: int, customer_id: int) -> str:
         """, (tenant_id, customer_id))
         row = cur.fetchone()
         cur.close()
-        return (row or {}).get("summary_text") or ""
+        return _dec((row or {}).get("summary_text")) or ""
     except Exception:
         return ""
     finally:
@@ -275,7 +276,7 @@ def get_history_with_summary(tenant_id: int, customer_id: int,
             """, (tenant_id, customer_id, keep_last_n))
             rows = list(reversed(cur.fetchall() or []))
             cur.close()
-            last_msgs = [{"role": r["role"], "content": r["content"]} for r in rows]
+            last_msgs = [{"role": r["role"], "content": _dec(r["content"])} for r in rows]
         except Exception as e:
             print(f"⚠️ [ESTATE MEM] get_history_with_summary error: {e}")
         finally:
@@ -351,7 +352,7 @@ def get_semantic_history(tenant_id: int, customer_id: int,
         if summary:
             out.append({"role": "system",
                         "content": "Conversation summary:\n" + summary})
-        out.extend({"role": r["role"], "content": r["content"]} for r in merged)
+        out.extend({"role": r["role"], "content": _dec(r["content"])} for r in merged)
         return out
 
     except Exception as e:

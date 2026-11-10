@@ -14,6 +14,7 @@ into the request — a visitor's message must never get an error because of it.
 import re
 import psycopg2.extras
 from db import get_db_connection
+from data_crypto import enc as _enc, dec as _dec   # chat words encrypted at rest (10 Nov 2026)
 
 AI_OFF_PLAN_SLUGS = ("connect", "web_free")
 ONLINE_SECONDS = 30
@@ -83,7 +84,7 @@ def save_visitor_message(tenant_id: int, session_id: str, text: str) -> dict:
                     (tenant_id, session_id))
         out["first"] = cur.fetchone() is None
         cur.execute("INSERT INTO chat_messages (session_id, tenant_id, role, content) VALUES (%s, %s, 'user', %s)",
-                    (session_id, tenant_id, text))
+                    (session_id, tenant_id, _enc(text)))
         m = _EMAIL_RE.search(text or "")
         typed_email = m.group(0).strip(".") if m else ""
         typed_phone = _extract_phone(re.sub(r"\S*@\S*", " ", text or ""))
@@ -161,7 +162,7 @@ def poll(tenant_id: int, session_id: str, after: int, business_name: str, histor
                 ) x ORDER BY created_at, id LIMIT 200
             """, (tenant_id, session_id, tenant_id, session_id))
             for r in cur.fetchall() or []:
-                txt = r["content"] or ""
+                txt = _dec(r["content"]) or ""
                 if r["kind"] == "ai":     # the hidden product-card tag is never shown (5 Nov 2026)
                     txt = re.sub(r"<<<PHIXTRA_PRODUCTS:.*?>>>", "", txt, flags=re.DOTALL).strip()
                 item = {"kind": r["kind"], "text": txt}
@@ -174,7 +175,7 @@ def poll(tenant_id: int, session_id: str, after: int, business_name: str, histor
                             WHERE tenant_id=%s AND session_id=%s AND id > %s ORDER BY id""",
                         (tenant_id, session_id, after))
             for r in cur.fetchall() or []:
-                out["replies"].append({"id": int(r["id"]), "text": r["content"], "by": _who(r["sent_by_label"])})
+                out["replies"].append({"id": int(r["id"]), "text": _dec(r["content"]), "by": _who(r["sent_by_label"])})
                 out["last_id"] = max(out["last_id"], int(r["id"]))
         cur.execute("""UPDATE web_chat_replies SET delivered_at = NOW()
                         WHERE tenant_id=%s AND session_id=%s AND delivered_at IS NULL AND id <= %s""",

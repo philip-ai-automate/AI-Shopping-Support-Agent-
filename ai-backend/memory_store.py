@@ -2,6 +2,7 @@ import os
 import psycopg2
 import psycopg2.extras
 from db import get_db_connection
+from data_crypto import enc as _enc, dec as _dec   # chat words encrypted at rest (10 Nov 2026)
 
 try:
     from openai import OpenAI
@@ -55,7 +56,11 @@ def get_summary(session_id: str, tenant_id: int):
         )
         row = cur.fetchone()
         cur.close()
-        return dict(row) if row else None
+        if not row:
+            return None
+        row = dict(row)
+        row["summary_text"] = _dec(row.get("summary_text"))
+        return row
     except Exception as e:
         print("? [MEMORY] get_summary error:", str(e))
         return None
@@ -73,7 +78,7 @@ def _upsert_summary(cur, session_id: str, tenant_id: int, summary_text: str, sum
             summarized_message_count = EXCLUDED.summarized_message_count,
             updated_at = NOW()
         """,
-        (session_id, tenant_id, summary_text, summarized_message_count),
+        (session_id, tenant_id, _enc(summary_text), summarized_message_count),
     )
 
 
@@ -114,7 +119,7 @@ def maybe_summarize_session(session_id: str, tenant_id: int, keep_last_n: int = 
             (session_id, tenant_id),
         )
         existing = cur.fetchone()
-        prior_summary = (existing or {}).get("summary_text") or ""
+        prior_summary = _dec((existing or {}).get("summary_text")) or ""
 
         cur.execute(
             """
@@ -131,7 +136,7 @@ def maybe_summarize_session(session_id: str, tenant_id: int, keep_last_n: int = 
         transcript_lines = []
         for r in rows:
             role = (r.get("role") or "").strip()
-            content = (r.get("content") or "").strip()
+            content = (_dec(r.get("content")) or "").strip()
             if not content:
                 continue
             prefix = "User" if role == "user" else "Assistant"
@@ -233,7 +238,7 @@ def get_history_with_summary(session_id: str, tenant_id: int, keep_last_n: int =
             rows = cur.fetchall() or []
             cur.close()
             rows = list(reversed(rows))
-            last_msgs = [{"role": r["role"], "content": r["content"]} for r in rows]
+            last_msgs = [{"role": r["role"], "content": _dec(r["content"])} for r in rows]
         except Exception as e:
             print("? [MEMORY] get_history_with_summary error:", str(e))
             last_msgs = []
@@ -324,12 +329,12 @@ def add_message(session_id: str, tenant_id: int, role: str,
                 INSERT INTO chat_messages
                     (session_id, tenant_id, role, content, embedding)
                 VALUES (%s, %s, %s, %s, %s::vector)
-            """, (session_id, tenant_id, role, content, vec_literal))
+            """, (session_id, tenant_id, role, _enc(content), vec_literal))
         else:
             cur.execute("""
                 INSERT INTO chat_messages (session_id, tenant_id, role, content)
                 VALUES (%s, %s, %s, %s)
-            """, (session_id, tenant_id, role, content))
+            """, (session_id, tenant_id, role, _enc(content)))
         conn.commit()
         cur.close()
     except Exception as e:
@@ -416,7 +421,7 @@ def get_semantic_history(session_id: str, tenant_id: int,
                 "role": "system",
                 "content": "Conversation summary (use as memory):\n" + summary["summary_text"],
             })
-        out.extend({"role": r["role"], "content": r["content"]} for r in merged)
+        out.extend({"role": r["role"], "content": _dec(r["content"])} for r in merged)
         return out
 
     except Exception as e:
@@ -450,7 +455,7 @@ def get_recent_history(session_id: str, tenant_id: int, limit: int = 12):
         rows = cur.fetchall()
         cur.close()
         rows = list(reversed(rows))
-        return [{"role": r["role"], "content": r["content"]} for r in rows]
+        return [{"role": r["role"], "content": _dec(r["content"])} for r in rows]
     except Exception as e:
         print("? [MEMORY] get_recent_history error:", str(e))
         return []

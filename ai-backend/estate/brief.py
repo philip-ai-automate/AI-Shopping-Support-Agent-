@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 import psycopg2.extras
 
 from db import get_db_connection
+from data_crypto import dec as _dec   # chat words encrypted at rest (10 Nov 2026)
 from . import land as LAND
 
 
@@ -44,8 +45,12 @@ def gather(tenant_id: int, customer_id: int, tz) -> dict:
         chat = _rows(cur, """SELECT role, content, created_at FROM (SELECT * FROM re_chat_messages
                              WHERE tenant_id=%s AND customer_id=%s ORDER BY id DESC LIMIT 40) x ORDER BY created_at""",
                      (tenant_id, customer_id))
+        for m in chat:
+            m["content"] = _dec(m.get("content"))
         summ = _rows(cur, "SELECT summary_text AS summary FROM re_chat_summaries WHERE tenant_id=%s AND customer_id=%s",
                      (tenant_id, customer_id))
+        for m in summ:
+            m["summary"] = _dec(m.get("summary"))
         inter = _rows(cur, """SELECT i.type, i.summary, i.logged_at, TRIM(COALESCE(s.first_name,'') || ' ' || COALESCE(s.last_name,'')) AS who
                               FROM re_interactions i LEFT JOIN re_staff s ON s.id = i.logged_by
                               WHERE i.tenant_id=%s AND i.contact_id=%s ORDER BY i.logged_at DESC LIMIT 12""",

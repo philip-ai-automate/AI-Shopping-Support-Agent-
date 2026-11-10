@@ -1598,7 +1598,8 @@ def qualify_chat(tenant_id: int, session_id: str, last_id: int, lead_id: int = N
         cur.execute("""SELECT role, content FROM (SELECT id, role, content FROM chat_messages
                          WHERE tenant_id=%s AND session_id=%s AND id <= %s ORDER BY id DESC LIMIT 40) x ORDER BY id""",
                     (tenant_id, session_id, last_id))
-        msgs = cur.fetchall()
+        import data_crypto   # chat words encrypted at rest (10 Nov 2026)
+        msgs = [dict(m, content=data_crypto.dec(m["content"])) for m in cur.fetchall()]
         known = None
         if not lead_id and number:
             # First read of this WhatsApp chat: a buyer already on the list, found by number.

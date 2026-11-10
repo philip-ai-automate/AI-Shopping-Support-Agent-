@@ -1276,6 +1276,9 @@ def inbox():
         query += " ORDER BY c.last_seen_at DESC"
         cur.execute(query, params)
         buyers = cur.fetchall()
+        import data_crypto   # chat words encrypted at rest (10 Nov 2026)
+        for _b in buyers:
+            _b["last_message"] = data_crypto.dec(_b.get("last_message"))
         cur.close(); conn.close()
 
     wa_connected     = bool(tenant.get("wa_phone_number_id"))
@@ -1505,7 +1508,8 @@ def inbox_detail(customer_id):
         WHERE tenant_id=%s AND customer_id=%s
         ORDER BY created_at ASC
     """, (tenant_id, customer_id))
-    messages = [dict(m) for m in cur.fetchall()]
+    import data_crypto   # chat words encrypted at rest (10 Nov 2026)
+    messages = [dict(m, content=data_crypto.dec(m["content"])) for m in cur.fetchall()]
 
     # Voice notes: link each "🎤 Voice note" message to its recording so staff can play it
     cur.execute("SELECT to_regclass('re_voice_notes') IS NOT NULL AS ok")

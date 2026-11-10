@@ -1350,10 +1350,14 @@ def _chat(req: ChatRequest):
         response["reply"] = (str(response.get("reply") or "").rstrip() + "\n\n" + _lines).strip()
         try:   # the Inbox copy of this answer gets the same lines
             _c = get_db_connection(); _k = _c.cursor()
-            _k.execute("""UPDATE chat_messages SET content = content || %s
-                           WHERE id = (SELECT id FROM chat_messages WHERE tenant_id=%s AND session_id=%s
-                                         AND role='assistant' ORDER BY id DESC LIMIT 1)""",
-                       ("\n\n" + _lines, tenant_id, session_id))
+            # words are encrypted (10 Nov 2026): open, add the lines, lock again
+            from data_crypto import enc as _enc, dec as _dec
+            _k.execute("""SELECT id, content FROM chat_messages WHERE tenant_id=%s AND session_id=%s
+                             AND role='assistant' ORDER BY id DESC LIMIT 1""", (tenant_id, session_id))
+            _last = _k.fetchone()
+            if _last:
+                _k.execute("UPDATE chat_messages SET content=%s WHERE id=%s",
+                           (_enc((_dec(_last[1]) or "") + "\n\n" + _lines), _last[0]))
             _c.commit(); _k.close(); _c.close()
         except Exception as _e:
             print("⚠️ no-card product lines:", _e)

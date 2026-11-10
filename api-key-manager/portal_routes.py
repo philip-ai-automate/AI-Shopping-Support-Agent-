@@ -4,6 +4,7 @@ Extends the existing Flask app. db.py, app.py, invoice_pdf.py, portal_utils.py a
 """
 import psycopg2
 import staff_activity
+import data_crypto   # chat words encrypted at rest (10 Nov 2026)
 import contact_status as _contact_status
 import lead_linkedin as _li
 import lead_followups as _fu
@@ -12720,15 +12721,18 @@ def _get_chat_sessions(tenant_id: int, date_from=None, date_to=None, q=None, lim
 
         rows = cur.fetchall() or []
 
-        # If keyword search — also search inside messages
+        # If keyword search — also search inside messages. The words are
+        # encrypted (10 Nov 2026), so they are opened and searched here
+        # instead of by the database; same match as the old LIKE.
         if q and q.strip():
             cur.execute(f"""
-                SELECT DISTINCT cm.session_id
+                SELECT cm.session_id, cm.content
                 FROM chat_messages cm
                 JOIN chat_sessions cs ON cs.session_id = cm.session_id AND cs.tenant_id = cm.tenant_id
-                WHERE cm.tenant_id = %s AND cm.content LIKE %s
-            """, (tenant_id, f"%{q}%"))
-            extra_sids = {r["session_id"] for r in (cur.fetchall() or [])}
+                WHERE cm.tenant_id = %s
+            """, (tenant_id,))
+            extra_sids = {r["session_id"] for r in (cur.fetchall() or [])
+                          if q in (data_crypto.dec(r["content"]) or "")}
             existing   = {r["session_id"] for r in rows}
             missing    = extra_sids - existing
             if missing:
@@ -12750,6 +12754,8 @@ def _get_chat_sessions(tenant_id: int, date_from=None, date_to=None, q=None, lim
                 rows += (cur.fetchall() or [])
 
         cur.close(); conn.close()
+        for r in rows:
+            r["first_msg"] = data_crypto.dec(r.get("first_msg"))
         safe = rows
     except Exception as e:
         print("⚠️ _get_chat_sessions error:", e)
@@ -12769,6 +12775,7 @@ def _get_session_messages(tenant_id: int, session_id: str):
         """, (session_id, tenant_id))
         msgs = cur.fetchall() or []
         for m in msgs:
+            m["content"] = data_crypto.dec(m.get("content"))
             if m.get("created_at"):
                 m["created_at"] = m["created_at"].strftime("%d %b %Y %H:%M")
         cur.close(); conn.close()
@@ -13108,7 +13115,7 @@ def _get_session_summary(tenant_id: int, session_id: str):
         """, (session_id, tenant_id))
         row = cur.fetchone()
         cur.close(); conn.close()
-        return (row.get("summary_text") or "") if row else ""
+        return (data_crypto.dec(row.get("summary_text")) or "") if row else ""
     except Exception as e:
         print("⚠️ _get_session_summary error:", e)
         return ""
@@ -35191,6 +35198,7 @@ def _get_webchat_conversations(tenant_id: int) -> list:
         rows = cur.fetchall() or []
         cur.close(); conn.close()
         for r in rows:
+            r["last_content"] = data_crypto.dec(r.get("last_content"))
             r["needs_reply"] = (r["status"] == "pending")
             r["online"] = bool(r.get("online"))
             r["presence_words"] = _webchat_presence_words(r["online"], r.get("last_seen_at"))
@@ -35251,6 +35259,7 @@ def _get_webchat_messages(tenant_id: int, key: str, limit: int = 200) -> list:
         # The AI's hidden product tag (turned into product cards in the
         # chat box) is kept in chat_messages — never show it in the Inbox.
         for r in rows:
+            r["content"] = data_crypto.dec(r.get("content"))
             if "<<<PHIXTRA_PRODUCTS" in (r.get("content") or ""):
                 r["content"] = _re.sub(r"\s*<<<PHIXTRA_PRODUCTS:.*?>>>", "", r["content"], flags=_re.S).strip()
         return rows
@@ -35294,7 +35303,7 @@ def _send_webchat_reply(tenant_id: int, key: str, text: str, actor: dict):
     cur.execute("""
         INSERT INTO web_chat_replies (tenant_id, session_id, content, sent_by_label)
         VALUES (%s, %s, %s, %s) RETURNING id
-    """, (tenant_id, session_id, text, actor["label"]))
+    """, (tenant_id, session_id, data_crypto.enc(text), actor["label"]))
     reply_id = cur.fetchone()["id"]
     cur.execute("""
         UPDATE handoff_requests SET status='handled', handled_at=NOW()
