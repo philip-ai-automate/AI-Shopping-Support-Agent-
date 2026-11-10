@@ -33,6 +33,7 @@ import psycopg2.extras
 import requests as _req
 
 from db import get_db_connection
+import data_crypto   # message words encrypted at rest (10 Nov 2026)
 
 FU_LABEL = "Automatic follow-up"
 GRAPH = os.getenv("META_GRAPH_URL", "https://graph.facebook.com/v19.0")
@@ -683,7 +684,7 @@ def _log_send(cur, tenant_id, num, phone, text, meta_id, p, step, mode):
     cur.execute("""INSERT INTO wa_message_log (tenant_id, phone_number_id, customer_phone, direction, content,
                        message_type, meta_message_id, sent_by_label)
                    VALUES (%s,%s,%s,'outbound',%s,'followup',%s,%s)""",
-                (tenant_id, num["phone_number_id"], phone, text, meta_id, FU_LABEL))
+                (tenant_id, num["phone_number_id"], phone, data_crypto.enc(text), meta_id, FU_LABEL))
     cur.execute("""INSERT INTO followup_wa_sends (tenant_id, person_id, sequence_id, position, lead_id, contact_id,
                        phone, mode, meta_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (tenant_id, p["id"], p["sequence_id"], step["position"], p.get("lead_id"), p.get("contact_id"),
@@ -1052,14 +1053,22 @@ def _candidates(cur, rule) -> list:
     elif t in QUOTE_TRIGGERS:
         out = _quote_candidates(cur, rule)
     elif t == "wa_price_quiet":
+        # The words are encrypted (10 Nov 2026): the price check runs here,
+        # keeping each number's latest price question, as before.
         cur.execute("""
-            SELECT DISTINCT ON (m.customer_phone) m.id, m.customer_phone, m.created_at
+            SELECT m.id, m.customer_phone, m.created_at, m.content
             FROM wa_message_log m
-            WHERE m.tenant_id=%s AND m.direction='inbound' AND m.content ~* %s
+            WHERE m.tenant_id=%s AND m.direction='inbound'
               AND m.created_at <= NOW() - make_interval(days => %s)
               AND m.created_at >= NOW() - make_interval(days => %s)
-            ORDER BY m.customer_phone, m.created_at DESC""", (tid, PRICE_RE, days, days + LOOKBACK_DAYS))
+            ORDER BY m.customer_phone, m.created_at DESC""", (tid, days, days + LOOKBACK_DAYS))
+        _price_rows, _seen_ph = [], set()
         for m in cur.fetchall():
+            if m["customer_phone"] in _seen_ph or not re.search(PRICE_RE, data_crypto.dec(m["content"]) or "", re.I):
+                continue
+            _seen_ph.add(m["customer_phone"])
+            _price_rows.append(m)
+        for m in _price_rows:
             phone = digits(m["customer_phone"])
             cur.execute("""SELECT 1 FROM wa_message_log WHERE tenant_id=%s AND customer_phone=%s
                            AND direction='inbound' AND created_at > %s LIMIT 1""", (tid, m["customer_phone"], m["created_at"]))

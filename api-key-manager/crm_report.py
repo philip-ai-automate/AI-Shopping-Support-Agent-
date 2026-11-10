@@ -16,6 +16,7 @@ are pre-grouped derived tables joined by hash, never per-row lookups, so a
 import datetime as _dt
 import io
 from contact_status import STATUS_LABELS
+import data_crypto   # message words encrypted at rest (10 Nov 2026)
 
 # ── Where the lead came from ─────────────────────────────────────────────────
 # 'import' and 'whatsapp'/'manual'/'instagram' are written on the lead; a
@@ -307,7 +308,7 @@ COL_GROUPS = [
         _c("lastfrom", "Last message from",
            "CASE wml.direction WHEN 'inbound' THEN 'Customer' WHEN 'outbound' THEN 'Us' END", "text", ["wml"]),
         _c("lastmsgtext", "Last message text",
-           "CASE WHEN COALESCE(wml.content, '') <> '' THEN left(wml.content, 300) WHEN wml.message_type IS NOT NULL THEN '[' || wml.message_type || ']' END",
+           "CASE WHEN COALESCE(wml.content, '') <> '' THEN wml.content WHEN wml.message_type IS NOT NULL THEN '[' || wml.message_type || ']' END",
            "long", ["wml"]),
         _c("lastsentby", "Last reply sent by",
            "CASE WHEN wmo.customer_phone IS NULL THEN NULL ELSE COALESCE(NULLIF(wmo.sent_by_label, ''), 'AI / automatic') END",
@@ -561,7 +562,7 @@ def fmt_cell(val, fmt: str, ctx: dict, row: dict = None) -> str:
     if fmt == "person":
         return ctx["person"](None, str(val))
     if fmt == "long":
-        s = " ".join(str(val).split())
+        s = " ".join(str(data_crypto.dec(val) if isinstance(val, str) else val).split())   # message words are encrypted
         return s if len(s) <= 300 else s[:297] + "…"
     return str(val)
 

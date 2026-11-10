@@ -17,6 +17,7 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from wa_db import get_db_connection
+from data_crypto import enc as _enc, dec as _dec   # message words encrypted at rest (10 Nov 2026)
 
 # Counted as "right after our message".
 QUICK = timedelta(seconds=120)
@@ -87,13 +88,14 @@ def check(tenant_id: int, customer_phone: str, text: str):
         if len(norm) >= LOOP_MIN_LEN:
             # Earlier inbound messages with the same text (the current one is
             # already logged, so it counts itself once).
+            # The words are encrypted (10 Nov 2026): open them here and compare.
             cur.execute("""
-                SELECT COUNT(*), COUNT(*) FILTER (WHERE created_at >= %s) FROM wa_message_log
+                SELECT content, created_at FROM wa_message_log
                  WHERE tenant_id = %s AND customer_phone = %s AND direction = 'inbound'
-                   AND NOT is_historical AND created_at >= %s
-                   AND lower(regexp_replace(btrim(content), '\\s+', ' ', 'g')) = %s""",
-                (now - LOOP_WINDOW, tenant_id, customer_phone, now - REPEAT_WINDOW, norm))
-            a, b = cur.fetchone()
+                   AND NOT is_historical AND created_at >= %s""",
+                (tenant_id, customer_phone, now - REPEAT_WINDOW))
+            hits = [at for c, at in cur.fetchall() if _norm(_dec(c)) == norm]
+            a, b = len(hits), sum(1 for at in hits if at >= now - LOOP_WINDOW)
             same, same_recent = max(int(a or 0) - 1, 0), max(int(b or 0) - 1, 0)
         cur.close()
         return decide(text, now, last_out, same, same_recent)

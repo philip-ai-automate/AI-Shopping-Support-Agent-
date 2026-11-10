@@ -2,6 +2,7 @@ import json
 import os
 import psycopg2
 import psycopg2.extras
+from data_crypto import enc as _enc, dec as _dec   # message words encrypted at rest (10 Nov 2026)
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -127,7 +128,7 @@ def log_message(
             VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (meta_message_id) WHERE meta_message_id IS NOT NULL DO NOTHING
             """,
-            (tenant_id, phone_number_id, customer_phone, direction, content, message_type, meta_message_id),
+            (tenant_id, phone_number_id, customer_phone, direction, _enc(content), message_type, meta_message_id),
         )
         conn.commit()
         return cur.rowcount > 0

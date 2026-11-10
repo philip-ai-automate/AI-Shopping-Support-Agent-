@@ -23,6 +23,7 @@ on either side; wipe_all() is the nightly safety net.
 """
 import re
 import secrets
+import data_crypto   # message words encrypted at rest (10 Nov 2026)
 
 IDLE_MINUTES = 60
 
@@ -123,13 +124,13 @@ def touch(conn, code: str) -> None:
 def wa_phones(conn, tenant_id: int, code: str) -> set:
     """WhatsApp numbers that sent "demo <code>" since the code was made."""
     cur = conn.cursor()
-    cur.execute("""SELECT DISTINCT m.customer_phone
+    cur.execute("""SELECT m.customer_phone, m.content
                      FROM wa_message_log m JOIN demo_visitor_codes v ON v.code=%s
                     WHERE m.tenant_id=%s AND m.direction='inbound'
-                      AND m.created_at >= v.created_at
-                      AND m.content ~* %s""",
-                (code, tenant_id, r"\mdemo\s*" + code + r"\M"))
-    return {r[0] for r in cur.fetchall()}
+                      AND m.created_at >= v.created_at""",
+                (code, tenant_id))
+    pat = re.compile(r"\bdemo\s*" + re.escape(code) + r"\b", re.I)   # words encrypted: matched here
+    return {r[0] for r in cur.fetchall() if pat.search(data_crypto.dec(r[1]) or "")}
 
 
 def key_visible(key: str, v: dict, phones: set) -> bool:
@@ -199,12 +200,20 @@ def wipe_idle(conn) -> dict:
                  COALESCE((SELECT MAX(last_seen_at) FROM web_chat_presence p
                             WHERE p.tenant_id=v.tenant_id
                               AND p.session_id LIKE 'dv-' || v.code || '-' || v.secret || '-%%'), v.last_seen_at),
-                 COALESCE((SELECT MAX(created_at) FROM wa_message_log w
-                            WHERE w.tenant_id=v.tenant_id AND w.created_at >= v.created_at
-                              AND w.content ~* ('\\mdemo\\s*' || v.code || '\\M')), v.last_seen_at)
+                 v.last_seen_at
                ) < NOW() - make_interval(mins => %s)
     """, (IDLE_MINUTES,))
-    rows = cur.fetchall()
+    # WhatsApp "demo <code>" messages keep a code alive too. The words are
+    # encrypted (10 Nov 2026), so that check runs here.
+    rows = []
+    for code, secret, tenant_id in cur.fetchall():
+        cur.execute("""SELECT w.content FROM wa_message_log w JOIN demo_visitor_codes v ON v.code=%s
+                        WHERE w.tenant_id=%s AND w.created_at >= v.created_at
+                          AND w.created_at >= NOW() - make_interval(mins => %s)""", (code, tenant_id, IDLE_MINUTES))
+        pat = re.compile(r"\bdemo\s*" + re.escape(code) + r"\b", re.I)
+        if any(pat.search(data_crypto.dec(c) or "") for (c,) in cur.fetchall()):
+            continue
+        rows.append((code, secret, tenant_id))
     done = {}
     for code, secret, tenant_id in rows:
         done[code] = _wipe_one(cur, conn, code, secret, tenant_id)

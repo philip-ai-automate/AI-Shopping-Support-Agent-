@@ -826,7 +826,7 @@ def run_tenant(tenant: dict, now=None, http=None, dry=False) -> dict:
                 cur.execute("""INSERT INTO re_wa_message_log (tenant_id, phone_number_id, customer_phone, direction,
                                content, message_type, meta_message_id) VALUES (%s,%s,%s,'outbound',%s,%s,%s)
                                ON CONFLICT DO NOTHING""",
-                            (tid, tenant["wa_phone_number_id"], c["wa_phone"], body[:2000],
+                            (tid, tenant["wa_phone_number_id"], c["wa_phone"], data_crypto.enc(body[:2000]),
                              "text" if plain else "template", None if dry else info))
                 import data_crypto   # chat words encrypted at rest (10 Nov 2026)
                 cur.execute("INSERT INTO re_chat_messages (tenant_id, customer_id, role, content) VALUES (%s,%s,'assistant',%s)",

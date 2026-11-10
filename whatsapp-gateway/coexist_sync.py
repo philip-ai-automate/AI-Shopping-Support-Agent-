@@ -23,6 +23,7 @@ import re
 from datetime import datetime, timezone
 
 from wa_db import get_db_connection, ensure_contact_from_inbound
+from data_crypto import enc as _enc, dec as _dec   # message words encrypted at rest (10 Nov 2026)
 
 COEXIST_FIELDS = {"history", "smb_app_state_sync", "smb_message_echoes"}
 PHONE_APP_LABEL = "Phone app"
@@ -101,7 +102,7 @@ def _echoes(cur, tenant_id: int, pnid: str, value: dict) -> int:
                   message_type, meta_message_id, sent_by_label, created_at)
                VALUES (%s, %s, %s, 'outbound', %s, 'agent_reply', %s, %s, COALESCE(%s, NOW()))
                ON CONFLICT (meta_message_id) WHERE meta_message_id IS NOT NULL DO NOTHING""",
-            (tenant_id, pnid, to, text, m.get("id"), PHONE_APP_LABEL, _ts(m)))
+            (tenant_id, pnid, to, _enc(text), m.get("id"), PHONE_APP_LABEL, _ts(m)))
         # Someone answered from the phone: pause the AI Agent on this chat,
         # exactly like "Take over" in the Inbox.
         cur.execute(
@@ -144,7 +145,7 @@ def _history(cur, tenant_id: int, pnid: str, value: dict) -> int:
                           meta_message_id, sent_by_label, created_at, is_historical)
                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s, NOW()), TRUE)
                        ON CONFLICT (meta_message_id) WHERE meta_message_id IS NOT NULL DO NOTHING""",
-                    (tenant_id, pnid, cust, "outbound" if outbound else "inbound", text,
+                    (tenant_id, pnid, cust, "outbound" if outbound else "inbound", _enc(text),
                      "agent_reply" if outbound else mtype, m.get("id"),
                      PHONE_APP_LABEL if outbound else None, _ts(m)))
                 n += cur.rowcount

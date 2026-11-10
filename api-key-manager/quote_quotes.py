@@ -21,6 +21,7 @@ from datetime import date, datetime, timedelta
 import psycopg2.extras
 
 from db import get_db_connection
+import data_crypto   # message words encrypted at rest (10 Nov 2026)
 import quote_design as qd
 import quote_requests as qr
 
@@ -838,7 +839,7 @@ def _send_wa_document(tenant_id, num, phone, pdf, fname, caption, actor) -> tupl
         cur.execute("""INSERT INTO wa_message_log (tenant_id, phone_number_id, customer_phone, direction, content,
                            message_type, meta_message_id, sent_by_label)
                        VALUES (%s,%s,%s,'outbound',%s,'agent_reply',%s,%s)""",
-                    (tenant_id, num["phone_number_id"], phone, f"📄 {fname}\n\n{caption}", meta_id, actor["label"][:200]))
+                    (tenant_id, num["phone_number_id"], phone, data_crypto.enc(f"📄 {fname}\n\n{caption}"), meta_id, actor["label"][:200]))
         conn.commit()
     except Exception as e:
         conn.rollback()

@@ -19,6 +19,7 @@ import os
 import re
 
 from db import get_db_connection
+import data_crypto   # saved translations encrypted at rest (10 Nov 2026)
 
 FEATURE_KEY = "inbox.translate"
 MAX_TEXTS = 40
@@ -180,10 +181,10 @@ def translate_for_team(tenant_id, texts, team_lang):
         for i, (t, h) in enumerate(zip(texts, hashes)):
             if h in wrote:
                 w = wrote[h]
-                out[i] = {"lang": w[3], "lang_name": lang_name(w[3]), "text": None, "wrote": w[1]}
+                out[i] = {"lang": w[3], "lang_name": lang_name(w[3]), "text": None, "wrote": data_crypto.dec(w[1])}
             elif h in cached:
                 c = cached[h]
-                out[i] = {"lang": c[1], "lang_name": lang_name(c[1]), "text": c[2], "wrote": None}
+                out[i] = {"lang": c[1], "lang_name": lang_name(c[1]), "text": data_crypto.dec(c[2]), "wrote": None}
             elif not _norm(t) or (team_lang == "en" and _looks_english(t)):
                 out[i] = {"lang": team_lang, "lang_name": lang_name(team_lang), "text": None, "wrote": None}
             else:
@@ -196,7 +197,7 @@ def translate_for_team(tenant_id, texts, team_lang):
                 out[i] = {"lang": lang, "lang_name": lang_name(lang), "text": text, "wrote": None}
                 cur.execute("""INSERT INTO message_translations (tenant_id, src_hash, target_lang, src_lang, translated)
                                VALUES (%s, %s, %s, %s, %s) ON CONFLICT (tenant_id, src_hash, target_lang) DO NOTHING""",
-                            (int(tenant_id), hashes[i], team_lang, lang, text))
+                            (int(tenant_id), hashes[i], team_lang, lang, data_crypto.enc(text)))
             conn.commit()
     finally:
         cur.close(); conn.close()
@@ -225,7 +226,7 @@ def remember_sent(tenant_id, sent_text, original, original_lang, sent_lang):
         cur.execute("""INSERT INTO sent_translations (tenant_id, sent_hash, original, original_lang, sent_lang)
                        VALUES (%s, %s, %s, %s, %s)
                        ON CONFLICT (tenant_id, sent_hash) DO UPDATE SET original = EXCLUDED.original""",
-                    (int(tenant_id), _hash(sent_text), original[:MAX_CHARS], (original_lang or "")[:10],
+                    (int(tenant_id), _hash(sent_text), data_crypto.enc(original[:MAX_CHARS]), (original_lang or "")[:10],
                      (sent_lang or "")[:10]))
         conn.commit()
     finally:

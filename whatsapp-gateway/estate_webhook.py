@@ -16,6 +16,7 @@ import psycopg2
 import psycopg2.extras
 
 from wa_db import get_db_connection
+from data_crypto import enc as _enc, dec as _dec   # message words encrypted at rest (10 Nov 2026)
 from meta_sender import send_text, mark_as_read
 from estate_formatter import (
     send_estate_property_card,
@@ -94,7 +95,7 @@ def _log_estate_wa(
             DO NOTHING
         """, (
             tenant_id, phone_number_id, customer_phone,
-            direction, (content or "")[:2000], message_type, meta_message_id,
+            direction, _enc((content or "")[:2000]), message_type, meta_message_id,
         ))
         conn.commit()
         return cur.rowcount > 0
@@ -158,7 +159,7 @@ def _save_voice_row(tenant_id, customer_phone, meta_message_id, path, seconds, t
                     (tenant_id, customer_phone, meta_message_id, path, seconds, transcript, status))
         if transcript:
             cur.execute("UPDATE re_wa_message_log SET content=%s WHERE meta_message_id=%s",
-                        (("🎤 Voice note: " + transcript)[:2000], meta_message_id))
+                        (_enc(("🎤 Voice note: " + transcript)[:2000]), meta_message_id))
         conn.commit()
     except Exception as e:
         conn.rollback()
@@ -625,12 +626,12 @@ def _get_last_inspect_listing_id(
             WHERE tenant_id = %s
               AND customer_phone = %s
               AND direction = 'outbound'
-              AND content LIKE '[Inspection slots sent for listing%%'
               AND created_at >= %s
             ORDER BY created_at DESC
-            LIMIT 1
         """, (tenant_id, customer_phone, cutoff))
-        row = cur.fetchone()
+        # words are encrypted (10 Nov 2026): open and match here
+        row = next(((t,) for (c,) in cur.fetchall() for t in [_dec(c) or ""]
+                    if t.startswith("[Inspection slots sent for listing")), None)
         if not row:
             return None
         m = _re.search(r'listing (\d+)', row[0])
@@ -664,12 +665,12 @@ def _get_last_property_card_listing_id(
             WHERE tenant_id = %s
               AND customer_phone = %s
               AND direction = 'outbound'
-              AND content LIKE '[Property card: listing%%'
               AND created_at >= %s
             ORDER BY created_at DESC
-            LIMIT 1
         """, (tenant_id, customer_phone, cutoff))
-        row = cur.fetchone()
+        # words are encrypted (10 Nov 2026): open and match here
+        row = next(((t,) for (c,) in cur.fetchall() for t in [_dec(c) or ""]
+                    if t.startswith("[Property card: listing")), None)
         if not row:
             return None
         m = _re.search(r'listing (\d+)', row[0])

@@ -16588,7 +16588,7 @@ def whatsapp_history_import_upload():
                   (tenant_id, phone_number_id, customer_phone, direction, content,
                    message_type, media_url, created_at, is_historical, import_batch_id)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s)
-            """, (tenant_id, phone_number_id, customer_phone, direction, content,
+            """, (tenant_id, phone_number_id, customer_phone, direction, data_crypto.enc(content),
                   message_type, media_url, created_at, batch_id))
 
         conn.commit()
@@ -19644,7 +19644,7 @@ def whatsapp_contact_detail(contact_id: int):
                 ORDER BY created_at DESC LIMIT 10
             ) r ORDER BY created_at ASC
         """, (tenant_id, contact["whatsapp_number"]))
-        recent_messages = cur.fetchall()
+        recent_messages = [dict(m, content=data_crypto.dec(m["content"])) for m in cur.fetchall()]
 
         # Segments this contact belongs to
         _ls_exec(cur, """
@@ -21305,7 +21305,7 @@ def _send_campaign_now(campaign_id: int, tenant_id: int):
                                    (tenant_id, phone_number_id, customer_phone, direction, content, message_type, meta_message_id)
                                VALUES (%s, %s, %s, 'outbound', %s, 'campaign', %s)""",
                             (tenant_id, row["phone_number_id"], norm_phone,
-                             f"📣 Campaign: \"{row['name']}\" (template: {row['template_name']})", rec_msg_id),
+                             data_crypto.enc(f"📣 Campaign: \"{row['name']}\" (template: {row['template_name']})"), rec_msg_id),
                         )
                         _lc.commit()
                         _lcc.close(); _lc.close()
@@ -22119,7 +22119,7 @@ def whatsapp_send_one():
                          (tenant_id, phone_number_id, customer_phone, direction, content,
                           message_type, meta_message_id, sent_by_label)
                        VALUES (%s, %s, %s, 'outbound', %s, 'agent_reply', %s, %s)""",
-                    (tenant_id, conn_row["phone_number_id"], contact["whatsapp"], shown, msg_id, actor["label"]))
+                    (tenant_id, conn_row["phone_number_id"], contact["whatsapp"], data_crypto.enc(shown), msg_id, actor["label"]))
         lc.commit(); lcc.close(); lc.close()
     except Exception as e:
         print("⚠️ send_one log error:", e)
@@ -31510,7 +31510,7 @@ def _get_customer_detail(tenant_id: int, phone: str):
             ORDER BY created_at DESC
             LIMIT 30
         """, (tenant_id, phone))
-        recent_messages = list(reversed(cur.fetchall() or []))
+        recent_messages = [dict(m, content=data_crypto.dec(m["content"])) for m in reversed(cur.fetchall() or [])]
 
         cur.close(); conn.close()
         return {
@@ -34674,6 +34674,7 @@ def _get_open_wa_handoffs(tenant_id: int) -> list:
         rows = cur.fetchall() or []
         cur.close(); conn.close()
         for r in rows:
+            r["last_message"] = data_crypto.dec(r.get("last_message"))
             r["waiting_minutes"] = int(r["waiting_minutes"]) if r.get("waiting_minutes") is not None else None
         return [r for r in rows if _inbox_can_see(tenant_id, r["customer_phone"], [r["customer_phone"]])]
     except Exception as e:
@@ -34876,6 +34877,7 @@ def _get_inbox_conversations(tenant_id: int, allowed_number_ids=None) -> list:
         result = []
         for row in rows:
             d = dict(row)
+            d["last_content"] = data_crypto.dec(d.get("last_content"))
             # UI-facing "needs a reply" signal — based on the latest LIVE
             # message only, so a thread made up purely of imported history
             # never shows the awaiting-reply dot/badge/unread-filter (see
@@ -34915,6 +34917,8 @@ def _get_inbox_messages(tenant_id: int, phone: str, limit: int = 100) -> list:
         """, (tenant_id, phone, limit))
         rows = cur.fetchall() or []
         cur.close(); conn.close()
+        for r in rows:
+            r["content"] = data_crypto.dec(r.get("content"))
         return rows
     except Exception as e:
         print("⚠️ _get_inbox_messages error:", e)
@@ -35051,6 +35055,7 @@ def _get_messenger_conversations(tenant_id: int) -> list:
         rows = cur.fetchall() or []
         cur.close(); conn.close()
         for r in rows:
+            r["last_content"] = data_crypto.dec(r.get("last_content"))
             r["psid_short"] = (r["psid"] or "")[-4:]
         return rows
     except Exception as e:
@@ -35080,6 +35085,8 @@ def _get_messenger_messages(tenant_id: int, key: str, limit: int = 100) -> list:
         """, (tenant_id, page_id, psid, limit))
         rows = cur.fetchall() or []
         cur.close(); conn.close()
+        for r in rows:
+            r["content"] = data_crypto.dec(r.get("content"))
         return rows
     except Exception as e:
         print("⚠️ _get_messenger_messages error:", e)
@@ -35127,7 +35134,7 @@ def _send_messenger_reply(tenant_id: int, key: str, text: str, actor: dict):
                 INSERT INTO fb_message_log
                   (tenant_id, page_id, psid, direction, content, message_type, sent_by_label)
                 VALUES (%s, %s, %s, 'outbound', %s, 'text', %s)
-            """, (tenant_id, page_id, psid, text, actor["label"]))
+            """, (tenant_id, page_id, psid, data_crypto.enc(text), actor["label"]))
             conn.commit()
             cur.close(); conn.close()
         except Exception as e:
@@ -35643,7 +35650,7 @@ def inbox_reply(phone: str):
                 INSERT INTO wa_message_log
                   (tenant_id, phone_number_id, customer_phone, direction, content, message_type, sent_by_label, meta_message_id)
                 VALUES (%s, %s, %s, 'outbound', %s, 'agent_reply', %s, %s)
-            """, (tenant_id, wa["phone_number_id"], phone, reply_text, actor["label"],
+            """, (tenant_id, wa["phone_number_id"], phone, data_crypto.enc(reply_text), actor["label"],
                   _PORTAL_WA_IDS.pop((wa["phone_number_id"], "".join(ch for ch in (phone or "") if ch.isdigit())), None)))
             conn.commit()
             cur.close(); conn.close()
@@ -41833,6 +41840,8 @@ def lead_detail(lead_id: int, opp_view: bool = False):
             ORDER BY created_at DESC LIMIT 1
         """, (tenant_id, lead["whatsapp_number"]))
         last_message = cur.fetchone()
+        if last_message:
+            last_message = dict(last_message, content=data_crypto.dec(last_message["content"]))
     if not contact_id:
         # Not linked yet: find the contact by either number.
         for _num in (lead.get("whatsapp_number"), lead.get("phone")):

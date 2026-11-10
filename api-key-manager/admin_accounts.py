@@ -29,6 +29,7 @@ from flask import flash, redirect, render_template, request, url_for, session
 
 from db import get_db_connection, insert_audit_log
 import accounts_core as A
+import data_crypto   # message words encrypted at rest (10 Nov 2026)
 from portal_address import country_name
 
 GRAPH = "https://graph.facebook.com/v19.0"
@@ -985,6 +986,7 @@ def timeline(tenant_id: int, phone: str) -> list:
             for r in cur.fetchall() or []:
                 if r["message_type"] == "call":
                     continue
+                r["content"] = data_crypto.dec(r.get("content"))
                 items.append({"at": r["created_at"], "src": "wa", **r})
             cur.execute("""SELECT created_at, direction, status, duration, answered_by_name, started_by_name, missed_reason
                              FROM wa_calls WHERE tenant_id=%s AND regexp_replace(customer_phone,'\\D','','g')=%s
@@ -1101,7 +1103,7 @@ def send_whatsapp(tenant_id: int, phone: str, text: str, by: str, use_template=F
             cur.execute("""INSERT INTO wa_message_log (tenant_id, phone_number_id, customer_phone, direction, content,
                                                        message_type, sent_by_label, meta_message_id)
                            VALUES (%s,%s,%s,'outbound',%s,'agent_reply',%s,%s)""",
-                        (pid, num["phone_number_id"], to, logged, AM_NAME + " (Account Manager)", mid))
+                        (pid, num["phone_number_id"], to, data_crypto.enc(logged), AM_NAME + " (Account Manager)", mid))
             set_quiet(cur, to, by, True)
         log(cur, tenant_id, "whatsapp", by, channel="whatsapp", body=logged, ok=ok,
             outcome=None if ok else "failed")
@@ -1712,7 +1714,7 @@ def register_calls(bp, require_admin, admin_user):
                 cur.execute("""INSERT INTO wa_message_log (tenant_id, phone_number_id, customer_phone, direction, content,
                                                            message_type, sent_by_label)
                                VALUES (%s,%s,%s,'outbound',%s,'agent_reply',%s)""",
-                            (pid, num["phone_number_id"], a["phone_digits"], "[Can we call you?] " + text, label))
+                            (pid, num["phone_number_id"], a["phone_digits"], data_crypto.enc("[Can we call you?] " + text), label))
                 set_quiet(cur, a["phone_digits"], admin_user(), True)
             log(cur, tenant_id, "whatsapp", admin_user(), channel="whatsapp",
                 body="Asked on WhatsApp: can we call you?", ok=ok, outcome=None if ok else "failed")
@@ -1862,6 +1864,7 @@ def conversations():
         for r in cur.fetchall() or []:
             a = dict(accts[r["d"]])
             a.update(r)
+            a["last_text"] = data_crypto.dec(a.get("last_text"))
             a["needs_reply"] = bool(r["last_in"] and (not r["last_out"] or r["last_in"] > r["last_out"]))
             out.append(a)
         return out
@@ -1882,7 +1885,7 @@ def thread(phone):
                           AND NOT COALESCE(m.is_historical, FALSE) AND m.message_type <> 'call'
                           AND (%s IS NULL OR m.phone_number_id = %s)
                         ORDER BY m.created_at ASC LIMIT 500""", (pid, d, _amn, _amn))
-        items = [{"src": "wa", **r} for r in cur.fetchall() or []]
+        items = [{"src": "wa", **dict(r, content=data_crypto.dec(r.get("content")))} for r in cur.fetchall() or []]
         cur.execute("""SELECT created_at, direction, status, duration, answered_by_name, started_by_name
                          FROM wa_calls WHERE tenant_id=%s AND regexp_replace(customer_phone,'\\D','','g')=%s
                           AND (%s IS NULL OR phone_number_id = %s)""", (pid, d, _amn, _amn))

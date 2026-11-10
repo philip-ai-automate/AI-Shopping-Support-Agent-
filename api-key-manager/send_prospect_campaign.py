@@ -129,7 +129,7 @@ def _log_outbound(cur, conn, tenant_id: int, phone_number_id: str, to_phone: str
                    (tenant_id, phone_number_id, customer_phone, direction, content, message_type)
                VALUES (%s, %s, %s, 'outbound', %s, 'campaign')""",
             (tenant_id, phone_number_id, to_phone,
-             f"📣 Prospect campaign: \"{TEMPLATE_NAME}\""),
+             __import__("data_crypto").enc(f"📣 Prospect campaign: \"{TEMPLATE_NAME}\"")),  # words encrypted at rest
         )
         conn.commit()
     except Exception as e:

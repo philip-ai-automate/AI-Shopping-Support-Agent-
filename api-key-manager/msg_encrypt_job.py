@@ -28,6 +28,13 @@ TABLES = [
     ("web_chat_replies", "id", "content"),
     ("chat_summaries", "ctid", "summary_text"),
     ("re_chat_summaries", "ctid", "summary_text"),
+    # step 2: WhatsApp and Facebook
+    ("wa_message_log", "id", "content"),
+    ("fb_message_log", "id", "content"),
+    ("re_wa_message_log", "id", "content"),
+    # step 3: saved translations
+    ("message_translations", "ctid", "translated"),
+    ("sent_translations", "ctid", "original"),
 ]
 
 

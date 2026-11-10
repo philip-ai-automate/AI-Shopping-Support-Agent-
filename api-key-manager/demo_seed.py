@@ -267,7 +267,7 @@ for phone, messages in conversations:
             INSERT INTO wa_message_log
                 (tenant_id, phone_number_id, customer_phone, direction, content, message_type, created_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (tenant_id, FAKE_PID, phone, direction, content, mtype,
+        """, (tenant_id, FAKE_PID, phone, direction, __import__("data_crypto").enc(content), mtype,  # words encrypted at rest
               datetime.utcnow() - timedelta(hours=hrs)))
 
 # ── 9. Handoff states ─────────────────────────────────────────────────────────

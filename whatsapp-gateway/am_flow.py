@@ -21,6 +21,7 @@ from datetime import date, timedelta
 import httpx
 
 from wa_db import get_db_connection
+from data_crypto import enc as _enc, dec as _dec   # message words encrypted at rest (10 Nov 2026)
 
 GRAPH = "https://graph.facebook.com/v19.0"
 AM_NAME = "Kelvin"
@@ -84,7 +85,7 @@ async def _send(tenant_id, phone_number_id, token, to, payload, logged):
         cur.execute("""INSERT INTO wa_message_log (tenant_id, phone_number_id, customer_phone, direction, content,
                                                    message_type, sent_by_label, meta_message_id)
                        VALUES (%s,%s,%s,'outbound',%s,'am_auto',%s,%s)""",
-                    (tenant_id, phone_number_id, _d(to), logged, "Automatic (Account Manager)", mid))
+                    (tenant_id, phone_number_id, _d(to), _enc(logged), "Automatic (Account Manager)", mid))
         conn.commit()
     finally:
         cur.close(); conn.close()

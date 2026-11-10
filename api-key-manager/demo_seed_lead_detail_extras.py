@@ -156,7 +156,7 @@ for lead in leads:
                             (tenant_id, phone_number_id, customer_phone, direction,
                              content, message_type, created_at, sent_by_label)
                         VALUES (%s, %s, %s, %s, %s, 'text', %s, %s)
-                    """, (tenant_id, FAKE_PID, phone, direction, content, ts,
+                    """, (tenant_id, FAKE_PID, phone, direction, __import__("data_crypto").enc(content), ts,  # words encrypted at rest
                           None if direction == "inbound" else staff))
             n_convo += 1
 

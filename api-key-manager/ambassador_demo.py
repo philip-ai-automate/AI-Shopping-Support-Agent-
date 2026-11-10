@@ -214,7 +214,7 @@ def _seed_demo_data(cur, tenant_id: int, customer_id: int, first_name: str):
                 INSERT INTO wa_message_log
                     (tenant_id, phone_number_id, customer_phone, direction, content, message_type, created_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (tenant_id, fake_pid, phone, direction, content, mtype,
+            """, (tenant_id, fake_pid, phone, direction, __import__("data_crypto").enc(content), mtype,  # words encrypted at rest
                   datetime.utcnow() - timedelta(hours=hrs)))
 
     # Handoff states

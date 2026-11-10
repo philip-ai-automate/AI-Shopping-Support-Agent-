@@ -14,6 +14,7 @@ import os
 
 import psycopg2.extras
 from wa_db import get_db_connection
+from data_crypto import enc as _enc, dec as _dec   # message words encrypted at rest (10 Nov 2026)
 
 _APP_SECRET = os.getenv("META_APP_SECRET", "") or os.getenv("FB_APP_SECRET", "")
 
@@ -66,7 +67,7 @@ def _log_message(tenant_id: int, page_id: str, psid: str, direction: str,
             VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (meta_message_id) WHERE meta_message_id IS NOT NULL DO NOTHING
             """,
-            (tenant_id, page_id, psid, direction, content, message_type, meta_message_id),
+            (tenant_id, page_id, psid, direction, _enc(content), message_type, meta_message_id),
         )
         conn.commit()
         return cur.rowcount > 0

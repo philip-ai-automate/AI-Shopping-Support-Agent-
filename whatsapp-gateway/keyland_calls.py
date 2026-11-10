@@ -19,6 +19,7 @@ import httpx
 import psycopg2.extras
 
 from wa_db import get_db_connection as _db
+from data_crypto import enc as _enc, dec as _dec   # message words encrypted at rest (10 Nov 2026)
 
 GRAPH = "https://graph.facebook.com/v23.0"
 DEFAULT_MISSED = "Sorry we missed your call. How can we help? Reply here and our team will get back to you shortly."
@@ -121,12 +122,12 @@ async def _missed(cur, conn, tenant: dict, call: dict, reason: str):
     _log_on_lead(cur, dict(call, missed_reason=reason), False)
     cur.execute("""INSERT INTO re_wa_message_log (tenant_id, phone_number_id, customer_phone, direction, content, message_type, meta_message_id)
                    VALUES (%s,%s,%s,'inbound',%s,'call',%s) ON CONFLICT DO NOTHING""",
-                (call["tenant_id"], call["phone_number_id"], call["customer_phone"], "📵 Missed WhatsApp call",
+                (call["tenant_id"], call["phone_number_id"], call["customer_phone"], _enc("📵 Missed WhatsApp call"),
                  f"call:{call['wa_call_id']}:missed"))
     if ok:
         cur.execute("""INSERT INTO re_wa_message_log (tenant_id, phone_number_id, customer_phone, direction, content, message_type, meta_message_id)
                        VALUES (%s,%s,%s,'outbound',%s,'text',%s) ON CONFLICT DO NOTHING""",
-                    (call["tenant_id"], call["phone_number_id"], call["customer_phone"], text, f"call:{call['wa_call_id']}:autoreply"))
+                    (call["tenant_id"], call["phone_number_id"], call["customer_phone"], _enc(text), f"call:{call['wa_call_id']}:autoreply"))
     conn.commit()
     if reason not in ("out_of_hours", "calls_off"):
         who = call.get("customer_name") or ("+" + call["customer_phone"])
