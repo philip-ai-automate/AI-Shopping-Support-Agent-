@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% from "portal/_woo_order_box.html" import woo_order_box with context %}
 {% block title %}R-{{ r.ref_no }} · {{ r.buyer_company or r.buyer_name }} — PhiXtra Portal{% endblock %}
 {% block wrap_class %}page-wide{% endblock %}
 {% block head %}{% include "portal/_quotes_css.html" %}{% endblock %}
@@ -197,6 +198,9 @@
           <div class="qt-small">Every line of {{ sent_q.number }}{{ ' v%d'|format(sent_q.version) if sent_q.version > 1 }} at the quoted prices. Nothing goes to the buyer until you press Send Shopify invoice.</div>
           {% endif %}
           {% endif %}
+        {% elif sent_q and woo and woo.state != 'none' %}
+          {# WooCommerce businesses (2026-11-10): the order is made in their own shop. #}
+          {{ woo_order_box(woo, r.id, 'request', true) }}
         {% elif sent_q and orders_on and staff_can_open('portal.quotes_request_order') %}
           {% if sent_q.order_id %}
           <a class="qt-btn dark" href="{{ url_for('portal.order_detail', order_id=sent_q.order_id) }}">Open the order</a>

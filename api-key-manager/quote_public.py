@@ -14,6 +14,7 @@ Off unless the business switches it on (Quotations › Quotation settings),
 has the B2B plan (or is PhiXtra) and has a product list. No buyer accounts:
 the buyer gives a name and email (or number) and gets a confirmation email.
 """
+import json
 import hashlib
 import html as _html
 import re
@@ -511,3 +512,37 @@ def _confirm(tenant_id: int, r: dict, cfg: dict, lang):
             cur.close(); conn.close()
     except Exception as e:
         print(f"⚠️ quote_public confirm {r.get('id')}:", e)
+
+
+# ── WooCommerce orders from accepted quotations (2026-11-10, plugin 3.10.0) ──
+# Calls from the shop's PhiXtra plugin, signed with its own key (woo_orders.verify).
+
+@quote_public_bp.route("/public/woo/hello", methods=["POST"])
+@public_route
+def woo_hello():
+    import woo_orders as _wo
+    body = request.get_data(cache=True)[:20000]
+    row = _wo.verify(request.headers, body)
+    if not row:
+        return jsonify({"ok": False}), 403
+    try:
+        data = json.loads(body or b"{}")
+    except ValueError:
+        return jsonify({"ok": False}), 400
+    ok, msg = _wo.hello(row, data if isinstance(data, dict) else {})
+    return jsonify({"ok": ok, "message": msg}), (200 if ok else 400)
+
+
+@quote_public_bp.route("/public/woo/order-status", methods=["POST"])
+@public_route
+def woo_order_status():
+    import woo_orders as _wo
+    body = request.get_data(cache=True)[:20000]
+    row = _wo.verify(request.headers, body)
+    if not row:
+        return jsonify({"ok": False}), 403
+    try:
+        data = json.loads(body or b"{}")
+    except ValueError:
+        return jsonify({"ok": False}), 400
+    return jsonify({"ok": _wo.on_status(row, data if isinstance(data, dict) else {})})

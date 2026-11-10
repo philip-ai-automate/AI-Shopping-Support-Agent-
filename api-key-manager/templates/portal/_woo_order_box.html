@@ -1,0 +1,35 @@
+{# Accepted quotation → WooCommerce order (2026-11-10). woo = woo_orders.for_request(); back = 'deal' | 'request' #}
+{% macro woo_order_box(woo, request_id, back, po_field=false) -%}
+{% if woo and woo.state == 'made' %}{% set o = woo.order %}
+<div class="woo-ord">
+  <div class="woo-top"><b>WooCommerce order #{{ o.number }}</b>
+    <span class="woo-pill {{ 'paid' if o.paid else ('bad' if o.status in ('cancelled','failed','refunded') else 'pend') }}">{{ o.word }}</span>
+    {% if o.admin_url %}<a class="woo-btn" href="{{ o.admin_url }}" target="_blank" rel="noopener">Open in WooCommerce</a>{% endif %}</div>
+  <div class="woo-small">{% if o.created_at %}Created {{ o.created_at[:10] }}{% endif %}{% if o.by %} by {{ o.by }}{% endif %}{% if o.account == 'created' %} · a customer account was made for the buyer{% endif %} · the buyer was emailed a link to pay</div>
+  {% if o.total is not none and o.quote_total and ((o.total|float) - (o.quote_total|float))|abs > 0.009 %}
+  <div class="woo-warn">The totals differ: quotation {{ '%.2f'|format(o.quote_total|float) }} · WooCommerce order {{ '%.2f'|format(o.total|float) }} {{ o.currency or '' }}. Your shop may have added its own tax or rounding. Check the order in WooCommerce.</div>
+  {% endif %}
+</div>
+{% elif woo and woo.state == 'ready' and staff_can_open('portal.quotes_request_woo_order') %}
+<form method="post" action="{{ url_for('portal.quotes_request_woo_order', request_id=request_id) }}" class="woo-form">
+  <input type="hidden" name="back" value="{{ back }}">
+  {% if po_field %}<label class="woo-small" for="wooPo" style="margin:0">Buyer's PO number (optional, if not already given)</label>
+  <input id="wooPo" name="po_number" maxlength="60" placeholder="e.g. PO-4471">{% endif %}
+  <button class="woo-btn dark" type="submit">Create WooCommerce order</button>
+  <div class="woo-small">Puts the order in your WooCommerce shop at the quoted prices, attached to the buyer's customer account (made if they have none), and WooCommerce emails them a link to pay. One order per quotation.</div>
+</form>
+{% elif woo and woo.state == 'update' %}
+<div class="woo-warn">Update the PhiXtra plugin in your WordPress (version 3.10 or newer) to create WooCommerce orders from quotations. After updating, open your WordPress admin once.</div>
+{% endif %}
+<style>
+  .woo-ord{border:2px solid #12B76A;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+  .woo-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .woo-pill{display:inline-block;font-size:11.5px;font-weight:700;border-radius:6px;padding:3px 8px}
+  .woo-pill.pend{background:#FFFAEB;color:#93370D} .woo-pill.paid{background:#ECFDF3;color:#067647} .woo-pill.bad{background:#FEF3F2;color:#B42318}
+  .woo-btn{font:inherit;font-size:13px;font-weight:700;border:1px solid #D0D5DD;border-radius:8px;padding:7px 12px;background:#fff;color:#101828;cursor:pointer;text-decoration:none}
+  .woo-btn.dark{background:#0B1D40;border-color:#0B1D40;color:#fff;justify-self:start}
+  .woo-small{font-size:12.5px;color:#667085;line-height:1.45}
+  .woo-warn{background:#FFFAEB;border:1px solid #FEDF89;color:#93370D;border-radius:8px;padding:9px 11px;font-size:12.5px;line-height:1.45}
+  .woo-form{display:grid;gap:8px;margin:0}
+</style>
+{%- endmacro %}
