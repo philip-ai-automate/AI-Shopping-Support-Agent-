@@ -184,6 +184,16 @@ def start(tenant_id: int, req: dict, actor: dict, valid_until: date = None) -> i
         if prev:
             # A new version of the quotation already sent: same number, its lines.
             number, version, data = prev["number"], prev["version"] + 1, dict(prev["data"])
+            # The AI Agent's draft belongs to the version it made (review 10 Nov 2026):
+            # a new version starts without its message, marks or "start again" copy.
+            data.pop("ai_draft", None)
+            for ln in data.get("lines") or []:
+                for k in ("ai", "ai_suggest", "ai_suggest_why"):
+                    ln.pop(k, None)
+            for row in (data.get("charges") or []) + (data.get("plan") or []):
+                row.pop("ai", None)
+            for x in data.get("qa") or []:
+                x["ai"] = False
             data["valid_until"] = (valid_until or date.today() + timedelta(days=s["valid_days"])).isoformat()
         else:
             number, version = _take_number(cur, tenant_id), 1
@@ -196,18 +206,6 @@ def start(tenant_id: int, req: dict, actor: dict, valid_until: date = None) -> i
                               "list_price": float(p["price"]) if p and p.get("price") is not None and not p.get("price_on_request") else None,
                               "price": float(p["price"]) if p and p.get("price") is not None and not p.get("price_on_request") else None,
                               "disc": 0, "note": ln.get("note") or ""})
-            # Prices & margins (2026-11-10): the volume price for the quantity.
-            try:
-                import quote_prices as qp
-                book = qp.all_for(tenant_id)
-                for ln in lines:
-                    br = (book.get(ln.get("product_id")) or {}).get("breaks")
-                    if br and ln.get("price") is not None:
-                        p, m = qp.step_for(br, ln.get("qty"))
-                        if p is not None:
-                            ln["price"], ln["vol"] = p, {"min": m}
-            except Exception as e:
-                print("⚠️ quotation volume prices:", e)
             cur.execute("""SELECT data->'tax' AS tax FROM quotations WHERE tenant_id=%s AND status='sent'
                             ORDER BY sent_at DESC LIMIT 1""", (tenant_id,))
             last = cur.fetchone()
@@ -220,6 +218,20 @@ def start(tenant_id: int, req: dict, actor: dict, valid_until: date = None) -> i
         if not prev:
             # Shopify Part 5: a recognised trade customer's own site prices.
             currency = apply_shopify(tenant_id, data, req) or currency
+            # Prices & margins (2026-11-10): the volume price for the quantity.
+            # A Shopify trade customer keeps their own Shopify prices.
+            if not data.get("shopify_site"):
+                try:
+                    import quote_prices as qp
+                    book = qp.all_for(tenant_id)
+                    for ln in data["lines"]:
+                        br = (book.get(ln.get("product_id")) or {}).get("breaks")
+                        if br and ln.get("price") is not None:
+                            p, m = qp.step_for(br, ln.get("qty"))
+                            if p is not None:
+                                ln["price"], ln["vol"] = p, {"min": m}
+                except Exception as e:
+                    print("⚠️ quotation volume prices:", e)
         cur.execute("""INSERT INTO quotations (tenant_id, request_id, number, version, status, data, currency,
                                                valid_until, created_by)
                        VALUES (%s,%s,%s,%s,'draft',%s,%s,%s,%s) RETURNING id""",
@@ -648,7 +660,7 @@ def checks(tenant_id: int, q: dict, req: dict, can_costs: bool = False) -> list:
         out.append(("bad", "Answer the buyer's question: " + "; ".join("\u201c" + u + "\u201d" for u in unanswered)))
     elif "?" in words and not d.get("note") and not d.get("qa"):
         out.append(("warn", "The buyer asked a question in their request. Answer it in the note"))
-    undated = [st.get("text") or "" for st in d.get("plan") or [] if not (st.get("date") or "").strip()]
+    undated = [st.get("text") or "" for st in d.get("plan") or [] if st.get("ai") and not (st.get("date") or "").strip()]
     if undated:
         out.append(("bad", "Delivery plan: add the date for " + "; ".join(u[:60] for u in undated)))
     choose = [ln["name"] for ln in d["lines"] if ln.get("ai_suggest") and not ln.get("product_id")]

@@ -429,7 +429,10 @@
     name.addEventListener('change', function () {
       var p = byName[name.value.trim().toLowerCase()];
       tr._pid = p ? p.id : null; tr._list = p ? p.price : null; tr._code = p ? (p.sku || '') : '';
-      if (p && price.value.trim() === '' && p.price !== null) { price.value = p.price; }
+      if (p && price.value.trim() === '' && p.price !== null) {
+        var vs = (!SH && p.vol && p.vol.length) ? volStep(p, qty.value) : null;   // volume price for this quantity
+        price.value = vs ? vs[1] : p.price; tr._vol = vs ? { min: vs[0] } : null; tr._vauto = vs ? vs[1] : null;
+      }
       describe(); total();
       // A Shopify product for a Shopify trade customer: save now so the page
       // comes back with its variants and the buyer's own prices.
@@ -472,7 +475,7 @@
       mcell.innerHTML = '';
       if (c === undefined || c === null) { var g = el('span', { 'class': 'meta' }); g.textContent = tr._pid ? 'No cost set' : ''; mcell.appendChild(g); return null; }
       var net = isNaN(pr) ? 0 : pr * (1 - d / 100);
-      if (net <= 0) { return null; }
+      if (net <= 0) { if (c > 0 && !isNaN(pr)) { var z = el('b'); z.style.color = '#B42318'; z.textContent = 'No charge'; mcell.appendChild(z); } return null; }
       var m = Math.round((net - c) / net * 1000) / 10, b = el('b'); b.textContent = m + '%';
       var low = MINM !== null && m < MINM; b.style.color = low ? '#B42318' : '#067647'; mcell.appendChild(b);
       if (low) { var w = el('span', { 'class': 'meta' }); w.style.color = '#B42318'; w.textContent = 'below your ' + MINM + '%'; mcell.appendChild(w); }
@@ -589,7 +592,14 @@
     row._get = function () { return { q: x.q, a: ta.value, ai: row._ai }; };
     row._undo = function () { ta.value = ''; row._ai = false; aiMark(ta, false); need(); };
     row._q = x.q;
-    row.appendChild(ql); row.appendChild(ta); qaBox.appendChild(row);
+    var qwrap = el('div', { style: 'display:grid;gap:4px' }); qwrap.appendChild(ql);
+    if (DRAFT) {
+      var nn = el('button', { type: 'button', 'class': 'qe-link', style: 'justify-self:start;font-size:12px' }); nn.textContent = 'Not needed';
+      nn.title = 'Remove this question from the quotation';
+      nn.addEventListener('click', function () { if (row._ai) { aiDrop('answer', x.q); } row.remove(); dirty = true; document.getElementById('qeState').textContent = 'Not saved yet.'; });
+      qwrap.appendChild(nn);
+    }
+    row.appendChild(qwrap); row.appendChild(ta); qaBox.appendChild(row);
   }
   (D.lines || []).forEach(lineRow); (D.charges || []).forEach(chargeRow); (D.plan || []).forEach(planRow); (D.qa || []).forEach(qaRow);
   total();

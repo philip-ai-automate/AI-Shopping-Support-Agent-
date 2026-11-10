@@ -44149,7 +44149,9 @@ def quotes_settings():
                                       "online_link": f.get("online_link") == "1",
                                       "online_accept": f.get("online_accept") == "1",
                                       "online_open_alert": f.get("online_open_alert") == "1",
-                                      "ai_draft": f.get("ai_draft") == "1"},
+                                      "ai_draft": f.get("ai_draft") == "1",
+                                      # set on Prices & margins, kept as it is here
+                                      "min_margin": _qr.settings(tenant_id).get("min_margin")},
                           _current_actor(customer)["label"])
         # The quote rules are Pipeline Settings rules: same permission as there.
         if _team_member_has_permission("crm.pipeline_settings_edit"):

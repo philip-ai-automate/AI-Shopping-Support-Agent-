@@ -94,7 +94,7 @@ def _buyer_history(cur, tenant_id: int, req: dict) -> list:
     return out
 
 
-def _last_charges(cur, tenant_id: int, req: dict) -> tuple:
+def _last_charges(cur, tenant_id: int, req: dict, currency=None) -> tuple:
     """Charges on this buyer's most recent SENT quotation (won or not)."""
     conds, args = [], []
     if req.get("lead_id"):
@@ -107,7 +107,8 @@ def _last_charges(cur, tenant_id: int, req: dict) -> tuple:
                       JOIN quote_requests r ON r.id = q.request_id AND r.tenant_id = q.tenant_id
                      WHERE q.tenant_id = %s AND q.status = 'sent' AND r.id <> %s AND ({' OR '.join(conds)})
                        AND jsonb_array_length(COALESCE(q.data->'charges', '[]'::jsonb)) > 0
-                     ORDER BY q.sent_at DESC LIMIT 1""", [tenant_id, req["id"]] + args)
+                       AND COALESCE(q.currency, '') = COALESCE(%s, '')
+                     ORDER BY q.sent_at DESC LIMIT 1""", [tenant_id, req["id"]] + args + [currency])
     r = cur.fetchone()
     if not r:
         return None, []
@@ -191,7 +192,7 @@ Return JSON:
 Rules:
 - questions: only real questions the buyer asked about this order (fit, size, delivery, payment, stock…). Answer ONLY from the facts above. Never invent delivery dates, lead times, stock, prices or terms: leave "answer" empty instead. Max 5.
 - suggest: only for lines not on the list, only ids given for that line. Suggest a product ONLY if it is the same kind of item and could really replace what the buyer asked for (a paper straw for a bamboo straw: yes; a cup for a straw: NO). When nothing is the same kind of item, return "ids": []. Never invent products.
-- cover: never mention lines with "on_list": false (they may not be on the final quotation). Greet the buyer by first name if known ({(req.get('buyer_name') or '').split(' ')[0]}), say the quotation is attached, mention briefly what it covers and anything changed (e.g. a substitute product, part delivery). Do NOT state prices other than the total {total_text}. Do NOT write anything about delivery dates or timing, and do NOT mention questions you could not answer (the salesperson answers those). Do NOT add a link or sign-off name; end with a polite closing line only. Max 90 words.
+- cover: never mention lines with "on_list": false (they may not be on the final quotation). Greet the buyer by first name if known ({(req.get('buyer_name') or '').split(' ')[0]}), say the quotation is attached, mention briefly what it covers and anything changed (e.g. a substitute product, part delivery). Do NOT state any prices, amounts or totals (they can still change before sending). Do NOT write anything about delivery dates or timing, and do NOT mention questions you could not answer (the salesperson answers those). Do NOT add a link or sign-off name; end with a polite closing line only. Max 90 words.
 """
 
 
@@ -216,7 +217,7 @@ def prepare(tenant_id: int, qid: int, req: dict) -> dict:
         disc = _discounts(cur, tenant_id, ids)
         products = qr.products_for(tenant_id)
         desc = _descriptions(cur, tenant_id, ids)
-        last_num, last_charges = _last_charges(cur, tenant_id, req)
+        last_num, last_charges = _last_charges(cur, tenant_id, req, q.get("currency"))
     finally:
         cur.close(); conn.close()
 

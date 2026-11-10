@@ -94,7 +94,7 @@
             <input name="q{{ i }}" type="number" min="0" step="any" aria-label="From quantity {{ i }}"><input name="p{{ i }}" type="number" min="0" step="any" aria-label="Price {{ i }}"><span class="pm-m" aria-live="polite"></span>
             {% endfor %}
           </div>
-          <span class="qt-small">A buyer ordering at least that quantity gets that price on a new quotation. Leave a row empty to remove it.</span>
+          <span class="qt-small">A buyer ordering at least that quantity gets that price on a new quotation. Leave a row empty to remove it. In the Excel upload, a blank cost cell keeps the cost you have.</span>
         </div>
         <label style="font-size:13px;font-weight:600;color:#344054;display:grid;gap:6px">Cost price (what it costs you)
           <input name="cost" id="peCost" type="number" min="0" step="any"></label>

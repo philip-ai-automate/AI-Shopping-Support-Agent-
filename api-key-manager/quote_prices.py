@@ -143,13 +143,16 @@ def step_for(breaks, qty):
 
 def margin(price_after_disc, cost):
     """Margin % of the selling price, or None when it can't be worked out."""
-    if cost is None or price_after_disc in (None, 0):
+    if cost is None or price_after_disc is None:
         return None
     try:
-        p = float(price_after_disc)
-        return round((p - float(cost)) / p * 100, 1) if p > 0 else None
+        p, c = float(price_after_disc), float(cost)
     except (TypeError, ValueError):
         return None
+    if p <= 0:
+        # nothing charged for something that costs money: always below a minimum
+        return -100.0 if c > 0 else None
+    return round((p - c) / p * 100, 1)
 
 
 def qtext(v) -> str:
@@ -205,6 +208,7 @@ def from_xlsx(tenant_id: int, data: bytes, products: dict, by_label: str = "") -
     steps = [(head.index(f"from qty {i}"), head.index(f"price {i}")) for i in range(1, MAX_STEPS + 1)
              if f"from qty {i}" in head and f"price {i}" in head]
     saved, skipped = 0, 0
+    book = all_for(tenant_id)
     for n, r in enumerate(rows):
         if n > 5000:
             break
@@ -214,7 +218,12 @@ def from_xlsx(tenant_id: int, data: bytes, products: dict, by_label: str = "") -
         if key not in products:
             skipped += 1
             continue
-        br = [[r[a] if a < len(r) else None, r[b] if b < len(r) else None] for a, b in steps]
-        save(tenant_id, key, br, r[i_cost] if i_cost is not None and i_cost < len(r) else None, by_label)
+        old = book.get(key) or {}
+        br = ([[r[a] if a < len(r) else None, r[b] if b < len(r) else None] for a, b in steps]
+              if steps else old.get("breaks") or [])
+        cost = r[i_cost] if i_cost is not None and i_cost < len(r) else None
+        if cost is None or str(cost).strip() == "":
+            cost = old.get("cost")          # a blank cost cell never wipes a cost
+        save(tenant_id, key, br, cost, by_label)
         saved += 1
     return saved, skipped
