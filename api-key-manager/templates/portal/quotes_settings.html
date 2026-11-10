@@ -137,12 +137,8 @@
         <span style="display:grid;gap:6px"><b>Total is more than</b>
           <input type="number" name="appr_amount" min="0" step="any" value="{{ '%g'|format(s.appr_amount) if s.appr_amount is not none else '' }}" style="width:140px" aria-label="Amount"></span></label>
       <label style="display:flex;gap:10px;align-items:flex-start;font-size:13.5px;font-weight:400">
-        <input type="checkbox" name="appr_margin" value="1" {% if s.appr_margin %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:2px 0 0">
-        <span><b>A price is below your minimum margin{% if s.min_margin is not none %} ({{ '%g'|format(s.min_margin) }}%){% endif %}</b><br>
-          <span class="qt-small">Set in Prices &amp; margins{% if s.min_margin is none %} (no minimum set yet){% endif %}. With this ticked, salespeople ask for approval instead of being stopped.</span></span></label>
-      <label style="display:flex;gap:10px;align-items:flex-start;font-size:13.5px;font-weight:400">
         <input type="checkbox" name="appr_disc_on" value="1" {% if s.appr_disc_on %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:2px 0 0">
-        <span style="display:grid;gap:6px"><b>A line is more than this % below its list or volume price</b>
+        <span style="display:grid;gap:6px"><b>A line is more than this % below its list price</b>
           <span style="display:flex;gap:6px;align-items:center"><input type="number" name="appr_disc" min="0" max="100" step="any" value="{{ '%g'|format(s.appr_disc) if s.appr_disc is not none else '' }}" style="width:90px" aria-label="Discount percent"> %</span></span></label>
       <label style="display:flex;gap:10px;align-items:flex-start;font-size:13.5px;font-weight:400">
         <input type="checkbox" name="appr_new_buyer" value="1" {% if s.appr_new_buyer %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:2px 0 0">

@@ -5,8 +5,7 @@ AI Sales Agent for B2B plan (Quotations). Off until the business ticks a
 rule in Quotation settings › Approvals:
 
   appr_amount_on / appr_amount   total above an amount
-  appr_margin                    a line below the minimum margin (Prices & margins)
-  appr_disc_on / appr_disc       a line more than N% below its list or volume price
+  appr_disc_on / appr_disc       a line more than N% below its list price
   appr_new_buyer                 a buyer with no won quotation yet
 
 People who can approve (owner, or a role with "quotes.approve") never need
@@ -23,7 +22,7 @@ import psycopg2.extras
 from db import get_db_connection
 import quote_requests as qr
 
-KEYS = ("appr_amount_on", "appr_amount", "appr_margin", "appr_disc_on", "appr_disc", "appr_new_buyer")
+KEYS = ("appr_amount_on", "appr_amount", "appr_disc_on", "appr_disc", "appr_new_buyer")
 
 
 def _db():
@@ -37,7 +36,7 @@ def rules(tenant_id: int) -> dict:
 
 
 def any_on(r: dict) -> bool:
-    return bool(r.get("appr_amount_on") or r.get("appr_margin") or r.get("appr_disc_on") or r.get("appr_new_buyer"))
+    return bool(r.get("appr_amount_on") or r.get("appr_disc_on") or r.get("appr_new_buyer"))
 
 
 def fingerprint(d: dict) -> str:
@@ -81,23 +80,12 @@ def reasons(tenant_id: int, q: dict, req: dict) -> list:
         total = qq.to_doc(tenant_id, q, qd.get(tenant_id), req)["total"]
         if float(total or 0) > float(r["appr_amount"]):
             out.append(f"total over {qr.money(r['appr_amount'], q.get('currency'))}")
-    if r.get("appr_margin"):
-        try:
-            if qq.low_margin(tenant_id, d):
-                out.append("a price below your minimum margin")
-        except Exception as e:
-            print("⚠️ approval margin:", e)
     if r.get("appr_disc_on") and r.get("appr_disc") is not None:
-        import quote_prices as qp
-        book = qp.all_for(tenant_id)
         lim = float(r["appr_disc"])
         for ln in d.get("lines") or []:
             if ln.get("price") is None:
                 continue
             base = ln.get("list_price")
-            vp, _ = qp.step_for((book.get(ln.get("product_id")) or {}).get("breaks"), ln.get("qty"))
-            if vp is not None:
-                base = vp
             if not base:
                 continue
             net = float(ln["price"]) * (1 - float(ln.get("disc") or 0) / 100)
