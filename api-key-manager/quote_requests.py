@@ -67,6 +67,11 @@ DEFAULTS = {
     # Phase 4: "Add to quote" + quote list on the business's website.
     "website_on": False,
     "website_prices": "list_estimate",   # list_estimate | estimate | none
+    # Online quotations (Step 5, 2026-11-10): starting values only, each
+    # business switches them in Quotation settings › Online quotations.
+    "online_link": True,         # send a private link to view the quotation online
+    "online_accept": True,       # the buyer can accept or decline on that page
+    "online_open_alert": True,   # email the salesperson the first time the buyer opens it
 }
 WEBSITE_PRICES = [("list_estimate", "List prices and an estimate"), ("estimate", "An estimate only"),
                   ("none", "No prices (\"Price on your quotation\")")]
@@ -194,7 +199,7 @@ def _clean_settings(raw: dict) -> dict:
         s["maker"] = raw["maker"]
     if raw.get("website_prices") in dict(WEBSITE_PRICES):
         s["website_prices"] = raw["website_prices"]
-    for k in ("alert_new", "alert_due", "alert_manager", "website_on"):
+    for k in ("alert_new", "alert_due", "alert_manager", "website_on", "online_link", "online_accept", "online_open_alert"):
         if k in raw:
             v = raw[k]
             s[k] = v is True or v in ("1", "true", "on")
@@ -1433,8 +1438,12 @@ def undo_ai(tenant_id: int, request_id: int, actor: dict) -> tuple:
                     cur.execute("""INSERT INTO merchant_pipeline_stage_history (lead_id, from_stage, to_stage, changed_by, notes)
                                    VALUES (%s,'won',%s,%s,%s)""", (lead["id"], a.get("lead_stage") or "proposal_sent",
                                                                   actor["label"][:200], note))
-        _event(cur, request_id, f"Undo: the AI's reading ({ANSWER_WORDS[a['answer']]}) was wrong. Back to Quote sent.",
-               actor["label"])
+        if a.get("via") == "online":
+            _event(cur, request_id, f"Undo: the buyer's online answer ({ANSWER_WORDS[a['answer']]}) was undone. "
+                                    "Back to Quote sent.", actor["label"])
+        else:
+            _event(cur, request_id, f"Undo: the AI's reading ({ANSWER_WORDS[a['answer']]}) was wrong. Back to Quote sent.",
+                   actor["label"])
         conn.commit()
         return True, f"Undone: R-{q['ref_no']} is back to Quote sent."
     finally:
@@ -1622,6 +1631,7 @@ _REPLY_EVENTS = ("The buyer asked about the quotation%", "The buyer may have%")
 
 def _lost_reason_word(reason: str) -> str:
     r = (reason or "").strip()
+    r = re.sub(r"^(Lost|Not quoted):\s*", "", r)
     if not r:
         return "No reason given"
     if r.lower().startswith("declined"):
@@ -1705,7 +1715,7 @@ def overview(tenant_id: int, since: datetime, until: datetime, now: datetime, sc
         add(cur.fetchall(), "late")
         cur.execute(f"""SELECT {cols}, e.what AS said FROM quote_requests r
                           JOIN LATERAL (SELECT what, created_at FROM quote_request_events
-                                         WHERE request_id=r.id AND by_label=%s AND (what LIKE %s OR what LIKE %s)
+                                         WHERE request_id=r.id AND by_label IN (%s, 'Buyer (online)') AND (what LIKE %s OR what LIKE %s)
                                            AND created_at >= COALESCE(r.quote_sent_at, r.created_at)
                                          ORDER BY created_at DESC LIMIT 1) e ON TRUE
                          WHERE r.tenant_id=%s AND r.status='quote_sent' AND (%s::text IS NULL OR r.assigned_key=%s)

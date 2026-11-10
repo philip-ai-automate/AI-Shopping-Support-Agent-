@@ -73,6 +73,7 @@ BLANK_FIELDS = [
     ("quote_number", "Their quote number"),
     ("quote_value", "Their quote value"),
     ("quote_valid_until", "Date their quote is valid until"),
+    ("quote_link", "Link to view their quote online"),
     ("text", "Words I type"),
 ]
 BLANK_KEYS = {k for k, _ in BLANK_FIELDS}
@@ -622,7 +623,7 @@ def quote_fields(cur, tenant_id: int, lead_id) -> dict:
     """Fill-ins for follow-up messages about a quote (2026-11-10): the deal's
     latest sent quote (or latest quote if none is out). Blank when the deal
     has no quote."""
-    out = {"quote_number": "", "quote_value": "", "quote_valid_until": ""}
+    out = {"quote_number": "", "quote_value": "", "quote_valid_until": "", "quote_link": ""}
     if not lead_id:
         return out
     try:
@@ -642,6 +643,11 @@ def quote_fields(cur, tenant_id: int, lead_id) -> dict:
         out["quote_value"] = _qr.money(q["quote_value"], q["quote_currency"])
     if q["quote_valid_until"]:
         out["quote_valid_until"] = q["quote_valid_until"].strftime("%d %B %Y").lstrip("0")
+    try:
+        import quote_online
+        out["quote_link"] = quote_online.live_url_for_lead(cur, tenant_id, lead_id)
+    except Exception as e:
+        print("⚠️ quote link fill-in:", e)
     return out
 
 
@@ -651,7 +657,8 @@ def fill_values(wa: dict, ctx: dict) -> list:
     out = []
     fall = {"first_name": "there", "contact_name": "there", "company": "your business",
             "business": "us", "owner": "our team", "quote_number": "our quotation",
-            "quote_value": "the quoted price", "quote_valid_until": "the date on the quotation"}
+            "quote_value": "the quoted price", "quote_valid_until": "the date on the quotation",
+            "quote_link": "the quotation we sent you"}
     for b in (wa.get("blanks") or []):
         kind = (b or {}).get("kind")
         if kind == "text":

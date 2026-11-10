@@ -664,9 +664,16 @@ COVER = {
 }
 
 
-def cover(lang: str, q: dict, req: dict, tenant_id: int) -> tuple:
+def cover(lang: str, q: dict, req: dict, tenant_id: int, link: str = None) -> tuple:
     lang = lang if lang in COVER else "en"
     subj, body = COVER[lang]
+    if link:
+        # Online quotations (2026-11-10): the accept paragraph carries the link.
+        import quote_online
+        parts = body.split("\n\n")
+        if len(parts) >= 4:
+            parts[2] = quote_online.cover_paragraph(tenant_id, lang, link)
+            body = "\n\n".join(parts)
     vu = datetime.strptime(q["data"]["valid_until"], "%Y-%m-%d").date()
     vals = {"number": full_number(q), "biz": qd.profile(tenant_id)["name"],
             "name": (req.get("buyer_name") or "").split()[0] if req.get("buyer_name") else "",

@@ -79,7 +79,8 @@
           <td>{{ r.quote_number or '—' }}</td>
           <td class="r">{{ qr.money(r.quote_value, r.quote_currency) if r.quote_value is not none else '—' }}</td>
           {% if view == 'sent' %}
-          <td>{{ dt(r.quote_sent_at) if r.quote_sent_at else '—' }}{% if r.quote_sent_via %}<span class="s">by {{ r.quote_sent_via|lower }}</span>{% endif %}</td>
+          <td>{{ dt(r.quote_sent_at) if r.quote_sent_at else '—' }}{% if r.quote_sent_via %}<span class="s">by {{ r.quote_sent_via|lower }}</span>{% endif %}
+            {% set op = opens.get(r.id) %}{% if op and op.open_count %}<span class="s" style="color:var(--ok);font-weight:600">Opened {{ op.open_count }}×, last {{ dt(op.last_opened_at) }}</span>{% endif %}</td>
           <td>{% if r.quote_valid_until %}
               {% set dl = r.days_left %}
               <span class="qt-pill {{ 'p-bad' if dl < 0 else ('p-warn' if dl <= 3 else 'p-ok') }}">{{ r.quote_valid_until.strftime('%d %b %Y') }}</span>

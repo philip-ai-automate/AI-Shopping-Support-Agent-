@@ -218,16 +218,18 @@ MERGE_FIELDS = [
     ("Quote Number", "our quotation"),
     ("Quote Value", "the quoted price"),
     ("Valid Until", "the date on the quotation"),
+    ("Quote Link", "the quotation we sent you"),
 ]
 _ALIASES = {"firstname": "first", "first": "first", "lastname": "last", "fullname": "full", "name": "full",
             "contactname": "full", "businessname": "business", "company": "business",
             "companyname": "business", "business": "business", "email": "email",
             "quotenumber": "quote_number", "quoteno": "quote_number",
             "quotevalue": "quote_value", "quotetotal": "quote_value",
-            "validuntil": "quote_valid_until", "quotevaliduntil": "quote_valid_until"}
+            "validuntil": "quote_valid_until", "quotevaliduntil": "quote_valid_until",
+            "quotelink": "quote_link"}
 _DEFAULTS = {"first": "there", "last": "", "full": "there", "business": "your business", "email": "",
              "quote_number": "our quotation", "quote_value": "the quoted price",
-             "quote_valid_until": "the date on the quotation"}
+             "quote_valid_until": "the date on the quotation", "quote_link": "the quotation we sent you"}
 _TOKEN = re.compile(r"\{\{\s*([A-Za-z][A-Za-z _]*?)\s*(?:\|\s*([^{}]*?)\s*)?\}\}")
 _TITLES = {"mr", "mrs", "ms", "miss", "dr", "chief", "engr", "prof", "sir", "madam", "alhaji", "alhaja", "pastor"}
 

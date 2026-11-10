@@ -25,12 +25,36 @@
   {% set ai = r.ai_answer or {} %}
   {% if ai and not ai.undone and ((ai.answer == 'accept' and r.status == 'won') or (ai.answer == 'decline' and r.status == 'lost') or (ai.answer == 'change' and r.status == 'to_quote')) %}
   <div class="qt-ai" style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
-    <span><b>Read by the AI</b> The buyer {{ qr.ANSWER_WORDS[ai.answer] }} by {{ ai.via }}{% if ai.detail %}: "{{ ai.detail }}"{% endif %}{% if ai.po %} · order number {{ ai.po }}{% endif %}.
+    <span>{% if ai.via == 'online' %}<b>Answered online</b> The buyer {{ qr.ANSWER_WORDS[ai.answer] }} on the quotation's online page{% if ai.detail %}: "{{ ai.detail }}"{% endif %}{% if ai.po %} · order number {{ ai.po }}{% endif %}.
+      {% else %}<b>Read by the AI</b> The buyer {{ qr.ANSWER_WORDS[ai.answer] }} by {{ ai.via }}{% if ai.detail %}: "{{ ai.detail }}"{% endif %}{% if ai.po %} · order number {{ ai.po }}{% endif %}.{% endif %}
       {% if ai.answer == 'accept' %}Marked Won.{% elif ai.answer == 'decline' %}Marked Lost.{% else %}Back to To quote.{% endif %}</span>
     <form method="post" action="{{ url_for('portal.quotes_request_undo_ai', request_id=r.id) }}" style="margin:0"
           onsubmit="return confirm('Undo? The request goes back to Quote sent, and the deal back to where it was.')">
       <button class="qt-btn sm">Undo</button></form>
   </div>
+  {% endif %}
+
+  {% if online %}
+  <!-- Online quotation link (Step 5, 2026-11-10) -->
+  <div class="qt-card" style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+    <span style="display:grid;gap:2px;min-width:0">
+      <span><b>Online quotation</b>
+        {% if online.open_count %}<span class="qt-pill p-ok">Opened {{ online.open_count }}×</span>
+          <span class="qt-small">first {{ dt(online.first_opened_at) }} · last {{ dt(online.last_opened_at) }}</span>
+        {% elif online.live %}<span class="qt-pill p-warn">Not opened yet</span>{% endif %}
+        {% if not online.live %}<span class="qt-pill">Link no longer works</span>{% endif %}</span>
+      {% if online.live %}<span class="qt-small" style="word-break:break-all">{{ online.url }}</span>{% endif %}
+    </span>
+    {% if online.live %}<button type="button" class="qt-btn sm" id="copyOnline" data-url="{{ online.url }}">Copy link</button>{% endif %}
+  </div>
+  <script>
+  (function () { var b = document.getElementById('copyOnline'); if (!b) return;
+    b.addEventListener('click', function () {
+      var u = b.dataset.url, done = function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy link'; }, 1500); };
+      if (navigator.clipboard) { navigator.clipboard.writeText(u).then(done, function () { prompt('Copy the link:', u); }); }
+      else { prompt('Copy the link:', u); }
+    }); })();
+  </script>
   {% endif %}
 
   <div class="qt-grid">

@@ -44,7 +44,7 @@
         <label class="wide" id="toWa" hidden>To (WhatsApp) <input name="to_wa" value="{{ req.buyer_phone or '' }}" maxlength="40" readonly></label>
         <label class="wide" id="subjBox">Subject <input name="subject" id="subject" maxlength="200"></label>
         <label class="wide">Language of your message
-          <select id="lang">{% for k, w in qq.LANGS %}<option value="{{ k }}" {% if k == lang %}selected{% endif %}>{{ w }}{% if k == lang and k != 'en' %} (the buyer's){% endif %}</option>{% endfor %}</select></label>
+          <select id="lang" name="lang">{% for k, w in qq.LANGS %}<option value="{{ k }}" {% if k == lang %}selected{% endif %}>{{ w }}{% if k == lang and k != 'en' %} (the buyer's){% endif %}</option>{% endfor %}</select></label>
         <label class="wide">Your message <textarea name="message" id="message" rows="11" maxlength="4000"></textarea></label>
       </div>
       <input type="hidden" name="to" id="toFinal">

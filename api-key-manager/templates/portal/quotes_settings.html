@@ -50,6 +50,17 @@
         <input type="checkbox" name="{{ k }}" value="1" {% if s[k] %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:0"> {{ w }}</label>
       {% endfor %}
     </div>
+    <!-- Online quotations (Step 5, 2026-11-10): starting ON, each business decides. -->
+    <div class="qt-card" id="online-quotations">
+      <h2>Online quotations</h2>
+      {% for k, w in [('online_link', 'Send a link so buyers can view the quotation online'),
+                      ('online_accept', 'Let buyers accept or decline online'),
+                      ('online_open_alert', 'Email the salesperson the first time a buyer opens a quotation')] %}
+      <label style="display:flex;gap:10px;align-items:center;font-size:13.5px;font-weight:400">
+        <input type="checkbox" name="{{ k }}" value="1" {% if s[k] %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:0"> {{ w }}</label>
+      {% endfor %}
+      <div class="qt-small">The link goes in the email or WhatsApp message the quotation is sent with, and can go in follow-ups as <b>{{ '{{' }}Quote Link{{ '}}' }}</b>. It only opens that quotation, stops working when it expires, is replaced by a new version, or is Won or Lost, and is never kept by search engines. Accepting needs the buyer's name and a tick; the salesperson is told and can press Undo. If you make quotations in your own software, the link is made when you upload the PDF at Quote sent.</div>
+    </div>
     <!-- Quote follow-ups (2026-11-10): the business's own two quote rules from
          Pipeline Settings › Automatic Follow-up Rules. Switch and days here; the
          rest (who, what, which follow-up) there. Nothing is fixed by PhiXtra. -->
@@ -68,7 +79,7 @@
       </label>
       {% endfor %}
       <div class="qt-small">Each one can also start one of your own automatic follow-ups (emails and WhatsApp messages). It stops when the buyer replies, your team gets in touch, or the quote is marked Won or Lost.
-        In your messages you can use <b>{{ '{{' }}Quote Number{{ '}}' }}</b>, <b>{{ '{{' }}Quote Value{{ '}}' }}</b> and <b>{{ '{{' }}Valid Until{{ '}}' }}</b>.
+        In your messages you can use <b>{{ '{{' }}Quote Number{{ '}}' }}</b>, <b>{{ '{{' }}Quote Value{{ '}}' }}</b>, <b>{{ '{{' }}Valid Until{{ '}}' }}</b> and <b>{{ '{{' }}Quote Link{{ '}}' }}</b>.
         When "before a quote runs out" is off, the salesperson still gets an email that many days before. The day after a quote runs out, they're asked to extend it or close it as Lost.
         <a href="{{ url_for('portal.sales_pipeline_settings') }}#followups">Edit in Pipeline Settings →</a></div>
     </div>

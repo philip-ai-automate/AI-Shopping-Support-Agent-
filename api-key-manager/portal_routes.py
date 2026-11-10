@@ -43548,10 +43548,16 @@ def _quotes_menu_list(view: str):
     now = _tp.now_local(tz)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     period = ""
+    opens = {}
     if view == "sent":
         rows = _qr.list_requests(tenant_id, "quote_sent", scope, q)
         k = _qr.sent_kpis(tenant_id, now.date(), scope)
         orders = {}
+        try:
+            import quote_online as _qon
+            opens = _qon.opens_for(tenant_id, [r["id"] for r in rows])
+        except Exception as e:
+            print("⚠️ quote online opens:", e)
     elif view == "lost":
         # Quote Lost (2026-11-10): lost requests, this month by default.
         period = "all" if request.args.get("period") == "all" else "month"
@@ -43573,7 +43579,7 @@ def _quotes_menu_list(view: str):
         vu = r.get("quote_valid_until")
         r["days_left"] = (vu - today).days if vu else None
     return render_template("portal/quotes_menu_list.html", view=view, rows=rows, k=k, q=q, who=who,
-                           people=people, see_all=see_all, period=period, orders=orders,
+                           people=people, see_all=see_all, period=period, orders=orders, opens=opens,
                            qr=_qr, dt=_quote_dt(tz))
 
 
@@ -43753,7 +43759,13 @@ def quotes_request_detail(request_id: int):
                     shopify_order["preview"] = _sord.preview(tenant_id, r["id"])
     except Exception as e:
         print("⚠️ quote request Shopify order:", e)
-    return render_template("portal/quotes_request_detail.html", r=r, lead=lead, clock=_qr.time_left(r, now),
+    try:
+        import quote_online as _qon
+        online = _qon.latest_for_request(tenant_id, r["id"])
+    except Exception as e:
+        print("⚠️ quote online box:", e)
+        online = None
+    return render_template("portal/quotes_request_detail.html", r=r, lead=lead, clock=_qr.time_left(r, now), online=online,
                            now_month_start=now.replace(day=1, hour=0, minute=0, second=0, microsecond=0),
                            shopify_trade=shopify_trade, shopify_trade_lead_id=(lead or {}).get("id"),
                            events=_qr.events(r["id"]), qr=_qr, tz=tz, lines_text=_qr.lines_text(r),
@@ -43842,6 +43854,17 @@ def quotes_request_sent(request_id: int):
         "number": " ".join((f.get("number") or "").split())[:60] or None, "via": via,
         "pdf": pdf_bytes, "pdf_name": pdf_name}, _current_actor(customer))
     flash(msg, "success" if ok else "warning")
+    if ok and pdf_bytes:
+        # Own quoting software with the PDF uploaded: a private online link
+        # for it (Step 5, decision 4). Shown on the request page to copy.
+        try:
+            import quote_online as _qon
+            r2 = _qr.get(tenant_id, request_id)
+            if r2 and r2.get("quote_sent_at"):
+                if _qon.link_for_own_send(tenant_id, request_id, r2["quote_sent_at"]):
+                    flash("A private online link for this quotation is ready on this page, to send to the buyer.", "info")
+        except Exception as e:
+            print("⚠️ quote online own link:", e)
     return back
 
 
@@ -44072,7 +44095,10 @@ def quotes_settings():
                                       "alert_manager": f.get("alert_manager") == "1",
                                       "website_on": f.get("website_on") == "1",
                                       "maker": f.get("maker"),
-                                      "website_prices": f.get("website_prices")},
+                                      "website_prices": f.get("website_prices"),
+                                      "online_link": f.get("online_link") == "1",
+                                      "online_accept": f.get("online_accept") == "1",
+                                      "online_open_alert": f.get("online_open_alert") == "1"},
                           _current_actor(customer)["label"])
         problem = _quote_fu_save(tenant_id, f)
         if problem:
@@ -44361,13 +44387,25 @@ def quotes_quotation_send(qid: int):
         return redirect(url_for("portal.quotes_request_detail", request_id=req["id"]))
     chk = _qq.checks(tenant_id, q, req)
     if request.method == "POST":
+        try:
+            import quote_online as _qon
+            _lang = request.form.get("lang") or _qq.detect_lang(request.form.get("message") or "")
+            _qon.set_lang(tenant_id, qid, _lang)
+        except Exception as e:
+            print("⚠️ quote online lang:", e)
         ok, msg = _qq.send(tenant_id, qid, request.form.get("via"), request.form.get("to"),
                            request.form.get("subject"), request.form.get("message"), _current_actor(customer))
         flash(msg, "success" if ok else "danger")
         return redirect(url_for("portal.quotes_request_detail", request_id=req["id"]) if ok
                         else url_for("portal.quotes_quotation_send", qid=qid))
     lang = _qq.detect_lang(req.get("buyer_words") or req.get("notes") or "")
-    covers = {k: _qq.cover(k, q, req, tenant_id) for k, _ in _qq.LANGS}
+    try:
+        import quote_online as _qon
+        online_link = _qon.link_for_quotation(tenant_id, q, lang)
+    except Exception as e:
+        print("⚠️ quote online link:", e)
+        online_link = None
+    covers = {k: _qq.cover(k, q, req, tenant_id, online_link) for k, _ in _qq.LANGS}
     wa_ok, wa_why = _qq.wa_ready(tenant_id, req.get("buyer_phone") or "")
     return render_template("portal/quotes_send.html", q=q, req=req, qq=_qq, checks=chk, can=_qq.can_send(chk),
                            lang=lang, covers=covers, wa_ok=wa_ok, wa_why=(wa_why if not wa_ok else ""),
