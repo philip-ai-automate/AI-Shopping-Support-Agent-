@@ -39,6 +39,13 @@
         <span><b>In PhiXtra.</b> PhiXtra makes the quotation from the request in your own design, makes the PDF and sends it.
           Set it up in <a href="{{ url_for('portal.quotes_design') }}">Quotation design</a>.</span></label>
     </div>
+    <div class="qt-card" id="ai-draft">
+      <h2>AI Agent</h2>
+      <label style="display:flex;gap:10px;align-items:flex-start;font-size:13.5px;font-weight:400">
+        <input type="checkbox" name="ai_draft" value="1" {% if s.ai_draft %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:2px 0 0">
+        <span><b>AI Agent prepares the draft</b><br>When you press Make quotation, the AI Agent reads the conversation and fills in prices this buyer already accepted, product discounts, answers to their questions, a delivery plan and the covering message. Everything it fills in is shown in purple. You check everything before sending.</span></label>
+      <div class="qt-small">Only for quotations made in PhiXtra. The AI Agent never sends a quotation and never invents a price.</div>
+    </div>
     <div class="qt-card">
       <h2>Your quoting software</h2>
       <div class="qt-f"><label class="wide">We make quotations in

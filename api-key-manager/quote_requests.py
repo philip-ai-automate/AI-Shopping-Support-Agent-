@@ -72,6 +72,9 @@ DEFAULTS = {
     "online_link": True,         # send a private link to view the quotation online
     "online_accept": True,       # the buyer can accept or decline on that page
     "online_open_alert": True,   # email the salesperson the first time the buyer opens it
+    # AI Agent quotation draft (2026-11-10): starting value only, each business
+    # switches it in Quotation settings › General.
+    "ai_draft": True,
 }
 WEBSITE_PRICES = [("list_estimate", "List prices and an estimate"), ("estimate", "An estimate only"),
                   ("none", "No prices (\"Price on your quotation\")")]
@@ -199,7 +202,8 @@ def _clean_settings(raw: dict) -> dict:
         s["maker"] = raw["maker"]
     if raw.get("website_prices") in dict(WEBSITE_PRICES):
         s["website_prices"] = raw["website_prices"]
-    for k in ("alert_new", "alert_due", "alert_manager", "website_on", "online_link", "online_accept", "online_open_alert"):
+    for k in ("alert_new", "alert_due", "alert_manager", "website_on", "online_link", "online_accept", "online_open_alert",
+              "ai_draft"):
         if k in raw:
             v = raw[k]
             s[k] = v is True or v in ("1", "true", "on")

@@ -107,9 +107,11 @@
         {% if draft_q %}
         <a class="qt-btn dark" href="{{ url_for('portal.quotes_quotation', qid=draft_q.id) }}">Continue quotation {{ draft_q.number }}{{ ' v%d'|format(draft_q.version) if draft_q.version > 1 }}</a>
         {% else %}
-        <form method="post" action="{{ url_for('portal.quotes_quotation_start', request_id=r.id) }}" style="margin:0">
+        {% set ai_on = not quotations and qr.settings(r.tenant_id).get('ai_draft', True) %}
+        <form method="post" action="{{ url_for('portal.quotes_quotation_start', request_id=r.id) }}" style="margin:0"
+              {% if ai_on %}onsubmit="var b=this.querySelector('button');b.disabled=true;b.textContent='AI Agent is preparing your draft\u2026'"{% endif %}>
           <button class="qt-btn dark" style="width:100%">{{ 'Make new version' if quotations else 'Make quotation' }}</button></form>
-        <div class="qt-small">Fills itself from this request and your product list. You set the prices, PhiXtra checks it, makes the PDF and sends it.</div>
+        <div class="qt-small">{% if ai_on %}The AI Agent prepares the draft from this request and the conversation. You check it; PhiXtra makes the PDF and sends it.{% else %}Fills itself from this request and your product list. You set the prices, PhiXtra checks it, makes the PDF and sends it.{% endif %}</div>
         {% endif %}
         <button type="button" class="qt-btn sm" data-open="mSent">Sent it another way: record Quote sent</button>
         <button type="button" class="qt-btn sm bad" data-open="mNotQuoted">Not quoting</button>

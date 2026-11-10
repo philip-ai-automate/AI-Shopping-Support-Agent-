@@ -44131,7 +44131,8 @@ def quotes_settings():
                                       "website_prices": f.get("website_prices"),
                                       "online_link": f.get("online_link") == "1",
                                       "online_accept": f.get("online_accept") == "1",
-                                      "online_open_alert": f.get("online_open_alert") == "1"},
+                                      "online_open_alert": f.get("online_open_alert") == "1",
+                                      "ai_draft": f.get("ai_draft") == "1"},
                           _current_actor(customer)["label"])
         # The quote rules are Pipeline Settings rules: same permission as there.
         if _team_member_has_permission("crm.pipeline_settings_edit"):
@@ -44338,7 +44339,20 @@ def quotes_quotation_start(request_id: int):
     if req["status"] in ("won", "lost"):
         flash("This request is closed. Reopen it first.", "warning")
         return redirect(url_for("portal.quotes_request_detail", request_id=request_id))
+    is_new = not _qq.for_request(tenant_id, request_id)   # the first quotation for this request
     qid = _qq.start(tenant_id, req, _current_actor(customer))
+    if is_new:
+        # AI Agent quotation draft (2026-11-10): fills the new draft; never sends.
+        try:
+            import quote_ai_draft as _qad
+            r = _qad.prepare(tenant_id, qid, req)
+            if r["status"] == "failed":
+                flash("AI Agent could not prepare a draft this time.", "warning")
+            elif r["status"] == "partial":
+                flash("The AI Agent filled in prices and delivery, but couldn't write the answers and the message this time.", "warning")
+        except Exception as e:
+            print(f"⚠️ quote AI draft {qid}:", e)
+            flash("AI Agent could not prepare a draft this time.", "warning")
     return redirect(url_for("portal.quotes_quotation", qid=qid))
 
 
@@ -44359,6 +44373,11 @@ def quotes_quotation(qid: int):
             ok, msg = _qq.delete_draft(tenant_id, qid, _current_actor(customer))
             flash(msg, "success" if ok else "warning")
             return redirect(url_for("portal.quotes_request_detail", request_id=req["id"]))
+        if action == "ai_reset":
+            import quote_ai_draft as _qad
+            if _qad.start_again(tenant_id, qid):
+                flash("Started again without the AI Agent.", "success")
+            return redirect(url_for("portal.quotes_quotation", qid=qid))
         try:
             raw = _json.loads(request.form.get("data_json") or "{}")
         except (TypeError, ValueError):
@@ -44386,6 +44405,7 @@ def quotes_quotation(qid: int):
                            checks=_qq.checks(tenant_id, q, req), products_json=_quote_products_json(products),
                            versions=_qq.for_request(tenant_id, req["id"]), cur=q["currency"] or _biz_currency(tenant_id),
                            changes=_qq.changes_from_last(tenant_id, q),
+                           ai_marks=_qq.ai_marks(q["data"] or {}), ai_draft=(q["data"] or {}).get("ai_draft") or {},
                            open_preview=request.args.get("preview") == "1")
 
 
@@ -44450,7 +44470,9 @@ def quotes_quotation_send(qid: int):
         print("⚠️ quote online link:", e)
         online_link = None
     covers = {k: _qq.cover(k, q, req, tenant_id, online_link) for k, _ in _qq.LANGS}
+    ai_cover = _qq.ai_cover(q, tenant_id, online_link)   # AI Agent's message, when it wrote one
     wa_ok, wa_why = _qq.wa_ready(tenant_id, req.get("buyer_phone") or "")
     return render_template("portal/quotes_send.html", q=q, req=req, qq=_qq, checks=chk, can=_qq.can_send(chk),
-                           lang=lang, covers=covers, wa_ok=wa_ok, wa_why=(wa_why if not wa_ok else ""),
+                           lang=(ai_cover or {}).get("lang") or lang, covers=covers, ai_cover=ai_cover,
+                           wa_ok=wa_ok, wa_why=(wa_why if not wa_ok else ""),
                            doc=_qq.to_doc(tenant_id, q, _qd.get(tenant_id), req), qr=_qr)

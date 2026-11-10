@@ -45,7 +45,10 @@
         <label class="wide" id="subjBox">Subject <input name="subject" id="subject" maxlength="200"></label>
         <label class="wide">Language of your message
           <select id="lang" name="lang">{% for k, w in qq.LANGS %}<option value="{{ k }}" {% if k == lang %}selected{% endif %}>{{ w }}{% if k == lang and k != 'en' %} (the buyer's){% endif %}</option>{% endfor %}</select></label>
-        <label class="wide">Your message <textarea name="message" id="message" rows="11" maxlength="4000"></textarea></label>
+        <label class="wide">Your message
+          {% if ai_cover %}<span id="aiTag" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-weight:400"><span style="font-size:11.5px;font-weight:700;color:#5925DC;background:#F4F3FF;border:1px solid #D9D6FE;border-radius:999px;padding:1px 8px">&#10022; Written by AI Agent — check before sending</span>
+            <a href="#" id="aiStd" style="font-size:12px">Use the standard message instead</a></span>{% endif %}
+          <textarea name="message" id="message" rows="11" maxlength="4000"></textarea></label>
       </div>
       <input type="hidden" name="to" id="toFinal">
       <div class="qt-small">Email goes from PhiXtra's mail service in your name; replies come to {{ (q.data.prepared_by or {}).get('email') or 'your quotation email' }}, with a copy of what was sent.</div>
@@ -69,9 +72,17 @@
 <script>
 (function () {
   var COVERS = {{ covers|tojson }};
+  var AI = {{ (ai_cover or none)|tojson }};   // AI Agent's message (AI Agent draft, 2026-11-10)
   var lang = document.getElementById('lang'), subj = document.getElementById('subject'), msg = document.getElementById('message');
-  function fill() { var c = COVERS[lang.value] || COVERS.en; subj.value = c[0]; msg.value = c[1]; msg.dir = lang.value === 'ar' ? 'rtl' : 'ltr'; }
-  fill();
+  var aiTag = document.getElementById('aiTag');
+  function fill() { var c = COVERS[lang.value] || COVERS.en; subj.value = c[0]; msg.value = c[1]; msg.dir = lang.value === 'ar' ? 'rtl' : 'ltr'; msg.style.background = ''; msg.style.borderColor = ''; if (aiTag) { aiTag.hidden = true; } }
+  if (AI && AI.lang === lang.value) {
+    subj.value = AI.subject; msg.value = AI.body; msg.dir = AI.lang === 'ar' ? 'rtl' : 'ltr';
+    msg.style.background = '#F4F3FF'; msg.style.borderColor = '#9B8AFB';
+    var aiOff = function () { msg.style.background = ''; msg.style.borderColor = ''; };
+    msg.addEventListener('input', aiOff, { once: true });
+    document.getElementById('aiStd').addEventListener('click', function (e) { e.preventDefault(); aiOff(); fill(); msg._edited = false; });
+  } else { fill(); }
   lang.addEventListener('change', function () { if (!msg._edited || confirm('Replace your message with the ' + lang.options[lang.selectedIndex].text + ' one?')) { fill(); msg._edited = false; } });
   msg.addEventListener('input', function () { msg._edited = true; });
   function via() { var v = document.querySelector('input[name=via]:checked'); return v ? v.value : ''; }

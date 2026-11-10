@@ -230,6 +230,25 @@ def _num(v, lo=0.0, hi=1e12):
     return round(x, 4) if lo <= x <= hi else None
 
 
+def _why(v) -> str:
+    return re.sub(r"\s+", " ", str(v or "")).strip()[:200]
+
+
+def _keep_ai_line(src: dict, dst: dict):
+    """AI Agent marks on a line survive a save until the salesperson changes
+    that value (the editor drops the mark then)."""
+    ai = src.get("ai") if isinstance(src.get("ai"), dict) else {}
+    pr = ai.get("price") if isinstance(ai.get("price"), dict) else None
+    if pr and dst.get("price") is not None:
+        dst["ai"] = {"price": {"was": _num(pr.get("was")), "why": _why(pr.get("why"))}}
+    sug = src.get("ai_suggest")
+    if isinstance(sug, list) and not dst.get("product_id"):
+        dst["ai_suggest"] = [{"product_id": str(x.get("product_id") or "")[:36], "name": _why(x.get("name")),
+                              "price": _num(x.get("price")), "sku": _why(x.get("sku"))[:40]}
+                             for x in sug[:3] if isinstance(x, dict) and x.get("product_id")]
+        dst["ai_suggest_why"] = _why(src.get("ai_suggest_why"))
+
+
 def clean_form(raw: dict) -> dict:
     """The editor's JSON → saved data. Prices are left empty (None) when
     not typed: the checks then say so; nothing is guessed."""
@@ -250,6 +269,7 @@ def clean_form(raw: dict) -> dict:
                              "note": re.sub(r"\s+", " ", str(ln.get("note") or "")).strip()[:200],
                              "variant_id": re.sub(r"\D", "", str(ln.get("variant_id") or ""))[:30] or None,
                              "qty_fixed": re.sub(r"\s+", " ", str(ln.get("qty_fixed") or "")).strip()[:200]})
+        _keep_ai_line(ln, out["lines"][-1])
     for c in (raw.get("charges") or [])[:20]:
         if not isinstance(c, dict):
             continue
@@ -257,9 +277,13 @@ def clean_form(raw: dict) -> dict:
         price = _num(c.get("price"))
         if name and price is not None:
             out["charges"].append({"name": name, "qty": _num(c.get("qty"), 0, 1e6) or 1, "price": price})
+            if isinstance(c.get("ai"), dict):
+                out["charges"][-1]["ai"] = {"why": _why(c["ai"].get("why"))}
     for st in (raw.get("plan") or [])[:6]:
         if isinstance(st, dict) and (st.get("date") or st.get("text")):
             out["plan"].append({"date": str(st.get("date") or "").strip()[:40], "text": str(st.get("text") or "").strip()[:200]})
+            if isinstance(st.get("ai"), dict):
+                out["plan"][-1]["ai"] = {"why": _why(st["ai"].get("why"))}
     t = raw.get("tax") if isinstance(raw.get("tax"), dict) else {}
     out["tax"] = {"name": re.sub(r"\s+", " ", str(t.get("name") or "VAT")).strip()[:20] or "VAT",
                   "rate": _num(t.get("rate"), 0, 100) or 0,
@@ -272,6 +296,14 @@ def clean_form(raw: dict) -> dict:
     for k, n in (("deliver_place", 200), ("deliver_terms", 200)):
         out[k] = re.sub(r"\s+", " ", str(raw.get(k) or "")).strip()[:n]
     out["note"] = str(raw.get("note") or "").strip()[:1500]
+    # The buyer's questions and their answers (AI Agent draft, 10 Nov 2026).
+    qa = []
+    for item in (raw.get("qa") or [])[:8]:
+        if isinstance(item, dict) and str(item.get("q") or "").strip():
+            qa.append({"q": re.sub(r"\s+", " ", str(item["q"])).strip()[:200],
+                       "a": str(item.get("a") or "").strip()[:500], "ai": bool(item.get("ai"))})
+    if qa:
+        out["qa"] = qa
     out["payment_terms"] = re.sub(r"\s+", " ", str(raw.get("payment_terms") or "")).strip()[:300]
     return out
 
@@ -284,6 +316,8 @@ def save(tenant_id: int, qid: int, raw: dict, actor: dict) -> tuple:
         return False, "This quotation has been sent and can't be changed. Make a new version instead."
     d = clean_form(raw)
     d["prepared_by"] = q["data"].get("prepared_by") or {}
+    if q["data"].get("ai_draft"):
+        d["ai_draft"] = q["data"]["ai_draft"]
     keep_shopify(q["data"], d)
     _fill_new_shopify_lines(tenant_id, q, d)
     doc = to_doc(tenant_id, {**q, "data": d}, qd.get(tenant_id))
@@ -460,8 +494,36 @@ def to_doc(tenant_id: int, q: dict, s: dict, req: dict = None) -> dict:
                       "note": ln.get("note") or ("Discount" if ln.get("disc") else "")} for ln in d["lines"]],
            "charges": [dict(c) for c in d.get("charges") or []],
            "tax": {"rate": rate, "label": f"{tax.get('name') or 'VAT'} {('%g' % rate)}%", "reason": tax.get("reason") or ""},
-           "note": d.get("note") or "", "plan": d.get("plan") or [], "currency": q.get("currency") or "GBP"}
+           "note": note_text(d), "plan": d.get("plan") or [], "currency": q.get("currency") or "GBP"}
     return qd.totals(doc, s)
+
+
+def note_text(d: dict) -> str:
+    """The note on the quotation: answers to the buyer's questions, then the
+    salesperson's own note."""
+    parts = [f"{x['q']} {x['a']}".strip() for x in (d.get("qa") or []) if (x.get("a") or "").strip()]
+    if (d.get("note") or "").strip():
+        parts.append(d["note"].strip())
+    return "\n".join(parts)
+
+
+def ai_marks(d: dict) -> list:
+    """What the AI Agent filled in that is still in the draft (not undone or
+    changed): [(kind, target, why)] for the editor's panel."""
+    out = []
+    for ln in d.get("lines") or []:
+        pr = (ln.get("ai") or {}).get("price")
+        if pr:
+            out.append(("price", ln["name"], pr.get("why") or ""))
+    for c in d.get("charges") or []:
+        if c.get("ai"):
+            out.append(("charge", c["name"], c["ai"].get("why") or ""))
+    if any(st.get("ai") for st in d.get("plan") or []):
+        out.append(("plan", "Delivery plan", next(st["ai"].get("why") for st in d["plan"] if st.get("ai")) or ""))
+    for x in d.get("qa") or []:
+        if x.get("ai") and x.get("a"):
+            out.append(("answer", x["q"], "Answered from what PhiXtra knows"))
+    return out
 
 
 _STOP = {"the", "a", "an", "of", "for", "and", "with", "in", "on", "to", "some", "pcs", "pc", "units", "unit", "x"}
@@ -521,7 +583,8 @@ def checks(tenant_id: int, q: dict, req: dict) -> list:
         out.append(("ok", "Every product the buyer asked for is on it, same quantities"))
     if changed:
         out.append(("warn", "Quantity changed from the request: " + "; ".join(changed)))
-    unpriced = [ln["name"] for ln in d["lines"] if ln.get("price") in (None, "")]
+    unpriced = [ln["name"] for ln in d["lines"] if ln.get("price") in (None, "")
+                and not (ln.get("ai_suggest") and not ln.get("product_id"))]   # "Choose a product" covers those
     out.append(("bad", "No price yet: " + ", ".join(unpriced)) if unpriced else ("ok", "Every line has a price"))
     zero = [ln["name"] for ln in d["lines"] if ln.get("price") == 0]
     if zero:
@@ -546,8 +609,17 @@ def checks(tenant_id: int, q: dict, req: dict) -> list:
         out.append(("warn", "Not enough stock for: " + "; ".join(short) + ". Say when the rest comes, in the note"))
     out += shopify_checks(d)
     words = (req.get("buyer_words") or "") + "\n" + (req.get("notes") or "")
-    if "?" in words and not d.get("note"):
+    unanswered = [x["q"] for x in d.get("qa") or [] if not (x.get("a") or "").strip()]
+    if unanswered:
+        out.append(("bad", "Answer the buyer's question: " + "; ".join("\u201c" + u + "\u201d" for u in unanswered)))
+    elif "?" in words and not d.get("note") and not d.get("qa"):
         out.append(("warn", "The buyer asked a question in their request. Answer it in the note"))
+    undated = [st.get("text") or "" for st in d.get("plan") or [] if not (st.get("date") or "").strip()]
+    if undated:
+        out.append(("bad", "Delivery plan: add the date for " + "; ".join(u[:60] for u in undated)))
+    choose = [ln["name"] for ln in d["lines"] if ln.get("ai_suggest") and not ln.get("product_id")]
+    if choose:
+        out.append(("bad", "Choose a product for " + ", ".join("\u201c" + c + "\u201d" for c in choose)))
     try:
         vu = datetime.strptime(d["valid_until"], "%Y-%m-%d").date()
         if vu < date.today():
@@ -683,6 +755,24 @@ def cover(lang: str, q: dict, req: dict, tenant_id: int, link: str = None) -> tu
     text = body.format(**vals).replace(" ,", ",").replace("Hello ,", "Hello,").replace("Bonjour ,", "Bonjour,")
     text = text.replace("Hola :", "Hola:").replace("Olá ,", "Olá,").replace("Guten Tag ,", "Guten Tag,")
     return subj.format(**vals), text
+
+
+def ai_cover(q: dict, tenant_id: int, link: str = None):
+    """The AI Agent's covering message (AI Agent draft, 10 Nov 2026), with the
+    online-quotation paragraph and the salesperson's name added here, so the
+    AI Agent never writes a link or signs for anyone. None when there is none."""
+    c = ((q.get("data") or {}).get("ai_draft") or {}).get("cover")
+    if not c or not c.get("body"):
+        return None
+    lang = c.get("lang") if c.get("lang") in COVER else "en"
+    parts = [c["body"].strip()]
+    if link:
+        import quote_online
+        parts.append(quote_online.cover_paragraph(tenant_id, lang, link))
+    sender = ((q.get("data") or {}).get("prepared_by") or {}).get("name") or ""
+    parts.append("\n".join(x for x in (sender, qd.profile(tenant_id)["name"]) if x))
+    subj = c.get("subject") or cover(lang, q, {}, tenant_id)[0]
+    return {"lang": lang, "subject": subj, "body": "\n\n".join(parts)}
 
 
 # ── sending ─────────────────────────────────────────────────────────────────
