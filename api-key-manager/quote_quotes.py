@@ -196,6 +196,18 @@ def start(tenant_id: int, req: dict, actor: dict, valid_until: date = None) -> i
                               "list_price": float(p["price"]) if p and p.get("price") is not None and not p.get("price_on_request") else None,
                               "price": float(p["price"]) if p and p.get("price") is not None and not p.get("price_on_request") else None,
                               "disc": 0, "note": ln.get("note") or ""})
+            # Prices & margins (2026-11-10): the volume price for the quantity.
+            try:
+                import quote_prices as qp
+                book = qp.all_for(tenant_id)
+                for ln in lines:
+                    br = (book.get(ln.get("product_id")) or {}).get("breaks")
+                    if br and ln.get("price") is not None:
+                        p, m = qp.step_for(br, ln.get("qty"))
+                        if p is not None:
+                            ln["price"], ln["vol"] = p, {"min": m}
+            except Exception as e:
+                print("⚠️ quotation volume prices:", e)
             cur.execute("""SELECT data->'tax' AS tax FROM quotations WHERE tenant_id=%s AND status='sent'
                             ORDER BY sent_at DESC LIMIT 1""", (tenant_id,))
             last = cur.fetchone()
@@ -270,6 +282,9 @@ def clean_form(raw: dict) -> dict:
                              "variant_id": re.sub(r"\D", "", str(ln.get("variant_id") or ""))[:30] or None,
                              "qty_fixed": re.sub(r"\s+", " ", str(ln.get("qty_fixed") or "")).strip()[:200]})
         _keep_ai_line(ln, out["lines"][-1])
+        v = ln.get("vol") if isinstance(ln.get("vol"), dict) else None
+        if v and _num(v.get("min")) and out["lines"][-1].get("price") is not None:
+            out["lines"][-1]["vol"] = {"min": _num(v.get("min"))}
     for c in (raw.get("charges") or [])[:20]:
         if not isinstance(c, dict):
             continue
@@ -546,7 +561,26 @@ def _words(text: str) -> set:
     return out
 
 
-def checks(tenant_id: int, q: dict, req: dict) -> list:
+def low_margin(tenant_id: int, d: dict) -> list:
+    """[(line name, margin %, minimum)] for lines below the business's
+    minimum margin. Lines without a cost are never flagged."""
+    mn = qr.settings(tenant_id).get("min_margin")
+    if mn is None:
+        return []
+    import quote_prices as qp
+    costs = qp.costs_only(qp.all_for(tenant_id))
+    out = []
+    for ln in d.get("lines") or []:
+        c = costs.get(ln.get("product_id"))
+        if c is None or ln.get("price") is None:
+            continue
+        m = qp.margin(float(ln["price"]) * (1 - float(ln.get("disc") or 0) / 100), c)
+        if m is not None and m < mn:
+            out.append((ln["name"], m, mn))
+    return out
+
+
+def checks(tenant_id: int, q: dict, req: dict, can_costs: bool = False) -> list:
     """What to look at before sending: [(level ok|warn|bad, text)]. Rules,
     not the AI's guesses: nothing here ever changes a price."""
     d = q["data"]
@@ -630,6 +664,18 @@ def checks(tenant_id: int, q: dict, req: dict) -> list:
         out.append(("bad", "'Valid until' isn't a date"))
     if not qd.ready(tenant_id):
         out.append(("bad", "Finish Quotation design first (business address, payment terms, bank details)"))
+    # Prices & margins: below the minimum margin. People who can see costs
+    # may send anyway; everyone else must raise the price (no figures shown).
+    try:
+        low = low_margin(tenant_id, d)
+    except Exception as e:
+        print("⚠️ margin check:", e)
+        low = []
+    for name, m, mn in low:
+        if can_costs:
+            out.append(("warn", f"{name} is below your minimum margin of {'%g' % mn}% ({'%g' % m}%)"))
+        else:
+            out.append(("bad", f"{name}: price is below your minimum margin. Raise it, or ask someone who can see costs to send it"))
     return out
 
 
@@ -796,7 +842,8 @@ def wa_ready(tenant_id: int, phone: str) -> tuple:
         cur.close(); conn.close()
 
 
-def send(tenant_id: int, qid: int, via: str, to: str, subject: str, message: str, actor: dict) -> tuple:
+def send(tenant_id: int, qid: int, via: str, to: str, subject: str, message: str, actor: dict,
+         can_costs: bool = False) -> tuple:
     """Make the PDF, send it, mark the quotation sent and the request Quote sent."""
     q = get(tenant_id, qid)
     if not q or q["status"] != "draft":
@@ -804,7 +851,7 @@ def send(tenant_id: int, qid: int, via: str, to: str, subject: str, message: str
     req = qr.get(tenant_id, q["request_id"]) if q["request_id"] else None
     if not req:
         return False, "The request for this quotation is gone."
-    chk = checks(tenant_id, q, req)
+    chk = checks(tenant_id, q, req, can_costs=can_costs)
     if not can_send(chk):
         return False, "Fix the red items before sending: " + "; ".join(t for lvl, t in chk if lvl == "bad")
     message = (message or "").strip()[:4000]

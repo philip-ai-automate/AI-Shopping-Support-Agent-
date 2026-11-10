@@ -420,6 +420,8 @@ PLAN_FEATURE_CATALOG = {
         ("leads.see_all", "See all leads, not just their own (off = only leads assigned to them)"),
         ("leads.team_performance", "Team performance — see how each person is doing and set their targets "
                                    "(staff see only the people who report to them)"),
+        ("quotes.costs", "Quotations: see cost prices and margins, and set volume prices and costs in Prices & margins "
+                         "(AI Sales Agent for B2B)"),
     ],
     # Lead Finder (pilot 2026-10-19, lead_finder_routes.py): find business
     # decision-makers through Prospeo and add them to Leads. Platform business
@@ -680,6 +682,7 @@ ROLE_FORM_GRID = {
         {"label": "Columns", "create": "crm.columns_create", "edit": "crm.columns_edit", "delete": "crm.columns_delete",
          "other": ["crm.columns_own"]},
         {"label": "Team performance", "view": "leads.team_performance"},
+        {"label": "Quotations: cost prices and margins", "other": ["quotes.costs"]},
     ],
     "Lead Finder": [
         {"label": "Find New Leads", "view": "leadfinder.search", "create": "leadfinder.add"},
@@ -822,6 +825,8 @@ PLAN_ONLY_FEATURE_KEYS = {
     # Not pages: Roles ticks read in code that limit which leads (2026-10-06),
     # contacts/companies and Inbox chats (2026-10-08) a team member sees.
     "leads.see_all", "crm.contacts_see_all", "inbox.see_all",
+    # Prices & margins (2026-11-10): who sees costs; read in code, page gated by it.
+    "quotes.costs",
     # Saved Emails: which saved emails a team member sees (2026-10-08).
     "campaigns_email.saved_see_all",
     # Read when an email campaign sends (2026-10-08), not a page of its own.
@@ -43451,7 +43456,12 @@ def _inject_quotes_menu():
             except Exception as e:
                 print(f"⚠️ quotes menu counts: {e}")
         return g._quotes_menu_counts
-    return {"quotes_on": quotes_on, "quotes_menu_counts": quotes_menu_counts}
+    def quotes_can_costs():
+        try:
+            return bool(quotes_on()) and _can_costs()
+        except Exception:
+            return False
+    return {"quotes_on": quotes_on, "quotes_menu_counts": quotes_menu_counts, "quotes_can_costs": quotes_can_costs}
 
 
 def _quotes_guard():
@@ -43525,11 +43535,18 @@ def _quote_form(tenant_id: int, customer, f, products: dict) -> tuple:
     return d, None
 
 
-def _quote_products_json(products: dict) -> list:
+def _quote_products_json(products: dict, breaks: dict = None) -> list:
+    breaks = breaks or {}
     return [{"id": p["id"], "name": p["name"],
              "price": (float(p["price"]) if p.get("price") is not None and not p.get("price_on_request") else None),
-             "stock": _qr.stock_of(p), "sku": p.get("sku") or "", "web": bool(p.get("from_website"))}
+             "stock": _qr.stock_of(p), "sku": p.get("sku") or "", "web": bool(p.get("from_website")),
+             "vol": breaks.get(p["id"]) or []}
             for p in products.values()]
+
+
+def _can_costs() -> bool:
+    """Prices & margins (2026-11-10): the owner, or a role with "quotes.costs"."""
+    return _team_member_has_permission("quotes.costs")
 
 
 @portal_bp.route("/quotations/requests")
@@ -44401,8 +44418,17 @@ def quotes_quotation(qid: int):
     products = _qr.products_for(tenant_id)
     s = _qd.get(tenant_id)
     doc = _qq.to_doc(tenant_id, q, s, req)
+    import quote_prices as _qp
+    _book = _qp.all_for(tenant_id)
+    can_costs = _can_costs()
+    _ids = {ln.get("product_id") for ln in (q["data"] or {}).get("lines") or []}
+    costs = {k: v for k, v in _qp.costs_only(_book).items()} if can_costs else {}
+    low = [n for n, _, _ in _qq.low_margin(tenant_id, q["data"] or {})] if not can_costs else []
     return render_template("portal/quotes_quotation.html", q=q, req=req, doc=doc, s=s, qq=_qq, qr=_qr,
-                           checks=_qq.checks(tenant_id, q, req), products_json=_quote_products_json(products),
+                           checks=_qq.checks(tenant_id, q, req, can_costs=can_costs),
+                           products_json=_quote_products_json(products, _qp.breaks_only(_book)),
+                           can_costs=can_costs, costs=costs, low_lines=low,
+                           min_margin=_qr.settings(tenant_id).get("min_margin"),
                            versions=_qq.for_request(tenant_id, req["id"]), cur=q["currency"] or _biz_currency(tenant_id),
                            changes=_qq.changes_from_last(tenant_id, q),
                            ai_marks=_qq.ai_marks(q["data"] or {}), ai_draft=(q["data"] or {}).get("ai_draft") or {},
@@ -44435,6 +44461,101 @@ def quotes_quotation_pdf(qid: int):
     return Response(data, mimetype="application/pdf", headers={"Content-Disposition": f"inline; filename=\"{name}\""})
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# QUOTATIONS › PRICES & MARGINS (2026-11-10, AI Sales Agent for B2B)
+# Volume prices and cost prices per product, for quotations only. The page
+# is for the owner and roles with "quotes.costs"; costs never leave it except
+# as margins in the editor for the same people.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _prices_guard():
+    customer, tenant_id, err = _quotes_guard()
+    if err:
+        return None, None, err
+    if not _can_costs():
+        flash("Prices & margins is for people who can see cost prices. Ask the account owner.", "warning")
+        return None, None, redirect(url_for("portal.quotes_requests"))
+    return customer, tenant_id, None
+
+
+@portal_bp.route("/quotations/prices", methods=["GET", "POST"])
+@team_feature("leads.page")
+def quotes_prices():
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _prices_guard()
+    if err: return err
+    import quote_prices as _qp
+    products = _qr.products_for(tenant_id)
+    if request.method == "POST":
+        action = request.form.get("action") or ""
+        by = _current_actor(customer)["label"]
+        if action == "min_margin":
+            s = _qr.settings(tenant_id)
+            s["min_margin"] = request.form.get("min_margin")
+            _qr.save_settings(tenant_id, s, by)
+            flash("Minimum margin saved.", "success")
+        elif action == "save":
+            key = request.form.get("product_id") or ""
+            if key not in products:
+                flash("Product not found.", "danger")
+            else:
+                br = [[request.form.get(f"q{i}"), request.form.get(f"p{i}")] for i in range(1, _qp.MAX_STEPS + 1)]
+                _qp.save(tenant_id, key, br, request.form.get("cost"), by)
+                flash(f"Saved: {products[key]['name']}.", "success")
+        elif action == "upload":
+            f = request.files.get("file")
+            if not f or not (f.filename or "").lower().endswith(".xlsx"):
+                flash("Choose the Excel file (.xlsx) downloaded from this page.", "warning")
+            else:
+                data = f.read(5 * 1024 * 1024 + 1)
+                if len(data) > 5 * 1024 * 1024:
+                    flash("That file is too big (5 MB at most).", "warning")
+                else:
+                    try:
+                        n, skipped = _qp.from_xlsx(tenant_id, data, products, by)
+                        flash(f"Updated {n} product{'s' if n != 1 else ''}."
+                              + (f" {skipped} row{'s' if skipped != 1 else ''} skipped: not one of your products." if skipped else ""),
+                              "success" if n else "warning")
+                    except ValueError as e:
+                        flash(str(e), "warning")
+                    except Exception as e:
+                        print("⚠️ prices upload:", e)
+                        flash("That file couldn't be read. Use the Excel downloaded from this page.", "danger")
+        return redirect(url_for("portal.quotes_prices") + (("#p-" + request.form.get("product_id")) if action == "save" else ""))
+    book = _qp.all_for(tenant_id)
+    mn = _qr.settings(tenant_id).get("min_margin")
+    rows = []
+    for p in sorted(products.values(), key=lambda x: (x.get("name") or "").lower()):
+        e = book.get(p["id"]) or {}
+        lp = float(p["price"]) if p.get("price") is not None and not p.get("price_on_request") else None
+        m = _qp.margin(lp, e.get("cost"))
+        rows.append({"id": p["id"], "name": p["name"], "sku": p.get("sku") or "", "category": p.get("category") or "",
+                     "source": "Website" if p.get("from_website") else "My Products", "price": lp,
+                     "breaks": e.get("breaks") or [], "cost": e.get("cost"), "margin": m,
+                     "low": (m is not None and mn is not None and m < mn)})
+    return render_template("portal/quotes_prices.html", rows=rows, min_margin=mn, qp=_qp, qr=_qr,
+                           cur=_biz_currency(tenant_id),
+                           counts={"all": len(rows), "vol": sum(1 for r in rows if r["breaks"]),
+                                   "cost": sum(1 for r in rows if r["cost"] is not None),
+                                   "nocost": sum(1 for r in rows if r["cost"] is None),
+                                   "low": sum(1 for r in rows if r["low"])})
+
+
+@portal_bp.route("/quotations/prices.xlsx")
+@team_feature("leads.page")
+def quotes_prices_xlsx():
+    _rperm = _require_team_permission("leads.page")
+    if _rperm: return _rperm
+    customer, tenant_id, err = _prices_guard()
+    if err: return err
+    import quote_prices as _qp
+    data = _qp.to_xlsx(_qr.products_for(tenant_id), _qp.all_for(tenant_id))
+    return Response(data, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": "attachment; filename=\"Prices and margins.xlsx\"",
+                             "Cache-Control": "no-store, private"})
+
+
 @portal_bp.route("/quotations/q/<int:qid>/send", methods=["GET", "POST"])
 @team_feature("leads.page")
 def quotes_quotation_send(qid: int):
@@ -44449,7 +44570,7 @@ def quotes_quotation_send(qid: int):
     if q["status"] != "draft":
         flash("This quotation has already been sent.", "warning")
         return redirect(url_for("portal.quotes_request_detail", request_id=req["id"]))
-    chk = _qq.checks(tenant_id, q, req)
+    chk = _qq.checks(tenant_id, q, req, can_costs=_can_costs())
     if request.method == "POST":
         try:
             import quote_online as _qon
@@ -44458,7 +44579,8 @@ def quotes_quotation_send(qid: int):
         except Exception as e:
             print("⚠️ quote online lang:", e)
         ok, msg = _qq.send(tenant_id, qid, request.form.get("via"), request.form.get("to"),
-                           request.form.get("subject"), request.form.get("message"), _current_actor(customer))
+                           request.form.get("subject"), request.form.get("message"), _current_actor(customer),
+                           can_costs=_can_costs())
         flash(msg, "success" if ok else "danger")
         return redirect(url_for("portal.quotes_request_detail", request_id=req["id"]) if ok
                         else url_for("portal.quotes_quotation_send", qid=qid))

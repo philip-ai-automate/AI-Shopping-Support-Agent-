@@ -236,6 +236,14 @@ def prepare(tenant_id: int, qid: int, req: dict) -> dict:
                     new = _money(float(old["price"]) * (1 - float(old.get("disc") or 0) / 100))
                     why = f"Their price on {h['number']}, accepted {_dmy(h['accepted'])}"
                     break
+            if new is None and ln.get("vol") and ln.get("price") is not None:
+                # volume price set at Make quotation: show it as the AI Agent's pick
+                why = f"Volume price for {('%g' % ln['vol']['min'])}+"
+                if ln.get("list_price") is not None:
+                    why += f" (list {qr.money(ln['list_price'], q.get('currency'))})"
+                ln["ai"] = {"price": {"was": ln.get("list_price"), "why": why}}
+                changes.append({"kind": "price", "target": ln["name"], "value": ln["price"], "why": why})
+                continue
             if new is None and pid in disc and ln.get("list_price") is not None:
                 kind, val = disc[pid]
                 lp = float(ln["list_price"])

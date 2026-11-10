@@ -1,0 +1,160 @@
+{% extends "portal/base.html" %}
+{% block title %}Prices &amp; margins — PhiXtra Portal{% endblock %}
+{% block wrap_class %}page-wide{% endblock %}
+{% block head %}{% include "portal/_quotes_css.html" %}
+<style>
+.pm-kpis{display:flex;flex-wrap:wrap;gap:12px}
+.pm-kpis .qt-kpi{flex:1 1 180px}
+.pm-cols{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.pm-main{flex:999 1 620px;min-width:0}
+.pm-side{flex:1 1 320px;min-width:0;position:sticky;top:12px}
+@media (max-width:1000px){.pm-side{position:static}}
+.pm-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pm-bar input[type=search]{flex:1 1 220px;min-height:38px}
+.pm-chip{font:inherit;font-size:12.5px;font-weight:600;border:1.5px solid #D0D5DD;background:#fff;color:#344054;border-radius:999px;padding:6px 12px;cursor:pointer}
+.pm-chip[aria-pressed=true]{background:var(--navy);border-color:var(--navy);color:#fff}
+.pm-chip .n{font-weight:400;opacity:.8;margin-left:4px}
+.pm-t td{vertical-align:middle}
+.pm-t tr.on td{background:#F5F8FF}
+.pm-low{font-weight:700;color:#B42318}
+.pm-ok{font-weight:600;color:#067647}
+.pm-grey{color:var(--muted);white-space:nowrap}
+.pm-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:center;font-size:12px;color:var(--muted)}
+.pm-steps input{min-width:0}
+</style>
+{% endblock %}
+{% block content %}
+<div class="qt">
+  <div class="qt-top">
+    <div style="display:grid;gap:4px">
+      <div class="qt-sub">Quotations</div>
+      <h1>Prices &amp; margins</h1>
+      <div class="qt-sub" style="max-width:720px">Volume prices and cost prices for your quotations. Part of the AI Sales Agent for B2B plan. They never change your website or chat box prices, and buyers never see costs.</div>
+    </div>
+    <div class="qt-btns">
+      <a class="qt-btn" href="{{ url_for('portal.quotes_prices_xlsx') }}">Download Excel</a>
+      <form method="post" enctype="multipart/form-data" style="margin:0;display:flex;gap:6px;align-items:center" id="upForm">
+        <input type="hidden" name="action" value="upload">
+        <label class="qt-btn dark" style="cursor:pointer">Upload Excel<input type="file" name="file" accept=".xlsx" hidden onchange="this.form.submit()"></label>
+      </form>
+    </div>
+  </div>
+
+  <div class="pm-kpis">
+    <div class="qt-kpi"><span class="qt-kl">Products</span><span class="qt-kv">{{ counts.all }}</span></div>
+    <div class="qt-kpi"><span class="qt-kl">With volume prices</span><span class="qt-kv">{{ counts.vol }}</span></div>
+    <div class="qt-kpi"><span class="qt-kl">With a cost price</span><span class="qt-kv">{{ counts.cost }}</span></div>
+    <div class="qt-kpi"><span class="qt-kl">Minimum margin</span>
+      <form method="post" style="display:flex;gap:6px;align-items:center;margin:0">
+        <input type="hidden" name="action" value="min_margin">
+        <input name="min_margin" type="number" min="0" max="99" step="0.5" value="{{ '%g'|format(min_margin) if min_margin is not none else '' }}" placeholder="None" aria-label="Minimum margin %" style="width:80px;min-height:34px">
+        <span class="qt-small">%</span><button class="qt-btn sm">Save</button></form>
+      <span class="qt-small">Empty = no check. Below it, salespeople must raise the price; people who can see costs may still send.</span></div>
+  </div>
+
+  <div class="pm-cols">
+    <section class="qt-card pm-main">
+      <div class="pm-bar">
+        <input type="search" id="pmQ" placeholder="Search by product, SKU or category" aria-label="Search products">
+        <button type="button" class="pm-chip" data-f="all" aria-pressed="true">All<span class="n">{{ counts.all }}</span></button>
+        <button type="button" class="pm-chip" data-f="nocost" aria-pressed="false">No cost set<span class="n">{{ counts.nocost }}</span></button>
+        <button type="button" class="pm-chip" data-f="low" aria-pressed="false">Below minimum margin<span class="n">{{ counts.low }}</span></button>
+        <button type="button" class="pm-chip" data-f="vol" aria-pressed="false">With volume prices<span class="n">{{ counts.vol }}</span></button>
+      </div>
+      <div class="qt-scroll"><table class="pm-t">
+        <thead><tr><th>Product</th><th class="r">List price</th><th>Volume prices</th><th class="r">Cost</th><th class="r">Margin at list</th><th></th></tr></thead>
+        <tbody id="pmRows">
+        {% for r in rows %}
+          <tr id="p-{{ r.id }}" data-id="{{ r.id }}" data-s="{{ (r.name ~ ' ' ~ r.sku ~ ' ' ~ r.category)|lower }}"
+              data-nocost="{{ 1 if r.cost is none else 0 }}" data-low="{{ 1 if r.low else 0 }}" data-vol="{{ 1 if r.breaks else 0 }}"
+              data-json='{{ {"id": r.id, "name": r.name, "price": r.price, "breaks": r.breaks, "cost": r.cost}|tojson|forceescape }}'>
+            <td><b>{{ r.name }}</b><span class="s">{{ r.source }}{% if r.sku %} · {{ r.sku }}{% endif %}</span></td>
+            <td class="r">{{ qr.money(r.price, cur) if r.price is not none else '—' }}</td>
+            <td>{% if r.breaks %}{% for st in r.breaks %}{{ qp.qtext(st[0]) }}+ {{ qr.money(st[1], cur) }}{{ ' · ' if not loop.last }}{% endfor %}{% else %}<span class="pm-grey">—</span>{% endif %}</td>
+            <td class="r">{% if r.cost is not none %}{{ qr.money(r.cost, cur) }}{% else %}<span class="pm-grey">No cost set</span>{% endif %}</td>
+            <td class="r">{% if r.margin is not none %}<span class="{{ 'pm-low' if r.low else 'pm-ok' }}">{{ '%g'|format(r.margin) }}%</span>{% if r.low %}<span class="s" style="color:#B42318">below {{ '%g'|format(min_margin) }}%</span>{% endif %}{% else %}<span class="pm-grey">—</span>{% endif %}</td>
+            <td class="r"><button type="button" class="qt-btn sm" data-edit>Edit</button></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      <div class="qt-small" id="pmNone" hidden>No products match.</div>
+      {% if not rows %}<div class="qt-small">No products yet. Products come from My Products and your website.</div>{% endif %}
+    </section>
+
+    <aside class="qt-card pm-side" id="pmEdit" hidden>
+      <form method="post" style="display:grid;gap:12px">
+        <input type="hidden" name="action" value="save">
+        <input type="hidden" name="product_id" id="peId">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><b id="peName" style="font-size:15px;color:var(--navy)"></b><span class="qt-small" id="peList"></span></div>
+        <div style="display:grid;gap:8px">
+          <span style="font-size:13px;font-weight:600;color:#344054">Volume prices <span class="qt-small">(up to {{ qp.MAX_STEPS }})</span></span>
+          <div class="pm-steps"><span>From quantity</span><span>Price each</span><span>Margin</span>
+            {% for i in range(1, qp.MAX_STEPS + 1) %}
+            <input name="q{{ i }}" type="number" min="0" step="any" aria-label="From quantity {{ i }}"><input name="p{{ i }}" type="number" min="0" step="any" aria-label="Price {{ i }}"><span class="pm-m" aria-live="polite"></span>
+            {% endfor %}
+          </div>
+          <span class="qt-small">A buyer ordering at least that quantity gets that price on a new quotation. Leave a row empty to remove it.</span>
+        </div>
+        <label style="font-size:13px;font-weight:600;color:#344054;display:grid;gap:6px">Cost price (what it costs you)
+          <input name="cost" id="peCost" type="number" min="0" step="any"></label>
+        <span class="qt-small">Only you and roles with "Quotations: cost prices and margins" see this. Never on a quotation, never sent to the AI Agent.</span>
+        <div class="qt-btns"><button class="qt-btn dark">Save</button><button type="button" class="qt-btn" id="peCancel">Cancel</button></div>
+      </form>
+    </aside>
+  </div>
+</div>
+<script>
+(function () {
+  var rows = Array.prototype.slice.call(document.querySelectorAll('#pmRows tr'));
+  var q = document.getElementById('pmQ'), none = document.getElementById('pmNone'), f = 'all';
+  function apply() {
+    var t = q.value.trim().toLowerCase(), shown = 0;
+    rows.forEach(function (r) {
+      var ok = (!t || r.getAttribute('data-s').indexOf(t) >= 0) && (f === 'all' || r.getAttribute('data-' + f) === '1');
+      r.hidden = !ok; if (ok) { shown++; }
+    });
+    none.hidden = shown > 0 || !rows.length;
+  }
+  q.addEventListener('input', apply);
+  document.querySelectorAll('.pm-chip').forEach(function (b) {
+    b.addEventListener('click', function () {
+      f = b.getAttribute('data-f');
+      document.querySelectorAll('.pm-chip').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+      apply();
+    });
+  });
+  var box = document.getElementById('pmEdit'), form = box.querySelector('form'), cur = null;
+  var CUR = {{ cur|tojson }};
+  function money(v) { try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: CUR || 'GBP' }).format(v); } catch (e) { return Number(v).toFixed(2); } }
+  function marg() {
+    var c = parseFloat(document.getElementById('peCost').value);
+    form.querySelectorAll('.pm-m').forEach(function (m, i) {
+      var p = parseFloat(form.elements['p' + (i + 1)].value);
+      if (isNaN(c) || isNaN(p) || p <= 0) { m.textContent = ''; return; }
+      var v = Math.round((p - c) / p * 1000) / 10; m.textContent = v + '%';
+      m.style.color = v < {{ min_margin if min_margin is not none else -1000 }} ? '#B42318' : '#067647'; m.style.fontWeight = '600';
+    });
+  }
+  form.addEventListener('input', marg);
+  rows.forEach(function (r) {
+    r.querySelector('[data-edit]').addEventListener('click', function () {
+      var d = JSON.parse(r.getAttribute('data-json'));
+      if (cur) { cur.classList.remove('on'); } cur = r; r.classList.add('on');
+      document.getElementById('peId').value = d.id; document.getElementById('peName').textContent = d.name;
+      document.getElementById('peList').textContent = d.price !== null ? 'List ' + money(d.price) : 'No list price';
+      for (var i = 1; i <= {{ qp.MAX_STEPS }}; i++) {
+        var st = (d.breaks || [])[i - 1] || ['', ''];
+        form.elements['q' + i].value = st[0]; form.elements['p' + i].value = st[1];
+      }
+      document.getElementById('peCost').value = d.cost !== null && d.cost !== undefined ? d.cost : '';
+      box.hidden = false; marg(); form.elements.q1.focus();
+      if (window.innerWidth < 1000) { box.scrollIntoView({ behavior: 'smooth' }); }
+    });
+  });
+  document.getElementById('peCancel').addEventListener('click', function () { box.hidden = true; if (cur) { cur.classList.remove('on'); } });
+  var h = location.hash && document.querySelector(location.hash.replace(/([^#\w-])/g, '\\$1'));
+  if (h && h.querySelector) { var b = h.querySelector('[data-edit]'); if (b) { h.scrollIntoView({ block: 'center' }); } }
+})();
+</script>
+{% endblock %}

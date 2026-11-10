@@ -75,6 +75,8 @@ DEFAULTS = {
     # AI Agent quotation draft (2026-11-10): starting value only, each business
     # switches it in Quotation settings › General.
     "ai_draft": True,
+    # Prices & margins (2026-11-10): minimum margin % for quotations; None = no check.
+    "min_margin": None,
 }
 WEBSITE_PRICES = [("list_estimate", "List prices and an estimate"), ("estimate", "An estimate only"),
                   ("none", "No prices (\"Price on your quotation\")")]
@@ -202,6 +204,13 @@ def _clean_settings(raw: dict) -> dict:
         s["maker"] = raw["maker"]
     if raw.get("website_prices") in dict(WEBSITE_PRICES):
         s["website_prices"] = raw["website_prices"]
+    if "min_margin" in raw:
+        try:
+            v = raw["min_margin"]
+            m = None if v in (None, "") else float(str(v).replace("%", "").strip())
+            s["min_margin"] = m if m is None or 0 <= m < 100 else s["min_margin"]
+        except (TypeError, ValueError):
+            pass
     for k in ("alert_new", "alert_due", "alert_manager", "website_on", "online_link", "online_accept", "online_open_alert",
               "ai_draft"):
         if k in raw:

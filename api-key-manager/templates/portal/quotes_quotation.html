@@ -146,7 +146,7 @@
         <section class="qt-card qe-sec" id="secProducts">
           <h2>1. Products</h2>
           <div class="qt-scroll"><table class="qe">
-            <thead><tr><th>Product</th><th class="r">Qty</th><th>Unit</th><th class="r">Your price ({{ cur_sign(cur) }})</th><th class="r">Disc. %</th><th class="r">Amount</th><th></th></tr></thead>
+            <thead><tr><th>Product</th><th class="r">Qty</th><th>Unit</th><th class="r">Your price ({{ cur_sign(cur) }})</th><th class="r">Disc. %</th><th class="r">Amount</th>{% if can_costs %}<th class="r">Margin</th>{% endif %}<th></th></tr></thead>
             <tbody id="qeLines"></tbody>
             <tbody id="qeCharges"></tbody>
           </table></div>
@@ -192,6 +192,7 @@
       <aside class="qe-side">
         <div class="qt-card">
           <div class="qe-tot" id="qeTot"></div>
+          {% if can_costs %}<div id="qeMargin" class="qt-small" hidden></div>{% endif %}
           {% set bad = checks|selectattr(0, 'equalto', 'bad')|list %}
           {% set warn = checks|selectattr(0, 'equalto', 'warn')|list %}
           {% if draft %}
@@ -237,6 +238,11 @@
   var PRODUCTS = {{ products_json|tojson }};
   var CUR = {{ cur_sign(cur)|tojson }};
   var PREV = {{ (changes or {})|tojson }};
+  // Prices & margins (2026-11-10): costs only reach this page for people allowed to see them.
+  var CANCOSTS = {{ 'true' if can_costs else 'false' }}, COSTS = {{ (costs or {})|tojson }}, MINM = {{ min_margin|tojson }};
+  var LOW = {{ (low_lines or [])|tojson }};
+  var NCOL = CANCOSTS ? 8 : 7;
+  function volStep(p, q) { var best = null; ((p && p.vol) || []).forEach(function (st) { if ((parseFloat(q) || 0) >= st[0]) { best = st; } }); return best; }
   var byName = {}, byId = {};
   PRODUCTS.forEach(function (p) { byName[p.name.toLowerCase()] = p; byId[p.id] = p; });
   function money(v) { return CUR + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -329,6 +335,8 @@
     var disc = input(ln.disc || 0, { type: 'number', min: '0', max: '100', step: 'any', 'aria-label': 'Discount %' });
     var amt = el('td', { 'class': 'r' });
     tr._pid = ln.product_id || null; tr._list = (ln.list_price === undefined) ? null : ln.list_price; tr._code = ln.code || ''; tr._note = ln.note || '';
+    tr._vol = ln.vol || null; tr._vauto = ln.vol ? ln.price : null;
+    var mcell = CANCOSTS ? el('td', { 'class': 'r' }) : null;
     tr._ai = (ln.ai && ln.ai.price) ? ln.ai : null; tr._sug = (ln.ai_suggest && ln.ai_suggest.length && !ln.product_id) ? ln.ai_suggest : null; tr._sugWhy = ln.ai_suggest_why || '';
     if (tr._ai) { aiMark(price, true); price.title = tr._ai.price.why || 'Filled in by AI Agent'; }
     price.addEventListener('input', function () { if (tr._ai) { aiDrop('price', name.value); tr._ai = null; aiMark(price, false); price.title = ''; } });
@@ -396,6 +404,7 @@
       if (p && p.web) { bits.push(p.stock === 0 ? 'Out of stock on your website' : 'In stock on your website'); }
       else if (p && p.stock !== null) { bits.push(p.stock + ' in stock'); }
       if (!p) { bits.push('Not on your list'); }
+      if (tr._vol && tr._vauto !== null && parseFloat(price.value) === Number(tr._vauto)) { bits.push('Volume price for ' + tr._vol.min + '+'); }
       if (SH) {
         var v = vOf();
         if (!SH.published) { bits.push('Not in their Shopify catalogue'); }
@@ -435,6 +444,17 @@
       if (v) { var r = vPrice(v); if (parseFloat(price.value) === tr._auto) { price.value = r[0]; } tr._auto = r[0]; }
     });
     qty.addEventListener('change', function () { fixd.textContent = ''; fixRule(); describe(); total(); });
+    // Volume prices: a price that is still the list or volume price follows the quantity; a typed price never changes.
+    qty.addEventListener('input', function () {
+      var p = tr._pid && byId[tr._pid]; if (!p || !p.vol || !p.vol.length || SH) { return; }
+      var cur = parseFloat(price.value), auto = (tr._vauto !== null) ? Number(tr._vauto) : (tr._list !== null ? Number(tr._list) : null);
+      if (auto === null || cur !== auto) { return; }
+      var st = volStep(p, qty.value), np = st ? st[1] : tr._list;
+      if (np === null || np === undefined) { return; }
+      price.value = np; tr._vol = st ? { min: st[0] } : null; tr._vauto = st ? st[1] : null;
+      if (tr._ai && /^Volume price/.test(tr._ai.price.why || '')) { tr._ai.price.why = st ? 'Volume price for ' + st[0] + '+' : 'List price'; price.title = tr._ai.price.why; }
+      describe(); total();
+    });
     [qty, price, disc].forEach(function (i) { i.addEventListener('input', function () { describe(); total(); }); });
     var c1 = el('td', { 'class': 'nm' }); c1.appendChild(name); if (vsel) { c1.appendChild(vsel); if (vsel._btn) { c1.appendChild(vsel._btn); } } c1.appendChild(fixd); c1.appendChild(meta); c1.appendChild(was);
     var c2 = el('td', { 'class': 'qty' }); c2.appendChild(qty);
@@ -443,15 +463,34 @@
     var c5 = el('td', { 'class': 'num' }); c5.appendChild(disc);
     var c7 = el('td');
     if (DRAFT) { var rm = el('button', { type: 'button', 'class': 'rm' }); rm.textContent = 'Remove'; rm.addEventListener('click', function () { if (tr._sugRow) { tr._sugRow.remove(); } if (tr._ai) { aiDrop('price', name.value); } tr.remove(); total(); dirty = true; }); c7.appendChild(rm); }
-    [c1, c2, c3, c4, c5, amt, c7].forEach(function (c) { tr.appendChild(c); });
-    tr._get = function () { return { product_id: tr._pid, name: name.value, code: tr._code, qty: qty.value, unit: unit.value, list_price: tr._list, price: price.value, disc: disc.value, note: tr._note, variant_id: tr._vid, qty_fixed: fixd.textContent, ai: tr._ai, ai_suggest: tr._sug, ai_suggest_why: tr._sugWhy }; };
+    [c1, c2, c3, c4, c5, amt].concat(mcell ? [mcell] : []).concat([c7]).forEach(function (c) { tr.appendChild(c); });
+    tr._get = function () { var vol = (tr._vol && tr._vauto !== null && parseFloat(price.value) === Number(tr._vauto)) ? tr._vol : null;
+      return { product_id: tr._pid, name: name.value, code: tr._code, qty: qty.value, unit: unit.value, list_price: tr._list, price: price.value, disc: disc.value, note: tr._note, variant_id: tr._vid, qty_fixed: fixd.textContent, ai: tr._ai, ai_suggest: tr._sug, ai_suggest_why: tr._sugWhy, vol: vol }; };
+    tr._margin = function () {
+      if (!CANCOSTS || !mcell) { return null; }
+      var c = COSTS[tr._pid], pr = parseFloat(price.value), d = parseFloat(disc.value) || 0, q = parseFloat(qty.value) || 0;
+      mcell.innerHTML = '';
+      if (c === undefined || c === null) { var g = el('span', { 'class': 'meta' }); g.textContent = tr._pid ? 'No cost set' : ''; mcell.appendChild(g); return null; }
+      var net = isNaN(pr) ? 0 : pr * (1 - d / 100);
+      if (net <= 0) { return null; }
+      var m = Math.round((net - c) / net * 1000) / 10, b = el('b'); b.textContent = m + '%';
+      var low = MINM !== null && m < MINM; b.style.color = low ? '#B42318' : '#067647'; mcell.appendChild(b);
+      if (low) { var w = el('span', { 'class': 'meta' }); w.style.color = '#B42318'; w.textContent = 'below your ' + MINM + '%'; mcell.appendChild(w); }
+      return { cost: c * q, sales: net * q };
+    };
+    if (LOW.indexOf(ln.name) >= 0) {   // salesperson: flagged on save, no figures
+      price.classList.add('need-v');
+      var lw = el('span', { 'class': 'meta' }); lw.style.color = '#B42318'; lw.style.fontWeight = '600'; lw.textContent = 'Below your minimum margin';
+      price.addEventListener('input', function () { price.classList.remove('need-v'); lw.remove(); }, { once: true });
+      setTimeout(function () { c4.appendChild(lw); }, 0);
+    }
     tr._amount = function () { var p = parseFloat(price.value), q = parseFloat(qty.value), d = parseFloat(disc.value) || 0; return (isNaN(p) || isNaN(q)) ? 0 : Math.round(p * (1 - d / 100) * q * 100) / 100; };
     tr._amt = amt;
     describe();
     lines.appendChild(tr);
     // Not on the list: the AI Agent's closest products, as one clear choice.
     if (tr._sug && DRAFT) {
-      var sr = el('tr', { 'class': 'sug-row' }), sc = el('td', { colspan: '7' });
+      var sr = el('tr', { 'class': 'sug-row' }), sc = el('td', { colspan: String(NCOL) });
       var h = el('div', { 'class': 'sug-h' }), tg = el('span', { 'class': 'sug-tag' }); tg.textContent = 'Choose a product';
       var tx = el('span'); tx.textContent = 'The buyer asked for \u201c' + name.value + '\u201d. It isn\u2019t on your list.' + (tr._sugWhy ? ' ' + tr._sugWhy : '');
       h.appendChild(tg); h.appendChild(tx); sc.appendChild(h);
@@ -493,7 +532,7 @@
     var c4 = el('td', { 'class': 'num' }); c4.appendChild(price);
     var c7 = el('td');
     if (DRAFT) { var rm = el('button', { type: 'button', 'class': 'rm' }); rm.textContent = 'Remove'; rm.addEventListener('click', function () { tr.remove(); total(); dirty = true; }); c7.appendChild(rm); }
-    [c1, c2, el('td'), c4, el('td'), amt, c7].forEach(function (c) { tr.appendChild(c); });
+    [c1, c2, el('td'), c4, el('td'), amt].concat(CANCOSTS ? [el('td')] : []).concat([c7]).forEach(function (c) { tr.appendChild(c); });
     tr._get = function () { return { name: name.value, qty: qty.value, price: price.value, ai: tr._ai }; };
     tr._amount = function () { var p = parseFloat(price.value), q = parseFloat(qty.value) || 1; return isNaN(p) ? 0 : Math.round(p * q * 100) / 100; };
     tr._amt = amt;
@@ -521,6 +560,15 @@
     Array.prototype.forEach.call(charges.children, function (tr) { var a = tr._amount(); ch += a; tr._amt.textContent = money(a); });
     var sub = Math.round((prod + ch) * 100) / 100, rate = parseFloat(document.getElementById('taxRate').value) || 0;
     var tax = Math.round(sub * rate) / 100, tot = Math.round((sub + tax) * 100) / 100;
+    var mt = document.getElementById('qeMargin');
+    if (mt) {
+      var cs = 0, ss = 0, n = 0, all = 0;
+      Array.prototype.forEach.call(lines.children, function (tr) { if (!tr._margin) { return; } all++; var r = tr._margin(); if (r) { cs += r.cost; ss += r.sales; n++; } });
+      if (n && ss > 0) { var mm = Math.round((ss - cs) / ss * 1000) / 10; mt.hidden = false;
+        mt.innerHTML = ''; var b = el('b'); b.textContent = 'Margin on this quotation: ' + mm + '% \u00b7 ' + money(ss - cs); b.style.color = (MINM !== null && mm < MINM) ? '#B42318' : '#067647';
+        mt.appendChild(b); var sm = el('span'); sm.textContent = ' (lines with a cost: ' + n + ' of ' + all + ')'; mt.appendChild(sm);
+      } else { mt.hidden = true; }
+    }
     var t = document.getElementById('qeTot'); t.innerHTML = '';
     [['Products', prod], ['Charges', ch], [(document.getElementById('taxName').value || 'Tax') + ' ' + rate + '%', tax], ['Total', tot]].forEach(function (r, i) {
       var k = el('span', { 'class': 'k' + (i === 3 ? ' g' : '') }); k.textContent = r[0];
