@@ -945,7 +945,7 @@ def _upsert_state(cur, tenant_id, by, **cols):
 def log(cur, tenant_id, kind, by, channel=None, outcome=None, subject=None, body=None, follow_up_on=None, ok=True):
     cur.execute("""INSERT INTO am_activity (tenant_id, kind, channel, outcome, subject, body, follow_up_on, by_admin, ok)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                (tenant_id, kind, channel, outcome, subject, body, follow_up_on, by, ok))
+                (tenant_id, kind, channel, outcome, subject, data_crypto.enc(body), follow_up_on, by, ok))
     if follow_up_on:
         _upsert_state(cur, tenant_id, by, next_follow_up=follow_up_on)
 
@@ -966,14 +966,19 @@ def timeline(tenant_id: int, phone: str) -> list:
     conn, cur = _db()
     try:
         cur.execute("""SELECT * FROM am_activity WHERE tenant_id=%s ORDER BY created_at DESC LIMIT 300""", (tenant_id,))
+        logged_notes = set()
         for r in cur.fetchall() or []:
+            r["body"] = data_crypto.dec(r.get("body"))   # encrypted at rest (10 Nov 2026)
+            if r["kind"] == "note":
+                logged_notes.add((r["body"], r["created_at"]))
             items.append({"at": r["created_at"], "src": "log", **r})
+        # Notes already in our log are not shown twice (matched here: the log's words are encrypted)
         cur.execute("""SELECT created_at, author_label, note, follow_up_on FROM platform_account_notes
-                        WHERE tenant_id=%s AND author_key IS NOT NULL AND NOT EXISTS (
-                              SELECT 1 FROM am_activity a WHERE a.tenant_id=%s AND a.kind='note'
-                                AND a.body = platform_account_notes.note AND a.created_at = platform_account_notes.created_at)
-                        ORDER BY created_at DESC LIMIT 100""", (tenant_id, tenant_id))
+                        WHERE tenant_id=%s AND author_key IS NOT NULL
+                        ORDER BY created_at DESC LIMIT 100""", (tenant_id,))
         for r in cur.fetchall() or []:
+            if (r["note"], r["created_at"]) in logged_notes:
+                continue
             items.append({"at": r["created_at"], "src": "log", "kind": "note", "body": r["note"],
                           "by_admin": r["author_label"], "follow_up_on": r["follow_up_on"], "ok": True})
         if pid and len(d) >= 8:

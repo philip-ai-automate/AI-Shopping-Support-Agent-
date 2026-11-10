@@ -32682,7 +32682,7 @@ def ai_correction_create():
             INSERT INTO ai_corrections
                 (tenant_id, doc_id, channel, conv_key, source_ref, question, wrong_answer, created_by, created_label)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (tenant_id, doc_id, channel, conv_key, source_ref, question, wrong,
+        """, (tenant_id, doc_id, channel, conv_key, source_ref, data_crypto.enc(question), data_crypto.enc(wrong),
               actor["audit_username"], actor["display_name"]))
         conn.commit()
     except Exception as e:
@@ -32694,7 +32694,7 @@ def ai_correction_create():
 
     insert_audit_log(
         admin_username=actor["audit_username"], action="ai_correction_created",
-        tenant_id=tenant_id, details={"entry_id": doc_id, "question": question, "channel": channel},
+        tenant_id=tenant_id, details={"entry_id": doc_id, "channel": channel},   # buyer's words not copied here
     )
     _kick_reembed()
     flash("Correction saved. The AI will use it from the next question onwards.", "success")

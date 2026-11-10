@@ -44,6 +44,10 @@ TABLES = [
     ("web_chat_alert_queue", "id", "preview"),
     ("chat_alerts", "id", "customer_label"),
     ("chat_alerts", "id", "preview"),
+    # Account Manager log + "Fix this answer" (10 Nov 2026)
+    ("am_activity", "id", "body"),
+    ("ai_corrections", "id", "question"),
+    ("ai_corrections", "id", "wrong_answer"),
 ]
 
 

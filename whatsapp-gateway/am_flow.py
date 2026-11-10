@@ -62,7 +62,7 @@ def _state(cur, tid, **cols):
 
 def _activity(cur, tid, body, follow_up_on=None):
     cur.execute("""INSERT INTO am_activity (tenant_id, kind, channel, body, follow_up_on, by_admin, ok)
-                   VALUES (%s,'note','whatsapp',%s,%s,'WhatsApp button',TRUE)""", (tid, body, follow_up_on))
+                   VALUES (%s,'note','whatsapp',%s,%s,'WhatsApp button',TRUE)""", (tid, _enc(body), follow_up_on))
 
 
 async def _send(tenant_id, phone_number_id, token, to, payload, logged):
