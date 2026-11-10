@@ -51,10 +51,13 @@
   .sp-kpi.value  .sp-kpi-icon { background:rgba(124,58,237,.12) }
   .sp-kpi.won    .sp-kpi-icon { background:rgba(21,128,61,.12) }
   /* colour per card (2026-11-10): easy to tell apart at a glance */
-  .sp-kpi.active { background:#EFF6FF; border-color:#BFDBFE } .sp-kpi.active .sp-kpi-val { color:#1D4ED8 } .sp-kpi.active .sp-kpi-label { color:#1E40AF }
-  .sp-kpi.value  { background:#F5F3FF; border-color:#DDD6FE } .sp-kpi.value .sp-kpi-val { color:#6D28D9 } .sp-kpi.value .sp-kpi-label { color:#5B21B6 }
-  .sp-kpi.won    { background:#F0FDF4; border-color:#BBF7D0 } .sp-kpi.won .sp-kpi-label { color:#166534 }
-  .sp-kpi.active .sp-kpi-icon, .sp-kpi.value .sp-kpi-icon, .sp-kpi.won .sp-kpi-icon { background:#fff }
+  .sp-kpi.active { background:#2563EB; border-color:#2563EB }
+  .sp-kpi.value  { background:#7C3AED; border-color:#7C3AED }
+  .sp-kpi.won    { background:#16A34A; border-color:#16A34A }
+  .sp-kpi.active .sp-kpi-val, .sp-kpi.value .sp-kpi-val, .sp-kpi.won .sp-kpi-val { color:#fff !important }
+  .sp-kpi.active .sp-kpi-label, .sp-kpi.value .sp-kpi-label, .sp-kpi.won .sp-kpi-label { color:rgba(255,255,255,.88) }
+  .sp-kpi.active .sp-kpi-icon, .sp-kpi.value .sp-kpi-icon, .sp-kpi.won .sp-kpi-icon { background:rgba(255,255,255,.18) }
+  .sp-kpi.active .sp-kpi-icon svg, .sp-kpi.value .sp-kpi-icon svg, .sp-kpi.won .sp-kpi-icon svg { stroke:#fff }
   .sp-kpi-val { font-size:26px; font-weight:800; letter-spacing:-.5px; line-height:1 }
   .sp-kpi-label { font-size:12.5px; color:var(--muted); margin-top:4px; font-weight:500 }
 
@@ -73,9 +76,11 @@
   /* each stage in its own colour (2026-11-10); the picked one gets an outline */
   .stage-chip { background:var(--chip-bg, #f8fafc); box-shadow:inset 0 0 0 1px var(--chip-bd, #e2e8f0) }
   .stage-chip:hover { text-decoration:none; filter:brightness(.97) }
-  .stage-chip.active { background:var(--chip-bg, rgba(3,12,24,.05)); box-shadow:inset 0 0 0 2px var(--chip-fg, #0B1D40) }
   .stage-chip .n { color:var(--chip-fg, var(--ink)) !important }
   .stage-chip .lbl { color:var(--chip-fg, var(--muted)) !important; opacity:.85 }
+  .stage-chip.active { background:#0B1D40; box-shadow:none }
+  .stage-chip.active .n, .stage-chip.active .lbl { color:#fff !important; opacity:1 }
+  .stage-chip.active .dot { background:#fff }
   .stage-chip .dot { width:8px; height:8px; border-radius:50%; background:var(--chip-fg, var(--ink)); flex-shrink:0 }
   .stage-chip .n { font-size:15px; font-weight:800; letter-spacing:-.3px; color:var(--ink); line-height:1.1 }
   .stage-chip .lbl { font-size:10.5px; font-weight:700; color:var(--muted); text-transform:uppercase;
