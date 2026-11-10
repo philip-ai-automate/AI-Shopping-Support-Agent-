@@ -26,6 +26,7 @@
       <button type="button" class="qt-tab" role="tab" id="qs-tab-website" aria-controls="qs-website" data-tab="website">Website</button>
       <button type="button" class="qt-tab" role="tab" id="qs-tab-online-quotations" aria-controls="qs-online-quotations" data-tab="online-quotations">Online quotations</button>
       <button type="button" class="qt-tab" role="tab" id="qs-tab-follow-ups" aria-controls="qs-follow-ups" data-tab="follow-ups">Follow-ups</button>
+      <button type="button" class="qt-tab" role="tab" id="qs-tab-approvals" aria-controls="qs-approvals" data-tab="approvals">Approvals</button>
     </div>
     <fieldset {% if not can_edit %}disabled{% endif %} style="border:0;padding:0;margin:0;display:grid;gap:14px">
     <div class="qs-panel" role="tabpanel" id="qs-general" aria-labelledby="qs-tab-general" data-panel="general">
@@ -124,6 +125,37 @@
         When "before a quote runs out" is off, the salesperson still gets an email that many days before. The day after a quote runs out, they're asked to extend it or close it as Lost.
         <a href="{{ url_for('portal.sales_pipeline_settings') }}#followups">Edit in Pipeline Settings →</a>
         {% if not qfu_can_edit %}<br>Only people who can edit Pipeline Settings can change these two rules.{% endif %}</div>
+    </div>
+    </div>
+    <div class="qs-panel" role="tabpanel" id="qs-approvals" aria-labelledby="qs-tab-approvals" data-panel="approvals">
+    <!-- Approvals (2026-11-10): every rule off until the business ticks it. -->
+    <div class="qt-card" id="approvals">
+      <h2>When does a quotation need a manager's OK?</h2>
+      <div class="qt-small">If any ticked rule applies, the salesperson presses Ask for approval instead of Send. Nothing is ticked until you choose.</div>
+      <label style="display:flex;gap:10px;align-items:flex-start;font-size:13.5px;font-weight:400">
+        <input type="checkbox" name="appr_amount_on" value="1" {% if s.appr_amount_on %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:2px 0 0">
+        <span style="display:grid;gap:6px"><b>Total is more than</b>
+          <input type="number" name="appr_amount" min="0" step="any" value="{{ '%g'|format(s.appr_amount) if s.appr_amount is not none else '' }}" style="width:140px" aria-label="Amount"></span></label>
+      <label style="display:flex;gap:10px;align-items:flex-start;font-size:13.5px;font-weight:400">
+        <input type="checkbox" name="appr_margin" value="1" {% if s.appr_margin %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:2px 0 0">
+        <span><b>A price is below your minimum margin{% if s.min_margin is not none %} ({{ '%g'|format(s.min_margin) }}%){% endif %}</b><br>
+          <span class="qt-small">Set in Prices &amp; margins{% if s.min_margin is none %} (no minimum set yet){% endif %}. With this ticked, salespeople ask for approval instead of being stopped.</span></span></label>
+      <label style="display:flex;gap:10px;align-items:flex-start;font-size:13.5px;font-weight:400">
+        <input type="checkbox" name="appr_disc_on" value="1" {% if s.appr_disc_on %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:2px 0 0">
+        <span style="display:grid;gap:6px"><b>A line is more than this % below its list or volume price</b>
+          <span style="display:flex;gap:6px;align-items:center"><input type="number" name="appr_disc" min="0" max="100" step="any" value="{{ '%g'|format(s.appr_disc) if s.appr_disc is not none else '' }}" style="width:90px" aria-label="Discount percent"> %</span></span></label>
+      <label style="display:flex;gap:10px;align-items:flex-start;font-size:13.5px;font-weight:400">
+        <input type="checkbox" name="appr_new_buyer" value="1" {% if s.appr_new_buyer %}checked{% endif %} style="width:18px;height:18px;min-height:0;margin:2px 0 0">
+        <span><b>First quotation to a new buyer</b><br><span class="qt-small">A buyer with no won quotation yet.</span></span></label>
+    </div>
+    <div class="qt-card">
+      <h2>Who approves</h2>
+      <ol style="margin:0;padding-left:20px;font-size:13.5px;line-height:1.7">
+        <li>The salesperson's line manager (set in Settings › Team), if their role can approve.</li>
+        <li>Otherwise, anyone whose role has <b>Quotations: approve quotations</b>.</li>
+        <li>The account owner always can.</li>
+      </ol>
+      <div class="qt-small">People who can approve never need approval for their own quotations. They get an email when a quotation waits for them.</div>
     </div>
     </div>
     </fieldset>

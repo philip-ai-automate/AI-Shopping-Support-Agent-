@@ -422,6 +422,8 @@ PLAN_FEATURE_CATALOG = {
                                    "(staff see only the people who report to them)"),
         ("quotes.costs", "Quotations: see cost prices and margins, and set volume prices and costs in Prices & margins "
                          "(AI Sales Agent for B2B)"),
+        ("quotes.approve", "Quotations: approve quotations that need a manager's OK, and send without asking "
+                           "(AI Sales Agent for B2B)"),
     ],
     # Lead Finder (pilot 2026-10-19, lead_finder_routes.py): find business
     # decision-makers through Prospeo and add them to Leads. Platform business
@@ -683,6 +685,7 @@ ROLE_FORM_GRID = {
          "other": ["crm.columns_own"]},
         {"label": "Team performance", "view": "leads.team_performance"},
         {"label": "Quotations: cost prices and margins", "other": ["quotes.costs"]},
+        {"label": "Quotations: approve quotations", "other": ["quotes.approve"]},
     ],
     "Lead Finder": [
         {"label": "Find New Leads", "view": "leadfinder.search", "create": "leadfinder.add"},
@@ -826,7 +829,7 @@ PLAN_ONLY_FEATURE_KEYS = {
     # contacts/companies and Inbox chats (2026-10-08) a team member sees.
     "leads.see_all", "crm.contacts_see_all", "inbox.see_all",
     # Prices & margins (2026-11-10): who sees costs; read in code, page gated by it.
-    "quotes.costs",
+    "quotes.costs", "quotes.approve",
     # Saved Emails: which saved emails a team member sees (2026-10-08).
     "campaigns_email.saved_see_all",
     # Read when an email campaign sends (2026-10-08), not a page of its own.
@@ -43456,12 +43459,26 @@ def _inject_quotes_menu():
             except Exception as e:
                 print(f"⚠️ quotes menu counts: {e}")
         return g._quotes_menu_counts
+    def quotes_to_approve():
+        """Quotations waiting for the current person's approval (2026-11-10)."""
+        if "_quotes_to_approve" not in g:
+            g._quotes_to_approve = 0
+            try:
+                if quotes_on() and _can_approve():
+                    import quote_approval as _qa
+                    cust = _get_customer(_customer_id())
+                    g._quotes_to_approve = _qa.waiting_count(int(cust["tenant_id"]), _current_actor(cust)["key"])
+            except Exception as e:
+                print(f"⚠️ quotes to approve: {e}")
+        return g._quotes_to_approve
+
     def quotes_can_costs():
         try:
             return bool(quotes_on()) and _can_costs()
         except Exception:
             return False
-    return {"quotes_on": quotes_on, "quotes_menu_counts": quotes_menu_counts, "quotes_can_costs": quotes_can_costs}
+    return {"quotes_on": quotes_on, "quotes_menu_counts": quotes_menu_counts, "quotes_can_costs": quotes_can_costs,
+            "quotes_to_approve": quotes_to_approve}
 
 
 def _quotes_guard():
@@ -43544,6 +43561,11 @@ def _quote_products_json(products: dict, breaks: dict = None) -> list:
             for p in products.values()]
 
 
+def _can_approve() -> bool:
+    """Approvals (2026-11-10): the owner, or a role with "quotes.approve"."""
+    return _team_member_has_permission("quotes.approve")
+
+
 def _can_costs() -> bool:
     """Prices & margins (2026-11-10): the owner, or a role with "quotes.costs"."""
     return _team_member_has_permission("quotes.costs")
@@ -43568,7 +43590,11 @@ def quotes_requests():
     for r in rows:
         r["clock"] = _qr.time_left(r, now)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    return render_template("portal/quotes_requests.html", rows=rows, status=status, q=q,
+    to_approve = []
+    if _can_approve():
+        import quote_approval as _qa
+        to_approve = _qa.waiting_list(tenant_id, _current_actor(customer)["key"])
+    return render_template("portal/quotes_requests.html", rows=rows, status=status, q=q, to_approve=to_approve,
                            counts=_qr.counts(tenant_id, scope), k=_qr.kpis(tenant_id, month_start, scope),
                            s=_qr.settings(tenant_id), qr=_qr, see_all=scope is None,
                            target_words=dict(_qr.TARGETS), dt=_quote_dt(tz))
@@ -44129,7 +44155,7 @@ def quotes_settings():
     if request.method == "POST":
         # Tabs (2026-11-10): back on the tab the person saved from.
         _tab = request.form.get("tab") if request.form.get("tab") in (
-            "general", "response-time", "website", "online-quotations", "follow-ups") else None
+            "general", "response-time", "website", "online-quotations", "follow-ups", "approvals") else None
         back = redirect(url_for("portal.quotes_settings", _anchor=_tab))
         if not can_edit:
             flash("Only people who can see all leads can change Quotation settings.", "warning")
@@ -44151,7 +44177,11 @@ def quotes_settings():
                                       "online_open_alert": f.get("online_open_alert") == "1",
                                       "ai_draft": f.get("ai_draft") == "1",
                                       # set on Prices & margins, kept as it is here
-                                      "min_margin": _qr.settings(tenant_id).get("min_margin")},
+                                      "min_margin": _qr.settings(tenant_id).get("min_margin"),
+                                      "appr_amount_on": f.get("appr_amount_on") == "1", "appr_amount": f.get("appr_amount"),
+                                      "appr_margin": f.get("appr_margin") == "1",
+                                      "appr_disc_on": f.get("appr_disc_on") == "1", "appr_disc": f.get("appr_disc"),
+                                      "appr_new_buyer": f.get("appr_new_buyer") == "1"},
                           _current_actor(customer)["label"])
         # The quote rules are Pipeline Settings rules: same permission as there.
         if _team_member_has_permission("crm.pipeline_settings_edit"):
@@ -44392,10 +44422,40 @@ def quotes_quotation(qid: int):
             ok, msg = _qq.delete_draft(tenant_id, qid, _current_actor(customer))
             flash(msg, "success" if ok else "warning")
             return redirect(url_for("portal.quotes_request_detail", request_id=req["id"]))
+        if action in ("appr_ask", "appr_withdraw", "appr_approve", "appr_back"):
+            import quote_approval as _qa
+            actor = _current_actor(customer)
+            if action == "appr_ask":
+                # save what is on screen first, then ask about exactly that
+                try:
+                    _raw = _json.loads(request.form.get("data_json") or "{}")
+                except (TypeError, ValueError):
+                    _raw = {}
+                if _raw and (_qa.state(q).get("status") != "asked"):
+                    _ok, _m = _qq.save(tenant_id, qid, _raw, actor)
+                    if not _ok:
+                        flash(_m, "warning")
+                        return redirect(url_for("portal.quotes_quotation", qid=qid))
+                    q = _qq.get(tenant_id, qid)
+                ok, msg = _qa.ask(tenant_id, q, req, actor, member_id=actor.get("team_member_id"),
+                                  portal_url=__import__("auto_followups").PORTAL)
+            elif action == "appr_withdraw":
+                ok, msg = _qa.withdraw(tenant_id, q, req, actor)
+            else:
+                a = _qa.state(q)
+                if not (_can_approve() and (_qa.is_approver_key(tenant_id, actor["key"], a) or not actor.get("is_team"))):
+                    ok, msg = False, "Only the person asked (or the account owner) can approve this quotation."
+                else:
+                    ok, msg = _qa.decide(tenant_id, q, req, actor, action == "appr_approve", request.form.get("note") or "")
+            flash(msg, "success" if ok else "warning")
+            return redirect(url_for("portal.quotes_quotation", qid=qid))
         if action == "ai_reset":
             import quote_ai_draft as _qad
             if _qad.start_again(tenant_id, qid):
                 flash("Started again without the AI Agent.", "success")
+            return redirect(url_for("portal.quotes_quotation", qid=qid))
+        if ((q.get("data") or {}).get("approval") or {}).get("status") == "asked":
+            flash("This quotation is waiting for approval. Withdraw the request to change it.", "warning")
             return redirect(url_for("portal.quotes_quotation", qid=qid))
         try:
             raw = _json.loads(request.form.get("data_json") or "{}")
@@ -44409,6 +44469,10 @@ def quotes_quotation(qid: int):
             flash("Fix the quantities for the buyer's Shopify rules first: press Fix quantities.", "warning")
             return redirect(url_for("portal.quotes_quotation", qid=qid))
         if action == "send":
+            import quote_approval as _qa
+            if _qa.blocks_send(tenant_id, _qq.get(tenant_id, qid), req, _can_approve()):
+                flash("This quotation needs approval before it can be sent.", "warning")
+                return redirect(url_for("portal.quotes_quotation", qid=qid))
             return redirect(url_for("portal.quotes_quotation_send", qid=qid))
         if action == "shopify_refresh":
             # Shopify Part 5: re-read the trade customer's own prices.
@@ -44430,6 +44494,11 @@ def quotes_quotation(qid: int):
                            checks=_qq.checks(tenant_id, q, req, can_costs=can_costs),
                            products_json=_quote_products_json(products, _qp.breaks_only(_book)),
                            can_costs=can_costs, costs=costs, low_lines=low,
+                           appr=__import__("quote_approval").state(q),
+                           appr_why=__import__("quote_approval").reasons(tenant_id, q, req) if q["status"] == "draft" else [],
+                           can_approve=_can_approve(), me_key=_current_actor(customer)["key"],
+                           appr_to=[w["label"] for w in __import__("quote_approval").approvers(
+                               tenant_id, _current_actor(customer).get("team_member_id"))] if q["status"] == "draft" else [],
                            min_margin=_qr.settings(tenant_id).get("min_margin"),
                            versions=_qq.for_request(tenant_id, req["id"]), cur=q["currency"] or _biz_currency(tenant_id),
                            changes=_qq.changes_from_last(tenant_id, q),
@@ -44573,6 +44642,10 @@ def quotes_quotation_send(qid: int):
         flash("This quotation has already been sent.", "warning")
         return redirect(url_for("portal.quotes_request_detail", request_id=req["id"]))
     chk = _qq.checks(tenant_id, q, req, can_costs=_can_costs())
+    import quote_approval as _qa
+    if _qa.blocks_send(tenant_id, q, req, _can_approve()):
+        flash("This quotation needs approval before it can be sent.", "warning")
+        return redirect(url_for("portal.quotes_quotation", qid=qid))
     if request.method == "POST":
         try:
             import quote_online as _qon

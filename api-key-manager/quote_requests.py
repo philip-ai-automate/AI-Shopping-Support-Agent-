@@ -77,6 +77,11 @@ DEFAULTS = {
     "ai_draft": True,
     # Prices & margins (2026-11-10): minimum margin % for quotations; None = no check.
     "min_margin": None,
+    # Approvals (2026-11-10): every rule off until the business ticks it.
+    "appr_amount_on": False, "appr_amount": None,
+    "appr_margin": False,
+    "appr_disc_on": False, "appr_disc": None,
+    "appr_new_buyer": False,
 }
 WEBSITE_PRICES = [("list_estimate", "List prices and an estimate"), ("estimate", "An estimate only"),
                   ("none", "No prices (\"Price on your quotation\")")]
@@ -211,8 +216,16 @@ def _clean_settings(raw: dict) -> dict:
             s["min_margin"] = m if m is None or 0 <= m < 100 else s["min_margin"]
         except (TypeError, ValueError):
             pass
+    for k, hi in (("appr_amount", 1e12), ("appr_disc", 100)):
+        if k in raw:
+            try:
+                v = raw[k]
+                n = None if v in (None, "") else float(str(v).replace(",", "").replace("%", "").strip())
+                s[k] = n if n is None or 0 <= n <= hi else s[k]
+            except (TypeError, ValueError):
+                pass
     for k in ("alert_new", "alert_due", "alert_manager", "website_on", "online_link", "online_accept", "online_open_alert",
-              "ai_draft"):
+              "ai_draft", "appr_amount_on", "appr_margin", "appr_disc_on", "appr_new_buyer"):
         if k in raw:
             v = raw[k]
             s[k] = v is True or v in ("1", "true", "on")

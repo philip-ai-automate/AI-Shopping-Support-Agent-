@@ -1053,7 +1053,7 @@
     <!-- Quotations (2026-10-30, Intelligent RFQ): its own menu after Leads —
          where a sale goes next. B2B plan + PhiXtra only, like AI Lead Qualification. -->
     {% if quotes_on() and staff_can_open('portal.quotes_requests') %}
-    {% set _quotes_group = request.endpoint in ('portal.quotes_requests', 'portal.quotes_request_new', 'portal.quotes_request_detail', 'portal.quotes_request_edit', 'portal.quotes_settings', 'portal.quotes_design', 'portal.quotes_sent', 'portal.quotes_won', 'portal.quotes_lost', 'portal.quotes_overview', 'portal.quotes_quotation', 'portal.quotes_quotation_send') %}
+    {% set _quotes_group = request.endpoint in ('portal.quotes_prices', 'portal.quotes_requests', 'portal.quotes_request_new', 'portal.quotes_request_detail', 'portal.quotes_request_edit', 'portal.quotes_settings', 'portal.quotes_design', 'portal.quotes_sent', 'portal.quotes_won', 'portal.quotes_lost', 'portal.quotes_overview', 'portal.quotes_quotation', 'portal.quotes_quotation_send') %}
     {% set _qmc = quotes_menu_counts() %}
     {# One request's pages (request, edit, quotation, send) sit under the menu
        item for the request's status: Quote sent → Quote Sent, Won → Quote Won,
@@ -1079,6 +1079,7 @@
            class="{% if (request.endpoint in ('portal.quotes_requests', 'portal.quotes_request_new') and request.args.get('status') != 'lost') or _qview == 'requests' %}active{% endif %}">
           Requests
           {% if _qmc.get('to_quote') %}<span class="sb-count plain" title="{{ _qmc.to_quote }} waiting to be quoted">{{ _qmc.to_quote }}</span>{% endif %}
+          {% set _qta = quotes_to_approve() %}{% if _qta %}<span class="sb-count" title="{{ _qta }} waiting for your approval" aria-label="{{ _qta }} waiting for your approval">{{ _qta }}</span>{% endif %}
         </a>
         <!-- Quote Sent / Quote Won (2026-11-05): the Requests list already filtered. -->
         <a href="{{ url_for('portal.quotes_sent') }}"

@@ -187,6 +187,7 @@ def start(tenant_id: int, req: dict, actor: dict, valid_until: date = None) -> i
             # The AI Agent's draft belongs to the version it made (review 10 Nov 2026):
             # a new version starts without its message, marks or "start again" copy.
             data.pop("ai_draft", None)
+            data.pop("approval", None)   # a new version needs its own approval
             for ln in data.get("lines") or []:
                 for k in ("ai", "ai_suggest", "ai_suggest_why"):
                     ln.pop(k, None)
@@ -345,6 +346,9 @@ def save(tenant_id: int, qid: int, raw: dict, actor: dict) -> tuple:
     d["prepared_by"] = q["data"].get("prepared_by") or {}
     if q["data"].get("ai_draft"):
         d["ai_draft"] = q["data"]["ai_draft"]
+    if q["data"].get("approval"):
+        # kept: its fingerprint shows whether the approval still covers the quotation
+        d["approval"] = q["data"]["approval"]
     keep_shopify(q["data"], d)
     _fill_new_shopify_lines(tenant_id, q, d)
     doc = to_doc(tenant_id, {**q, "data": d}, qd.get(tenant_id))
@@ -683,8 +687,11 @@ def checks(tenant_id: int, q: dict, req: dict, can_costs: bool = False) -> list:
     except Exception as e:
         print("⚠️ margin check:", e)
         low = []
+    appr_margin = bool(qr.settings(tenant_id).get("appr_margin")) if low else False
     for name, m, mn in low:
-        if can_costs:
+        if not can_costs and appr_margin:
+            out.append(("warn", f"{name}: price is below your minimum margin, so this quotation needs approval"))
+        elif can_costs:
             out.append(("warn", f"{name} is below your minimum margin of {'%g' % mn}% ({'%g' % m}%)"))
         else:
             out.append(("bad", f"{name}: price is below your minimum margin. Raise it, or ask someone who can see costs to send it"))

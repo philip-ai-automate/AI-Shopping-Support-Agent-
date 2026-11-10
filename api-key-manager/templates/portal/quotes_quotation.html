@@ -203,11 +203,48 @@
           {% if warn %}<details {% if not bad %}open{% endif %}><summary class="qt-small" style="cursor:pointer">{{ warn|length }} thing{{ 's' if warn|length != 1 }} worth a look</summary>
             <div class="chk" style="margin-top:6px">{% for level, text in warn %}<div><span class="warn">!</span><span>{{ text }}{% if text.startswith('Fix the quantities') %}<br><button class="qt-btn sm dark" data-act="save" style="margin-top:6px">Fix quantities</button>{% endif %}</span></div>{% endfor %}</div></details>{% endif %}
           <div class="qt-small">Checks update when you save.</div>
+          {% set _ast = appr.get('status') %}
+          {% set _approver_here = can_approve and _ast == 'asked' and (me_key in (appr.approvers or [])|map(attribute='key')|list or me_key.startswith('owner:')) %}
+          {% set _needs = appr_why and not can_approve and _ast != 'approved' %}
+          {% if _ast == 'asked' %}
+            {% if _approver_here %}
+            <div class="qe-appr" style="border:1.5px solid var(--navy);border-radius:10px;padding:12px;display:grid;gap:10px">
+              <b style="color:var(--navy)">{{ appr.asked_by }} asks for your approval</b>
+              <span class="qt-small">Reason: {{ appr.reasons|join('; ') }}</span>
+              <label class="qe-lab" style="display:grid;gap:5px">Note (needed to send back) <textarea name="note" rows="2" maxlength="500"></textarea></label>
+              <div class="qt-btns"><button class="qt-btn ok" data-act="appr_approve">Approve</button><button class="qt-btn" data-act="appr_back" style="border-color:#B54708;color:#B54708">Send back</button></div>
+            </div>
+            {% else %}
+            <div class="qe-appr" style="background:#F2F4F7;border-radius:10px;padding:12px;font-size:13.5px"><b>Waiting for approval from {{ (appr.approvers or [])|map(attribute='label')|join(', ') }}</b>
+              <span class="qt-small" style="display:block">Asked {{ (appr.asked_at or '')[11:16] }} · {{ appr.reasons|join('; ') }}. The draft is locked while waiting.</span></div>
+            <button class="qt-btn" data-act="appr_withdraw" style="justify-self:start">Withdraw request</button>
+            {% endif %}
+          {% elif _ast == 'approved' %}
+            <div style="background:#ECFDF3;border:1px solid #ABEFC6;color:#054F31;border-radius:10px;padding:12px;font-size:13.5px"><b>✓ Approved by {{ appr.by_label }}</b>
+              <span class="qt-small" style="display:block;color:#054F31">Changing a price, quantity, line or discount removes the approval.</span></div>
+          {% elif _ast == 'sent_back' and _needs %}
+            <div style="background:#FFFAEB;border:1px solid #FEDF89;color:#7A2E0E;border-radius:10px;padding:12px;font-size:13.5px"><b>Sent back by {{ appr.by_label }}</b>
+              <span style="display:block;margin-top:4px">“{{ appr.note }}”</span><span class="qt-small" style="display:block">Make the change, then ask again.</span></div>
+          {% elif _ast == 'changed' and _needs %}
+            <div style="background:#FFFAEB;border:1px solid #FEDF89;color:#7A2E0E;border-radius:10px;padding:12px;font-size:13.5px"><b>Changed after approval</b>
+              <span class="qt-small" style="display:block">{{ appr.by_label }}'s approval no longer counts. Ask again.</span></div>
+          {% endif %}
+          {% if _needs and _ast in (none, '', 'sent_back', 'changed') %}
+            <div style="background:#F5F8FF;border:1px solid #C7D7FE;border-radius:10px;padding:10px 12px;font-size:13px"><b>Needs approval:</b> {{ appr_why|join('; ') }}</div>
+          {% endif %}
           <div style="display:grid;gap:8px">
+            {% if _ast == 'asked' %}
+            {% elif _needs %}
+            <button class="qt-btn dark" data-act="appr_ask" id="sendNext">Ask for approval</button>
+            <span class="qt-small">Goes to {{ appr_to|join(', ') or 'the account owner' }}.</span>
+            {% else %}
             <button class="qt-btn dark" data-act="send" id="sendNext">Next: send…</button>
+            {% endif %}
+            {% if _ast != 'asked' %}
             <div class="qt-btns" style="justify-content:space-between"><button class="qt-btn sm" data-act="save">Save draft</button><button class="qt-btn sm" data-act="preview">Save and preview PDF</button></div>
             <span class="qt-small" id="qeState"></span>
             <button type="button" class="qe-link bad" id="delBtn">Delete draft</button>
+            {% else %}<span id="qeState" hidden></span>{% endif %}
           </div>
           {% else %}
           <div class="chk">{% for level, text in checks %}<div><span class="{{ level }}">{{ '✓' if level == 'ok' else ('✗' if level == 'bad' else '!') }}</span><span>{{ text }}</span></div>{% endfor %}</div>
@@ -239,6 +276,8 @@
   var CUR = {{ cur_sign(cur)|tojson }};
   var PREV = {{ (changes or {})|tojson }};
   // Prices & margins (2026-11-10): costs only reach this page for people allowed to see them.
+  var LOCKED = {{ 'true' if (appr or {}).get('status') == 'asked' else 'false' }};   // waiting for approval
+  if (LOCKED) { DRAFT = false; }
   var CANCOSTS = {{ 'true' if can_costs else 'false' }}, COSTS = {{ (costs or {})|tojson }}, MINM = {{ min_margin|tojson }};
   var LOW = {{ (low_lines or [])|tojson }};
   var NCOL = CANCOSTS ? 8 : 7;
@@ -651,6 +690,16 @@
     sn.classList.add('wait'); sn.title = 'Finish the things listed above first';
     form.addEventListener('input', function () { sn.classList.remove('wait'); sn.title = ''; }, { once: true });
   }
+})();
+</script>
+<script>
+// Approval buttons work even while the draft is locked (2026-11-10).
+(function () {
+  document.querySelectorAll('[data-act^="appr_"]').forEach(function (b) {
+    b.addEventListener('click', function () { document.getElementById('qeAction').value = b.getAttribute('data-act'); });
+  });
+  var n = document.querySelector('.qe-appr textarea[name=note]'); if (n) { n.disabled = false; }
+  var act = document.getElementById('qeAction'); if (act) { act.disabled = false; }   // the lock disables every field
 })();
 </script>
 {% endblock %}

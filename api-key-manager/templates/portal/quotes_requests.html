@@ -12,6 +12,13 @@
     </div>
     <a class="qt-btn dark" href="{{ url_for('portal.quotes_request_new') }}">+ New request</a>
   </div>
+  {% if to_approve %}
+  <div class="qt-card" style="border-color:#0B1D40">
+    <b style="font-size:14px;color:var(--navy)">Waiting for your approval</b>
+    {% for a in to_approve %}<a class="qt-ai" style="display:flex;justify-content:space-between;gap:10px;text-decoration:none;color:inherit" href="{{ url_for('portal.quotes_quotation', qid=a.qid) }}">
+      <span><b style="display:inline">{{ a.number }} · {{ a.buyer }}</b> — {{ a.asked_by }} asks: {{ a.reasons|join('; ') }}</span><span style="font-weight:700;white-space:nowrap">Open →</span></a>{% endfor %}
+  </div>
+  {% endif %}
 
   <div class="qt-kpis">
     <div class="qt-kpi"><span class="qt-kl">Requests this month</span><span class="qt-kv">{{ k.requests or 0 }}</span>
