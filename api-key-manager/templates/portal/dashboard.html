@@ -185,7 +185,7 @@ document.getElementById('scqForm').addEventListener('submit', function(e){
 });
 </script>
 {% endif %}
-{% if setup %}{% include "portal/_setup_checklist.html" %}{% endif %}
+{% if setup %}{% if setup.kind == "whatsapp" %}{% include "portal/_setup_checklist_wa.html" %}{% else %}{% include "portal/_setup_checklist.html" %}{% endif %}{% endif %}
 {% if setup and plan_info.ai_trial_available %}{# the trial is offered inside the Get set up box #}
 {% elif plan_info.ai_trial_available %}
 {# Free AI-off plan, trial not used yet — offer the one-off 2-week AI trial #}

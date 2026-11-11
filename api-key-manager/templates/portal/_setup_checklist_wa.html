@@ -1,0 +1,300 @@
+{# "Get set up" box for WhatsApp sign-ups (12 Nov 2026, approved mock-up
+   https://claude.ai/artifact/1QHkB3gVpqgSb23yyLBb8E). Replaces the "How to"
+   links that opened the How-To Guides in a new tab at sections that didn't
+   exist. One step open at a time; "Show me how" opens a popup on this page
+   with Back / Next through the three steps. Steps come from
+   _wa_setup_checklist(); each ticks itself from real data. #}
+{% set u = setup.wa_usage %}
+{% set s1, s2, s3 = setup.steps[0], setup.steps[1], setup.steps[2] %}
+{% set num = (setup.wa_number if setup.wa_number.startswith('+') else '+' ~ setup.wa_number) if setup.wa_number else '' %}
+<style>
+.sw-card{border:1px solid var(--line);border-radius:18px;background:#fff;margin-bottom:20px;overflow:hidden}
+.sw-top{padding:18px 22px 16px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.sw-top .sw-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.sw-title{font-size:17px;font-weight:800;color:#0B1D40;margin:0}
+.sw-count{font-size:12.5px;color:#5d6b82}
+.sw-bar{height:6px;border-radius:99px;background:#EEF2F7;overflow:hidden}
+.sw-bar span{display:block;height:100%;background:#067647;border-radius:99px}
+.sw-step{border-bottom:1px solid var(--line)}
+.sw-step:last-child{border-bottom:0}
+.sw-h{width:100%;display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:12px;align-items:center;padding:14px 22px;background:none;border:0;text-align:left;cursor:pointer;font:inherit;color:inherit}
+.sw-h:hover{background:#F6F8FB}
+.sw-h:focus-visible,.sw-btn:focus-visible,.sw-how:focus-visible,.swp-x:focus-visible,.swp-nav:focus-visible,.swp-file button:focus-visible{outline:2px solid #2563EB;outline-offset:2px}
+.sw-dot{width:28px;height:28px;border-radius:50%;border:2px solid #E3E8EF;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12.5px;color:#5d6b82;background:#fff}
+.sw-step.current .sw-dot{border-color:#0B1D40;color:#0B1D40}
+.sw-step.done .sw-dot{border-color:#067647;background:#067647;color:#fff}
+.sw-name{display:block;font-weight:750;color:#0B1D40;font-size:14.5px}
+.sw-step.done .sw-name{color:#5d6b82;text-decoration:line-through;text-decoration-color:#a3adbd}
+.sw-sub{display:block;font-size:12px;color:#8a96a8;margin-top:1px}
+.sw-pill{font-size:11px;font-weight:700;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.sw-pill.next{background:#EAF1FF;color:#2563EB}
+.sw-pill.done{background:#E6F6EC;color:#067647}
+.sw-b{padding:0 22px 18px 64px;display:flex;flex-direction:column;gap:12px}
+.sw-b[hidden],.swp-go[hidden]{display:none}
+.sw-b p{margin:0;font-size:13.5px;line-height:1.55;color:#1d2939;max-width:62ch}
+.sw-acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sw-acts form{margin:0}
+.sw-btn{font:inherit;display:inline-flex;align-items:center;min-height:38px;padding:0 15px;border-radius:10px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap;cursor:pointer;border:1px solid #0B1D40;background:#0B1D40;color:#fff}
+.sw-btn.line{background:#fff;color:#0B1D40;border-color:#D5DCE6}
+.sw-btn:hover{text-decoration:none;opacity:.92}
+.sw-how{font:inherit;border:0;background:none;color:#2563EB;font-weight:700;font-size:13px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:8px 6px}
+@media (max-width:560px){.sw-b{padding-left:22px}.sw-h,.sw-top{padding-left:16px;padding-right:16px}}
+
+/* Popup */
+.swp{position:fixed;inset:0;background:rgba(11,29,64,.55);display:flex;align-items:center;justify-content:center;z-index:1200;padding:16px}
+.swp[hidden]{display:none}
+.swp-box{background:#fff;border-radius:20px;max-width:500px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 28px 70px rgba(11,29,64,.35);overflow:hidden}
+.swp-grab{display:none}
+.swp-h{padding:18px 22px 14px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid #E3E8EF}
+.swp-h .sw-row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.swp-k{font-size:11.5px;font-weight:700;color:#5d6b82;letter-spacing:.04em}
+.swp-x{border:0;background:#F2F5F9;color:#1d2939;width:32px;height:32px;border-radius:50%;font-size:15px;cursor:pointer;flex-shrink:0}
+.swp-h h3{margin:0;font-size:18px;color:#0B1D40;line-height:1.3}
+.swp-chips{display:flex;gap:6px;flex-wrap:wrap}
+.swp-chip{font-size:11.5px;font-weight:650;background:#F2F5F9;color:#5d6b82;border-radius:999px;padding:3px 10px}
+.swp-segs{display:flex;gap:4px}
+.swp-segs i{flex:1;height:4px;border-radius:999px;background:#E3E8EF}
+.swp-segs i.on{background:#0B1D40}
+.swp-b{padding:16px 22px 18px;overflow-y:auto;display:flex;flex-direction:column;gap:16px;font-size:13.5px;line-height:1.55;color:#1d2939}
+.swp-b p{margin:0}
+.swp-l{font-size:11.5px;font-weight:700;color:#5d6b82;letter-spacing:.04em;text-transform:uppercase;display:block}
+.swp-ready{display:flex;flex-direction:column;gap:2px}
+.swp-ready label{display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:6px 8px;border-radius:8px}
+.swp-ready label:hover{background:#F6F8FB}
+.swp-ready input{width:16px;height:16px;margin:2px 0 0;accent-color:#067647;flex-shrink:0}
+.swp-ready input:checked + span{color:#8a96a8;text-decoration:line-through}
+.swp-steps{margin:8px 0 0;padding:0;list-style:none;counter-reset:s;display:flex;flex-direction:column}
+.swp-steps li{counter-increment:s;display:grid;grid-template-columns:26px 1fr;gap:12px;position:relative;padding-bottom:14px}
+.swp-steps li:last-child{padding-bottom:0}
+.swp-steps li::before{content:counter(s);width:24px;height:24px;border-radius:50%;background:#EAF1FF;color:#2563EB;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.swp-steps li:not(:last-child)::after{content:"";position:absolute;left:11.5px;top:28px;bottom:2px;width:1.5px;background:#E3E8EF}
+.swp-where{display:block;font-size:11.5px;font-weight:700;color:#8a96a8}
+.swp-hint{background:#FFF7E6;color:#8A4B00;border-radius:10px;padding:9px 12px;font-size:12.5px}
+.swp-file{display:grid;grid-template-columns:40px 1fr;gap:12px;align-items:center;border:1px solid #C5D7FB;background:#EAF1FF;border-radius:12px;padding:12px 14px}
+.swp-file .ic{width:40px;height:40px;border-radius:9px;background:#fff;display:flex;align-items:center;justify-content:center;color:#067647;font-weight:800;font-size:12px;border:1px solid #E3E8EF}
+.swp-file b{display:block;color:#0B1D40}
+.swp-file small{display:block;color:#5d6b82;font-size:12px}
+.swp-file .fa{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap}
+.swp-file a{border:1px solid #2563EB;background:#fff;color:#2563EB;border-radius:9px;padding:7px 12px;font-size:12.5px;font-weight:700;text-decoration:none}
+.swp-file a.solid{background:#2563EB;color:#fff}
+.swp-switch{display:flex;flex-direction:column;gap:6px}
+.swp-switch div{display:flex;gap:6px;flex-wrap:wrap}
+.swp-switch button{font:inherit;border:1px solid #E3E8EF;background:#fff;color:#1d2939;border-radius:999px;padding:5px 12px;font-size:12px;font-weight:650;cursor:pointer}
+.swp-switch button[aria-pressed="true"]{background:#0B1D40;color:#fff;border-color:#0B1D40}
+.swp-f{display:flex;justify-content:space-between;gap:8px;padding:12px 22px 18px;border-top:1px solid #E3E8EF;flex-wrap:wrap;align-items:center}
+.swp-f .go{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+.swp-f form{margin:0}
+.swp-nav{font:inherit;border:0;background:none;color:#5d6b82;font-weight:700;font-size:12.5px;cursor:pointer;padding:8px 6px}
+.swp-nav[disabled]{opacity:.35;cursor:default}
+.swp-pg[hidden],.swp-v[hidden]{display:none}
+@media (max-width:560px){
+  .swp{align-items:flex-end;padding:0}
+  .swp-box{border-radius:20px 20px 0 0;max-height:94vh;padding-bottom:env(safe-area-inset-bottom,0px)}
+  .swp-grab{display:block;width:38px;height:4px;border-radius:999px;background:#E3E8EF;margin:8px auto 0}
+  .swp-f .go{width:100%}.swp-go:not([hidden]),.swp-go .sw-acts{display:flex;width:100%;gap:8px}.swp-go .sw-btn{flex:1;justify-content:center}.swp-f .go .sw-btn,.swp-f .go form{flex:1}.swp-f .go form .sw-btn{width:100%;justify-content:center}.swp-f .go .sw-btn{justify-content:center}
+}
+</style>
+
+{% set how_icon %}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2-3 4"/><circle cx="12" cy="17" r=".5"/></svg>{% endset %}
+{% set wa_sub = {'app': 'Keep your WhatsApp Business app · about 5 min', 'normal': 'Move to WhatsApp Business first · about 10 min', 'none': 'New number, used only in PhiXtra · about 5 min'}.get(u, 'About 5 minutes') %}
+{% set wa_text = {'app': "You keep your WhatsApp Business app and your chats. Customers' messages also show in PhiXtra, where your team and AI Agent can answer.",
+                  'normal': 'First switch this number to the free WhatsApp Business app (your chats come with you), then connect it here and keep your app.',
+                  'none': 'Customers message this number and your team and AI Agent answer in PhiXtra. Have a phone that can get one text or call.'}.get(u, s1.text) %}
+
+<div class="sw-card" id="getSetUp">
+  <div class="sw-top">
+    <div class="sw-row"><h2 class="sw-title">Get set up</h2>
+      <span class="sw-count">{{ setup.done }} of {{ setup.total }} done{% if setup.minutes_left %} · about {{ setup.minutes_left }} minutes left{% endif %}</span></div>
+    <div class="sw-bar" role="progressbar" aria-valuemin="0" aria-valuemax="{{ setup.total }}" aria-valuenow="{{ setup.done }}"><span style="width:{{ (100 * setup.done / setup.total)|round|int }}%"></span></div>
+  </div>
+
+  {% for st in setup.steps %}
+  {% set i = loop.index0 %}{% set is_next = (i == setup.next_i) %}
+  <div class="sw-step{% if st.done %} done{% endif %}{% if is_next %} current{% endif %}">
+    <button class="sw-h" type="button" aria-expanded="{{ 'true' if is_next else 'false' }}" aria-controls="swB{{ i }}">
+      <span class="sw-dot">{% if st.done %}✓{% else %}{{ st.n }}{% endif %}</span>
+      <span><span class="sw-name">{% if st.key == 'whatsapp' and num and not st.done %}Connect {{ num|phone_display }}{% else %}{{ st.title }}{% endif %}</span>
+        <span class="sw-sub">{% if st.key == 'whatsapp' %}{{ 'Connected' if st.done else wa_sub }}{% elif st.key == 'products' %}{{ st.text if st.done else 'Upload a list or add them one by one · about 5 min' }}{% else %}14 days free · no card needed{% endif %}</span></span>
+      {% if st.done %}<span class="sw-pill done">Done</span>{% elif is_next %}<span class="sw-pill next">Next</span>{% else %}<span></span>{% endif %}
+    </button>
+    <div class="sw-b" id="swB{{ i }}"{% if not is_next %} hidden{% endif %}>
+      {% if st.key == 'whatsapp' %}
+        <p>{{ 'Your WhatsApp number is connected.' if st.done else wa_text }}</p>
+        {% if not st.done %}<div class="sw-acts"><a class="sw-btn" href="{{ st.url }}">{{ st.action }}</a>
+          <button type="button" class="sw-how" data-sw-open="0">{{ how_icon }}Show me how</button></div>{% endif %}
+      {% elif st.key == 'products' %}
+        <p>{{ st.text if st.done else 'Tell your AI Agent what you sell and your prices, so it can answer customers. Until then, it passes price questions to your team.' }}</p>
+        {% if not st.done %}<div class="sw-acts"><a class="sw-btn" href="{{ st.url }}">{{ st.action }}</a><a class="sw-btn line" href="{{ st.url2 }}">{{ st.action2 }}</a>
+          <button type="button" class="sw-how" data-sw-open="1">{{ how_icon }}Show me how</button></div>{% endif %}
+      {% else %}
+        <p>{{ 'Your free trial has started.' if st.done else 'Your AI Agent answers WhatsApp customers for 14 days, free. Until then your team answers from the Inbox.' }}</p>
+        {% if not st.done %}<div class="sw-acts">
+          {% if st.trial %}<form method="POST" action="{{ url_for('portal.billing_start_ai_trial') }}"><button type="submit" class="sw-btn">Start free trial</button></form>{% endif %}
+          <button type="button" class="sw-how" data-sw-open="2">{{ how_icon }}Show me how</button></div>{% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{# ── The popup: three pages, Back / Next ── #}
+<div class="swp" id="swPop" hidden>
+  <div class="swp-box" role="dialog" aria-modal="true" aria-labelledby="swpT">
+    <span class="swp-grab" aria-hidden="true"></span>
+    <div class="swp-h">
+      <div class="sw-row"><span class="swp-k" id="swpK">STEP 1 OF 3</span><button class="swp-x" type="button" aria-label="Close" data-sw-close>✕</button></div>
+      <div class="swp-segs" aria-hidden="true"><i></i><i></i><i></i></div>
+      <h3 id="swpT">Connect your WhatsApp number</h3>
+      <div class="swp-chips" id="swpChips"></div>
+    </div>
+
+    <div class="swp-b">
+      {# Page 1 — WhatsApp #}
+      <div class="swp-pg" data-pg="0" data-title="Connect your WhatsApp number">
+        {% if not u %}
+        <div class="swp-switch"><span class="swp-l">Your number is on</span>
+          <div role="group" aria-label="Your number is on">
+            <button type="button" data-sw-v="app" aria-pressed="true">The WhatsApp Business app</button>
+            <button type="button" data-sw-v="normal" aria-pressed="false">Normal WhatsApp</button>
+            <button type="button" data-sw-v="none" aria-pressed="false">Not on WhatsApp yet</button>
+          </div></div>
+        {% endif %}
+        <div class="swp-v" data-v="app" data-chips="About 5 min|Keep your app"{% if u and u != 'app' %} hidden{% endif %}>
+          <p>Your number <b>stays on your WhatsApp Business app</b>. The same chats also show in PhiXtra, where your team and AI Agent can answer them.</p>
+          <div class="swp-ready" style="margin-top:14px"><span class="swp-l">Have ready</span>
+            <label><input type="checkbox"><span>Your phone, with WhatsApp Business updated</span></label>
+            <label><input type="checkbox"><span>A Facebook account to log in with</span></label>
+            <label><input type="checkbox"><span>A web browser</span></label></div>
+          <span class="swp-l" style="margin-top:14px">What to do</span>
+          <ol class="swp-steps">
+            <li><span><span class="swp-where">In PhiXtra</span>Press <b>Connect WhatsApp</b>, then <b>Connect and keep my app</b>.</span></li>
+            <li><span><span class="swp-where">In the Meta window</span>Log in with Facebook and follow it to the end.</span></li>
+            <li><span><span class="swp-where">On your phone</span>WhatsApp sends a message to your Business app. Tap <b>Connect</b>, then <b>Share chat history</b>.</span></li>
+            <li><span><span class="swp-where">In PhiXtra</span>Your number shows as <b>Connected</b>. That's it.</span></li>
+          </ol>
+          <div class="swp-hint" style="margin-top:14px">Leave "Copy my WhatsApp contacts" ticked if you want your contacts in PhiXtra. WhatsApp lets us copy them only once.</div>
+        </div>
+        <div class="swp-v" data-v="normal" data-chips="About 10 min|Move to WhatsApp Business first"{% if u != 'normal' %} hidden{% endif %}>
+          <p>PhiXtra connects to the <b>WhatsApp Business app</b>, so first move your number to it. It's free, and your chats come with you.</p>
+          <div class="swp-ready" style="margin-top:14px"><span class="swp-l">Have ready</span>
+            <label><input type="checkbox"><span>Your phone</span></label>
+            <label><input type="checkbox"><span>A Facebook account to log in with</span></label></div>
+          <span class="swp-l" style="margin-top:14px">What to do</span>
+          <ol class="swp-steps">
+            <li><span><span class="swp-where">On your phone</span>Install <b>WhatsApp Business</b> from the App Store or Google Play.</span></li>
+            <li><span><span class="swp-where">On your phone</span>Open it and choose your number. Your chats move across from WhatsApp.</span></li>
+            <li><span><span class="swp-where">In PhiXtra</span>Press <b>Connect WhatsApp</b>, then <b>Connect and keep my app</b>, and follow the Meta window.</span></li>
+            <li><span><span class="swp-where">On your phone</span>Tap <b>Connect</b>, then <b>Share chat history</b>.</span></li>
+          </ol>
+        </div>
+        <div class="swp-v" data-v="none" data-chips="About 5 min|New number"{% if u != 'none' %} hidden{% endif %}>
+          <p>Customers message this number, and your team and AI Agent answer in PhiXtra. The number then works <b>only through PhiXtra</b>, not in a WhatsApp app on a phone.</p>
+          <div class="swp-ready" style="margin-top:14px"><span class="swp-l">Have ready</span>
+            <label><input type="checkbox"><span>A phone that can get one text or call on this number</span></label>
+            <label><input type="checkbox"><span>A Facebook account to log in with</span></label></div>
+          <span class="swp-l" style="margin-top:14px">What to do</span>
+          <ol class="swp-steps">
+            <li><span><span class="swp-where">In PhiXtra</span>Press <b>Connect WhatsApp</b>. Under "Use a new number", press <b>Connect with WhatsApp</b>.</span></li>
+            <li><span><span class="swp-where">In the Meta window</span>Log in with Facebook and follow it.</span></li>
+            <li><span><span class="swp-where">On the phone</span>Meta sends a code by text or call. Type it in the Meta window.</span></li>
+            <li><span><span class="swp-where">In PhiXtra</span>Your number shows as <b>Connected</b>.</span></li>
+          </ol>
+        </div>
+      </div>
+
+      {# Page 2 — Products #}
+      <div class="swp-pg" data-pg="1" data-title="Add your products or services" data-chips="About 5 min|Excel or CSV" hidden>
+        <p>So your AI Agent can answer "how much?" and "do you have…?" questions. Until then, it passes them to your team.</p>
+        <div class="swp-file">
+          <span class="ic">XLS</span>
+          <span><b>Product template</b><small>Only Name and Price are needed. Delete our 3 example rows and add yours.</small></span>
+          <div class="fa"><a class="solid" href="{{ url_for('static', filename='portal/phixtra_product_template.xlsx') }}?v=2" download>⬇ Excel</a><a href="{{ url_for('static', filename='portal/phixtra_product_template.csv') }}?v=2" download>⬇ CSV</a></div>
+        </div>
+        <div><span class="swp-l">What to do</span>
+          <ol class="swp-steps">
+            <li><span><span class="swp-where">In Excel</span>Fill in the template, or use your own list. One row per product or service.</span></li>
+            <li><span><span class="swp-where">In PhiXtra</span>Press <b>Upload a list</b> and choose the file.</span></li>
+            <li><span><span class="swp-where">In PhiXtra</span>Choose which column is the name and which is the price, then save.</span></li>
+          </ol></div>
+        <div class="swp-hint">Only a few? Add them one by one in My Products &amp; Services. Sell services? Press <b>I sell services</b>; a name and a price is enough. No stock column means always available.</div>
+      </div>
+
+      {# Page 3 — Trial #}
+      <div class="swp-pg" data-pg="2" data-title="Start your free trial" data-chips="14 days|No card" hidden>
+        <p>Your AI Agent answers your WhatsApp customers in their language, day and night, for 14 days. Free, and no card needed.</p>
+        <div class="swp-ready"><span class="swp-l">Best done first</span>
+          <label><input type="checkbox"{% if s1.done %} checked{% endif %}><span>Step 1: your WhatsApp number is connected</span></label>
+          <label><input type="checkbox"{% if s2.done %} checked{% endif %}><span>Step 2: your products and prices are added</span></label></div>
+        <div><span class="swp-l">What happens</span>
+          <ol class="swp-steps">
+            <li><span>Press <b>Start free trial</b>. It starts straight away.</span></li>
+            <li><span>Your AI Agent answers customers on WhatsApp.</span></li>
+            <li><span>When a person is needed, it hands the chat to your team in the <b>Inbox</b>.</span></li>
+          </ol></div>
+        <div class="swp-hint">After 14 days, choose a plan to keep the AI Agent answering. Your settings are kept, and your team can still answer from the Inbox.</div>
+      </div>
+    </div>
+
+    <div class="swp-f">
+      <div><button class="swp-nav" type="button" id="swpPrev">← Back</button><button class="swp-nav" type="button" id="swpNext">Next →</button></div>
+      <div class="go">
+        <div class="swp-go" data-go="0">{% if not s1.done %}<a class="sw-btn" href="{{ s1.url }}">{{ s1.action }}</a>{% endif %}</div>
+        <div class="swp-go" data-go="1" hidden>{% if not s2.done %}<span class="sw-acts"><a class="sw-btn line" href="{{ s2.url2 }}">{{ s2.action2 }}</a><a class="sw-btn" href="{{ s2.url }}">{{ s2.action }}</a></span>{% endif %}</div>
+        <div class="swp-go" data-go="2" hidden>{% if not s3.done and s3.trial %}<form method="POST" action="{{ url_for('portal.billing_start_ai_trial') }}"><button type="submit" class="sw-btn">Start free trial</button></form>{% endif %}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var card = document.getElementById('getSetUp'), pop = document.getElementById('swPop');
+  if (!card || !pop) return;
+  // One step open at a time
+  var heads = card.querySelectorAll('.sw-h');
+  heads.forEach(function(h){
+    h.addEventListener('click', function(){
+      var open = h.getAttribute('aria-expanded') === 'true';
+      heads.forEach(function(o){
+        var b = document.getElementById(o.getAttribute('aria-controls'));
+        var me = (o === h) && !open;
+        o.setAttribute('aria-expanded', String(me)); if (b) b.hidden = !me;
+      });
+    });
+  });
+  // Popup
+  var cur = 0, last = null;
+  function chipsFor(pg){
+    var v = pg.querySelector('.swp-v:not([hidden])');
+    return ((v && v.dataset.chips) || pg.dataset.chips || '').split('|').filter(Boolean);
+  }
+  function render(){
+    pop.querySelectorAll('.swp-pg').forEach(function(p){ p.hidden = +p.dataset.pg !== cur; });
+    pop.querySelectorAll('.swp-go').forEach(function(g){ g.hidden = +g.dataset.go !== cur; });
+    var pg = pop.querySelector('.swp-pg[data-pg="' + cur + '"]');
+    document.getElementById('swpK').textContent = 'STEP ' + (cur + 1) + ' OF 3';
+    document.getElementById('swpT').textContent = pg.dataset.title;
+    document.getElementById('swpChips').innerHTML = '';
+    chipsFor(pg).forEach(function(c){ var s = document.createElement('span'); s.className = 'swp-chip'; s.textContent = c; document.getElementById('swpChips').appendChild(s); });
+    pop.querySelectorAll('.swp-segs i').forEach(function(s, i){ s.classList.toggle('on', i <= cur); });
+    document.getElementById('swpPrev').disabled = cur === 0;
+    document.getElementById('swpNext').disabled = cur === 2;
+    pop.querySelector('.swp-b').scrollTop = 0;
+  }
+  function open(i, btn){ cur = i; last = btn; render(); pop.hidden = false; document.body.style.overflow = 'hidden'; pop.querySelector('.swp-x').focus(); }
+  function close(){ pop.hidden = true; document.body.style.overflow = ''; if (last) last.focus(); }
+  card.querySelectorAll('[data-sw-open]').forEach(function(b){ b.addEventListener('click', function(){ open(+b.dataset.swOpen, b); }); });
+  pop.addEventListener('click', function(e){ if (e.target === pop || e.target.closest('[data-sw-close]')) close(); });
+  document.addEventListener('keydown', function(e){ if (!pop.hidden && e.key === 'Escape') close(); });
+  document.getElementById('swpPrev').onclick = function(){ if (cur > 0) { cur--; render(); } };
+  document.getElementById('swpNext').onclick = function(){ if (cur < 2) { cur++; render(); } };
+  // "Your number is on" switch (only when the sign-up answer is unknown)
+  pop.querySelectorAll('[data-sw-v]').forEach(function(b){
+    b.addEventListener('click', function(){
+      pop.querySelectorAll('[data-sw-v]').forEach(function(o){ o.setAttribute('aria-pressed', String(o === b)); });
+      pop.querySelectorAll('.swp-v').forEach(function(v){ v.hidden = v.dataset.v !== b.dataset.swV; });
+      render();
+    });
+  });
+})();
+</script>

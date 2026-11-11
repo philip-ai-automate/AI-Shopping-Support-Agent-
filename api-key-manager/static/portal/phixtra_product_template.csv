@@ -1,0 +1,4 @@
+﻿Name *,Price *,Description,Category,Stock,Image URL
+Office chair,89.00,"Adjustable height, black mesh back",Furniture,12,https://yourshop.com/images/chair.jpg
+"Printer paper A4, box of 5",24.50,"5 reams of 500 sheets, 80 gsm",Office supplies,40,
+Delivery and installation,45.00,A service: leave Stock empty,Services,,

@@ -6692,8 +6692,15 @@ def _wa_setup_checklist(t, wa_on: bool, prod: dict):
         # 2026-11-09: products and the trial no longer wait for WhatsApp.
         st["locked"] = False
     done = sum(1 for st in steps if st["done"])
+    # 12 Nov 2026 (approved mock-up 1QHkB3gVpqgSb23yyLBb8E): WhatsApp sign-ups get
+    # their own set-up box (_setup_checklist_wa.html) with a "Show me how" popup.
+    usage = {"biz_app": "app", "normal": "normal", "new": "none"}.get(t.get("wa_number_usage") or "", "")
+    mins = {"whatsapp": 10 if usage == "normal" else 5, "products": 5, "trial": 0}
     return {"steps": steps, "extras": [], "done": done, "total": len(steps), "complete": False,
-            "chatbox_code": None, "checking": False, "domain": t["domain"]}
+            "chatbox_code": None, "checking": False, "domain": t["domain"],
+            "kind": "whatsapp", "wa_usage": usage, "wa_number": (t.get("wa_number") or "").strip(),
+            "minutes_left": sum(mins[st["key"]] for st in steps if not st["done"]),
+            "next_i": nxt, "product_count": n_prod}
 
 
 # Hand-added products reach the AI straight after any change (2026-10-25);
