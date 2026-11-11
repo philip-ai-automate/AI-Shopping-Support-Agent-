@@ -18159,7 +18159,7 @@ _SPECIAL_LINE_TYPES = {
     _pn.PhoneNumberType.UAN, _pn.PhoneNumberType.VOICEMAIL,
     _pn.PhoneNumberType.PAGER,
 }
-PHONE_ENTRY_HINT = "Choose the country, or type the full number starting with +"
+PHONE_ENTRY_HINT = "Choose the country, then type the number. No need to type the country code."
 
 
 def phone_problem(value, allow_special: bool = False):
@@ -18288,6 +18288,33 @@ def _tpl_phone_problem(value, allow_special=False):
 @portal_bp.app_context_processor
 def _inject_phone_hint():
     return {"PHONE_ENTRY_HINT": PHONE_ENTRY_HINT}
+
+
+def _build_phone_examples():
+    """{ISO: example mobile number WITHOUT the country code} — the example shown
+    inside a phone box for the chosen country (12 Nov 2026). Same data as
+    static/portal/phone-examples.js, which updates it when the country changes."""
+    out = {}
+    for r in _pn.SUPPORTED_REGIONS:
+        try:
+            n = _pn.example_number_for_type(r, _pn.PhoneNumberType.MOBILE) or _pn.example_number(r)
+            if not n:
+                continue
+            s_ = _pn.format_number(n, _pn.PhoneNumberFormat.INTERNATIONAL)
+            cc = "+%d" % n.country_code
+            out[r] = s_[len(cc):].strip().lstrip("-").strip() if s_.startswith(cc) else str(n.national_number)
+        except Exception:
+            pass
+    return out
+
+_PHONE_EXAMPLES = _build_phone_examples()
+
+
+@portal_bp.app_template_global("phone_example")
+def _tpl_phone_example(iso):
+    """'e.g. 7400 123456' for GB, or the 'choose first' text when no country."""
+    ex = _PHONE_EXAMPLES.get((iso or "").upper())
+    return f"e.g. {ex}" if ex else "Choose the country first"
 
 
 @portal_bp.app_template_global("own_phone_country")
