@@ -35,6 +35,7 @@ import buffer_accounts as _ba
 
 portal_admin_bp = Blueprint("portal_admin", __name__)
 import account_kind as _account_kind
+from portal_address import ADDRESS_COUNTRIES, country_name, match_country
 
 
 @portal_admin_bp.context_processor
@@ -797,10 +798,10 @@ def comeback_sequence_templates():
 # (Plan is built separately below, from whatever plan names are actually in
 # use — Portal/Connect, School and Estate each keep their own plan catalog).
 CUSTOMER_FILTER_GROUPS = [
-    {"key": "source",   "label": "Signup Source",  "options": [("whatsapp", "WhatsApp-only"), ("web", "Web signup")]},
-    {"key": "verified", "label": "Email Verified",  "options": [("yes", "Verified"), ("no", "Unverified")]},
-    {"key": "active",   "label": "Account Status",  "options": [("yes", "Active"), ("no", "Disabled")]},
-    {"key": "assigned", "label": "Assigned To",     "options": [("yes", "Assigned"), ("no", "Unassigned")]},
+    {"key": "source",   "label": "Signup source",  "options": [("whatsapp", "WhatsApp-only"), ("web", "Web signup")]},
+    {"key": "verified", "label": "Email verified",  "options": [("yes", "Verified"), ("no", "Unverified")]},
+    {"key": "active",   "label": "Account status",  "options": [("yes", "Active"), ("no", "Disabled")]},
+    {"key": "assigned", "label": "Assigned to",     "options": [("yes", "Assigned"), ("no", "Unassigned")]},
     {"key": "product",  "label": "Product",         "options": [("portal", "Portal / CRM"), ("connect", "Connect"),
                                                                   ("school", "SchoolCompass"), ("estate", "KeyLand")]},
     # 7B (9 Nov 2026): who takes the money — from the active plan_subscriptions row.
@@ -839,10 +840,14 @@ def _customer_facet(x, key):
     if key == "inactivity": return x["inactivity"]
     if key == "setup": return x.get("setup_state", "na")
     if key == "kind": return x.get("kind", "real")
+    if key == "country": return x.get("country_code") or CUSTOMER_COUNTRY_NONE
     return x[key]  # source, product
 
 
-CUSTOMER_SETUP_OPTIONS = [("done", "Completed set-up"), ("not_done", "Not completed"), ("na", "Not tracked (School / KeyLand)")]
+CUSTOMER_SETUP_OPTIONS = [("done", "Completed"), ("not_done", "Not completed"), ("na", "Not tracked (School / KeyLand)")]
+# Totals cards at the top of the page say which thing was completed (11 Nov 2026: "Set-up" renamed "Onboard").
+CUSTOMER_SETUP_CARD_LABELS = {"done": "Onboard completed", "not_done": "Onboard not completed", "na": "Not tracked (School / KeyLand)"}
+CUSTOMER_COUNTRY_NONE = "none"   # Country filter value for customers with no business country saved
 
 CUSTOMER_INACTIVITY_OPTIONS = [("warned", "Warned"), ("active", "Active"), ("no_email", "Can't warn · no email"),
                                ("protected", "Protected"), ("not_included", "School / KeyLand (not included)")]
@@ -889,13 +894,6 @@ def _customers_page_url(page: int) -> str:
     args["page"] = [str(page)]
     return f"{url_for('portal_admin.customers')}?{urlencode(args, doseq=True)}"
 
-# Industry has no real data behind it yet — no product's account record
-# captures a business's industry today. It stays visible (so the gap isn't
-# hidden) but disabled, rather than pretending to filter on nothing.
-CUSTOMER_INDUSTRY_OPTIONS = [
-    "Retail & Fashion", "Electronics", "Food & Beverage", "Beauty & Health",
-    "Real Estate", "Education", "Professional Services", "Other",
-]
 
 
 def _remove_filter_url(remove_key: str, remove_value: str) -> str:
@@ -931,7 +929,8 @@ def customers():
     f_inactive = request.args.getlist("inactivity")
     f_setup    = request.args.getlist("setup")      # done / not_done / na (2026-11-06)
     f_kind_chosen = [k for k in request.args.getlist("kind") if k in _account_kind.LABELS]
-    f_kind     = f_kind_chosen or ["real"]          # Real / Sales demo / Test (8 Nov 2026)
+    f_kind     = f_kind_chosen                      # Real / Sales demo / Test — no default since 11 Nov 2026
+    f_country  = [c for c in request.args.getlist("country") if c]   # ISO code or "none" (11 Nov 2026)
 
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -939,15 +938,19 @@ def customers():
     rows = []
 
     # ── Portal + Connect (share the tenants/customers tables) ──────────────
-    # Kind filter (8 Nov 2026, item 11): Real only unless Sales demo / Test is ticked.
+    # Kind filter (8 Nov 2026, item 11): no default since 11 Nov 2026 — every kind shows until one is ticked.
     where  = ["TRUE"]
     params = []
 
     if q:
+        # Country search (11 Nov 2026): "morocco", "united", "uk" or "NG" match the business country.
+        q_countries = sorted({iso for iso, name in ADDRESS_COUNTRIES if q in name.lower()}
+                             | ({match_country(q)} - {None}))
         where.append("""(LOWER(c.email) LIKE %s OR LOWER(t.domain) LIKE %s
                           OR LOWER(t.name) LIKE %s
-                          OR LOWER(CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,''))) LIKE %s)""")
-        params += [f"%{q}%"] * 4
+                          OR LOWER(CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,''))) LIKE %s
+                          OR UPPER(COALESCE(c.business_country,'')) = ANY(%s::text[]))""")
+        params += [f"%{q}%"] * 4 + [q_countries]
     if date_from:
         where.append("c.created_at >= %s"); params.append(date_from)
     if date_to:
@@ -955,7 +958,7 @@ def customers():
 
     cur.execute(f"""
         SELECT c.id, c.first_name, c.last_name, c.email, c.phone_number, c.phone_verified,
-               c.email_verified, c.is_active, c.created_at, c.hear_about_us,
+               c.email_verified, c.is_active, c.created_at, c.hear_about_us, c.business_country,
                t.id AS tenant_id, t.name AS tenant_name, t.domain, t.signup_product, t.source_type,
                t.account_kind,
                COALESCE(p.name,'Free') AS plan_name,
@@ -998,6 +1001,8 @@ def customers():
             "heard_value": row.get("hear_about_us") or CUSTOMER_HEARD_NONE,
             "source": row.get("source_type"),
             "kind": row.get("account_kind") or "real",
+            "country_code": (row.get("business_country") or "").strip().upper() or None,
+            "country": country_name(row.get("business_country")) or ((row.get("business_country") or "").strip().upper() or None),
             "billed": row.get("billed_by") if row.get("billed_by") in ("shopify", "stripe", "flutterwave") else "none",
             "inactivity": "active",
         })
@@ -1040,6 +1045,7 @@ def customers():
             "assigned_manager_name": assignment["manager_name"] if assignment else None,
             "heard": "Not answered", "heard_value": CUSTOMER_HEARD_NONE, "source": "web",
             "inactivity": "not_included", "setup_state": "na", "billed": "none",
+            "country_code": None, "country": None,
         })
 
     # ── Estate (re_tenants — its own table, tenant + owner in one row) ──────
@@ -1083,6 +1089,7 @@ def customers():
             "assigned_manager_name": assignment["manager_name"] if assignment else None,
             "heard": "Not answered", "heard_value": CUSTOMER_HEARD_NONE, "source": "web",
             "inactivity": "not_included", "setup_state": "na", "billed": "none",
+            "country_code": None, "country": None,
         })
 
     import inactivity_core
@@ -1094,14 +1101,14 @@ def customers():
 
     selected = {k: v for k, v in {
         "kind": f_kind, "inactivity": f_inactive, "setup": f_setup, "source": f_source, "verified": f_verified, "active": f_active, "assigned": f_assigned,
-        "product": f_product, "plan": f_plan, "heard": f_heard, "billed": f_billed,
+        "product": f_product, "plan": f_plan, "heard": f_heard, "billed": f_billed, "country": f_country,
     }.items() if v}
 
     def _passes(x, skip=None):
         return all(_customer_facet(x, k) in v for k, v in selected.items() if k != skip)
 
     facet_counts = {}
-    for key in ("source", "verified", "active", "assigned", "product", "plan", "heard", "inactivity", "setup", "kind", "billed"):
+    for key in ("source", "verified", "active", "assigned", "product", "plan", "heard", "inactivity", "setup", "kind", "billed", "country"):
         counts = facet_counts.setdefault(key, {})
         for x in rows:
             if _passes(x, key):
@@ -1140,69 +1147,49 @@ def customers():
     plan_cur.close()
     cur.close(); conn.close()
 
-    filter_groups = []
-    for g in CUSTOMER_FILTER_GROUPS:
-        selected = request.args.getlist(g["key"])
-        filter_groups.append({
-            "key": g["key"], "label": g["label"],
-            "options": [{"value": v, "label": lbl, "checked": v in selected,
-                         "n": facet_counts[g["key"]].get(v, 0)} for v, lbl in g["options"]],
-            "count": len(selected),
-        })
-    filter_groups.append({
-        "key": "kind", "label": "Kind",
-        "options": [{"value": v, "label": lbl, "checked": v in f_kind, "n": facet_counts["kind"].get(v, 0)}
-                    for v, lbl in _account_kind.KINDS],
-        "count": len(f_kind_chosen),
-    })
-    filter_groups.append({
-        "key": "setup", "label": "Set-up",
-        "options": [{"value": v, "label": lbl, "checked": v in f_setup, "n": facet_counts["setup"].get(v, 0)}
-                    for v, lbl in CUSTOMER_SETUP_OPTIONS],
-        "count": len(f_setup),
-    })
-    filter_groups.append({
-        "key": "inactivity", "label": "Inactivity",
-        "options": [{"value": v, "label": lbl, "checked": v in f_inactive, "n": facet_counts["inactivity"].get(v, 0)}
-                    for v, lbl in CUSTOMER_INACTIVITY_OPTIONS],
-        "count": len(f_inactive),
-    })
-    filter_groups.append({
-        "key": "heard", "label": "Heard About Us",
-        "options": [{"value": v, "label": lbl, "checked": v in f_heard, "n": facet_counts["heard"].get(v, 0)}
-                    for v, lbl in _heard_options()],
-        "count": len(f_heard),
-    })
-    plan_selected = f_plan
-    plan_group = {
-        "key": "plan", "label": "Plan",
-        "options": [{"value": n, "label": n, "checked": n in plan_selected,
-                     "n": facet_counts["plan"].get(n, 0)} for n in plan_names],
-        "count": len(plan_selected),
-    }
+    # One Filters panel (11 Nov 2026): every filter is a section in this order.
+    def _group(key, label, options, chosen):
+        return {"key": key, "label": label, "count": len(chosen),
+                "options": [{"value": v, "label": lbl, "checked": v in chosen,
+                             "n": facet_counts.get(key, {}).get(v, 0)} for v, lbl in options]}
+
+    base = {g["key"]: g for g in CUSTOMER_FILTER_GROUPS}
+    def _base(key):
+        return _group(key, base[key]["label"], base[key]["options"], request.args.getlist(key))
+
+    # Country: only countries that have customers (with these filters), biggest first; "Not given" last.
+    cc = facet_counts.get("country", {})
+    codes = set(k for k, n in cc.items() if n) | set(f_country)
+    codes.discard(CUSTOMER_COUNTRY_NONE)
+    country_opts = sorted(((c, country_name(c) or c) for c in codes), key=lambda o: (-cc.get(o[0], 0), o[1]))
+    if cc.get(CUSTOMER_COUNTRY_NONE) or CUSTOMER_COUNTRY_NONE in f_country:
+        country_opts.append((CUSTOMER_COUNTRY_NONE, "Not given"))
+
+    filter_groups = [
+        _group("country", "Country", country_opts, f_country),
+        _group("plan", "Plan", [(n, n) for n in plan_names], f_plan),
+        _base("billed"),
+        _base("product"),
+        _group("kind", "Account type", _account_kind.KINDS, f_kind),
+        _base("active"),
+        _base("verified"),
+        _base("source"),
+        _group("setup", "Onboard", CUSTOMER_SETUP_OPTIONS, f_setup),
+        _base("assigned"),
+        _group("inactivity", "Inactivity", CUSTOMER_INACTIVITY_OPTIONS, f_inactive),
+        _group("heard", "Heard about us", _heard_options(), f_heard),
+    ]
 
     chips = []
-    for g in CUSTOMER_FILTER_GROUPS:
-        label_map = dict(g["options"])
+    for g in filter_groups:
+        label_map = {o["value"]: o["label"] for o in g["options"]}
         for val in request.args.getlist(g["key"]):
             if val in label_map:
                 chips.append({"label": f"{g['label']}: {label_map[val]}", "href": _remove_filter_url(g["key"], val)})
-    for val in f_inactive:
-        chips.append({"label": f"Inactivity: {dict(CUSTOMER_INACTIVITY_OPTIONS).get(val, val)}",
-                      "href": _remove_filter_url("inactivity", val)})
-    for val in f_heard:
-        chips.append({"label": f"Heard About Us: {_heard_label(None if val == CUSTOMER_HEARD_NONE else val)}",
-                      "href": _remove_filter_url("heard", val)})
-    for val in f_plan:
-        chips.append({"label": f"Plan: {val}", "href": _remove_filter_url("plan", val)})
-    for val in f_kind_chosen:
-        chips.append({"label": "Kind: " + _account_kind.LABELS.get(val, val), "href": _remove_filter_url("kind", val)})
-    for val in f_setup:
-        chips.append({"label": "Set-up: " + dict(CUSTOMER_SETUP_OPTIONS).get(val, val), "href": _remove_filter_url("setup", val)})
     if date_from:
-        chips.append({"label": f"From {date_from}", "href": _remove_filter_url("date_from", date_from)})
+        chips.append({"label": f"Signed up from {date_from}", "href": _remove_filter_url("date_from", date_from)})
     if date_to:
-        chips.append({"label": f"To {date_to}", "href": _remove_filter_url("date_to", date_to)})
+        chips.append({"label": f"Signed up to {date_to}", "href": _remove_filter_url("date_to", date_to)})
 
     clear_all_url = url_for("portal_admin.customers", q=q) if q else url_for("portal_admin.customers")
 
@@ -1223,7 +1210,7 @@ def customers():
             args.pop("setup")
         return f"{url_for('portal_admin.customers')}?{urlencode(args, doseq=True)}" if args else url_for('portal_admin.customers')
     setup_summary = {"total": sum(sc.values()), "cards": [
-        {"key": k, "label": l, "n": sc.get(k, 0), "url": _setup_url(k), "on": f_setup == [k]}
+        {"key": k, "label": CUSTOMER_SETUP_CARD_LABELS.get(k, l), "n": sc.get(k, 0), "url": _setup_url(k), "on": f_setup == [k]}
         for k, l in CUSTOMER_SETUP_OPTIONS]}
     all_args = request.args.to_dict(flat=False); all_args.pop("setup", None); all_args.pop("page", None)
     setup_summary["all_url"] = f"{url_for('portal_admin.customers')}?{urlencode(all_args, doseq=True)}" if all_args else url_for('portal_admin.customers')
@@ -1233,8 +1220,7 @@ def customers():
         sales_managers=sales_managers_by_product["portal"],
         platform_staff=_am_managers(),
         sales_managers_by_product=sales_managers_by_product,
-        filter_groups=filter_groups, plan_group=plan_group,
-        industry_options=CUSTOMER_INDUSTRY_OPTIONS, PRODUCT_LABELS=CUSTOMER_PRODUCT_LABELS,
+        filter_groups=filter_groups, PRODUCT_LABELS=CUSTOMER_PRODUCT_LABELS,
         date_from=date_from, date_to=date_to,
         chips=chips, active_count=len(chips), clear_all_url=clear_all_url,
         paging=paging, per_page_options=CUSTOMERS_PER_PAGE_OPTIONS,

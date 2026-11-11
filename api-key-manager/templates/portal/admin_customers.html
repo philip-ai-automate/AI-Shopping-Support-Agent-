@@ -44,33 +44,40 @@
      the deliberate "show me everything in rows" option for a big screen. */
   #customerList .truncate{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom}
 
-  /* Filter bar — every filter is a native <details> dropdown holding
-     checkboxes, so ticking one just reloads the page with an extra
-     querystring value. No custom JS state to keep in sync. */
-  .filter-bar{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:14px}
-  .filter-row{display:flex;flex-wrap:wrap;align-items:flex-start;gap:10px}
-  .filter-date{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:11px;padding:6px 10px;background:#fff}
-  .filter-date span.lbl{font-size:11.5px;font-weight:700;color:var(--muted);white-space:nowrap}
-  .filter-date input[type=date]{border:none;padding:2px;font-size:12px;width:128px}
-  .filter-dd{position:relative}
-  .filter-dd summary{list-style:none;display:inline-flex;align-items:center;gap:6px;padding:8px 12px;
-                      border-radius:11px;font-size:12.5px;font-weight:650;cursor:pointer;
-                      border:1px solid var(--line);background:#fff;color:var(--txt);white-space:nowrap}
-  .filter-dd summary::-webkit-details-marker{display:none}
-  .filter-dd[data-active="1"] summary{border-color:var(--ink);background:var(--ink);color:#fff}
-  .filter-dd[open] summary{border-color:var(--ink)}
-  .filter-dd summary .chev{transition:transform .12s}
-  .filter-dd[open] summary .chev{transform:rotate(180deg)}
-  .filter-panel{position:absolute;top:calc(100% + 6px);left:0;min-width:230px;background:#fff;
-                 border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 34px rgba(3,12,24,.16);
-                 padding:8px;z-index:50;max-height:280px;overflow-y:auto}
-  .filter-opt{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:8px;font-size:13px;cursor:pointer}
+  /* One Filters panel (11 Nov 2026): a single Filters button opens a panel that
+     drops down over the page; each filter is a section that expands and closes.
+     Ticks are applied together with "Show customers" (no reload per tick). */
+  .toolbar{position:relative}
+  .filters-btn{display:inline-flex;align-items:center;gap:7px;border:1.5px solid var(--ink);background:var(--ink);color:#fff;
+               border-radius:10px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer;flex-shrink:0}
+  .filters-btn .fb-n{background:#fff;color:var(--ink);border-radius:999px;font-size:11px;font-weight:800;padding:0 7px}
+  .filters-panel{position:absolute;top:calc(100% + 8px);right:0;z-index:60;width:min(520px,100%);max-height:72vh;overflow-y:auto;
+                 background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 18px 40px rgba(3,12,24,.18)}
+  .fp-head{display:flex;flex-direction:column;gap:2px;padding:14px 18px;border-bottom:1px solid var(--line)}
+  .fp-head strong{font-size:15px;color:var(--ink)}
+  .fp-head span{font-size:12.5px;color:var(--muted)}
+  .fp-sec{border-bottom:1px solid var(--line)}
+  .fp-sec summary{list-style:none;display:flex;align-items:center;gap:10px;padding:12px 18px;cursor:pointer;font-size:13.5px;font-weight:700;color:var(--ink)}
+  .fp-sec summary::-webkit-details-marker{display:none}
+  .fp-sec summary:hover,.fp-sec[open] summary{background:rgba(3,12,24,.04)}
+  .fp-sec .fp-title{flex-shrink:0}
+  .fp-sec .fp-sel{margin-left:auto;font-size:12px;font-weight:650;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .fp-sec .fp-sel.on{color:#2563eb}
+  .fp-sec .fp-chev{color:var(--muted);transition:transform .15s;flex-shrink:0}
+  .fp-sec[open] .fp-chev{transform:rotate(90deg)}
+  .fp-body{padding:6px 12px 12px}
+  .fp-body.fp-scroll{max-height:260px;overflow-y:auto}
+  .fp-dates{display:flex;flex-direction:column;gap:6px;padding:8px 18px 14px}
+  .fp-dates label{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+  .fp-dates input{border:1px solid var(--line);border-radius:8px;padding:5px 7px;font-size:12.5px}
+  .filter-opt{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:8px;font-size:13px;cursor:pointer}
   .filter-opt:hover{background:rgba(3,12,24,.04)}
-  .filter-opt input[type=checkbox]{width:15px;height:15px;accent-color:var(--ink);cursor:pointer;flex-shrink:0}
+  .filter-opt input[type=checkbox]{width:15px;height:15px;accent-color:var(--ink);cursor:pointer;flex-shrink:0;margin:0}
   .filter-opt .opt-n{margin-left:auto;font-size:12px;font-weight:700;color:var(--muted);background:rgba(3,12,24,.05);border-radius:999px;padding:1px 8px}
-  .filter-opt.disabled{cursor:not-allowed;color:var(--muted)}
-  .filter-opt.disabled input{cursor:not-allowed}
-  .filter-caption{font-size:11px;color:var(--warn);font-style:italic;padding:4px 8px 8px;border-bottom:1px solid var(--line);margin-bottom:6px}
+  .fp-foot{position:sticky;bottom:0;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 18px;
+           border-top:1px solid var(--line);background:#fff}
+  .fp-clear{background:none;border:none;color:var(--bad);font-weight:700;font-size:13px;cursor:pointer;padding:6px}
+  @media (prefers-reduced-motion:reduce){.fp-sec .fp-chev{transition:none}}
   .shop-tag{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;background:#e3f5ea;color:#05603a;margin-left:4px;white-space:nowrap}
   .kind-tag{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;background:rgba(247,144,9,.12);color:#93370D;white-space:nowrap}
   .chips-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
@@ -155,10 +162,15 @@
 <form method="GET" id="filtersForm">
   <div class="toolbar">
     <div class="search-bar" style="display:flex;gap:8px;flex:1;min-width:200px">
-      <input name="q" value="{{ q }}" placeholder="Search by name, email or domain…"/>
+      <input name="q" value="{{ q }}" placeholder="Search by name, email, domain or country…"/>
       <button type="submit" class="btn btn-sm">Search</button>
       {% if q or active_count %}<a href="{{ clear_all_url }}" class="btn btn-sm">Clear</a>{% endif %}
     </div>
+
+    <button type="button" class="filters-btn" id="filtersBtn" aria-expanded="false" aria-controls="filtersPanel">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
+      Filters{% if active_count %} <span class="fb-n">{{ active_count }}</span>{% endif %}
+    </button>
 
     {% if customers %}
     <div class="pager" style="margin:0">
@@ -184,71 +196,40 @@
       </button>
     </div>
     {% endif %}
-  </div>
 
-  <div class="filter-bar">
-    <div class="filter-row">
-
-      <div class="filter-date">
-        <span class="lbl">Created</span>
-        <input type="date" name="date_from" value="{{ date_from }}" onchange="document.getElementById('filtersForm').submit()"/>
-        <span style="color:var(--muted);font-size:12px">–</span>
-        <input type="date" name="date_to" value="{{ date_to }}" onchange="document.getElementById('filtersForm').submit()"/>
-      </div>
-
+    <div class="filters-panel" id="filtersPanel" hidden>
+      <div class="fp-head"><strong>Filters</strong><span>Tick as many as you like, then press Show customers</span></div>
+      {% set date_sel = ([('from ' ~ date_from) if date_from else None, ('to ' ~ date_to) if date_to else None]|select|join(', ')) %}
+      <details class="fp-sec">
+        <summary><span class="fp-title">Signed up</span><span class="fp-sel{% if date_sel %} on{% endif %}">{{ date_sel }}</span><span class="fp-chev">▸</span></summary>
+        <div class="fp-dates">
+          <label for="fpDateFrom">From <input type="date" id="fpDateFrom" name="date_from" value="{{ date_from }}"/></label>
+          <label for="fpDateTo">To <input type="date" id="fpDateTo" name="date_to" value="{{ date_to }}"/></label>
+        </div>
+      </details>
       {% for g in filter_groups %}
-      <details class="filter-dd" {% if g.count %}data-active="1"{% endif %}>
-        <summary>
-          {{ g.label }}{% if g.count %} ({{ g.count }}){% endif %}
-          <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-        </summary>
-        <div class="filter-panel">
+      {% set picked = g.options|selectattr('checked')|map(attribute='label')|list %}
+      <details class="fp-sec">
+        <summary><span class="fp-title">{{ g.label }}</span><span class="fp-sel{% if picked %} on{% endif %}">{% if picked|length > 2 %}{{ picked|length }} selected{% else %}{{ picked|join(', ') }}{% endif %}</span><span class="fp-chev">▸</span></summary>
+        <div class="fp-body{% if g.options|length > 8 %} fp-scroll{% endif %}">
           {% for opt in g.options %}
           <label class="filter-opt">
-            <input type="checkbox" name="{{ g.key }}" value="{{ opt.value }}" {% if opt.checked %}checked{% endif %}
-                   onchange="document.getElementById('filtersForm').submit()"/>
-            {{ opt.label }}{% if opt.n is defined %}<span class="opt-n">{{ opt.n }}</span>{% endif %}
+            <input type="checkbox" name="{{ g.key }}" value="{{ opt.value }}" {% if opt.checked %}checked{% endif %}/>
+            {% if g.key == 'country' and opt.value == 'none' %}<span class="muted">{{ opt.label }}</span>{% else %}{{ opt.label }}{% endif %}<span class="opt-n">{{ opt.n }}</span>
           </label>
+          {% else %}
+          <div class="muted" style="font-size:12.5px;padding:6px 8px">Nothing to choose with these filters.</div>
           {% endfor %}
         </div>
       </details>
       {% endfor %}
-
-      <details class="filter-dd" {% if plan_group.count %}data-active="1"{% endif %}>
-        <summary>
-          {{ plan_group.label }}{% if plan_group.count %} ({{ plan_group.count }}){% endif %}
-          <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-        </summary>
-        <div class="filter-panel">
-          {% for opt in plan_group.options %}
-          <label class="filter-opt">
-            <input type="checkbox" name="plan" value="{{ opt.value }}" {% if opt.checked %}checked{% endif %}
-                   onchange="document.getElementById('filtersForm').submit()"/>
-            {{ opt.label }}<span class="opt-n">{{ opt.n }}</span>
-          </label>
-          {% endfor %}
-        </div>
-      </details>
-
-      <details class="filter-dd">
-        <summary>
-          Industry
-          <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-        </summary>
-        <div class="filter-panel">
-          <div class="filter-caption">No account records an industry yet — these can't filter anything until that's captured somewhere.</div>
-          {% for label in industry_options %}
-          <label class="filter-opt disabled">
-            <input type="checkbox" disabled/>
-            {{ label }}
-          </label>
-          {% endfor %}
-        </div>
-      </details>
-
-      {% if active_count %}<a href="{{ clear_all_url }}" class="clear-all-link">Clear all</a>{% endif %}
+      <div class="fp-foot">
+        <button type="button" class="fp-clear" id="fpClear">Clear all</button>
+        <button type="submit" class="btn btn-primary btn-sm">Show customers</button>
+      </div>
     </div>
   </div>
+
   <input type="hidden" name="per_page" id="perPageField" value="{{ paging.per_page }}"/>
 </form>
 
@@ -260,6 +241,7 @@
     <a href="{{ chip.href }}" aria-label="Remove filter">×</a>
   </span>
   {% endfor %}
+  <a href="{{ clear_all_url }}" class="clear-all-link">Clear all</a>
 </div>
 {% endif %}
 
@@ -275,6 +257,7 @@
       </div>
     </div>
     <div class="cc-fields">
+      <div class="cc-field"><span>Country</span><span{% if not c.country %} class="muted"{% endif %}>{{ c.country or 'Not given' }}</span></div>
       <div class="cc-field"><span>Email</span><span title="{{ c.email }}">{{ c.email }}</span></div>
       <div class="cc-field"><span>Phone</span><span>{{ c.phone }}{% if c.phone_ok %} <span class="pill pill-green" title="Confirmed by WhatsApp code">WhatsApp ✓</span>{% endif %}</span></div>
       {% if c.domain %}<div class="cc-field"><span>Domain</span><span title="{{ c.domain }}">{{ c.domain }}</span></div>{% endif %}
@@ -300,7 +283,7 @@
           {% endfor %}
         </select>
       </form>
-      {% if c.setup %}<div class="muted" style="font-size:12px;margin-top:4px">Setup {{ c.setup.done }} of {{ c.setup.total }}{% if c.setup.stuck %} · stuck at {{ c.setup.stuck }}{% else %} · done{% endif %}</div>{% endif %}
+      {% if c.setup %}<div class="muted" style="font-size:12px;margin-top:4px">Onboard {{ c.setup.done }} of {{ c.setup.total }}{% if c.setup.stuck %} · stuck at {{ c.setup.stuck }}{% else %} · done{% endif %}</div>{% endif %}
       {% else %}
       <form method="POST" action="{{ url_for('portal_admin.customer_assign_manager_x', product=c.product, ref_id=c.ref_id) }}">
         <select name="sales_manager_id" onchange="this.form.submit()">
@@ -335,6 +318,7 @@
         <tr>
           <th>Name</th>
           <th>Business Name</th>
+          <th>Country</th>
           <th>Product</th>
           <th>Email</th>
           <th>Phone</th>
@@ -343,7 +327,7 @@
           <th>Active</th>
           <th>Signed up</th>
           <th>Heard About Us</th>
-          <th>Setup</th>
+          <th>Onboard</th>
           <th>Assigned To</th>
           <th>Actions</th>
         </tr>
@@ -353,6 +337,7 @@
         <tr>
           <td><strong>{{ c.full_name }}</strong></td>
           <td><span class="truncate" title="{{ c.business_name }}">{{ c.business_name }}</span>{% if c.kind and c.kind != "real" %} <span class="kind-tag">{{ "Sales demo" if c.kind == "demo" else "Test" }}</span>{% endif %}</td>
+          <td{% if not c.country %} class="muted"{% endif %}>{{ c.country or 'Not given' }}</td>
           <td><span class="pill pill-grey">{{ PRODUCT_LABELS[c.product] }}</span></td>
           <td><span class="truncate" title="{{ c.email }}">{{ c.email }}</span></td>
           <td class="muted">{{ c.phone }}{% if c.phone_ok %} <span class="pill pill-green" title="Confirmed by WhatsApp code">WhatsApp ✓</span>{% endif %}</td>
@@ -457,12 +442,31 @@ function setCustomerView(view) {
   setCustomerView(saved);
 })();
 
-// Clicking outside an open filter dropdown closes it.
-document.addEventListener('click', function (e) {
-  document.querySelectorAll('.filter-dd[open]').forEach(function (d) {
-    if (!d.contains(e.target)) d.removeAttribute('open');
+// One Filters panel (11 Nov 2026): the Filters button opens and closes it;
+// "Show customers" submits the form. "Clear all" in the panel only unticks.
+(function () {
+  var btn = document.getElementById('filtersBtn');
+  var panel = document.getElementById('filtersPanel');
+  if (!btn || !panel) return;
+  btn.addEventListener('click', function () {
+    panel.hidden = !panel.hidden;
+    btn.setAttribute('aria-expanded', String(!panel.hidden));
   });
-});
+  document.getElementById('fpClear').addEventListener('click', function () {
+    panel.querySelectorAll('input[type=checkbox]').forEach(function (b) { b.checked = false; });
+    panel.querySelectorAll('input[type=date]').forEach(function (d) { d.value = ''; });
+    panel.querySelectorAll('.fp-sel').forEach(function (s) { s.textContent = ''; s.classList.remove('on'); });
+  });
+  panel.addEventListener('change', function (e) {
+    var sec = e.target.closest('.fp-sec'); if (!sec) return;
+    var t = [];
+    sec.querySelectorAll('input[type=checkbox]:checked').forEach(function (b) { t.push(b.parentNode.textContent.replace(/\s*\d+\s*$/, '').trim()); });
+    sec.querySelectorAll('input[type=date]').forEach(function (d) { if (d.value) t.push((d.name === 'date_from' ? 'from ' : 'to ') + d.value); });
+    var sel = sec.querySelector('.fp-sel');
+    sel.textContent = t.length > 2 ? t.length + ' selected' : t.join(', ');
+    sel.classList.toggle('on', t.length > 0);
+  });
+})();
 </script>
 
 {% endblock %}
