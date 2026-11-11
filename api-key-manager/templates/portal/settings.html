@@ -165,7 +165,7 @@
         </div>
         <div class="form-group">
           <label>Mobile Phone Number *</label>
-          {{ phone_box('phone_number', customer.phone_number, cls='', required=True, style='max-width:520px') }}
+          {{ phone_box('phone_number', customer.phone_number, cls='', required=True, style='max-width:520px', own=True) }}
           <p class="muted" style="font-size:12px;margin-top:4px">Required — used for account recovery and alerts.</p>
         </div>
         <div class="form-group">

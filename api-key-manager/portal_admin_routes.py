@@ -1468,7 +1468,10 @@ def customer_detail(customer_id: int):
         _kr = _kcur.fetchone()
     finally:
         _kcur.close(); _kc.close()
+    import turned_away as _turned_away   # 11 Nov 2026: refused entries, Admin only
+    turned_away_rows = _turned_away.for_customer(int(customer["id"]), tenant_id, customer.get("email"))
     return render_template("portal/admin_customer_detail.html",
+                           turned_away=turned_away_rows,
                            account_kind=(_kr[0] if _kr else "real"), account_kinds=_account_kind.KINDS,
                            customer=customer, keys=keys,
                            invoices=invs, audit=audit,

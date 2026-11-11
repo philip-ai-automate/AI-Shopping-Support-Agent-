@@ -147,7 +147,7 @@
       <label class="agent-check" style="margin-bottom:12px"><input type="checkbox" name="alert_reminder" checked/> Remind them after 10 minutes if nobody has replied</label>
       <div class="form-group" style="margin-bottom:0">
         <label>Their personal WhatsApp number for alerts</label>
-        {{ phone_box('alert_phone', cls='', style='max-width:420px') }}
+        {{ phone_box('alert_phone', cls='', style='max-width:420px', own=True) }}
         <p class="muted" style="font-size:12px;margin-top:6px">Alerts come from PhiXtra's WhatsApp number. Email alerts go to the email address above.</p>
       </div>
     </div>

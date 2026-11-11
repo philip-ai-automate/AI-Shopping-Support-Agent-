@@ -6706,6 +6706,52 @@ _OWN_PRODUCT_ENDPOINTS = {
 }
 
 
+# ── Turned away (11 Nov 2026): sign-up and login refusals recorded for Admin ──
+# Every flash() raised while handling POST /register or POST /login is caught
+# here (the register page sometimes shows it on the same page, which uses the
+# message up before after_request could read it). Passwords are never recorded.
+from flask import message_flashed as _message_flashed, g as _g_ta
+
+def _ta_catch_flash(sender, message, category, **kw):
+    try:
+        if request.method == "POST" and request.path in ("/register", "/login"):
+            _g_ta.setdefault("_ta_flashes", []).append((category, str(message)))
+    except Exception:
+        pass
+
+_message_flashed.connect(_ta_catch_flash)
+
+
+@portal_bp.after_request
+def _turned_away_after(resp):
+    try:
+        if request.method != "POST" or request.path not in ("/register", "/login"):
+            return resp
+        refused = [m for c, m in (_g_ta.get("_ta_flashes") or []) if c in ("danger", "warning")]
+        if not refused:
+            return resp
+        loc = resp.headers.get("Location", "") if resp.status_code in (301, 302, 303) else ""
+        if "/register/confirm" in loc:
+            return resp            # went through to the code page — not refused
+        import re as _re_ta
+        msg = _re_ta.sub(r"<[^>]+>", "", refused[-1]).strip()
+        f = request.form
+        email = (f.get("email") or "").strip()
+        if request.path == "/login":
+            typed = email
+        else:
+            parts = [f.get("business_name") or f.get("company_name") or "",
+                     f.get("wa_phone_number") or f.get("phone_number") or ""]
+            typed = " · ".join(p.strip() for p in parts if p and p.strip())
+        import turned_away
+        turned_away.record("login" if request.path == "/login" else "signup", msg,
+                           email=email or None, page=request.path, typed=typed or email,
+                           country=(f.get("business_based") or "").strip().upper())
+    except Exception as e:
+        print("⚠️ _turned_away_after error:", e)
+    return resp
+
+
 @portal_bp.after_request
 def _own_products_after_change(resp):
     if request.method == "POST" and request.endpoint in _OWN_PRODUCT_ENDPOINTS:
@@ -18147,6 +18193,43 @@ def phone_problem(value, allow_special: bool = False):
 
 def _phone_entry(raw: str, country: str = None, allow_special: bool = False,
                  plus: bool = False):
+    """_phone_entry_check, plus (11 Nov 2026) a refused number typed into a
+    portal form is recorded for Admin (turned_away) and remembered for one
+    page view so the phone box can show the message right under itself."""
+    val, err = _phone_entry_check(raw, country, allow_special=allow_special, plus=plus)
+    if err:
+        _phone_refused(raw, country, err)
+    return val, err
+
+
+def _phone_refused(raw, country, err):
+    """Only for a person typing into a form while logged in to the portal
+    (never admins impersonating, imports or public booking pages). Never raises."""
+    try:
+        from flask import has_request_context
+        if not has_request_context() or request.method != "POST":
+            return
+        if session.get("impersonate_customer_id") or not session.get("customer_id"):
+            return
+        raw_s = (raw or "").strip()
+        field = next((k for k, v in request.form.items() if (v or "").strip() == raw_s and raw_s), None)
+        if not field:
+            return
+        from urllib.parse import urlparse
+        ref = urlparse(request.referrer or "")
+        page = ref.path if ref.path and ref.netloc == request.host else request.path
+        session["phone_err"] = {"field": field, "msg": err, "typed": raw_s,
+                                "country": (country or "").strip().upper(), "page": page,
+                                "t": int(__import__("time").time())}
+        import turned_away
+        turned_away.record("phone", err, customer_id=int(session["customer_id"]), page=page,
+                           field=field, typed=raw_s, country=(country or "").strip().upper())
+    except Exception as e:
+        print("⚠️ _phone_refused error:", e)
+
+
+def _phone_entry_check(raw: str, country: str = None, allow_special: bool = False,
+                       plus: bool = False):
     """A number TYPED in any phone box. Accepted only when the person chose
     the country in the picker next to the box, or typed the full number
     starting with + (or 00). Never guessed from the business country.
@@ -18205,6 +18288,41 @@ def _tpl_phone_problem(value, allow_special=False):
 @portal_bp.app_context_processor
 def _inject_phone_hint():
     return {"PHONE_ENTRY_HINT": PHONE_ENTRY_HINT}
+
+
+@portal_bp.app_template_global("own_phone_country")
+def _tpl_own_phone_country():
+    """The business's own country (ISO) for pre-choosing the country next to
+    the owner's / team's OWN numbers (11 Nov 2026). Never used for buyers,
+    leads or contacts. '' when not known."""
+    try:
+        cid = _customer_id()
+        if not cid:
+            return ""
+        from flask import g as _g
+        if not hasattr(_g, "_own_cc"):
+            conn = get_db_connection(); cur = conn.cursor()
+            cur.execute("SELECT business_country FROM customers WHERE id=%s", (int(cid),))
+            row = cur.fetchone(); cur.close(); conn.close()
+            cc = ((row[0] if row else "") or "").strip().upper()
+            _g._own_cc = cc if cc in _pn.SUPPORTED_REGIONS else ""
+        return _g._own_cc
+    except Exception:
+        return ""
+
+
+@portal_bp.app_template_global("take_phone_err")
+def _tpl_take_phone_err(field):
+    """The refused number for this phone box (set by _phone_refused), once,
+    when it was typed on this same page in the last 2 minutes."""
+    e = session.get("phone_err")
+    if not e or e.get("field") != field or e.get("page") != request.path:
+        return None
+    if int(__import__("time").time()) - int(e.get("t") or 0) > 120:
+        session.pop("phone_err", None)
+        return None
+    session.pop("phone_err", None)
+    return e
 
 
 def _contact_numbers_from_form(form, tenant_id: int, old: dict = None):

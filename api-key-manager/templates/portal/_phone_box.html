@@ -4,25 +4,42 @@
    Import WITH CONTEXT:  {% from "portal/_phone_box.html" import phone_box with context %}
    value: the saved number (digits, country code first) — shown with "+".
    A saved number that still needs checking is shown as written. #}
-{% macro phone_box(name, value='', cls='finp', id=None, placeholder='e.g. 803 123 4567', required=False, hint=True, style='') -%}
-{%- set _v = (value or '')|string -%}
-{%- set _shown = (_v|phone_display) if (_v and not phone_problem(_v, True)) else _v -%}
+{#- 11 Nov 2026 (approved mock-up MV8cnR2wMvLeGwUXiNSKcA):
+   - own=True (the owner's / team's OWN number only — never buyers, leads or
+     contacts): the country starts on the business's own country.
+   - Example shows a full number with a country code.
+   - A refused number comes back in the box with the message in red right
+     under it, and the page scrolls to it (the same message at the top of
+     the page is hidden). -#}
+{% macro phone_box(name, value='', cls='finp', id=None, placeholder='e.g. +44 7700 900123', required=False, hint=True, style='', own=False) -%}
+{%- set _err = take_phone_err(name) -%}
+{%- set _v = (_err.typed if _err else (value or ''))|string -%}
+{%- set _shown = _v if _err else ((_v|phone_display) if (_v and not phone_problem(_v, True)) else _v) -%}
 {%- set _pop = PHONE_COUNTRIES_POPULAR | map(attribute=0) | list -%}
+{%- set _cc = (_err.country if _err else (own_phone_country() if (own and not _v) else '')) or '' -%}
 <div class="ph-box" style="display:flex;gap:6px;align-items:stretch;{{ style }}">
   <select name="{{ name }}_country" class="{{ cls }} ph-cc" aria-label="Country for this number"
           style="flex:0 0 132px;width:132px;max-width:42%;min-width:0;padding-right:4px">
     <option value="">Country…</option>
     <optgroup label="Most used">
-      {%- for iso, cname, cc in PHONE_COUNTRIES_POPULAR %}<option value="{{ iso }}">{{ cname }} (+{{ cc }})</option>{% endfor %}
+      {%- for iso, cname, cc in PHONE_COUNTRIES_POPULAR %}<option value="{{ iso }}"{% if iso == _cc %} selected{% endif %}>{{ cname }} (+{{ cc }})</option>{% endfor %}
     </optgroup>
     <optgroup label="All countries">
-      {%- for iso, cname, cc in PHONE_COUNTRIES %}{% if iso not in _pop %}<option value="{{ iso }}">{{ cname }} (+{{ cc }})</option>{% endif %}{% endfor %}
+      {%- for iso, cname, cc in PHONE_COUNTRIES %}{% if iso not in _pop %}<option value="{{ iso }}"{% if iso == _cc %} selected{% endif %}>{{ cname }} (+{{ cc }})</option>{% endif %}{% endfor %}
     </optgroup>
   </select>
   <input type="tel" name="{{ name }}" {% if id %}id="{{ id }}"{% endif %} class="{{ cls }} ph-num"
          value="{{ _shown }}" placeholder="{{ placeholder }}" autocomplete="off"
-         {% if required %}required{% endif %} style="flex:1 1 auto;min-width:0;width:0">
+         {% if required %}required{% endif %} {% if _err %}aria-invalid="true" aria-describedby="phErr-{{ name }}"{% endif %}
+         style="flex:1 1 auto;min-width:0;width:0{% if _err %};border-color:#D92D20;box-shadow:0 0 0 3px rgba(217,45,32,.12){% endif %}">
 </div>
+{%- if _err %}
+<div class="ph-err" id="phErr-{{ name }}" role="alert" style="margin-top:6px;background:#FEF3F2;border:1px solid #FECDCA;color:#B42318;border-radius:9px;padding:8px 12px;font-size:12.5px;line-height:1.45"><b>Not saved.</b> {{ _err.msg }}</div>
+<script>(function(){var e=document.getElementById('phErr-{{ name }}');if(!e)return;var m={{ _err.msg|tojson }};
+function go(){if(e.offsetParent===null)return;document.querySelectorAll('.flash').forEach(function(f){if((f.textContent||'').indexOf(m)!==-1)f.style.display='none';});
+var d=e.closest('details');if(d)d.open=true;var b=e.previousElementSibling,i=b&&b.querySelector('.ph-num');e.scrollIntoView({block:'center'});if(i)i.focus({preventScroll:true});}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go();})();</script>
+{%- endif %}
 <script>if(!window.phSet){(function(){function sync(i){var b=i.closest('.ph-box');if(!b)return;var s=b.querySelector('.ph-cc');if(!s)return;var v=(i.value||'').trim(),x=v.charAt(0)==='+'||v.slice(0,2)==='00';if(x){s.value='';}s.disabled=x;s.style.opacity=x?'.45':'';}
 document.addEventListener('input',function(e){if(e.target.classList&&e.target.classList.contains('ph-num'))sync(e.target);});
 window.phSet=function(i,v){if(typeof i==='string')i=document.getElementById(i);if(!i)return;v=(v||'').toString().trim();var d=v.replace(/\D/g,'');i.value=(!v)?'':(v.charAt(0)==='+'||d.charAt(0)==='0'||!d)?v:'+'+d;var b=i.closest('.ph-box'),s=b&&b.querySelector('.ph-cc');if(s)s.value='';sync(i);};})();}</script>

@@ -476,7 +476,7 @@
                     </div>
                     <div class="tm-field">
                       <label for="tmAlertPhone{{ m.id }}">Personal WhatsApp for alerts</label>
-                      {{ phone_box('alert_phone', m.alert_phone, cls='', id='tmAlertPhone' ~ m.id) }}
+                      {{ phone_box('alert_phone', m.alert_phone, cls='', id='tmAlertPhone' ~ m.id, own=True) }}
                       <small>Email alerts go to {{ m.email }}</small>
                     </div>
                   </div>
