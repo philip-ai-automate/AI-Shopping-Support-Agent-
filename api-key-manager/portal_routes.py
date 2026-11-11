@@ -3423,7 +3423,8 @@ def _register_whatsapp_merchant(
              phone_number, email_verified, phone_verified, verify_token, hear_about_us, business_country)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """, (tenant_id, first_name, last_name, email, pw_hash, phone_number or None, confirmed,
-          bool(confirmed and phone_number), verify_token, hear_about_us or None, business_country or None))
+          False,  # 2026-11-11: sign-up confirms the email only — the number is checked by Meta when connected
+          verify_token, hear_about_us or None, business_country or None))
     if confirmed:
         cur3.execute("UPDATE tenants SET status='active' WHERE id=%s", (tenant_id,))
     conn.commit()
@@ -3583,7 +3584,8 @@ def _register_web_merchant(first_name, last_name, email, password, phone_number,
                  phone_number, email_verified, phone_verified, verify_token, hear_about_us, business_country)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (int(tenant["id"]), first_name, last_name, email,
-             pw_hash, phone_number or None, confirmed, bool(confirmed and phone_number),
+             pw_hash, phone_number or None, confirmed,
+             False,  # 2026-11-11: email code only at sign-up; number not confirmed until Meta connect
              verify_token, hear_about_us or None, business_country or None))
         if confirmed:
             cur2.execute("UPDATE tenants SET status='active' WHERE id=%s", (int(tenant["id"]),))
@@ -4560,10 +4562,11 @@ def _confirm_finish(row):
     if row["kind"] == "login":
         conn = get_db_connection(); cur = conn.cursor()
         cur.execute("""UPDATE customers SET email_verified=TRUE, verify_token=NULL,
-                              phone_number=COALESCE(NULLIF(%s,''), phone_number),
-                              phone_verified=(phone_verified OR NULLIF(%s,'') IS NOT NULL)
+                              phone_number=COALESCE(NULLIF(%s,''), phone_number)
                        WHERE id=%s RETURNING tenant_id""",
-                    (row["phone"] or "", row["phone"] or "", row["customer_id"]))
+                    (row["phone"] or "", row["customer_id"]))
+        # 2026-11-11: logging in confirms the email only (no WhatsApp code since 9 Nov),
+        # so the number's "confirmed" mark is left as it was.
         tid = cur.fetchone()
         if tid:
             cur.execute("UPDATE tenants SET status='active' WHERE id=%s AND status='pending'", (tid[0],))
