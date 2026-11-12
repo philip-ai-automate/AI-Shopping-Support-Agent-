@@ -872,9 +872,13 @@ def api_signup():
     token = signup_confirm.start(kind="signup", flow=_CODE_FLOW_NEW, creator="web", args=args,
                                  form={"sell_to": sell_to}, pw_hash=pr.hash_password(_secrets.token_urlsafe(24)),
                                  phone="", email=email, wa_ok=True, next_url=shop)
-    if not _send_code(signup_confirm.get(token)):
-        return jsonify({"error": f"We couldn't send the code to {email}. Please try again."}), 502
-    return jsonify({"token": token, "email": email})
+    # 12 Nov 2026: no email code for a NEW account made from Shopify — Shopify
+    # vouches for the store owner and gives us the store email (Shopify review:
+    # the app must work straight after install). Linking an EXISTING PhiXtra
+    # account still needs the code.
+    held = signup_confirm.get(token)
+    signup_confirm.mark(held["id"], "email_ok")
+    return _create_account(held, shop, user_id)
 
 
 @shopify_bp.route("/api/signup/confirm", methods=["POST"])
@@ -894,6 +898,11 @@ def api_signup_confirm():
                         else "Too many wrong codes, so we stopped here. Please start again.",
                         "restart": res == "stopped"}), 400
 
+    return _create_account(r, shop, user_id)
+
+
+def _create_account(r, shop, user_id):
+    """Make the PhiXtra account from a held sign-up row and link the store."""
     import portal_routes as pr
     import signup_confirm
     args = dict(r["args"] or {})
