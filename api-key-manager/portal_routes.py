@@ -27775,7 +27775,7 @@ def _seq_sender(seq, sender: dict) -> dict:
     return dict(sender, from_email=fe, from_name=(seq.get("from_name") or "").strip() or sender["from_name"])
 
 
-def _seq_deliver(cur, camp, tenant_id: int, email: str, sender: dict, lead_id=None):
+def _seq_deliver(cur, camp, tenant_id: int, email: str, sender: dict, lead_id=None, person_id=None):
     """Send one sequence email; records it like a campaign recipient (so
     opens/clicks/reports/lead history all work). Returns (ok, error)."""
     ctx = email_outreach.recipient_context(cur, tenant_id, email)
@@ -27788,6 +27788,15 @@ def _seq_deliver(cur, camp, tenant_id: int, email: str, sender: dict, lead_id=No
     rec_id = cur.fetchone()["id"]
     unsub_url = f"https://portal.phixtra.com/email/unsubscribe?t={_encrypt_key(f'{tenant_id}:{email}')}"
     body = camp["html_body"] or ""
+    # Quote follow-ups go in the language the quotation was sent in (2026-11-12).
+    if person_id and lead_id:
+        try:
+            _tr = _af.quote_followup_translated(cur, tenant_id, person_id, lead_id, camp)
+            if _tr:
+                camp = dict(camp, subject=_tr["subject"])
+                body = _render_builder(_tr["fields"], sender["from_name"], tenant_id)
+        except Exception as e:
+            print("⚠️ quote follow-up translation:", e)
     if token:
         body = email_outreach.add_tracking(body, token)
     body = email_outreach.apply_merge(body, ctx, as_html=True).replace("{{UNSUBSCRIBE_URL}}", unsub_url)
@@ -27930,7 +27939,7 @@ def _seq_send_next(person_id: int, due_step=None):
         if not camp:
             conn.commit()
             return _put_back(f"Email {step['position']} has no saved email chosen.")
-        ok, err = _seq_deliver(cur, camp, tenant_id, p["email"], sender, lead_id=p["lead_id"])
+        ok, err = _seq_deliver(cur, camp, tenant_id, p["email"], sender, lead_id=p["lead_id"], person_id=p["id"])
         if not ok:
             cur.execute("""UPDATE email_sequence_people SET status='stopped', next_due_at=NULL, updated_at=NOW(),
                                stop_reason=%s WHERE id=%s""", ("Email couldn't be delivered", p["id"]))
@@ -42338,6 +42347,7 @@ def _fu_settings_context(customer, tenant_id: int) -> dict:
     _af.ensure_tables()
     _af.seed_rules(tenant_id)
     _af.seed_quote_rules(tenant_id)
+    _af.seed_quote_email(tenant_id)
     conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute("SELECT id, name, status FROM email_sequences WHERE tenant_id=%s ORDER BY lower(name)", (tenant_id,))
@@ -44888,6 +44898,7 @@ def quotes_settings():
 def _quote_fu_rules(tenant_id: int) -> list:
     """[(trigger, rule or None)] for the two quote follow-up rules."""
     _af.seed_quote_rules(tenant_id)
+    _af.seed_quote_email(tenant_id)
     # The same rule the reminders follow (switched-on first), so this box
     # and what PhiXtra does always agree.
     seqs = {r["id"]: r.get("sequence_name") for r in _af.list_rules(tenant_id)}
@@ -45252,6 +45263,14 @@ def quotes_quotation_send(qid: int):
             _qon.set_lang(tenant_id, qid, _lang)
         except Exception as e:
             print("⚠️ quote online lang:", e)
+        try:   # remembered for quote follow-ups in the buyer's language (2026-11-12)
+            _qq.ensure_tables()
+            _sl = request.form.get("lang") or _qq.detect_lang(request.form.get("message") or "")
+            _c = get_db_connection(); _cu = _c.cursor()
+            _cu.execute("UPDATE quotations SET sent_lang=%s WHERE id=%s AND tenant_id=%s", ((_sl or "en")[:5], qid, tenant_id))
+            _c.commit(); _cu.close(); _c.close()
+        except Exception as e:
+            print("⚠️ quote sent_lang:", e)
         ok, msg = _qq.send(tenant_id, qid, request.form.get("via"), request.form.get("to"),
                            request.form.get("subject"), request.form.get("message"), _current_actor(customer))
         flash(msg, "success" if ok else "danger")

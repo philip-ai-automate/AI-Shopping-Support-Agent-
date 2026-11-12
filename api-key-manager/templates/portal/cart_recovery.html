@@ -258,11 +258,11 @@
   {% if enabled %}
   <div class="period-tabs">
     <a href="{{ url_for('portal.cart_recovery_dashboard', days=7) }}"
-       class="period-tab {% if days==7 %}active{% endif %}">7 days</a>
+       class="period-tab {% if days==7 %}active{% endif %}">Last 7 days</a>
     <a href="{{ url_for('portal.cart_recovery_dashboard', days=30) }}"
-       class="period-tab {% if days==30 %}active{% endif %}">30 days</a>
+       class="period-tab {% if days==30 %}active{% endif %}">Last 30 days</a>
     <a href="{{ url_for('portal.cart_recovery_dashboard', days=90) }}"
-       class="period-tab {% if days==90 %}active{% endif %}">90 days</a>
+       class="period-tab {% if days==90 %}active{% endif %}">Last 90 days</a>
   </div>
   {% endif %}
 </div>
@@ -363,6 +363,11 @@
     Configure the discount offered to shoppers in recovery popups and emails.
     Changes take effect on the next recovery session.
   </p>
+  {# Where it is switched on and when it runs (12 Nov 2026) #}
+  <div style="font-size:13px;line-height:1.55;background:#F8FAFC;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:16px">
+    <div><strong>Turn it on or off:</strong> in WordPress › PhiXtra AI › PhiXtra AI Sales Agent › Cart Recovery tab, tick <em>Enable Cart Recovery</em>.</div>
+    <div style="margin-top:4px"><strong>When it runs:</strong> a chat pop-up on the shopper's next visit, an email 2 hours after they leave their cart, and a final email after 24 hours.</div>
+  </div>
 
   <form method="POST" action="{{ url_for('portal.cart_recovery_save_settings') }}">
 

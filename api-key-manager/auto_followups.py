@@ -341,6 +341,146 @@ def seed_quote_rules(tenant_id: int) -> None:
         cur.close(); conn.close()
 
 
+# ── Ready-made quote follow-up email (2026-11-12) ────────────────────────────
+# Once per business with Quotations: a saved email + a one-email follow-up
+# "Quote follow-up", linked to the business's suggested "quote sent, no
+# answer" rule while that rule is still off and untouched. The rule stays OFF:
+# nothing is sent until the business switches it on.
+QUOTE_EMAIL_NAME = "Quote follow-up"
+QUOTE_EMAIL_FIELDS = {
+    "subject": "Your quotation {{Quote Number}}",
+    "preheader": "",
+    "hero_heading": "",
+    "body_html": ("<p>Hi {{First Name}},</p>"
+                  "<p>I'm following up on quotation {{Quote Number}}, which we sent you recently.</p>"
+                  "<p>Do you have any questions, or would you like us to change anything, such as the "
+                  "quantities, delivery or timing?</p>"
+                  "<p>Just reply to this email and we'll take care of it.</p>"),
+    "cta_text": "", "cta_url": "", "image_url": "", "video_url": "", "video_picture_url": "",
+    "signoff": None, "style": "plain",
+}
+
+
+def seed_quote_email(tenant_id: int) -> None:
+    try:
+        import quote_requests as _qr
+        if not _qr.allowed(tenant_id):
+            return
+    except Exception:
+        return
+    ensure_tables()
+    conn = _conn(); cur = conn.cursor()
+    try:
+        cur.execute("""INSERT INTO followup_settings (tenant_id, settings) VALUES (%s,'{}'::jsonb)
+                       ON CONFLICT (tenant_id) DO NOTHING""", (tenant_id,))
+        cur.execute("""UPDATE followup_settings SET settings = settings || '{"quote_email_seeded": true}'::jsonb
+                       WHERE tenant_id=%s AND NOT COALESCE((settings->>'quote_email_seeded')::boolean, FALSE)
+                       RETURNING tenant_id""", (tenant_id,))
+        if cur.fetchone():
+            cur.execute("""INSERT INTO email_templates (tenant_id, name, fields, created_by)
+                           VALUES (%s,%s,%s,'Suggested by PhiXtra') RETURNING id""",
+                        (tenant_id, QUOTE_EMAIL_NAME, psycopg2.extras.Json(QUOTE_EMAIL_FIELDS)))
+            tpl_id = cur.fetchone()[0]
+            # Active but empty: only a switched-on rule ever puts a deal in it.
+            cur.execute("""INSERT INTO email_sequences (tenant_id, name, status, reply_to, created_by)
+                           VALUES (%s,%s,'active',NULL,'Suggested by PhiXtra') RETURNING id""",
+                        (tenant_id, QUOTE_EMAIL_NAME))
+            seq_id = cur.fetchone()[0]
+            cur.execute("""INSERT INTO email_sequence_steps (sequence_id, position, template_id, wait_days, send_mode)
+                           VALUES (%s,1,%s,0,'auto')""", (seq_id, tpl_id))
+            cur.execute("""UPDATE followup_rules SET sequence_id=%s, do_what='followup', notify='owner', updated_at=NOW()
+                           WHERE tenant_id=%s AND trigger='quote_no_reply' AND NOT enabled AND sequence_id IS NULL
+                             AND created_by='Suggested by PhiXtra'""", (seq_id, tenant_id))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ seed_quote_email:", e)
+    finally:
+        cur.close(); conn.close()
+
+
+def quote_lang(cur, tenant_id: int, lead_id) -> str:
+    """The language the deal's latest sent quotation went out in ('en' if unknown):
+    the language chosen on the Send page, else the buyer's own words."""
+    if not lead_id:
+        return "en"
+    import quote_quotes as _qq
+    try:
+        cur.execute("""SELECT q.sent_lang, r.buyer_words, r.notes
+                         FROM quote_requests r LEFT JOIN quotations q
+                           ON q.request_id = r.id AND q.tenant_id = r.tenant_id AND q.sent_at IS NOT NULL
+                        WHERE r.tenant_id=%s AND r.lead_id=%s AND r.quote_sent_at IS NOT NULL
+                        ORDER BY r.quote_sent_at DESC, q.sent_at DESC NULLS LAST LIMIT 1""", (tenant_id, lead_id))
+        r = cur.fetchone()
+    except Exception as e:
+        print("⚠️ quote_lang:", e)
+        return "en"
+    if not r:
+        return "en"
+    r = dict(r) if not isinstance(r, dict) else r
+    lang = (r.get("sent_lang") or "").lower()
+    if not lang:
+        lang = _qq.detect_lang(r.get("buyer_words") or r.get("notes") or "")
+    if lang == "en" and not r.get("sent_lang"):
+        # Quote asked for in the website chat: the buyer's own chat messages.
+        try:
+            cur.execute("""SELECT m.content FROM lead_qual_sources s
+                             JOIN chat_messages m ON m.tenant_id = s.tenant_id AND m.role = 'user'
+                              AND 'chat:' || m.session_id = s.source_key
+                            WHERE s.tenant_id=%s AND s.lead_id=%s AND s.source_key LIKE 'chat:%%'
+                            ORDER BY m.id DESC LIMIT 8""", (tenant_id, lead_id))
+            words = " ".join((data_crypto.dec(x["content"] if isinstance(x, dict) else x[0]) or "")
+                             for x in cur.fetchall())
+            lang = _qq.detect_lang(words) if words.strip() else "en"
+        except Exception as e:
+            print("⚠️ quote_lang chat:", e)
+            lang = "en"
+    return lang or "en"
+
+
+_TR_CACHE: dict = {}
+
+
+def quote_followup_translated(cur, tenant_id: int, person_id: int, lead_id, camp: dict):
+    """For a person a quote rule put into a follow-up, when the quotation went out
+    in another language: {'subject', 'fields'} translated, or None (send as written)."""
+    cur.execute("""SELECT r.trigger FROM email_sequence_people p JOIN followup_rules r ON r.id = p.rule_id
+                    WHERE p.id=%s AND p.tenant_id=%s""", (person_id, tenant_id))
+    row = cur.fetchone()
+    trig = (row["trigger"] if isinstance(row, dict) else row[0]) if row else None
+    if trig not in QUOTE_TRIGGERS:
+        return None
+    lang = quote_lang(cur, tenant_id, lead_id)
+    if lang == "en":
+        return None
+    fields = dict(camp.get("fields") or {})
+    keys = [k for k in ("body_html", "hero_heading", "cta_text") if (fields.get(k) or "").strip()]
+    texts = [camp.get("subject") or ""] + [fields[k] for k in keys]
+    ck = (tenant_id, lang, tuple(texts))
+    out = _TR_CACHE.get(ck)
+    if out is None:
+        import json as _json
+        import chat_translate as _ct
+        prompt = (
+            "Translate this follow-up email from a company's sales team to its buyer into "
+            f"{_ct.lang_name(lang)} ({lang}). Keep the tone friendly and professional. Keep every HTML tag, "
+            "every {{ ... }} placeholder, numbers, prices, names and links exactly as written. Do not add anything.\n"
+            'Reply as JSON: {"items": ["...", "..."]} in the same order.\n\nItems:\n'
+            + _json.dumps(texts, ensure_ascii=False))
+        got = _ct._ask(prompt).get("items") or []
+        if len(got) != len(texts) or not all(isinstance(x, str) and x.strip() for x in got):
+            return None
+        out = got
+        if len(_TR_CACHE) > 500:
+            _TR_CACHE.clear()
+        _TR_CACHE[ck] = out
+    for k, v in zip(keys, out[1:]):
+        fields[k] = v
+    for k in ("hero_heading", "body_html", "cta_text", "cta_url", "image_url", "video_url", "video_picture_url"):
+        fields.setdefault(k, "")
+    return {"subject": out[0], "fields": fields}
+
+
 def quote_rule(tenant_id: int, trigger: str, cur=None):
     """The business's first rule of this quote kind (dict) or None."""
     own = cur is None

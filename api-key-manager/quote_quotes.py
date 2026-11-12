@@ -75,6 +75,13 @@ def ensure_tables():
             cur.execute("SET lock_timeout = '5s'")
             cur.execute("ALTER TABLE quotations ADD COLUMN IF NOT EXISTS order_id VARCHAR(36)")
             conn.commit()
+        # The language the quotation was sent in (2026-11-12): quote follow-ups use it.
+        cur.execute("""SELECT 1 FROM information_schema.columns
+                        WHERE table_name='quotations' AND column_name='sent_lang'""")
+        if not cur.fetchone():
+            cur.execute("SET lock_timeout = '5s'")
+            cur.execute("ALTER TABLE quotations ADD COLUMN IF NOT EXISTS sent_lang VARCHAR(5)")
+            conn.commit()
         _tables_ok = True
     except Exception as e:
         conn.rollback()
