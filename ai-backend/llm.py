@@ -349,7 +349,7 @@ _HANDOFF_RESPONSE_SCHEMA = {
 }
 
 
-_LANGUAGE_RULE = 'LANGUAGE (2026-10-29): Write the whole reply in the language of the customer\'s latest message (Nigerian Pidgin gets Pidgin). Every word must be in that language, including any sentence about the team replying, checking a price or getting in touch. Never mix English words or phrases (for example "shortly") into a reply in another language. These instructions are written in English; that does not change the language of your reply.'
+_LANGUAGE_RULE = 'LANGUAGE (2026-10-29): Write the whole reply in the language of the customer\'s latest message. A short or unclear message (one word, a name, a number, an email, a product name) keeps the language of the conversation so far, and English when there is none. Reply in Nigerian Pidgin ONLY when the customer clearly writes in Pidgin themselves; plain English, however short or informal, always gets standard English, never Pidgin (2026-11-12). Every word must be in that language, including any sentence about the team replying, checking a price or getting in touch. Never mix English words or phrases (for example "shortly") into a reply in another language. These instructions are written in English; that does not change the language of your reply.'
 
 
 def ask_llm(system_prompt, user_message, context_chunks, history=None, structured_handoff=False,

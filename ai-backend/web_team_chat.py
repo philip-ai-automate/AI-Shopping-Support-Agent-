@@ -41,6 +41,38 @@ def ai_is_off(tenant_id: int) -> bool:
         cur.close(); conn.close()
 
 
+def taken_over(tenant_id: int, session_id: str) -> bool:
+    """True when staff took this website chat over in the Inbox (2026-11-12,
+    table web_chat_takeover, made by the portal): the AI Agent stays quiet."""
+    if not session_id:
+        return False
+    conn = get_db_connection()
+    if not conn:
+        return False
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT 1 FROM web_chat_takeover WHERE tenant_id=%s AND session_id=%s",
+                    (tenant_id, session_id[:64]))
+        return cur.fetchone() is not None
+    except Exception:
+        conn.rollback()
+        return False      # table not made yet = nothing taken over
+    finally:
+        cur.close(); conn.close()
+
+
+def taken_over_reply(tenant_id: int, session_id: str, text: str, quiet_ok: bool) -> dict:
+    """A visitor's message in a chat staff have taken over: kept for the team
+    (Inbox), no AI answer. Chat boxes that can show nothing (quiet_ok: paste-in
+    box, plugin 3.10.0) get an empty reply; older plugins, which show an empty
+    reply as an error, get the usual 'our team will reply' line."""
+    save_visitor_message(tenant_id, session_id, text)
+    import reply_language
+    reply = "" if quiet_ok else reply_language.text("team_will_reply", text)
+    return {"reply": reply, "session_id": session_id, "product_recommendations": [],
+            "handoff_triggered": False, "team_chat": True, "taken_over": True}
+
+
 def contact_for(cur, tenant_id: int, session_id: str) -> dict:
     cur.execute("""
         SELECT (ARRAY_AGG(visitor_name ORDER BY id DESC) FILTER (WHERE COALESCE(visitor_name,'') <> ''))[1] AS name,
@@ -187,7 +219,28 @@ def poll(tenant_id: int, session_id: str, after: int, business_name: str, histor
         print(f"⚠️ [TEAM CHAT] poll tenant={tenant_id}: {e}")
     finally:
         cur.close(); conn.close()
+    # Chat boxes check slowly while the AI Agent answers and every few seconds
+    # once staff take the chat over (2026-11-12): tell them which.
+    out["taken_over"] = taken_over(tenant_id, session_id)
+    out["team_active"] = out["taken_over"] or _waiting_for_team(tenant_id, session_id)
     return out
+
+
+def _waiting_for_team(tenant_id: int, session_id: str) -> bool:
+    """The chat went to the team and is still open (a pending hand-over)."""
+    conn = get_db_connection()
+    if not conn:
+        return False
+    cur = conn.cursor()
+    try:
+        cur.execute("""SELECT 1 FROM handoff_requests WHERE tenant_id=%s AND session_id=%s
+                         AND status='pending' LIMIT 1""", (tenant_id, session_id[:64]))
+        return cur.fetchone() is not None
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        cur.close(); conn.close()
 
 
 def plugin_reply(tenant_id: int, session_id: str, text: str) -> dict:
@@ -201,4 +254,5 @@ def plugin_reply(tenant_id: int, session_id: str, text: str) -> dict:
     if not (c["email"] or c["phone"]):
         reply += " " + reply_language.text("leave_contact", text)
     return {"reply": reply, "session_id": session_id, "product_recommendations": [],
-            "handoff_triggered": not (c["email"] or c["phone"]), "team_chat": True}
+            "handoff_triggered": not (c["email"] or c["phone"]), "team_chat": True,
+            "reply_lang": reply_language.detect(text)}

@@ -94,6 +94,10 @@ def _settings(tenant_id: int):
                 try:
                     cur.execute("SELECT 1 FROM products WHERE tenant_id=%s AND is_active LIMIT 1", (tenant_id,))
                     s["quotes"] = cur.fetchone() is not None
+                    if not s["quotes"]:
+                        # WooCommerce / Shopify catalogues live in documents (type 'product'), 2026-11-12.
+                        cur.execute("SELECT 1 FROM documents WHERE tenant_id=%s AND type='product' LIMIT 1", (tenant_id,))
+                        s["quotes"] = cur.fetchone() is not None
                 except Exception:
                     conn.rollback()
                     s["quotes"] = False

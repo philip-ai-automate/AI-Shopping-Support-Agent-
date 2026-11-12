@@ -924,7 +924,7 @@ html, body { overflow: hidden; height: 100%; }
           </form>
           {% endif %}
         {% endif %}
-        {% if ai_enabled %}
+        {% if ai_enabled and not (active_phone or '').startswith('web:') %}
         {% if active_handoff_session %}
         <form method="POST"
               action="{{ url_for('portal.inbox_resolve', session_id=active_handoff_session) }}"
@@ -1385,6 +1385,23 @@ html, body { overflow: hidden; height: 100%; }
             {% else %}
             <form method="POST" action="{{ url_for('portal.inbox_claim', phone=active_phone) }}">
               <button type="submit" class="btn btn-sm" style="background:#F0FDF4;color:#027A48;border:1px solid #A6F4C5;white-space:nowrap">🙋 Claim</button>
+            </form>
+            {% endif %}
+          </div>
+          {% endif %}
+          {% if ai_enabled and active_phone %}{# Website chat take-over (12 Nov 2026) #}
+          <div class="chat-actions" style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+            {% if web_taken_over %}
+            <form method="POST" action="{{ url_for('portal.inbox_web_handback') }}"
+                  onsubmit="return confirm('Hand this chat back to the AI Agent? It will answer the visitor\'s next message.')">
+              <input type="hidden" name="customer_phone" value="{{ active_phone }}">
+              <button type="submit" class="btn btn-sm" style="background:#FEF3F2;color:#B42318;border:1px solid #FDA29B;white-space:nowrap">Hand back to AI Agent</button>
+            </form>
+            {% else %}
+            <form method="POST" action="{{ url_for('portal.inbox_takeover') }}"
+                  onsubmit="return confirm('Take over this chat? The AI Agent will stop replying to this visitor until you hand it back.')">
+              <input type="hidden" name="customer_phone" value="{{ active_phone }}">
+              <button type="submit" class="btn btn-sm" style="background:#F2F4F7;color:var(--ink);border:1px solid var(--line);white-space:nowrap">✋ Take Over</button>
             </form>
             {% endif %}
           </div>

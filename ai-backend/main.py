@@ -120,6 +120,7 @@ class ChatRequest(BaseModel):
     assistant_name: str | None = None          # name the website chat shows for the AI, e.g. "Kelvin"
     channel: str | None = None                 # "whatsapp" from the WA gateway → faster answer setting
     visitor: dict | None = None                # logged-in website customer {name, email, phone, company} (plugin 3.9.16)
+    quiet_ok: bool | None = None               # chat box can show no reply (taken-over chats, 2026-11-12)
 
 
 def record_usage_event(
@@ -683,6 +684,13 @@ def _chat(req: ChatRequest):
             if not _tc_msg:
                 raise HTTPException(status_code=400, detail="Please type a message")
             return _tc_plugin_reply(int(tenant_id), (_sid0 or "w-" + uuid.uuid4().hex[:24])[:64], _tc_msg[:2000])
+        # Staff took this chat over in the Inbox (2026-11-12): no AI answer.
+        from web_team_chat import taken_over as _tc_taken, taken_over_reply as _tc_taken_reply
+        if _sid0 and _tc_taken(int(tenant_id), _sid0):
+            _tc_msg = (req.message or "").strip()
+            if not _tc_msg:
+                raise HTTPException(status_code=400, detail="Please type a message")
+            return _tc_taken_reply(int(tenant_id), _sid0[:64], _tc_msg[:2000], bool(req.quiet_ok))
 
     # ── Quota check ───────────────────────────────────────────────────────────
     _quota = _check_quota(int(tenant_id))
@@ -1381,6 +1389,14 @@ def _chat(req: ChatRequest):
         "website": tenant.get("website"),
         "handoff_triggered": handoff_triggered,
     }
+    # The buyer's language for the chat box's own words (contact form,
+    # plugin 3.10.0, 2026-11-12): the AI's reply follows the buyer's language.
+    try:
+        import reply_language as _rl
+        _lang = _rl.detect(answer)
+        response["reply_lang"] = _lang if _lang != "en" else _rl.detect(req.message or "")
+    except Exception:
+        pass
     if _disc:
         response["discount_code"] = _disc
     _all_recs = list(product_recommendations)
@@ -2894,7 +2910,7 @@ def widget_chat_stream(req: WidgetChatRequest, request: _WRequest):
     addon = ("\n\nSTYLE: You may use an occasional friendly emoji in replies, at most one per message."
              if _cb_settings(int(row["tenant_id"])).get("ai_emojis") else None)
     return chat_stream(ChatRequest(api_key=row["api_key"], message=msg, session_id=sid, channel="website",
-                                   visitor=_w_visitor(row, req), system_addon=addon))
+                                   visitor=_w_visitor(row, req), system_addon=addon, quiet_ok=True))
 
 
 def _w_list_demo_chat(tenant_id: int, sid: str, msg: str) -> None:

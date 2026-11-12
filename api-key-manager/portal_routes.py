@@ -17739,6 +17739,10 @@ def inbox_takeover():
     if not _team_can_access_phone(tenant_id, _current_actor(customer), customer_phone):
         flash("You don't have access to this conversation.", "danger")
         return redirect(url_for("portal.my_inbox"))
+    # Website chats (key 'web:<session>') have their own take-over (2026-11-12):
+    # the WhatsApp path below would build a WhatsApp session for them.
+    if customer_phone.startswith("web:"):
+        return _web_chat_takeover(tenant_id, customer, customer_phone, take=True)
 
     try:
         conn = get_db_connection()
@@ -17780,6 +17784,84 @@ def inbox_takeover():
         print("⚠️ inbox_takeover error:", e)
         flash("Could not take over conversation. Please try again.", "danger")
         return redirect(url_for("portal.my_inbox"))
+
+
+# ── Website chat take-over (2026-11-12) ─────────────────────────────────────
+# A row in web_chat_takeover = the AI Agent stays quiet in that website chat;
+# the visitor's messages go to the Inbox and staff replies reach the chat box
+# (ai-backend main.py checks web_team_chat.taken_over). Hand back = row gone.
+def _ensure_web_chat_takeover(cur) -> None:
+    cur.execute("""CREATE TABLE IF NOT EXISTS web_chat_takeover (
+                       tenant_id  INTEGER NOT NULL,
+                       session_id VARCHAR(64) NOT NULL,
+                       taken_by_key   VARCHAR(80),
+                       taken_by_label VARCHAR(200),
+                       taken_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                       PRIMARY KEY (tenant_id, session_id))""")
+
+
+def _web_chat_is_taken_over(tenant_id: int, key: str) -> bool:
+    if not (key or "").startswith("web:"):
+        return False
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        try:
+            cur.execute("SELECT 1 FROM web_chat_takeover WHERE tenant_id=%s AND session_id=%s",
+                        (tenant_id, key[4:][:64]))
+            return cur.fetchone() is not None
+        finally:
+            cur.close(); conn.close()
+    except Exception:
+        return False
+
+
+def _web_chat_takeover(tenant_id: int, customer, key: str, take: bool):
+    sid = key[4:][:64]
+    actor = _current_actor(customer)
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        try:
+            _ensure_web_chat_takeover(cur)
+            if take:
+                cur.execute("""INSERT INTO web_chat_takeover (tenant_id, session_id, taken_by_key, taken_by_label)
+                               VALUES (%s, %s, %s, %s)
+                               ON CONFLICT (tenant_id, session_id) DO NOTHING""",
+                            (tenant_id, sid, actor.get("key"), actor.get("label")))
+            else:
+                cur.execute("DELETE FROM web_chat_takeover WHERE tenant_id=%s AND session_id=%s", (tenant_id, sid))
+            conn.commit()
+        finally:
+            cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ web chat takeover error:", e)
+        flash("Could not change this chat. Please try again.", "danger")
+        return redirect(url_for("portal.my_inbox", phone=key))
+    if take:
+        flash("You have taken over this website chat. The AI Agent is paused. ✅", "success")
+        staff_activity.log("chat_claimed", tenant_id, phone=key)
+    else:
+        flash("Handed back to the AI Agent. ✅", "success")
+    return redirect(url_for("portal.my_inbox", phone=key))
+
+
+@portal_bp.route("/inbox/web-handback", methods=["POST"])
+@team_feature("inbox.takeover")
+def inbox_web_handback():
+    """Website chat: the AI Agent answers again (2026-11-12)."""
+    r = _require_login()
+    if r: return r
+    r2 = _require_team_permission("inbox.takeover")
+    if r2: return r2
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    key = (request.form.get("customer_phone") or "").strip()
+    if not key.startswith("web:"):
+        flash("Invalid chat.", "danger")
+        return redirect(url_for("portal.my_inbox"))
+    if not _team_can_access_phone(tenant_id, _current_actor(customer), key):
+        flash("You don't have access to this conversation.", "danger")
+        return redirect(url_for("portal.my_inbox"))
+    return _web_chat_takeover(tenant_id, customer, key, take=False)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -34189,7 +34271,7 @@ def woo_sync():
     cur.execute("""
         SELECT type, COUNT(*) AS cnt,
                MAX(updated_at) AS last_sync
-        FROM documents WHERE tenant_id = %s
+        FROM documents WHERE tenant_id = %s AND id NOT LIKE 'site-%%'
         GROUP BY type ORDER BY cnt DESC
     """, (tenant_id,))
     type_rows  = cur.fetchall() or []
@@ -34198,7 +34280,9 @@ def woo_sync():
     type_counts = {r["type"]: r["cnt"] for r in type_rows}
 
     # ── filtered query ─────────────────────────────────────────────────────
-    where  = ["tenant_id = %s"]
+    # Pages read from the website (AI Assistant › Store Information, ids 'site-…')
+    # are not from the WooCommerce sync: left out of this page (2026-11-12).
+    where  = ["tenant_id = %s", "id NOT LIKE 'site-%%'"]
     params: list = [tenant_id]
 
     if type_f:
@@ -34222,7 +34306,7 @@ def woo_sync():
     cur.execute(f"""
         SELECT id, type, title, brand, sku, price_min, price_max,
                in_stock, categories_text, url, image_url, site_url,
-               updated_at
+               updated_at, currency
         FROM documents {where_sql}
         ORDER BY type, updated_at DESC
         LIMIT %s OFFSET %s
@@ -36119,6 +36203,7 @@ def my_inbox():
         is_webchat_active=is_webchat_active,
         chat_tr=_chat_tr_inbox_ctx(tenant_id),   # Chat Translation, B2B (2026-10-29)
         disc=_disc_inbox_ctx(tenant_id, active_phone) if is_webchat_active else None,   # Discounts in Chat (11 Nov 2026)
+        web_taken_over=_web_chat_is_taken_over(tenant_id, active_phone) if is_webchat_active else False,
     )
 
 

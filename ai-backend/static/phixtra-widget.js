@@ -353,7 +353,7 @@
             var note = (nm ? "Thanks, " + nm.split(" ")[0] + ". " : "Thank you. ") + "We'll reply here. If you've left by then, " +
               (mail ? "we'll email you at " + mail + "." : "we'll call you on " + tel + ".");
             f.replaceWith(addMsg(note, "sys"));
-            startPolling();
+            startPolling(true);
           })
           .catch(function () { b.disabled = false; p.textContent = "That didn't send. Please try again."; });
       });
@@ -361,7 +361,10 @@
     }
 
     // \u2500\u2500 Live replies from the business's team (2026-10-06) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-    var lastId = 0, polling = false, pollTimer = null;
+    // Checking for team replies (12 Nov 2026): every 4 s open / 15 s closed once the
+    // team has the chat (team mode, hand-over, chat link page, taken over); while the
+    // AI Agent answers, every 15 s / 60 s, stopping after 30 minutes with no activity.
+    var lastId = 0, polling = false, pollTimer = null, fast = TEAM || !!PAGE, lastActive = Date.now();
     function staffMsg(r) {
       var w = el("div", "who"); w.textContent = (r.by ? r.by + " \u00b7 " : "") + (cfg.title || "Our team"); msgs.appendChild(w);
       addMsg(r.text, "ai", r.by || (cfg.title || "Team"));
@@ -376,14 +379,25 @@
             greeted = true;
             d.history.forEach(function (h) { if (h.kind === "staff") { staffMsg(h); } else { addMsg(h.text, h.kind === "visitor" ? "me" : "ai"); } });
           }
+          if (d.taken_over || d.team_active) { fast = true; }
+          if ((d.replies || []).length) { lastActive = Date.now(); }
           (d.replies || []).forEach(function (r) { staffMsg(r); });
           if ((d.replies || []).length && panel.hidden) { badge.hidden = false; }
           lastId = Math.max(lastId, d.last_id || 0);
           return !!((d.history && d.history.length) || lastId);
         }).catch(function () { return false; });
     }
-    function tick() { pollTimer = null; pollOnce(false).then(function () { pollTimer = setTimeout(tick, panel.hidden ? 15000 : 4000); }); }
-    function startPolling() { if (polling) { return; } polling = true; pollTimer = setTimeout(tick, 4000); }
+    function wait() { return fast ? (panel.hidden ? 15000 : 4000) : (panel.hidden ? 60000 : 15000); }
+    function tick() {
+      pollTimer = null;
+      if (!fast && Date.now() - lastActive > 30 * 60000) { polling = false; return; }
+      pollOnce(false).then(function () { pollTimer = setTimeout(tick, wait()); });
+    }
+    function startPolling(quick) {
+      lastActive = Date.now();
+      if (quick) { fast = true; }
+      if (polling) { return; } polling = true; pollTimer = setTimeout(tick, wait());
+    }
     btn.addEventListener("click", function () { if (polling && !panel.hidden) { clearTimeout(pollTimer); tick(); } });
     pollOnce(true).then(function (had) { if (had) { startPolling(); } });
 
@@ -425,6 +439,8 @@
             } else if (ev === "done") {
               if (timer) { clearTimeout(timer); }
               if (data.session_id) { sessionId = data.session_id; store(SKEY, sessionId); }
+              // Staff took this chat over (12 Nov 2026): no AI answer, their replies come by polling.
+              if (data.taken_over && !data.reply) { typing.remove(); startPolling(true); return; }
               var final = data.reply || shown;
               if (data.quota_exceeded || !final) { final = final || "Thanks for your message. Our team will get back to you soon."; }
               if (!bubble) { typing.remove(); bubble = addMsg("", "ai"); }
@@ -442,8 +458,8 @@
                 msgs.scrollTop = msgs.scrollHeight;
               } else { bubble.innerHTML = format(final); }
               addCards(data.product_recommendations);
-              if (data.handoff_triggered) { if (CLOSED) { addMsg(CLOSED.closed_msg, "sys"); } contactForm(CLOSED ? CLOSED.closed_form : null); startPolling(); }
-              else if (PAGE) { startPolling(); }  // chat link page: the team can step in any time
+              if (data.handoff_triggered) { if (CLOSED) { addMsg(CLOSED.closed_msg, "sys"); } contactForm(CLOSED ? CLOSED.closed_form : null); startPolling(true); }
+              else { startPolling(); }  // the team can step in any time (slow checks until they do)
               return;
             } else if (ev === "error") {
               throw new Error(data.detail || "error");
