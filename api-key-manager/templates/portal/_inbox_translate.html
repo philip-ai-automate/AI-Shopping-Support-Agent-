@@ -30,6 +30,7 @@
   var H = {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'};
   var convLang = null, convLangName = null;
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function fmt(s){ return esc(s).replace(/\*\*([^\s*](?:[^*]*?[^\s*])?)\*\*/g, '<strong>$1</strong>'); }
   function post(url, body){ return fetch(url, {method:'POST', headers:H, credentials:'same-origin', body:JSON.stringify(body)})
       .then(function(r){ return r.json().then(function(d){ if (!r.ok) throw new Error(d.error || 'error'); return d; }); }); }
 
@@ -56,9 +57,9 @@
         var b = batch[i] && batch[i][0]; if (!b || !r) return;
         var box = null;
         if (r.wrote) {
-          box = '<div class="ctr-tx wrote"><span class="ctr-l">✓ Your team wrote (' + esc(TEAMN) + ') · sent in ' + esc(r.lang_name) + '</span>' + esc(r.wrote) + '</div>';
+          box = '<div class="ctr-tx wrote"><span class="ctr-l">✓ Your team wrote (' + esc(TEAMN) + ') · sent in ' + esc(r.lang_name) + '</span>' + fmt(r.wrote) + '</div>';
         } else if (r.text) {
-          box = '<div class="ctr-tx"><span class="ctr-l">🌐 ' + esc(TEAMN) + ' · from ' + esc(r.lang_name) + '</span>' + esc(r.text) + '</div>';
+          box = '<div class="ctr-tx"><span class="ctr-l">🌐 ' + esc(TEAMN) + ' · from ' + esc(r.lang_name) + '</span>' + fmt(r.text) + '</div>';
         }
         if (box) {
           var t = b.querySelector('.bubble-time');
@@ -89,7 +90,7 @@
       (d.results || []).forEach(function(r, i){
         if (!r || !r.text) return;
         var p = items[i], item = p.closest('.inbox-item'), nm = item && item.querySelector('.conv-name');
-        p.insertAdjacentHTML('beforeend', '<span class="ctr-prev-en">🌐 ' + esc(r.text) + '</span>');
+        p.insertAdjacentHTML('beforeend', '<span class="ctr-prev-en">🌐 ' + esc(String(r.text).replace(/\*\*/g, '')) + '</span>');
         p.style.whiteSpace = 'normal';
         if (nm && !nm.querySelector('.ctr-tag')) nm.insertAdjacentHTML('beforeend', '<span class="ctr-tag">' + esc((r.lang || '').toUpperCase()) + '</span>');
       });
@@ -130,7 +131,7 @@
       if (ta.value !== src || sel.value !== to) return null;
       form._ctr = {src: src, to: to, out: d.text};
       prev.classList.remove('wait');
-      prev.innerHTML = '<span class="ctr-l">🌐 The buyer will receive (' + esc(name) + ')</span>' + esc(d.text);
+      prev.innerHTML = '<span class="ctr-l">🌐 The buyer will receive (' + esc(name) + ')</span>' + fmt(d.text);
       return form._ctr;
     }).catch(function(){
       prev.hidden = true; var err = form.querySelector('.ctr-err');

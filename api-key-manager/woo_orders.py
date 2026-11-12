@@ -65,6 +65,10 @@ def ensure_tables():
                            woocommerce VARCHAR(20),
                            last_seen   TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
         cur.execute("ALTER TABLE quotations ADD COLUMN IF NOT EXISTS woo_order JSONB")
+        # Discounts in Chat Phase 4 (11 Nov 2026): the shop's currency, and whether
+        # its plugin has the phixtra/v1/chat-coupon route.
+        cur.execute("ALTER TABLE woo_shops ADD COLUMN IF NOT EXISTS currency VARCHAR(10)")
+        cur.execute("ALTER TABLE woo_shops ADD COLUMN IF NOT EXISTS coupons BOOLEAN NOT NULL DEFAULT FALSE")
         conn.commit()
         _ready = True
     except Exception as e:
@@ -143,12 +147,15 @@ def hello(key_row: dict, data: dict) -> tuple:
         return False, "That shop address can't be used."
     conn, cur = _db()
     try:
-        cur.execute("""INSERT INTO woo_shops (tenant_id, api_key_id, route, site, plugin, woocommerce, last_seen)
-                       VALUES (%s,%s,%s,%s,%s,%s,NOW())
+        cur.execute("""INSERT INTO woo_shops (tenant_id, api_key_id, route, site, plugin, woocommerce, currency, coupons, last_seen)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NOW())
                        ON CONFLICT (tenant_id) DO UPDATE SET api_key_id=EXCLUDED.api_key_id, route=EXCLUDED.route,
-                             site=EXCLUDED.site, plugin=EXCLUDED.plugin, woocommerce=EXCLUDED.woocommerce, last_seen=NOW()""",
+                             site=EXCLUDED.site, plugin=EXCLUDED.plugin, woocommerce=EXCLUDED.woocommerce,
+                             currency=EXCLUDED.currency, coupons=EXCLUDED.coupons, last_seen=NOW()""",
                     (key_row["tenant_id"], key_row["id"], route, str(data.get("site") or "")[:300],
-                     str(data.get("plugin") or "")[:20], str(data.get("woocommerce") or "")[:20]))
+                     str(data.get("plugin") or "")[:20], str(data.get("woocommerce") or "")[:20],
+                     re.sub(r"[^A-Z]", "", str(data.get("currency") or "").upper())[:10] or None,
+                     bool(data.get("coupons"))))
         conn.commit()
         return True, "ok"
     finally:

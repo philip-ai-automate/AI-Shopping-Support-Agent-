@@ -5,7 +5,7 @@ application_url = "https://portal.phixtra.com/shopify/app"
 embedded = true
 
 [access_scopes]
-scopes = "read_products,read_inventory,read_customers,read_companies,read_publications,write_draft_orders,write_payment_terms"
+scopes = "read_products,read_inventory,read_customers,read_companies,read_publications,write_draft_orders,write_payment_terms,write_discounts"
 
 [auth]
 redirect_urls = [ "https://portal.phixtra.com/shopify/callback" ]

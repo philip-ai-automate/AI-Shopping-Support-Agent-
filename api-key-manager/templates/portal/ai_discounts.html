@@ -1,0 +1,213 @@
+{% extends "portal/base.html" %}
+{% block title %}Discounts in Chat — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  .dc-wrap{display:flex;flex-direction:column;gap:20px;max-width:920px}
+  .dc-title{font-size:22px;font-weight:800;letter-spacing:-.3px}
+  .dc-sub{color:var(--muted);margin-top:4px;max-width:70ch}
+  .dc-how{background:rgba(37,99,235,.04);border:1px solid rgba(37,99,235,.18);border-radius:16px;padding:16px 20px}
+  .dc-how h3{font-size:14px;font-weight:700;color:#2563EB;margin:0 0 8px}
+  .dc-how ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;font-size:14px}
+  .dc-onrow{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#fff}
+  .dc-onrow b{font-size:15px} .dc-onrow small{display:block;color:var(--muted);font-size:13px}
+  .dc-tog{position:relative;width:44px;height:24px;flex-shrink:0}
+  .dc-tog input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:1}
+  .dc-tog span{position:absolute;inset:0;border-radius:999px;background:rgba(3,12,24,.18);transition:.2s}
+  .dc-tog span::after{content:"";position:absolute;width:18px;height:18px;border-radius:50%;background:#fff;top:3px;left:3px;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:.2s}
+  .dc-tog input:checked + span{background:var(--good)}
+  .dc-tog input:checked + span::after{left:23px}
+  .dc-tog input:focus-visible + span{outline:2px solid #2563EB;outline-offset:2px}
+  .dc-rules{border:1px solid var(--line);border-radius:14px;background:#fff}
+  .dc-rule{display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:8px 20px;padding:14px 16px;border-top:1px solid var(--line)}
+  .dc-rule:first-child{border-top:0}
+  .dc-q{font-weight:600} .dc-q small{display:block;font-weight:400;color:var(--muted);font-size:12.5px}
+  .dc-opts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .dc-opt{position:relative}
+  .dc-opt input{position:absolute;opacity:0;pointer-events:none}
+  .dc-opt span{display:inline-block;border:1px solid var(--line);border-radius:10px;padding:6px 12px;background:#fff;cursor:pointer}
+  .dc-opt input:checked + span{border-color:var(--ink,#030C18);box-shadow:0 0 0 1px var(--ink,#030C18);font-weight:600}
+  .dc-opt input:focus-visible + span{outline:2px solid #2563EB;outline-offset:2px}
+  .dc-inp{border:1px solid rgba(3,12,24,.2);border-radius:10px;padding:6px 10px;width:90px;font:inherit;font-variant-numeric:tabular-nums}
+  .dc-inp.wide{width:min(100%,360px)}
+  .dc-hint{color:var(--muted);font-size:12.5px;width:100%}
+  .dc-cols{display:flex;flex-wrap:wrap;gap:6px;width:100%;margin-top:4px}
+  .dc-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#f6f7f8;border-radius:999px;padding:3px 10px;font-size:13px;cursor:pointer}
+  .dc-fixed{background:#f6f7f8;border-radius:12px;padding:12px 16px;font-size:13.5px}
+  .dc-fixed code{font-weight:700}
+  .dc-banner{border-radius:12px;padding:12px 14px;font-size:13.5px}
+  .dc-banner.warn{background:#fff7ed;border:1px solid rgba(247,144,9,.35);color:#7a4f00}
+  .dc-banner.info{background:#f6f7f8;border:1px solid var(--line)}
+  .dc-banner.err{background:#fef3f2;border:1px solid rgba(240,68,56,.35);color:#912018}
+  .dc-off{opacity:.5;pointer-events:none}
+  .dc-actions{display:flex;gap:10px;flex-wrap:wrap}
+  @media (max-width:600px){.dc-rule{grid-template-columns:1fr}}
+  .cg-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:8px}
+  .cg-title{font-size:18px;font-weight:800}
+  .cg-filt{display:flex;gap:8px;flex-wrap:wrap}
+  .cg-filt a{border:1px solid var(--line);border-radius:10px;padding:6px 12px;color:var(--txt,#030C18);text-decoration:none;background:#fff}
+  .cg-filt a.on{border-color:#030C18;box-shadow:0 0 0 1px #030C18;font-weight:600}
+  .cg-tot{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  .cg-tot div{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff}
+  .cg-tot small{display:block;color:var(--muted);font-size:12.5px}
+  .cg-tot b{font-size:22px;font-weight:800}
+  .cg-box{border:1px solid var(--line);border-radius:12px;overflow-x:auto;background:#fff}
+  .cg-tab{width:100%;border-collapse:collapse;min-width:820px}
+  .cg-tab th{background:#f6f7f8;text-align:left;font-size:12.5px;font-weight:700;padding:10px 14px;color:#3d4654}
+  .cg-tab td{border-top:1px solid var(--line);padding:12px 14px;vertical-align:middle}
+  .cg-tab small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+  .cg-code{font-family:"SF Mono",Menlo,monospace;font-weight:700}
+  .cg-st{border-radius:999px;padding:3px 10px;font-weight:600;font-size:12.5px;display:inline-block}
+  .cg-st.active{background:#EFF4FF;color:#1d4ed8}.cg-st.used{background:#ECFDF3;color:#067647}.cg-st.expired{background:#F2F4F7;color:#3d4654}
+  @media (max-width:700px){.cg-tot{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dc-wrap">
+  <div>
+    <div class="dc-title">🏷️ Discounts in Chat</div>
+    <div class="dc-sub">Let your AI Agent give a one-time discount code in chat, only inside the limits you set here. Codes are made in your {{ sw.store }} store.</div>
+  </div>
+
+  {% if state == 'b2b' %}
+    <div class="dc-banner info">Discounts in chat is for Retail plans. Your trade buyers get their price through a quotation.</div>
+    <div class="dc-actions"><a class="btn btn-secondary" href="{{ url_for('portal.quotes_requests') }}">Go to Quotations</a></div>
+  {% elif state == 'free' %}
+    <div class="dc-banner info">Discounts in chat comes with Retail Starter and above.</div>
+    <div class="dc-actions"><a class="btn btn-primary" href="{{ plans_url }}" target="_top" rel="noopener">See plans</a></div>
+  {% else %}
+
+  <div class="dc-how">
+    <h3>How it works</h3>
+    <ol>
+      <li>A buyer asks your AI Agent for a better price.</li>
+      <li>If it fits your limits, the AI Agent gives a code that works once, for that buyer only.</li>
+      <li>The code is saved on the chat and on the buyer's lead, and you can see below if it was used.</li>
+    </ol>
+  </div>
+
+  {% if state == 'update' %}
+    <div class="dc-banner warn">To make discount codes in your WooCommerce shop, update the PhiXtra plugin in your WordPress to version 3.10 or newer, then open your WordPress admin once.</div>
+  {% endif %}
+  {% if state == 'permission' %}
+    <div class="dc-banner warn">To make discount codes, PhiXtra needs one more permission in Shopify. It only lets PhiXtra create discount codes.</div>
+    <div class="dc-actions"><a class="btn btn-primary" href="{{ approve_url }}" target="_blank" rel="noopener">Approve in Shopify</a></div>
+  {% endif %}
+
+  {% if error %}<div class="dc-banner err" role="alert">{{ error }}</div>{% endif %}
+
+  <form method="post" action="{{ url_for('portal.ai_discounts_save') }}" class="dc-wrap{% if state != 'ok' or not can_edit %} dc-off{% endif %}" style="max-width:none"
+        {% if state != 'ok' or not can_edit %}aria-disabled="true"{% endif %}>
+    <div class="dc-onrow">
+      <div><b>Discounts in chat</b><small>When this is off, your AI Agent never offers a discount.</small></div>
+      <label class="dc-tog"><input type="checkbox" name="enabled" value="1" aria-label="Discounts in chat" {% if s.enabled %}checked{% endif %}><span></span></label>
+    </div>
+
+    <div class="dc-rules">
+      <div class="dc-rule"><div class="dc-q">Type of discount</div>
+        <div class="dc-opts">
+          <label class="dc-opt"><input type="radio" name="kind" value="percent" {% if s.kind != 'amount' %}checked{% endif %}><span>% off</span></label>
+          <label class="dc-opt"><input type="radio" name="kind" value="amount" {% if s.kind == 'amount' %}checked{% endif %}><span>Fixed amount off</span></label>
+        </div></div>
+      <div class="dc-rule"><div class="dc-q">Most your AI Agent can give</div>
+        <div class="dc-opts"><input class="dc-inp" name="value" inputmode="decimal" value="{{ s.value }}" aria-label="Most your AI Agent can give">
+          <span id="dc-unit">{{ '%' if s.kind != 'amount' else currency }}</span>
+          <span class="dc-hint">Your AI Agent never offers more than this.</span></div></div>
+      <div class="dc-rule"><div class="dc-q">Minimum order<small>Optional</small></div>
+        <div class="dc-opts"><input class="dc-inp" name="min_order" inputmode="decimal" value="{{ s.min_order if s.min_order is not none else '' }}" aria-label="Minimum order">
+          {{ currency }} <span class="dc-hint">Leave empty for no minimum. Shown in your store's currency.</span></div></div>
+      <div class="dc-rule"><div class="dc-q">When your AI Agent may offer a code</div>
+        <div class="dc-opts">
+          <label class="dc-opt"><input type="radio" name="trigger" value="asked" {% if s.trigger != 'hesitate' %}checked{% endif %}><span>Only when the buyer asks for a better price</span></label>
+          <label class="dc-opt"><input type="radio" name="trigger" value="hesitate" {% if s.trigger == 'hesitate' %}checked{% endif %}><span>Also when the buyer hesitates over the price</span></label>
+        </div></div>
+      <div class="dc-rule"><div class="dc-q">Code lasts</div>
+        <div class="dc-opts">
+          {% for h, lab in [(24, '24 hours'), (48, '48 hours'), (168, '7 days')] %}
+          <label class="dc-opt"><input type="radio" name="hours" value="{{ h }}" {% if s.hours == h %}checked{% endif %}><span>{{ lab }}</span></label>
+          {% endfor %}
+        </div></div>
+      <div class="dc-rule"><div class="dc-q">Products</div>
+        <div class="dc-opts">
+          <label class="dc-opt"><input type="radio" name="products" value="all" {% if s.products != 'collections' %}checked{% endif %}><span>All products</span></label>
+          <label class="dc-opt"><input type="radio" name="products" value="collections" {% if s.products == 'collections' %}checked{% endif %}><span>Only these {{ sw.groups }}</span></label>
+          <span class="dc-hint">With "Only these {{ sw.groups }}" you pick {{ sw.groups }} from your {{ sw.store }} store.</span>
+          <div class="dc-cols" id="dc-cols" {% if s.products != 'collections' %}hidden{% endif %}>
+            {% for c in collections %}
+            <label class="dc-chip"><input type="checkbox" name="collections" value="{{ c.id }}" {% if c.id in picked %}checked{% endif %}> {{ c.title }}</label>
+            {% else %}
+            <span class="dc-hint">No {{ sw.groups }} found in your {{ sw.store }} store.</span>
+            {% endfor %}
+          </div>
+        </div></div>
+      <div class="dc-rule"><div class="dc-q">Most codes per day</div>
+        <div class="dc-opts"><input class="dc-inp" name="daily_max" inputmode="numeric" value="{{ s.daily_max }}" aria-label="Most codes per day">
+          <span class="dc-hint">After this, your AI Agent stops offering codes until tomorrow.</span></div></div>
+      <div class="dc-rule"><div class="dc-q">Note for your AI Agent<small>Optional, up to 120 characters</small></div>
+        <div class="dc-opts"><input class="dc-inp wide" name="note" maxlength="120" value="{{ s.note }}" placeholder="e.g. Only for first orders" aria-label="Note for your AI Agent"></div></div>
+    </div>
+
+    <div class="dc-fixed">Each code works once, for one buyer, and a buyer gets only one code. Codes start with <code>PHX-</code> so you can find them in {{ sw.find }}.</div>
+    {% if can_edit %}<div class="dc-actions"><button class="btn btn-primary" type="submit">Save discount rules</button></div>{% endif %}
+  </form>
+
+  {# Phase 2 (11 Nov 2026): every code given, and whether it was used. #}
+  <div class="cg-head">
+    <div>
+      <div class="cg-title">Codes given</div>
+      <div class="dc-sub">We check your {{ sw.store }} store every 30 minutes to see which codes were used.</div>
+    </div>
+    <div class="cg-filt">
+      <a href="{{ url_for('portal.ai_discounts') }}" class="{{ 'on' if not show }}">All ({{ codes.counts.all }})</a>
+      <a href="{{ url_for('portal.ai_discounts', show='active') }}" class="{{ 'on' if show == 'active' }}">Active ({{ codes.counts.active }})</a>
+      <a href="{{ url_for('portal.ai_discounts', show='used') }}" class="{{ 'on' if show == 'used' }}">Used ({{ codes.counts.used }})</a>
+      <a href="{{ url_for('portal.ai_discounts', show='expired') }}" class="{{ 'on' if show == 'expired' }}">Expired ({{ codes.counts.expired }})</a>
+    </div>
+  </div>
+  <div class="cg-tot">
+    <div><small>Codes given, last 30 days</small><b>{{ codes.totals.n }}</b></div>
+    <div><small>Used</small><b>{{ codes.totals.used }}</b></div>
+    <div><small>Given by your AI Agent</small><b>{{ codes.totals.ai }}</b></div>
+    <div><small>Given by your team</small><b>{{ codes.totals.staff }}</b></div>
+  </div>
+  {% if codes.rows %}
+  <div class="cg-box">
+    <table class="cg-tab">
+      <thead><tr><th>Given</th><th>Code</th><th>Discount</th><th>Buyer</th><th>Given by</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for c in codes.rows %}
+        <tr>
+          <td>{{ c.given }}</td>
+          <td class="cg-code">{{ c.code }}</td>
+          <td>{{ c.discount }}</td>
+          <td>{{ c.name }}<small>{{ c.email or 'no email given' }}</small></td>
+          <td>{{ c.given_by if c.given_by == 'AI Agent' else (c.given_by|who) }}</td>
+          <td><span class="cg-st {{ c.status }}">{{ c.status_label }}</span><small>{{ c.when }}</small></td>
+          <td>
+            {% if c.in_inbox %}<a href="{{ url_for('portal.my_inbox', phone='web:' ~ c.session_id) }}">Open chat</a>{% endif %}
+            {% if c.lead_id %}{% if c.in_inbox %}<br>{% endif %}<a href="{{ url_for('portal.lead_detail', lead_id=c.lead_id) }}">Open lead</a>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="dc-hint">Shows the last 50 codes. “Open chat” shows when the chat was handed to your team. “Open lead” shows when the buyer is on your Leads list.</div>
+  {% else %}
+  <div class="dc-banner info">{% if show %}No codes here yet.{% else %}No codes given yet. When your AI Agent or your team gives a code, it shows here.{% endif %}</div>
+  {% endif %}
+  {% endif %}
+</div>
+<script>
+(function () {
+  var cols = document.getElementById("dc-cols"), unit = document.getElementById("dc-unit");
+  document.querySelectorAll('input[name="products"]').forEach(function (r) {
+    r.addEventListener("change", function () { if (cols) { cols.hidden = r.value !== "collections"; } });
+  });
+  document.querySelectorAll('input[name="kind"]').forEach(function (r) {
+    r.addEventListener("change", function () { if (unit) { unit.textContent = r.value === "amount" ? {{ currency|tojson }} : "%"; } });
+  });
+})();
+</script>
+{% endblock %}

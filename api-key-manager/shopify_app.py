@@ -118,6 +118,8 @@ def ensure_tables():
         shopify_sync.ensure_tables()
         import shopify_b2b
         shopify_b2b.ensure_tables()
+        import chat_discounts
+        chat_discounts.ensure_tables()
         cur.execute("""
             CREATE TABLE IF NOT EXISTS shopify_sso (
                 token_hash  TEXT PRIMARY KEY,
@@ -600,6 +602,45 @@ def internal_prices():
     import shopify_prices as sp
     ids = [str(x) for x in (d.get("product_ids") or [])][:8]
     return jsonify(sp.site_prices(tenant_id, re.sub(r"\D", "", str(d.get("location_id") or "")), ids))
+
+
+def _internal_ok() -> bool:
+    want = os.getenv("PHIXTRA_INTERNAL_TOKEN", "")
+    got = (request.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
+    return bool(want) and hmac.compare_digest(want, got)
+
+
+@shopify_bp.route("/internal/discount/brief", methods=["POST"])
+@public_route
+def internal_discount_brief():
+    """Discounts in Chat (11 Nov 2026): the rules line for this chat's AI
+    instruction. Server-to-server only (PHIXTRA_INTERNAL_TOKEN)."""
+    if not _internal_ok():
+        abort(401)
+    d = request.get_json(silent=True) or {}
+    try:
+        tenant_id = int(d.get("tenant_id"))
+    except (TypeError, ValueError):
+        abort(400)
+    import chat_discounts
+    return jsonify({"line": chat_discounts.brief(tenant_id, str(d.get("session_id") or "")[:80],
+                                                 str(d.get("email") or "")[:200])})
+
+
+@shopify_bp.route("/internal/discount/make", methods=["POST"])
+@public_route
+def internal_discount_make():
+    """Discounts in Chat: make this buyer's single-use code in Shopify."""
+    if not _internal_ok():
+        abort(401)
+    d = request.get_json(silent=True) or {}
+    try:
+        tenant_id = int(d.get("tenant_id"))
+    except (TypeError, ValueError):
+        abort(400)
+    import chat_discounts
+    return jsonify(chat_discounts.make(tenant_id, str(d.get("session_id") or "")[:80],
+                                       str(d.get("email") or "")[:200]))
 
 
 # ── Step 1 Part 1 screens (approved 1 Nov 2026) ─────────────────────────

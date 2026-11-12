@@ -1,0 +1,26 @@
+{# Discounts in Chat Phase 2 (11 Nov 2026): the code this buyer got in the website chat. #}
+{% set _dl = discount_lead_codes(lead.id) if lead and lead.id else [] %}
+{% if _dl %}
+<style>
+.dlc{margin:0 24px 18px;border:1px solid var(--line,#E3E6EA);background:#fff;border-radius:14px;padding:14px 18px;display:flex;flex-direction:column;gap:8px}
+.dlc-h{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px}
+.dlc-r{display:flex;flex-direction:column;gap:4px}
+.dlc-r + .dlc-r{border-top:1px solid var(--line,#E3E6EA);padding-top:8px}
+.dlc-c{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dlc-c b{font-family:"SF Mono",Menlo,monospace;font-size:17px;font-weight:800}
+.dlc-st{border-radius:999px;padding:3px 10px;font-weight:600;font-size:12.5px}
+.dlc-st.active{background:#EFF4FF;color:#1d4ed8}.dlc-st.used{background:#ECFDF3;color:#067647}.dlc-st.expired{background:#F2F4F7;color:#3d4654}
+.dlc small{color:var(--muted,#5b6472);font-size:12.5px}
+@media(max-width:760px){.dlc{margin:0 14px 16px}}
+</style>
+<div class="dlc">
+  <div class="dlc-h"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>Discount code</div>
+  {% for c in _dl %}
+  <div class="dlc-r">
+    <div class="dlc-c"><b>{{ c.code }}</b><span class="dlc-st {{ c.status }}">{{ c.status_label }}</span></div>
+    <div>{{ c.summary }}</div>
+    <small>Given by {{ c.given_by if c.given_by == 'AI Agent' else (c.given_by|who) }} in the website chat on {{ c.given }}{% if c.in_inbox and staff_can_open('portal.my_inbox') %} · <a href="{{ url_for('portal.my_inbox', phone='web:' ~ c.session_id) }}">Open chat</a>{% endif %}</small>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

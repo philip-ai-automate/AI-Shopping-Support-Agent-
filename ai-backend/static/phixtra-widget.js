@@ -115,6 +115,10 @@
       ".badge{position:absolute;top:2px;right:2px;width:14px;height:14px;border-radius:50%;background:#E5484D;border:2px solid #fff}",
       ".badge[hidden]{display:none}",
       ".cards{display:flex;flex-direction:column;gap:8px;align-self:flex-start;max-width:85%}",
+      ".dcode{margin-top:8px;border:1.5px dashed " + color + ";border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;background:#fff}",
+      ".dcode b{font-family:ui-monospace,Menlo,monospace;font-size:17px;letter-spacing:.06em}",
+      ".dcode small{color:#5b6472;font-size:12px}",
+      ".dcode button{align-self:flex-start;margin-top:4px;background:" + color + ";color:" + fg + ";border:0;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer}",
       ".card{display:flex;gap:10px;background:#fff;border:1px solid #D9E1EE;border-radius:12px;padding:10px}",
       ".card img{width:64px;height:64px;object-fit:cover;border-radius:8px;flex:0 0 auto;background:#F4F6FA}",
       /* photo gallery on a product card (2026-10-25) */
@@ -424,7 +428,19 @@
               var final = data.reply || shown;
               if (data.quota_exceeded || !final) { final = final || "Thanks for your message. Our team will get back to you soon."; }
               if (!bubble) { typing.remove(); bubble = addMsg("", "ai"); }
-              bubble.innerHTML = format(final);
+              if (data.discount_code && data.discount_code.code) {
+                // Discounts in Chat (11 Nov 2026): the code in its own box with Copy.
+                var dc = data.discount_code;
+                bubble.innerHTML = format(final.split(dc.code).join("").replace(/\n{3,}/g, "\n\n").trim());
+                var box = el("div", "dcode"), cb = el("b"), cs = el("small"), cbtn = el("button");
+                cb.textContent = dc.code; cs.textContent = dc.summary || ""; cbtn.type = "button"; cbtn.textContent = dc.copy || "Copy code";
+                cbtn.addEventListener("click", function () {
+                  var done = function () { cbtn.textContent = dc.copied || "Copied"; setTimeout(function () { cbtn.textContent = dc.copy || "Copy code"; }, 2000); };
+                  try { navigator.clipboard.writeText(dc.code).then(done, done); } catch (e) { done(); }
+                });
+                box.appendChild(cb); box.appendChild(cs); box.appendChild(cbtn); bubble.appendChild(box);
+                msgs.scrollTop = msgs.scrollHeight;
+              } else { bubble.innerHTML = format(final); }
               addCards(data.product_recommendations);
               if (data.handoff_triggered) { if (CLOSED) { addMsg(CLOSED.closed_msg, "sys"); } contactForm(CLOSED ? CLOSED.closed_form : null); startPolling(); }
               else if (PAGE) { startPolling(); }  // chat link page: the team can step in any time

@@ -46,6 +46,13 @@ _TEXT = {
         "pt": "Por favor, deixe o seu e-mail ou número de telefone para que possamos contactá-lo.",
         "ar": "يرجى ترك بريدك الإلكتروني أو رقم هاتفك حتى نتمكن من التواصل معك.",
     },
+    "discount_unavailable": {
+        "en": "Sorry, I can't give a discount code right now. Would you like me to ask a member of our team?",
+        "fr": "Désolé, je ne peux pas vous donner de code de réduction pour le moment. Voulez-vous que je demande à un membre de notre équipe ?",
+        "es": "Lo siento, ahora mismo no puedo darle un código de descuento. ¿Quiere que se lo pregunte a un miembro de nuestro equipo?",
+        "pt": "Desculpe, não consigo dar um código de desconto agora. Quer que pergunte a um membro da nossa equipa?",
+        "ar": "عذرًا، لا أستطيع إعطاء رمز خصم الآن. هل تريد أن أسأل أحد أعضاء فريقنا؟",
+    },
     "photo_check": {
         "en": "Thanks for the photo! I'm not 100% sure which item that is from our catalogue, so I'm getting a team member to help confirm. They'll be with you soon.",
         "fr": "Merci pour la photo ! Je ne suis pas sûr à 100 % de l'article de notre catalogue, alors je demande à un membre de l'équipe de confirmer. Il vous répondra très bientôt.",

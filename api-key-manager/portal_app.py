@@ -64,6 +64,9 @@ def create_app():
     # AI Lead Qualification (2026-10-30): reads WhatsApp / website chats once the buyer pauses.
     import lead_qualify
     lead_qualify.start()
+    # Discounts in Chat Phase 2 (11 Nov 2026): Used / Expired checked in Shopify every 30 minutes.
+    import chat_discounts
+    chat_discounts.start()
     # Quotations › Requests (2026-10-30): "did you send it?" alerts when a request's time is up.
     import quote_requests
     quote_requests.start()
@@ -477,6 +480,10 @@ def create_app():
                     _g._cached_excel_ok = excel_ok
                     _g._cached_has_site = has_site
                     _g._cached_store_platform = platform
+                    # Discounts in Chat menu (11 Nov 2026): hidden for B2B businesses.
+                    cur.execute("SELECT COALESCE(is_b2b, FALSE) FROM company_profiles WHERE tenant_id=%s", (tenant_id,))
+                    _b2b = cur.fetchone()
+                    _g._cached_is_b2b = bool(_b2b and _b2b[0])
                     _g._cached_has_woocommerce = platform == "woocommerce"
                     cur.close(); conn.close()
             except Exception as e:
@@ -485,6 +492,7 @@ def create_app():
         return {"_has_woocommerce": _g._cached_has_woocommerce,
                 "_has_site": getattr(_g, "_cached_has_site", False),
                 "_store_platform": getattr(_g, "_cached_store_platform", "none"),
+                "_is_b2b": getattr(_g, "_cached_is_b2b", False),
                 "_excel_products_ok": getattr(_g, "_cached_excel_ok", True)}
 
     @flask_app.context_processor

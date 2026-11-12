@@ -629,6 +629,21 @@ html, body { overflow: hidden; height: 100%; }
 
 /* ── Animations ───────────────────────────────────────────────────────────── */
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  /* Discounts in Chat Phase 2 (11 Nov 2026) */
+  .dcx-chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;font-size:12.5px;font-weight:600}
+  .dcx-active{background:#EFF4FF;color:#1d4ed8}.dcx-used{background:#ECFDF3;color:#067647}.dcx-expired{background:#F2F4F7;color:#3d4654}
+  .dcx-card{border:1px dashed #2563EB;background:#fff;border-radius:12px;padding:8px 12px;margin-top:6px;display:flex;flex-direction:column;gap:2px;max-width:320px;align-self:flex-end}
+  .dcx-card small{font-size:12px;color:var(--muted);font-weight:600}
+  .dcx-card b{font-family:"SF Mono",Menlo,monospace;font-size:17px;letter-spacing:.04em}
+  .dcx-card span{font-size:12.5px;color:#3d4654}
+  .dcx-open{border:1px solid #2563EB;background:#fff;color:#2563EB;border-radius:10px;padding:7px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;margin-left:auto;margin-right:8px}
+  .dcx-open:disabled{border-color:var(--line);background:#F6F7F8;color:#667085;cursor:not-allowed}
+  .dcx-panel{border:1px solid var(--line);border-radius:14px;background:#fff;padding:14px 16px;margin:8px 0;box-shadow:0 8px 24px rgba(3,12,24,.10);display:flex;flex-direction:column;gap:8px;font-size:13.5px}
+  .dcx-panel[hidden]{display:none}
+  .dcx-t{font-weight:700;font-size:15px}.dcx-m{color:var(--muted);font-size:12.5px}
+  .dcx-l{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:13px}
+  .dcx-l input{border:1px solid #D0D5DD;border-radius:10px;padding:8px 10px;font:inherit;font-weight:400}
+  .dcx-b{display:flex;gap:8px;justify-content:flex-end}
 </style>
 {% endblock %}
 
@@ -836,7 +851,7 @@ html, body { overflow: hidden; height: 100%; }
             <div class="conv-row2">
               <span class="conv-preview">
                 {% if c.last_direction == 'outbound' %}→{% else %}←{% endif %}
-                {{ (c.last_content or '')|truncate(50) }}
+                {{ (c.last_content or '')|chat_plain|truncate(50) }}
               </span>
               {% if has_team and c.assigned_to_label %}
               <span class="claim-tag" title="Claimed by {{ (c.assigned_to_label|who(c.assigned_to_key)) }}">🙋 {{ (c.assigned_to_label|who(c.assigned_to_key)) if c.assigned_to_key != current_actor_key else 'You' }}</span>
@@ -948,16 +963,16 @@ html, body { overflow: hidden; height: 100%; }
       {% macro msg_body(msg) %}
         {% if msg.media_url and msg.message_type == 'image' %}
           <img src="{{ msg.media_url }}" alt="Photo" class="bubble-media-img" onclick="window.open(this.src,'_blank')">
-          {% if msg.content %}<div class="bubble-caption">{{ msg.content }}</div>{% endif %}
+          {% if msg.content %}<div class="bubble-caption">{{ msg.content|chat_fmt }}</div>{% endif %}
         {% elif msg.media_url and msg.message_type == 'video' %}
           <video src="{{ msg.media_url }}" controls class="bubble-media-video"></video>
-          {% if msg.content %}<div class="bubble-caption">{{ msg.content }}</div>{% endif %}
+          {% if msg.content %}<div class="bubble-caption">{{ msg.content|chat_fmt }}</div>{% endif %}
         {% elif msg.media_url and msg.message_type == 'audio' %}
           <audio src="{{ msg.media_url }}" controls class="bubble-media-audio"></audio>
         {% elif msg.media_url and msg.message_type == 'document' %}
           <a href="{{ msg.media_url }}" target="_blank" rel="noopener" class="bubble-media-doc">📄 {{ msg.content or 'Document' }}</a>
         {% else %}
-          {{ msg.content or '(media message)' }}
+          {{ (msg.content or '(media message)')|chat_fmt }}
         {% endif %}
       {% endmacro %}
 
@@ -1014,7 +1029,7 @@ html, body { overflow: hidden; height: 100%; }
             {% else %}
             <div class="msg-wrap outbound" data-mid="{{ msg.id }}" data-ts="{{ msg.created_at.isoformat() if msg.created_at else '' }}">
               <div class="bubble-col">
-                <div class="bubble-sender">AI</div>
+                <div class="bubble-sender">AI Agent</div>
                 <div class="chat-bubble bubble-out">
                   {{ msg_body(msg) }}
                   <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}{{ wa_tick(msg) }}</span>
@@ -1153,7 +1168,7 @@ html, body { overflow: hidden; height: 100%; }
             <div class="conv-row2">
               <span class="conv-preview">
                 {% if c.last_dir == 'outbound' %}→{% else %}←{% endif %}
-                {{ (c.last_content or '')|truncate(50) }}
+                {{ (c.last_content or '')|chat_plain|truncate(50) }}
               </span>
               {% if has_team and c.assigned_to_label %}
               <span class="claim-tag" title="Claimed by {{ (c.assigned_to_label|who(c.assigned_to_key)) }}">🙋 {{ (c.assigned_to_label|who(c.assigned_to_key)) if c.assigned_to_key != current_actor_key else 'You' }}</span>
@@ -1222,7 +1237,7 @@ html, body { overflow: hidden; height: 100%; }
               <div class="bubble-col">
                 <div class="bubble-sender">Customer</div>
                 <div class="chat-bubble bubble-in">
-                  {{ msg.content or '(message)' }}
+                  {{ (msg.content or '(message)')|chat_fmt }}
                   <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
                 </div>
               </div>
@@ -1232,7 +1247,7 @@ html, body { overflow: hidden; height: 100%; }
               <div class="bubble-col">
                 <div class="bubble-sender">{{ (msg.sent_by_label|who) if (has_team and (msg.sent_by_label|who)) else 'You' }}</div>
                 <div class="chat-bubble bubble-agent">
-                  {{ msg.content or '(message)' }}
+                  {{ (msg.content or '(message)')|chat_fmt }}
                   <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
                 </div>
               </div>
@@ -1319,7 +1334,7 @@ html, body { overflow: hidden; height: 100%; }
             <div class="conv-row2">
               <span class="conv-preview">
                 {% if c.last_role == 'assistant' %}→{% else %}←{% endif %}
-                {{ (c.last_content or '')|truncate(50) }}
+                {{ (c.last_content or '')|chat_plain|truncate(50) }}
               </span>
               {% if has_team and c.assigned_to_label %}
               <span class="claim-tag" title="Claimed by {{ (c.assigned_to_label|who(c.assigned_to_key)) }}">🙋 {{ (c.assigned_to_label|who(c.assigned_to_key)) if c.assigned_to_key != current_actor_key else 'You' }}</span>
@@ -1376,6 +1391,11 @@ html, body { overflow: hidden; height: 100%; }
           {% endif %}
         </div>
         {% include "portal/_shopify_trade_strip.html" %}
+        {% if disc and disc.code %}{# Discounts in Chat Phase 2 (11 Nov 2026) #}
+        <div style="padding:8px 20px;border-bottom:1px solid var(--line);background:#fff">
+          <span class="dcx-chip dcx-{{ disc.code.status }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg> Discount code {{ disc.code.code }} · {{ disc.code.status_label }}</span>
+        </div>
+        {% endif %}
 
         <div class="chat-messages" id="webchatMessages" data-key="{{ active_phone }}" data-count="{{ webchat_messages|length }}">
           {% if not webchat_messages %}
@@ -1399,7 +1419,7 @@ html, body { overflow: hidden; height: 100%; }
               <div class="bubble-col">
                 <div class="bubble-sender">{{ active_webchat_conv.visitor_name if active_webchat_conv and active_webchat_conv.visitor_name else 'Visitor' }}</div>
                 <div class="chat-bubble bubble-in">
-                  {{ msg.content or '(message)' }}
+                  {{ (msg.content or '(message)')|chat_fmt }}
                   <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
                 </div>
               </div>
@@ -1409,9 +1429,16 @@ html, body { overflow: hidden; height: 100%; }
               <div class="bubble-col">
                 <div class="bubble-sender">{{ (msg.sent_by_label|who) or 'You' }}</div>
                 <div class="chat-bubble bubble-agent">
-                  {{ msg.content or '(message)' }}
+                  {{ (msg.content or '(message)')|chat_fmt }}
                   <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
                 </div>
+                {% if disc and disc.code and msg.content and disc.code.code in msg.content %}
+                <div class="dcx-card">
+                  <small>Discount code given by {{ disc.code.given_by if disc.code.given_by == 'AI Agent' else (disc.code.given_by|who) }}</small>
+                  <b>{{ disc.code.code }}</b>
+                  <span>{{ disc.code.summary }}</span>
+                </div>
+                {% endif %}
                 {% if msg.is_ai %}
                 {% if corrections_map.get(msg.msg_ref) %}
                 <a class="fix-tag" href="{{ url_for('portal.store_info', view='corrections') }}">✓ Corrected by {{ corrections_map[msg.msg_ref] }} · view</a>
@@ -1470,9 +1497,31 @@ html, body { overflow: hidden; height: 100%; }
                 </div>
                 <div class="reply-actions">
                   <span class="reply-hint">Ctrl+Enter to send</span>
+                  {% if disc and disc.box %}
+                  {% set _dcx_why = ('This buyer already has a code (' ~ disc.box.has_code ~ ').') if disc.box.has_code else (('No more codes can be given today (' ~ disc.box.daily_max ~ ' a day).') if disc.box.full else '') %}
+                  <button type="button" class="dcx-open" {% if _dcx_why %}disabled title="{{ _dcx_why }}"{% endif %}
+                          onclick="var p=document.getElementById('dcxPanel');p.hidden=!p.hidden">Send discount code</button>
+                  {% endif %}
                   <button type="submit" class="send-btn">Send&nbsp;➤</button>
                 </div>
               </form>
+              {% if disc and disc.box %}
+              {% if _dcx_why %}<div class="reply-hint" style="padding:0 4px 6px">{{ _dcx_why }}</div>{% else %}
+              <form method="POST" action="{{ url_for('portal.inbox_send_discount_code') }}" class="dcx-panel" id="dcxPanel" hidden>
+                <input type="hidden" name="key" value="{{ active_phone }}">
+                <div class="dcx-t">Send a discount code?</div>
+                <div>Your rules: {{ disc.box.rules }}. The code is made in your {{ disc.box.store }} store and shown in the chat.</div>
+                <div class="dcx-m">Codes given today: {{ disc.box.today }} of {{ disc.box.daily_max }}.</div>
+                <label class="dcx-l">Message with the code
+                  <input type="text" name="message" maxlength="300" value="{{ disc.box.default_message }}">
+                </label>
+                <div class="dcx-b">
+                  <button type="button" class="btn btn-sm" onclick="document.getElementById('dcxPanel').hidden=true">Cancel</button>
+                  <button type="submit" class="btn btn-primary btn-sm" onclick="this.disabled=true;this.form.submit()">Send code</button>
+                </div>
+              </form>
+              {% endif %}
+              {% endif %}
             </div>
           </div>
           {% endif %}
@@ -1817,6 +1866,8 @@ var RT = {
 };
 
 function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+// 12 Nov 2026: AI Agent **bold** shown bold (mirrors the chat_fmt filter).
+function chatFmt(s){return escHtml(s).replace(/\*\*([^\s*](?:[^*]*?[^\s*])?)\*\*/g,'<strong>$1</strong>');}
 function fmtTime(iso){
   if(!iso) return '';
   var d=new Date((iso+'').replace(' ','T')); var now=new Date();
@@ -1853,11 +1904,11 @@ function showToast(msg){
 // thread — kept in sync manually since one's Jinja and one's JS.
 function msgBodyHtml(msg){
   if(msg.media_url && msg.message_type==='image'){
-    var cap = msg.content ? '<div class="bubble-caption">'+escHtml(msg.content)+'</div>' : '';
+    var cap = msg.content ? '<div class="bubble-caption">'+chatFmt(msg.content)+'</div>' : '';
     return '<img src="'+escHtml(msg.media_url)+'" alt="Photo" class="bubble-media-img" onclick="window.open(this.src,\'_blank\')">'+cap;
   }
   if(msg.media_url && msg.message_type==='video'){
-    var cap = msg.content ? '<div class="bubble-caption">'+escHtml(msg.content)+'</div>' : '';
+    var cap = msg.content ? '<div class="bubble-caption">'+chatFmt(msg.content)+'</div>' : '';
     return '<video src="'+escHtml(msg.media_url)+'" controls class="bubble-media-video"></video>'+cap;
   }
   if(msg.media_url && msg.message_type==='audio'){
@@ -1866,7 +1917,7 @@ function msgBodyHtml(msg){
   if(msg.media_url && msg.message_type==='document'){
     return '<a href="'+escHtml(msg.media_url)+'" target="_blank" rel="noopener" class="bubble-media-doc">📄 '+escHtml(msg.content||'Document')+'</a>';
   }
-  return escHtml(msg.content||'(media message)');
+  return chatFmt(msg.content||'(media message)');
 }
 
 function rtAppendMessage(msg, chatEl) {
@@ -1907,7 +1958,7 @@ function rtAppendMessage(msg, chatEl) {
         +'<div class="chat-bubble bubble-agent">'+msgBodyHtml(msg)
         +'<span class="bubble-time">'+timeLabel+waTickHtml(msg)+'</span></div><div class="wa-when">'+waWhenText(msg)+'</div></div>';
   } else {
-    inner='<div class="bubble-col"><div class="bubble-sender">AI</div>'
+    inner='<div class="bubble-col"><div class="bubble-sender">AI Agent</div>'
         +'<div class="chat-bubble bubble-out">'+msgBodyHtml(msg)
         +'<span class="bubble-time">'+timeLabel+waTickHtml(msg)+'</span></div><div class="wa-when">'+waWhenText(msg)+'</div></div>';
   }
@@ -1971,7 +2022,7 @@ function rtBuildConvItem(c){
   var name=c.display_name||('+'+c.customer_phone);
   var badge=c.needs_reply?'<span class="conv-badge" title="Awaiting reply">●</span>':'';
   var arrow=c.last_direction==='outbound'?'→':'←';
-  var preview=(c.last_content||'').substring(0,50)+((c.last_content||'').length>50?'…':'');
+  var preview=(c.last_content||'').replace(/\*\*/g,'').substring(0,50)+((c.last_content||'').length>50?'…':'');
   var statusDot=c.handoff_status==='needs_agent'?'<span class="lead-dot" title="Waiting for agent">🔴</span> ':'';
   var agentTitle=c.conv_agent_name||(c.conv_wa_number?('+'+String(c.conv_wa_number).replace(/^\+/,'')):'');
   var agentDot=(RT.multiNumber&&c.agent_color)?'<span class="agent-dot" style="background:'+escHtml(c.agent_color)+'" title="'+escHtml(agentTitle)+'"></span>':'';
@@ -2010,7 +2061,7 @@ function rtUpdateConvs(convs){
       var nm=el.querySelector('.conv-name'); if(nm) nm.textContent=c.display_name||('+'+phone);
       var tm=el.querySelector('.conv-time'); if(tm) tm.textContent=fmtTime(c.last_message_at);
       var pv=el.querySelector('.conv-preview');
-      if(pv){ var a2=c.last_direction==='outbound'?'→':'←'; pv.textContent=a2+' '+(c.last_content||'').substring(0,50); }
+      if(pv){ var a2=c.last_direction==='outbound'?'→':'←'; pv.textContent=a2+' '+(c.last_content||'').replace(/\*\*/g,'').substring(0,50); }
       var bdg=el.querySelector('.conv-badge');
       if(c.needs_reply&&!bdg){
         var r2=el.querySelector('.conv-row2'); if(r2){ var nb=document.createElement('span'); nb.className='conv-badge'; nb.title='Awaiting reply'; nb.textContent='●'; r2.appendChild(nb); }
@@ -2073,10 +2124,10 @@ RT.timer=setTimeout(rtTick,RT.FAST);
     var w=document.createElement('div');
     if(m.direction==='inbound'){
       w.className='msg-wrap inbound';
-      w.innerHTML='<div class="msg-avatar" style="background:#7C3AED">'+icon+'</div><div class="bubble-col"><div class="bubble-sender">'+esc(visitor)+'</div><div class="chat-bubble bubble-in">'+esc(m.content)+' <span class="bubble-time">'+esc(m.time)+'</span></div></div>';
+      w.innerHTML='<div class="msg-avatar" style="background:#7C3AED">'+icon+'</div><div class="bubble-col"><div class="bubble-sender">'+esc(visitor)+'</div><div class="chat-bubble bubble-in">'+chatFmt(m.content)+' <span class="bubble-time">'+esc(m.time)+'</span></div></div>';
     } else {
       w.className='msg-wrap outbound';
-      w.innerHTML='<div class="bubble-col"><div class="bubble-sender">'+esc(m.is_ai?'AI Assistant':(m.by||'You'))+'</div><div class="chat-bubble bubble-agent">'+esc(m.content)+' <span class="bubble-time">'+esc(m.time)+'</span></div></div>';
+      w.innerHTML='<div class="bubble-col"><div class="bubble-sender">'+esc(m.is_ai?'AI Agent':(m.by||'You'))+'</div><div class="chat-bubble bubble-agent">'+chatFmt(m.content)+' <span class="bubble-time">'+esc(m.time)+'</span></div></div>';
     }
     box.appendChild(w);
   }

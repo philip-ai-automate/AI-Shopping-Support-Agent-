@@ -283,10 +283,50 @@
         </div>
       </div>
     </div>
+    {% elif entity == 'discounts' %}
+    <div class="builder-section">
+      <div class="builder-label">Filter by</div>
+      <div class="msdd-row">
+        {% set sel_status = args.getlist('status') %}
+        <div class="msdd {{ 'has-selection' if sel_status else '' }}">
+          <button type="button" class="msdd-trigger" onclick="toggleMsdd(this)">
+            <span>{{ 'Status (' ~ sel_status|length ~ ')' if sel_status else 'Status' }}</span>
+            <svg class="msdd-chevron" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="msdd-panel">
+            <div class="msdd-options">
+              {% for k, lab in discount_status_labels.items() %}
+              <label class="msdd-option">
+                <input type="checkbox" name="status" value="{{ k }}" {% if k in sel_status %}checked{% endif %} onchange="updateMsddLabel(this,'Status')">
+                <span>{{ lab }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        {% set sel_given_by = args.getlist('given_by') %}
+        <div class="msdd {{ 'has-selection' if sel_given_by else '' }}">
+          <button type="button" class="msdd-trigger" onclick="toggleMsdd(this)">
+            <span>{{ 'Given by (' ~ sel_given_by|length ~ ')' if sel_given_by else 'Given by' }}</span>
+            <svg class="msdd-chevron" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="msdd-panel">
+            <div class="msdd-options">
+              {% for k, lab in discount_given_by_labels.items() %}
+              <label class="msdd-option">
+                <input type="checkbox" name="given_by" value="{{ k }}" {% if k in sel_given_by %}checked{% endif %} onchange="updateMsddLabel(this,'Given by')">
+                <span>{{ lab }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     {% endif %}
 
     <div class="builder-section">
-      <div class="builder-label">Date range ({{ 'sent' if entity == 'campaigns' else 'created' }})</div>
+      <div class="builder-label">Date range ({{ 'sent' if entity == 'campaigns' else ('given' if entity == 'discounts' else 'created') }})</div>
       <div class="period-row">
         <button type="submit" name="days" value="7"  class="period-tab {% if days==7  and not is_custom %}active{% endif %}">Last 7 days</button>
         <button type="submit" name="days" value="30" class="period-tab {% if days==30 and not is_custom %}active{% endif %}">Last 30 days</button>
@@ -324,7 +364,7 @@
     <div class="grp-row">
       <div class="grp-label">{{ g.label }}</div>
       <div class="grp-track"><div class="grp-fill" style="width:{{ ((g.count / max_count) * 100)|round(0,'floor') }}%"></div></div>
-      <div class="grp-val">{{ g.count }}{% if has_value_sum %} &middot; {{ (g.value)|money_total }}{% endif %}</div>
+      <div class="grp-val"{% if g.extra %} style="width:auto;min-width:150px;white-space:nowrap"{% endif %}>{{ g.count }}{% if has_value_sum %} &middot; {{ (g.value)|money_total }}{% endif %}{% if g.extra %} given &middot; {{ g.extra }}{% endif %}</div>
     </div>
     {% endfor %}
     {% if not group_rows %}

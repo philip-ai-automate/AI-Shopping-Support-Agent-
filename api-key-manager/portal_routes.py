@@ -604,7 +604,7 @@ PLAN_FEATURE_CATALOG = {
         ("team.positions_edit",            "Edit a Position"),
         ("team.positions_delete",          "Delete a Position"),
     ],
-    "AI Assistant": [
+    "AI Agent": [
         ("legacy:feat_advanced_ai",  "Custom AI Instructions (plan unlock)"),
         ("ai.instructions_view",     "Custom AI Instructions — view"),
         ("ai.instructions_edit",     "Edit Custom AI Instructions"),
@@ -618,6 +618,9 @@ PLAN_FEATURE_CATALOG = {
         ("ai.agent_profiles_create", "Create an AI Agent Profile"),
         ("ai.agent_profiles_edit",   "Edit / activate an AI Agent Profile"),
         ("ai.agent_profiles_delete", "Delete an AI Agent Profile"),
+        ("ai.discounts_view",        "Discounts in Chat — view"),
+        ("ai.discounts_edit",        "Edit Discounts in Chat rules"),
+        ("ai.discounts_send",        "Send discount codes"),
     ],
     "WooCommerce Plugin": [
         ("woo.product_recommendation", "Product Recommendation"),
@@ -810,12 +813,14 @@ ROLE_FORM_GRID = {
         {"label": "Department", "create": "team.departments_create", "edit": "team.departments_edit", "delete": "team.departments_delete"},
         {"label": "Position",   "create": "team.positions_create",   "edit": "team.positions_edit",   "delete": "team.positions_delete"},
     ],
-    "AI Assistant": [
+    "AI Agent": [
         {"label": "Custom AI Instructions (plan unlock)", "other": ["legacy:feat_advanced_ai"]},
         {"label": "Custom AI Instructions", "view": "ai.instructions_view",   "edit": "ai.instructions_edit"},
         {"label": "Handoff Rule",           "view": "ai.handoff_rules_view",  "create": "ai.handoff_rules_create", "edit": "ai.handoff_rules_edit", "delete": "ai.handoff_rules_delete"},
         {"label": "API Key",                "view": "ai.api_keys_view",      "delete": "ai.api_keys_revoke"},
         {"label": "AI Agent Profile",       "view": "ai.agent_profiles_view", "create": "ai.agent_profiles_create", "edit": "ai.agent_profiles_edit", "delete": "ai.agent_profiles_delete"},
+        {"label": "Discounts in Chat",      "view": "ai.discounts_view",      "edit": "ai.discounts_edit",
+         "other": ["ai.discounts_send"]},
     ],
     "WooCommerce Plugin": [
         {"label": "Product Recommendation", "other": ["woo.product_recommendation"]},
@@ -10974,7 +10979,67 @@ CUSTOM_REPORT_ENTITIES = {
         ],
         "default_columns": ["campaign_name", "phone", "status", "sent_at"],
     },
+    # Discounts in Chat Phase 3 (11 Nov 2026): every code given in the website
+    # chat. Shown only to businesses that can use Discounts in Chat (or already
+    # gave codes) — see _custom_report_entities_for().
+    "discounts": {
+        "label": "Discount codes",
+        "icon": "🏷️",
+        "desc": "Every discount code given in chat by your AI Agent or your team, and whether it was used.",
+        "columns": [
+            {"key": "given_at",    "label": "Given",          "expr": "c.created_at",  "fmt": "datetime_tz"},
+            {"key": "code",        "label": "Code",           "expr": "c.code"},
+            {"key": "discount",    "label": "Discount",
+             "expr": "c.kind || '|' || c.value::text || '|' || COALESCE(c.currency, '')", "fmt": "discount_value"},
+            {"key": "min_order",   "label": "Minimum order",
+             "expr": "CASE WHEN c.min_order IS NULL THEN NULL ELSE 'amount|' || c.min_order::text || '|' || COALESCE(c.currency, '') END",
+             "fmt": "discount_value"},
+            {"key": "buyer_name",  "label": "Buyer",
+             "expr": "COALESCE((SELECT h.visitor_name FROM handoff_requests h WHERE h.tenant_id = c.tenant_id "
+                      "AND h.session_id = c.session_id AND COALESCE(h.visitor_name, '') <> '' ORDER BY h.id DESC LIMIT 1), "
+                      "l.contact_person)", "fmt": "decrypt"},
+            {"key": "buyer_email", "label": "Buyer email",    "expr": "c.buyer_email"},
+            {"key": "given_by",    "label": "Given by",
+             "expr": "CASE WHEN c.given_by = 'ai' THEN 'AI Agent' ELSE COALESCE(c.given_by_name, 'Your team') END",
+             "fmt": "actor"},
+            {"key": "status",      "label": "Status",
+             "expr": "CASE WHEN c.status = 'active' AND c.ends_at <= NOW() THEN 'expired' ELSE c.status END",
+             "fmt": "discount_status"},
+            {"key": "ends_at",     "label": "Ends",           "expr": "c.ends_at",     "fmt": "datetime_tz"},
+            {"key": "used_at",     "label": "Used (seen)",    "expr": "c.used_at",     "fmt": "datetime_tz"},
+            {"key": "lead_name",   "label": "Lead",           "expr": "l.customer_name"},
+        ],
+        "default_columns": ["given_at", "code", "discount", "buyer_name", "buyer_email", "given_by", "status"],
+    },
 }
+
+DISCOUNT_STATUS_LABELS = {"active": "Active", "used": "Used", "expired": "Expired"}
+DISCOUNT_GIVEN_BY_LABELS = {"ai": "AI Agent", "staff": "Your team"}
+
+
+def _custom_report_entities_for(tenant_id: int) -> dict:
+    """The Custom Report subjects this business sees. 'Discount codes' only for a
+    business that can use Discounts in Chat (Shopify, Retail plan, not B2B) or
+    that already gave codes."""
+    out = dict(CUSTOM_REPORT_ENTITIES)
+    try:
+        import chat_discounts as cd
+        ok = _plan_grants_feature(_get_tenant_plan(tenant_id), cd.FEATURE_VIEW)
+        if not ok:
+            conn = get_db_connection(); cur = conn.cursor()
+            cur.execute("SELECT 1 FROM chat_discount_codes WHERE tenant_id=%s AND status = ANY(%s) LIMIT 1",
+                        (int(tenant_id), list(cd.GIVEN)))
+            ok = cur.fetchone() is not None
+            cur.close(); conn.close()
+        else:
+            st, _row = cd.page_state(tenant_id, True)
+            ok = st not in ("no_shop", "b2b")
+    except Exception as e:
+        print("⚠️ custom report discounts check:", e)
+        ok = False
+    if not ok:
+        out.pop("discounts", None)
+    return out
 
 # Real recipient-status values wa_campaign_recipients actually writes (see
 # meta_webhook.py delivery tracking + Campaign Intelligence classifier) --
@@ -11069,6 +11134,30 @@ def _custom_report_query_parts(tenant_id: int, entity: str, columns: list, filte
             params.extend([filters["date_from"], filters["date_to"]])
         order = "co.name ASC"
 
+    elif entity == "discounts":
+        from_clause = ("chat_discount_codes c "
+                        "LEFT JOIN merchant_pipeline_leads l ON l.id = c.lead_id AND l.tenant_id = c.tenant_id")
+        clauses = ["c.tenant_id = %s", "c.status IN ('active','used','expired')"]
+        params  = [tenant_id]
+        statuses = filters.get("status") or []
+        if statuses:
+            st_parts = []
+            if "active" in statuses:
+                st_parts.append("(c.status = 'active' AND c.ends_at > NOW())")
+            if "expired" in statuses:
+                st_parts.append("(c.status = 'expired' OR (c.status = 'active' AND c.ends_at <= NOW()))")
+            if "used" in statuses:
+                st_parts.append("c.status = 'used'")
+            clauses.append("(" + " OR ".join(st_parts) + ")")
+        given = filters.get("given_by") or []
+        if given:
+            clauses.append("c.given_by = ANY(%s)")
+            params.append(given)
+        if filters.get("date_from") and filters.get("date_to"):
+            clauses.append("(c.created_at AT TIME ZONE %s)::date BETWEEN %s AND %s")
+            params.extend([_disc_tz_name(tenant_id), filters["date_from"], filters["date_to"]])
+        order = "c.created_at DESC"
+
     else:  # campaigns
         from_clause = ("wa_campaign_recipients r "
                         "LEFT JOIN wa_campaigns wc ON wc.id = r.campaign_id "
@@ -11144,7 +11233,38 @@ def _format_custom_report_value(val, fmt: str, stage_labels: dict = None):
         return _contact_status.STATUS_LABELS.get(val, str(val).title())
     if fmt == "title":
         return str(val).replace("_", " ").title()
+    if fmt == "discount_value":         # 'percent|5.00|GBP' → 5% · 'amount|10.00|GBP' → £10
+        try:
+            import chat_discounts as _cdv
+            k, v, cur_ = (str(val).split("|") + ["", "", ""])[:3]
+            return _cdv.value_text(k, float(v), cur_)
+        except Exception:
+            return str(val)
+    if fmt == "discount_status":
+        return DISCOUNT_STATUS_LABELS.get(val, str(val).title())
+    if fmt == "decrypt":
+        return data_crypto.dec(val) or "—"
+    if fmt == "actor":
+        return display_actor(val) or "—"
+    if fmt == "datetime_tz":
+        if not hasattr(val, "astimezone"):
+            return str(val)
+        try:
+            from zoneinfo import ZoneInfo
+            return val.astimezone(ZoneInfo(_disc_tz_name(None))).strftime("%d %b %Y, %H:%M")
+        except Exception:
+            return val.strftime("%d %b %Y, %H:%M")
     return str(val)
+
+
+def _disc_tz_name(tenant_id) -> str:
+    """The business's own time zone (Discount codes report dates and days)."""
+    try:
+        if tenant_id is None:
+            tenant_id = int(_get_customer(_customer_id())["tenant_id"])
+        return staff_activity.tenant_tz_name(int(tenant_id))
+    except Exception:
+        return "Europe/London"
 
 
 # ── Report pages ───────────────────────────────────────────────────────────────
@@ -11668,7 +11788,8 @@ def report_custom_picker():
     customer = _get_customer(_customer_id())
     r2 = _require_plan_sub_feature(customer, "reports.custom", "Custom Report Builder")
     if r2: return r2
-    return render_template("portal/report_custom_picker.html", entities=CUSTOM_REPORT_ENTITIES)
+    return render_template("portal/report_custom_picker.html",
+                           entities=_custom_report_entities_for(int(customer["tenant_id"])))
 
 
 
@@ -11682,6 +11803,8 @@ CUSTOM_REPORT_GROUP_BY = {
     "contacts":  [{"key": "status", "label": "Status"}, {"key": "tag",    "label": "Tag"}],
     "companies": [],
     "campaigns": [{"key": "campaign", "label": "Campaign"}, {"key": "status", "label": "Status"}],
+    "discounts": [{"key": "day", "label": "Day"}, {"key": "given_by", "label": "Given by"},
+                  {"key": "status", "label": "Status"}],
 }
 
 
@@ -11779,6 +11902,41 @@ def _run_custom_report_grouped(tenant_id: int, entity: str, group_by: str, filte
                        "not_interested", "opportunity", "converted", "failed"):
                 rows.append({"label": CAMPAIGN_STATUS_LABELS.get(st, st), "count": by_key.get(st, 0), "value": None})
 
+        elif entity == "discounts":
+            st = "CASE WHEN c.status = 'active' AND c.ends_at <= NOW() THEN 'expired' ELSE c.status END"
+            if group_by == "status":
+                _ls_exec(cur, f"SELECT {st} AS grp, COUNT(*) AS n FROM {from_clause} WHERE {where} GROUP BY 1", params)
+                by_key = {r["grp"]: int(r["n"]) for r in (cur.fetchall() or [])}
+                for k in ("active", "used", "expired"):
+                    rows.append({"label": DISCOUNT_STATUS_LABELS[k], "count": by_key.get(k, 0), "value": None})
+            else:
+                if group_by == "day":
+                    grp = "to_char(c.created_at AT TIME ZONE %s, 'YYYY-MM-DD')"
+                    gparams = [_disc_tz_name(tenant_id)] + params
+                    order_by = "grp DESC"
+                else:
+                    grp = ("CASE WHEN c.given_by = 'ai' THEN 'AI Agent' "
+                           "ELSE COALESCE(c.given_by_name, 'Your team') END")
+                    gparams = list(params)
+                    order_by = "n DESC"
+                _ls_exec(cur, f"""
+                    SELECT {grp} AS grp, COUNT(*) AS n,
+                           COUNT(*) FILTER (WHERE {st} = 'used') AS used,
+                           COUNT(*) FILTER (WHERE {st} = 'expired') AS expired,
+                           COUNT(*) FILTER (WHERE {st} = 'active') AS active
+                    FROM {from_clause} WHERE {where} GROUP BY 1 ORDER BY {order_by}
+                """, gparams)
+                import datetime as _dtg
+                for r in (cur.fetchall() or []):
+                    label = r["grp"]
+                    if group_by == "day":
+                        label = _dtg.date.fromisoformat(label).strftime("%a %d %b %Y")
+                    else:
+                        label = display_actor(label) or label
+                    rows.append({"label": label, "count": int(r["n"]), "value": None,
+                                 "used": int(r["used"]), "expired": int(r["expired"]), "active": int(r["active"]),
+                                 "extra": f"{int(r['used'])} used · {int(r['expired'])} expired · {int(r['active'])} active"})
+
         cur.close(); conn.close()
     except Exception as e:
         print("⚠️ _run_custom_report_grouped error:", e)
@@ -11807,6 +11965,9 @@ def _read_custom_report_request(entity: str):
     elif entity == "campaigns":
         filters["campaign_id"] = [c for c in request.args.getlist("campaign_id") if c.isdigit()]
         filters["status"] = [s for s in request.args.getlist("status") if s in CAMPAIGN_STATUS_LABELS]
+    elif entity == "discounts":
+        filters["status"] = [s for s in request.args.getlist("status") if s in DISCOUNT_STATUS_LABELS]
+        filters["given_by"] = [s for s in request.args.getlist("given_by") if s in DISCOUNT_GIVEN_BY_LABELS]
 
     valid_group_by = {g["key"] for g in CUSTOM_REPORT_GROUP_BY.get(entity, [])}
     group_by = request.args.get("group_by") or ""
@@ -11903,7 +12064,8 @@ def report_custom_entity(entity: str):
 
     return render_template(
         "portal/report_custom_entity.html",
-        customer=customer, entity=entity, spec=spec, entities=CUSTOM_REPORT_ENTITIES,
+        customer=customer, entity=entity, spec=spec, entities=_custom_report_entities_for(tenant_id),
+        discount_status_labels=DISCOUNT_STATUS_LABELS, discount_given_by_labels=DISCOUNT_GIVEN_BY_LABELS,
         selected_cols=selected_cols, args=request.args,
         days=days, date_from=date_from.isoformat(), date_to=date_to.isoformat(),
         is_custom=is_custom, period_label=period_label,
@@ -11951,6 +12113,9 @@ def report_custom_entity_export(entity: str, fmt: str):
             [g["label"], g["count"]] + ([_money_total(g["value"])] if has_value_sum else [])
             for g in group_rows
         ]
+        if group_rows and "used" in group_rows[0]:      # Discount codes by day / given by
+            headers = [group_label, "Given", "Used", "Expired", "Active"]
+            rows_out = [[g["label"], g["count"], g["used"], g["expired"], g["active"]] for g in group_rows]
         total_count = sum(g["count"] for g in group_rows)
         summary_pairs = [("Grouped by", group_label), ("Total " + spec["label"], str(total_count))]
         if has_value_sum:
@@ -12005,6 +12170,9 @@ def _custom_report_config_from_form(entity: str, source) -> dict:
     elif entity == "campaigns":
         cfg["campaign_id"] = [c for c in source.getlist("campaign_id") if c.isdigit()]
         cfg["status"] = [s for s in source.getlist("status") if s in CAMPAIGN_STATUS_LABELS]
+    elif entity == "discounts":
+        cfg["status"] = [s for s in source.getlist("status") if s in DISCOUNT_STATUS_LABELS]
+        cfg["given_by"] = [s for s in source.getlist("given_by") if s in DISCOUNT_GIVEN_BY_LABELS]
 
     valid_group_by = {g["key"] for g in CUSTOM_REPORT_GROUP_BY.get(entity, [])}
     group_by = source.get("group_by") or ""
@@ -13624,6 +13792,157 @@ def handoff_rules():
         visitor_rules = visitor_rules,
         ai_rules      = ai_rules,
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Discounts in Chat (11 Nov 2026, Phase 1): the AI Agent may give a buyer one
+# single-use Shopify discount code, inside the limits set here. Shopify
+# businesses on Retail plans; B2B businesses quote instead. See chat_discounts.py.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _discounts_page(customer, error=None, form_s=None):
+    import chat_discounts as cd, shopify_billing
+    tenant_id = int(customer["tenant_id"])
+    plan_ok = _plan_grants_feature(_get_tenant_plan(tenant_id), cd.FEATURE_VIEW)
+    state, row = cd.page_state(tenant_id, plan_ok)
+    if state == "no_shop":
+        flash("Discounts in Chat works with a connected Shopify store or WooCommerce shop.", "info")
+        return redirect(url_for("portal.home"))
+    s = form_s or cd.get_settings(tenant_id)
+    woo = row.get("platform") == "woo"          # Phase 4: WooCommerce shops too
+    store = (row.get("shop") or "").replace(".myshopify.com", "")
+    collections = cd.store_collections(row) if state == "ok" else []
+    picked = {c["id"] for c in s["collections"]}
+    for c in s["collections"]:          # keep saved ones even if Shopify didn't answer
+        if c["id"] not in {x["id"] for x in collections}:
+            collections.append(c)
+    show = request.args.get("show", "")
+    show = show if show in ("active", "used", "expired") else ""
+    codes = cd.list_codes(tenant_id, show)          # Phase 2: "Codes given"
+    return render_template(
+        "portal/ai_discounts.html", customer=customer, s=s, state=state, error=error, codes=codes, show=show,
+        currency=row.get("currency") or "", collections=collections, picked=picked,
+        approve_url=("" if woo else f"https://admin.shopify.com/store/{store}/apps/{__import__('shopify_app')._key()}"),
+        plans_url=(url_for("portal.billing_plans") if woo else shopify_billing.plan_page_url(row["shop"])),
+        sw=cd.words(row.get("platform")), platform=row.get("platform") or "shopify",
+        can_edit=(not session.get("team_member_id")) or bool((session.get("team_member_permissions") or {}).get("ai.discounts_edit")),
+    )
+
+
+@portal_bp.route("/ai/discounts", methods=["GET"])
+@team_feature("ai.discounts_view")
+def ai_discounts():
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("ai.discounts_view")
+    if _rperm: return _rperm
+    customer = _get_customer(_customer_id())
+    if not customer:
+        return redirect(url_for("portal.login"))
+    return _discounts_page(customer)
+
+
+@portal_bp.route("/ai/discounts", methods=["POST"])
+@team_feature("ai.discounts_edit")
+def ai_discounts_save():
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("ai.discounts_edit")
+    if _rperm: return _rperm
+    customer = _get_customer(_customer_id())
+    if not customer:
+        return redirect(url_for("portal.login"))
+    import chat_discounts as cd
+    tenant_id = int(customer["tenant_id"])
+    plan_ok = _plan_grants_feature(_get_tenant_plan(tenant_id), cd.FEATURE_VIEW)
+    state, row = cd.page_state(tenant_id, plan_ok)
+    if state != "ok":
+        return redirect(url_for("portal.ai_discounts"))
+    s, err = cd.parse_form(request.form, cd.store_collections(row) + cd.get_settings(tenant_id)["collections"],
+                           row.get("platform") or "shopify")
+    if err:
+        bad = dict(cd.get_settings(tenant_id))
+        return _discounts_page(customer, error=err, form_s=bad)
+    who = session.get("team_member_name") or customer.get("email") or "owner"
+    cd.save_settings(tenant_id, s, who)
+    flash("Discount rules saved." + ("" if s["enabled"] else " Discounts in chat is off."), "success")
+    return redirect(url_for("portal.ai_discounts"))
+
+
+def _disc_inbox_ctx(tenant_id: int, key: str):
+    """Discounts in Chat Phase 2 for the open website chat in the Inbox:
+    the buyer's code (label + code card) and the 'Send discount code' box."""
+    if not key or not key.startswith("web:"):
+        return None
+    try:
+        import chat_discounts as cd
+        sid = key.split(":", 1)[1]
+        code = cd.chat_code(tenant_id, sid)
+        box = cd.send_box(tenant_id, sid) if _team_member_has_permission(cd.FEATURE_SEND) else {}
+        if not code and not box:
+            return None
+        return {"code": code, "box": box}
+    except Exception as e:
+        print("⚠️ discounts inbox ctx:", e)
+        return None
+
+
+@portal_bp.app_template_global()
+def discount_lead_codes(lead_id):
+    """Discount codes given to this lead's buyer (lead page box)."""
+    try:
+        cid = _customer_id()
+        if not cid or not lead_id:
+            return []
+        import chat_discounts as cd
+        return cd.lead_codes(int(_get_customer(cid)["tenant_id"]), int(lead_id))
+    except Exception as e:
+        print("⚠️ discount_lead_codes:", e)
+        return []
+
+
+@portal_bp.route("/inbox/discount-code", methods=["POST"])
+@team_feature("ai.discounts_send")
+def inbox_send_discount_code():
+    """Staff send the buyer a discount code in the website chat (Phase 2):
+    same rules and limits as the AI Agent, one per buyer."""
+    r = _require_login()
+    if r: return r
+    r2 = _require_team_permission("ai.discounts_send")
+    if r2: return r2
+    r3 = _require_team_permission("inbox.reply")
+    if r3: return r3
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    key = (request.form.get("key") or "").strip()
+    if not key.startswith("web:"):
+        return redirect(url_for("portal.my_inbox"))
+    actor = _current_actor(customer)
+    if not _team_can_access_phone(tenant_id, actor, key):
+        flash("You don't have access to this conversation.", "danger")
+        return redirect(url_for("portal.my_inbox"))
+    if _tenant_has_team(tenant_id):
+        a = _get_conversation_assignment(tenant_id, key)
+        if not a or a["assigned_to_key"] != actor["key"]:
+            flash("Claim this conversation before sending a discount code.", "danger")
+            return redirect(url_for("portal.my_inbox", phone=key))
+    import chat_discounts as cd
+    sid = key.split(":", 1)[1]
+    who = actor.get("label") or "Team member"     # shown through the |who filter
+    res = cd.make(tenant_id, sid, cd._chat_email_for(tenant_id, sid), given_by="staff", given_by_name=who)
+    if not res.get("ok"):
+        why = res.get("why")
+        flash({"has_code": "This buyer already has a discount code.",
+               "daily_max": "No more discount codes can be given today (your daily limit).",
+               "off": "Discounts in Chat is off, so no code was made."}.get(
+                  why, "Your store didn't make the code. Please try again in a minute."), "danger")
+        return redirect(url_for("portal.my_inbox", phone=key))
+    msg = " ".join((request.form.get("message") or "").split())[:300] or f"Here is a code for {res['value_text']} off your order:"
+    bits = [f"{res['value_text']} off", "works once"]
+    if res.get("min_order_text"):
+        bits.append(f"on orders of {res['min_order_text']} or more")
+    bits.append(f"ends {res['ends_text']}")
+    return _send_webchat_reply(tenant_id, key, f"{msg}\n{res['code']}\n{' · '.join(bits)}", actor)
 
 
 @portal_bp.route("/handoff-rules/add", methods=["POST"])
@@ -17834,6 +18153,27 @@ def _money(val, code=None, tenant_id=None) -> str:
         return f"{prefix}{float(val or 0):,.0f}"
     except (TypeError, ValueError):
         return f"{prefix}{val}"
+
+
+_CHAT_BOLD_RE = None
+
+
+@portal_bp.app_template_filter("chat_fmt")
+def _chat_fmt(text):
+    """12 Nov 2026: Inbox bubbles — the AI Agent writes **bold** (markdown);
+    show it bold instead of raw stars. Everything else stays escaped text."""
+    import re as _r
+    from markupsafe import Markup, escape
+    global _CHAT_BOLD_RE
+    if _CHAT_BOLD_RE is None:
+        _CHAT_BOLD_RE = _r.compile(r"\*\*([^\s*](?:[^*]*?[^\s*])?)\*\*")
+    return Markup(_CHAT_BOLD_RE.sub(r"<strong>\1</strong>", str(escape(text or ""))))
+
+
+@portal_bp.app_template_filter("chat_plain")
+def _chat_plain(text):
+    """Same text with the **bold** stars removed (conversation list previews)."""
+    return (text or "").replace("**", "")
 
 
 @portal_bp.app_template_filter("contact_status")
@@ -35480,7 +35820,7 @@ def _get_webchat_messages(tenant_id: int, key: str, limit: int = 200) -> list:
                     'cm:' || id::text AS msg_ref,
                     CASE WHEN role = 'user' THEN 'inbound' ELSE 'outbound' END AS direction,
                     content, created_at,
-                    CASE WHEN role = 'assistant' THEN 'AI Assistant' ELSE NULL END AS sent_by_label,
+                    CASE WHEN role = 'assistant' THEN 'AI Agent' ELSE NULL END AS sent_by_label,
                     (role = 'assistant') AS is_ai
                 FROM chat_messages
                 WHERE tenant_id = %s AND session_id = %s
@@ -35778,6 +36118,7 @@ def my_inbox():
         corrections_map=_corrections_for_conv(tenant_id, active_phone) if active_phone else {},
         is_webchat_active=is_webchat_active,
         chat_tr=_chat_tr_inbox_ctx(tenant_id),   # Chat Translation, B2B (2026-10-29)
+        disc=_disc_inbox_ctx(tenant_id, active_phone) if is_webchat_active else None,   # Discounts in Chat (11 Nov 2026)
     )
 
 

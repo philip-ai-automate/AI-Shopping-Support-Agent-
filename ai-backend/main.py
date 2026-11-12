@@ -753,6 +753,20 @@ def _chat(req: ChatRequest):
             import chat_visitor as _cv
             system_prompt += _cv.prompt(_cv.save(int(tenant_id), str(session_id), req.visitor), int(tenant_id))
 
+    # Discounts in Chat (11 Nov 2026): Shopify Retail businesses that switched
+    # it on — the AI Agent may give one single-use code inside their rules.
+    # Website chat only for now (not WhatsApp / Chatwoot).
+    _disc_on = False
+    if (req.channel or "") != "whatsapp" and not str(session_id).startswith(("wa-", "cw-")):
+        try:
+            import chat_discount as _cd
+            _disc_line = _cd.brief(int(tenant_id), str(session_id), req.visitor)
+            if _disc_line:
+                system_prompt += _disc_line
+                _disc_on = _cd.TAG in _disc_line
+        except Exception as _cd_err:
+            print("⚠️ discounts brief:", _cd_err)
+
     print(f"✅ /chat tenant_id={tenant_id} session_id={session_id}")
 
     # ── Product Recommendation Feature Check ─────────────────────────────────
@@ -1068,6 +1082,16 @@ def _chat(req: ChatRequest):
         answer = reply_language.text("blank_answer", req.message)
         needs_handoff = True
 
+    # Discounts in Chat: the AI wrote <<<PHIXTRA_DISCOUNT>>> → make the real code.
+    _disc = None
+    if "<<<PHIXTRA_DISCOUNT" in (answer or ""):
+        try:
+            import chat_discount as _cd
+            answer, _disc = _cd.apply(int(tenant_id), str(session_id), req.visitor, answer, req.message, _disc_on)
+        except Exception as _cd_err:
+            print("⚠️ discounts make:", _cd_err)
+            answer = _re.sub(r"<<<PHIXTRA_DISCOUNT[^>]*>>>", "", answer).strip()
+
     # Fold the relevance-classification call's token cost (if any) into the
     # usage this turn bills/meters — it's a real API call even on turns that
     # skip the main generation call.
@@ -1357,6 +1381,8 @@ def _chat(req: ChatRequest):
         "website": tenant.get("website"),
         "handoff_triggered": handoff_triggered,
     }
+    if _disc:
+        response["discount_code"] = _disc
     _all_recs = list(product_recommendations)
     product_recommendations = _validate_products(product_recommendations,
                                                  photo_cards=(getattr(req, "channel", None) != "whatsapp"))

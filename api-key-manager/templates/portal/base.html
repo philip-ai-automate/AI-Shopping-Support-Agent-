@@ -1251,7 +1251,7 @@
       </div>
     </div>
 
-    <!-- ── AI Assistant group — not part of PhiXtra Connect. Store Information
+    <!-- ── AI Agent group — not part of PhiXtra Connect. Store Information
          moved in as a sub-menu 2026-10-24 (it's what the AI reads). ── -->
     {% set _si_group = request.endpoint and (request.endpoint == 'portal.store_info' or request.endpoint.startswith('portal.store_info_')) %}
     {% set _ai_group = _si_group or request.endpoint in ('portal.chat_archive', 'portal.chat_archive_session') or request.endpoint in ('portal.api_keys', 'portal.ai_instruction', 'portal.ai_instruction_whatsapp', 'portal.ai_instruction_website', 'portal.handoff_rules', 'portal.ai_agents', 'portal.ai_agents_new', 'portal.ai_agents_edit') or (request.endpoint == 'portal.verified_specs_settings' and customer is defined and customer and customer.tenant_source_type != 'whatsapp') %}
@@ -1259,7 +1259,7 @@
       <div class="sb-group-toggle {% if _ai_group %}open{% endif %}"
            data-tour="nav-ai" onclick="sbToggle(this)">
         <span class="sb-gtitle">
-          <span class="sb-icon">🤖</span> AI Assistant
+          <span class="sb-icon">🤖</span> AI Agent
         </span>
         <span class="sb-arrow">▾</span>
       </div>
@@ -1300,6 +1300,14 @@
            class="{% if request.endpoint == 'portal.handoff_rules' %}active{% endif %}">
           Handoff Rules
           {% if 'ai.handoff_rules_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </a>
+        {% endif %}
+        {# Discounts in Chat (11 Nov 2026): Shopify businesses only for now (WooCommerce later); hidden for B2B businesses; padlock on Free. #}
+        {% if _store_platform in ('shopify', 'woocommerce') and not _is_b2b and staff_can_open('portal.ai_discounts') %}
+        <a href="{{ url_for('portal.ai_discounts') }}"
+           class="{% if request.endpoint in ('portal.ai_discounts', 'portal.ai_discounts_save') %}active{% endif %}">
+          Discounts in Chat
+          {% if 'ai.discounts_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
         {% if customer is defined and customer and customer.tenant_source_type != 'whatsapp' %}
@@ -2009,7 +2017,7 @@
       title: '📣 Outreach',
       body:  'Send WhatsApp and email campaigns, make and answer calls, and post on social media. Great for promotions, flash sales, and re-engagement.' },
     { sel: '[data-tour="nav-ai"]', pos: 'right',
-      title: '🤖 AI Assistant',
+      title: '🤖 AI Agent',
       body:  'Customise your AI\'s personality and behaviour. Set handoff rules to decide when the AI steps aside for a human agent.' },
     { sel: '[data-tour="nav-ecommerce"]', pos: 'right',
       title: '🏪 Products & Orders',
@@ -2225,6 +2233,7 @@
     { icon:'🤖', title:'WhatsApp AI Instruction', desc:'What your AI says to customers on WhatsApp',  url:'{{ url_for("portal.ai_instruction_whatsapp") }}',    tags:'ai bot personality system prompt instruction custom behaviour whatsapp' },
     { icon:'🌐', title:'Website AI Instruction',  desc:'What your AI says in your website chat box',  url:'{{ url_for("portal.ai_instruction_website") }}',     tags:'ai bot personality system prompt instruction custom behaviour website web chat' },
     { icon:'🔀', title:'Handoff Rules',          desc:'When the AI should pass to a human agent',    url:'{{ url_for("portal.handoff_rules") }}',              tags:'handoff rules human agent escalate transfer live' },
+    {% if _store_platform in ('shopify', 'woocommerce') and not _is_b2b %}{ icon:'🏷️', title:'Discounts in Chat',      desc:'Let your AI Agent give a one-time discount code, inside your limits', url:'{{ url_for("portal.ai_discounts") }}', tags:'discount code coupon offer price shopify woocommerce ai agent' },{% endif %}
     {% if customer is defined and customer and customer.tenant_source_type != 'whatsapp' %}
     { icon:'✅', title:'Verified Specs',         desc:'Product specs the AI can confirm accurately',  url:'{{ url_for("portal.verified_specs_settings") }}',    tags:'verified specs product guarantee confirm accuracy' },
     {% endif %}

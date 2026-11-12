@@ -25,7 +25,7 @@
     {%- assign phx_sig = phx_payload | hmac_sha256: phx_secret -%}
     {%- capture phx_attrs %} data-visitor-name="{{ phx_name | escape }}" data-visitor-email="{{ phx_email | escape }}" data-visitor-company="{{ phx_company | escape }}" data-visitor-location="{{ phx_location | escape }}" data-visitor-sig="{{ phx_sig }}"{% endcapture -%}
   {%- endif -%}
-  <script src="https://chat.phixtra.com/widget.js?v=20261103a" data-site="{{ phx_key | escape }}" data-platform="shopify"{{ phx_attrs }} defer></script>
+  <script src="https://chat.phixtra.com/widget.js?v=20261111a" data-site="{{ phx_key | escape }}" data-platform="shopify"{{ phx_attrs }} defer></script>
 {%- endif -%}
 
 {% schema %}
