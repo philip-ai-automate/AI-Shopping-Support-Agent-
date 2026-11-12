@@ -511,7 +511,9 @@ def webhooks():
         cur.execute("""INSERT INTO shopify_webhook_log (shop, topic, webhook_id, payload)
                        VALUES (%s, %s, %s, %s)""",
                     (shop, topic, request.headers.get("X-Shopify-Webhook-Id"),
-                     json.dumps(payload if topic.startswith(("customers/", "shop/")) else {})))
+                     # 12 Nov 2026: only the privacy requests are kept (customers/update
+                     # carried full customer details and was stored too).
+                     json.dumps(payload if topic in ("customers/data_request", "customers/redact", "shop/redact") else {})))
         if topic == "app/uninstalled":
             cur.execute("""UPDATE shopify_shops SET uninstalled_at=NOW(), access_token=NULL,
                               refresh_token=NULL, updated_at=NOW() WHERE shop=%s""", (shop,))
@@ -528,6 +530,11 @@ def webhooks():
                 shopify_b2b.forget(shop)
             except Exception as e:
                 print(f"⚠️ shopify forget b2b {shop}: {e}")
+            try:
+                import shopify_privacy
+                print(f"shopify shop/redact {shop}: {shopify_privacy.forget_shop(shop)}")
+            except Exception as e:
+                print(f"⚠️ shopify forget shop data {shop}: {e}")
             cur.execute("DELETE FROM shopify_shops WHERE shop=%s", (shop,))
         elif topic in ("products/create", "products/update", "products/delete", "inventory_levels/update"):
             # Part 2: re-read just this product on the next sync run (cron, every minute).
@@ -543,6 +550,15 @@ def webhooks():
         elif topic in ("customers/redact", "customers/delete"):
             # Part 4: remove that person from our copy of the store's B2B contacts.
             cid = (payload.get("customer") or {}).get("id") if topic == "customers/redact" else payload.get("id")
+            if topic == "customers/redact":
+                # 12 Nov 2026: discount codes, draft-order buyer, chat details + email to support@
+                # (before shopify_b2b removes the contact — its name is matched on drafts).
+                conn.commit()
+                try:
+                    import shopify_privacy
+                    shopify_privacy.forget_customer(shop, payload)
+                except Exception as e:
+                    print(f"⚠️ shopify privacy redact {shop}: {e}")
             try:
                 import shopify_b2b
                 shopify_b2b.forget_customer(shop, cid)
@@ -568,9 +584,14 @@ def webhooks():
                 relevant = cur.fetchone() is not None
             if relevant:
                 cur.execute("UPDATE shopify_shops SET b2b_dirty_at=NOW() WHERE shop=%s AND tenant_id IS NOT NULL", (shop,))
-        # customers/data_request: logged (payload kept) for PhiXtra to answer;
-        # shopify_b2b.customer_data(shop, id) gives what we hold.
         conn.commit()
+        if topic == "customers/data_request":
+            # 12 Nov 2026: email support@ what we hold + answer-by date (30 days).
+            try:
+                import shopify_privacy
+                shopify_privacy.data_request(shop, payload)
+            except Exception as e:
+                print(f"⚠️ shopify data request alert {shop}: {e}")
     finally:
         cur.close(); conn.close()
     # 7B Shopify Billing — after the commit above (the billing code updates the same shop row).

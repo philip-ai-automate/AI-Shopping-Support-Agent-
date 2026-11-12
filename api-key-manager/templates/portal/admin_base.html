@@ -292,6 +292,10 @@
        href="{{ url_for('portal_admin.backups') }}">
       <span class="asb-icon">💾</span> Backups
     </a>
+    <a class="asb-link {% if request.endpoint and request.endpoint.startswith('portal_admin.privacy') %}active{% endif %}"
+       href="{{ url_for('portal_admin.privacy_requests') }}">
+      <span class="asb-icon">🛡️</span> Privacy Requests
+    </a>
     <a class="asb-link {% if request.endpoint and request.endpoint.startswith('portal_admin.incident') %}active{% endif %}"
        href="{{ url_for('portal_admin.incidents') }}">
       <span class="asb-icon">🚨</span> Incidents

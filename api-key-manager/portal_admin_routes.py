@@ -6716,6 +6716,38 @@ def backups():
                            disks=bs.disk_view(), disk_limit=bs.DISK_LIMIT)
 
 
+@portal_admin_bp.route("/privacy")
+def privacy_requests():
+    """Admin › Privacy Requests — Shopify's privacy requests and what's left to do (owner only, 12 Nov 2026)."""
+    r = _require_owner()
+    if r: return r
+    import shopify_privacy as sp
+    return render_template("portal/admin_privacy.html", rows=sp.list_requests())
+
+
+@portal_admin_bp.route("/privacy/<int:req_id>/delete-chats", methods=["POST"])
+def privacy_delete_chats(req_id):
+    r = _require_owner()
+    if r: return r
+    import shopify_privacy as sp
+    res = sp.delete_chats(req_id, _admin_user())
+    if res.get("ok"):
+        flash(f"Deleted {res['deleted']} chat{'s' if res['deleted'] != 1 else ''}. Request done.", "success")
+    else:
+        flash(res.get("error") or f"{len(res.get('failed') or [])} chat(s) couldn't be deleted. Try again.", "danger")
+    return redirect(url_for("portal_admin.privacy_requests"))
+
+
+@portal_admin_bp.route("/privacy/<int:req_id>/answered", methods=["POST"])
+def privacy_answered(req_id):
+    r = _require_owner()
+    if r: return r
+    import shopify_privacy as sp
+    if sp.mark_answered(req_id, _admin_user()):
+        flash("Marked answered.", "success")
+    return redirect(url_for("portal_admin.privacy_requests"))
+
+
 @portal_admin_bp.route("/backups/run", methods=["POST"])
 def backups_run():
     r = _require_owner()

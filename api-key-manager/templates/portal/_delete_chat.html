@@ -1,0 +1,31 @@
+{# Delete chat (12 Nov 2026). Include with: dc_key, dc_name, dc_count, dc_kind ('web' | 'whatsapp').
+   Owner always; team member needs the "Delete chats" tick. #}
+{% if dc_key and staff_can('inbox.delete_chat') and ((dc_kind == 'web' and dc_key.startswith('web:') and dc_key|length > 4) or (dc_kind == 'whatsapp' and dc_key.isdigit())) %}
+{% set _dcid = 'dc' ~ (dc_kind or 'x') %}
+<div class="chat-actions" style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+  <button type="button" class="btn btn-sm" style="background:#fff;color:#B42318;border:1px solid #FDA29B;white-space:nowrap"
+          onclick="document.getElementById('{{ _dcid }}').showModal()">🗑 Delete chat</button>
+</div>
+<dialog id="{{ _dcid }}" class="dc-dialog" aria-labelledby="{{ _dcid }}h">
+  <form method="POST" action="{{ url_for('portal.inbox_delete_chat') }}">
+    <input type="hidden" name="key" value="{{ dc_key }}">
+    <h4 id="{{ _dcid }}h">Delete this chat with {{ dc_name }}?</h4>
+    <div>This deletes, for everyone in your team:</div>
+    <ul>
+      <li>all {{ dc_count }} message{{ 's' if dc_count != 1 }}</li>
+      {% if dc_kind == 'web' %}
+      <li>the name, email and phone the buyer gave in the chat</li>
+      <li>the hand-over request</li>
+      {% else %}
+      <li>what the AI Agent remembers of this chat</li>
+      {% endif %}
+    </ul>
+    <div>{% if dc_kind == 'web' %}Leads, quotes and discount codes are kept.{% else %}The contact, leads, quotes and call log are kept.{% endif %} You can't undo this.</div>
+    <div class="dc-row">
+      <button type="button" class="btn btn-sm" style="background:#F2F4F7;color:var(--ink);border:1px solid var(--line)"
+              onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-sm" style="background:#B42318;color:#fff;border:1px solid #B42318">Delete chat</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}

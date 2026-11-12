@@ -409,6 +409,7 @@ PLAN_FEATURE_CATALOG = {
         ("inbox.manage_contact", "Edit contact details from Inbox"),
         ("inbox.send_new",       "Send a new WhatsApp message to a saved contact (Meta-approved message, from Inbox or Sales Pipeline)"),
         ("inbox.see_all",        "See all chats, not just their own customers' (off = only chats with their own contacts, and new people nobody has claimed)"),
+        ("inbox.delete_chat",    "Delete chats (website and WhatsApp)"),
         ("inbox.translate",      "Chat Translation — read and reply in the team's language, buyers get theirs (plan unlock, AI Sales Agent for B2B)"),
     ],
     "WhatsApp Campaigns": [
@@ -706,7 +707,7 @@ ROLE_FORM_GRID = {
     ],
     "Inbox": [
         {"label": "Inbox", "view": "inbox.page", "edit": "inbox.manage_contact",
-         "other": ["inbox.reply", "inbox.send_new", "inbox.claim_release", "inbox.resolve", "inbox.takeover", "inbox.see_all"]},
+         "other": ["inbox.reply", "inbox.send_new", "inbox.claim_release", "inbox.resolve", "inbox.takeover", "inbox.see_all", "inbox.delete_chat"]},
         {"label": "Chat Translation (plan unlock)", "other": ["inbox.translate"]},
     ],
     "WhatsApp Campaigns": [
@@ -13899,6 +13900,41 @@ def discount_lead_codes(lead_id):
     except Exception as e:
         print("⚠️ discount_lead_codes:", e)
         return []
+
+
+@portal_bp.route("/inbox/delete-chat", methods=["POST"])
+@team_feature("inbox.delete_chat")
+def inbox_delete_chat():
+    """Delete a website or WhatsApp chat by hand (12 Nov 2026). Owner always;
+    a team member needs the "Delete chats" tick and access to the chat."""
+    r = _require_login()
+    if r: return r
+    r2 = _require_team_permission("inbox.delete_chat")
+    if r2: return r2
+    import chat_delete
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    key = (request.form.get("key") or "").strip()
+    kind = chat_delete.kind_of(key)
+    tab = "web" if kind == "web" else None
+    if not kind:
+        flash("This chat can't be deleted.", "danger")
+        return redirect(url_for("portal.my_inbox"))
+    actor = _current_actor(customer)
+    if not _team_can_access_phone(tenant_id, actor, key):
+        flash("You don't have access to this conversation.", "danger")
+        return redirect(url_for("portal.my_inbox"))
+    try:
+        res = chat_delete.delete(tenant_id, key, actor.get("label") or "the owner")
+    except Exception as e:
+        print(f"⚠️ delete chat t{tenant_id} {key}: {e}")
+        res = {"ok": False, "error": "The chat couldn't be deleted. Please try again."}
+    if res.get("ok"):
+        flash("Chat deleted", "success")
+    else:
+        flash(res.get("error") or "The chat couldn't be deleted.", "danger")
+    # 'web:' opens the Web Chat tab on its first conversation.
+    return redirect(url_for("portal.my_inbox", phone="web:") if tab else url_for("portal.my_inbox"))
 
 
 @portal_bp.route("/inbox/discount-code", methods=["POST"])

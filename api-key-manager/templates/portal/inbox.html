@@ -644,6 +644,13 @@ html, body { overflow: hidden; height: 100%; }
   .dcx-l{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:13px}
   .dcx-l input{border:1px solid #D0D5DD;border-radius:10px;padding:8px 10px;font:inherit;font-weight:400}
   .dcx-b{display:flex;gap:8px;justify-content:flex-end}
+/* Delete chat (12 Nov 2026) */
+.dc-dialog{border:1px solid var(--line);border-radius:12px;padding:20px;max-width:420px;width:calc(100% - 32px);font-size:14px;color:var(--ink)}
+.dc-dialog::backdrop{background:rgba(3,12,24,.35)}
+.dc-dialog form{display:flex;flex-direction:column;gap:10px}
+.dc-dialog h4{margin:0;font-size:17px}
+.dc-dialog ul{margin:0;padding-left:18px}
+.dc-row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 </style>
 {% endblock %}
 
@@ -946,6 +953,7 @@ html, body { overflow: hidden; height: 100%; }
         </form>
         {% endif %}
         {% endif %}
+        {% with dc_key=active_phone, dc_name=(active_name or ('+' ~ active_phone)), dc_count=messages|length, dc_kind='whatsapp' %}{% include "portal/_delete_chat.html" %}{% endwith %}
         </div>
       </div>
       {% include "portal/_shopify_trade_strip.html" %}
@@ -1406,6 +1414,7 @@ html, body { overflow: hidden; height: 100%; }
             {% endif %}
           </div>
           {% endif %}
+          {% with dc_key=active_phone, dc_name=((active_webchat_conv.visitor_name if active_webchat_conv else None) or 'this website visitor'), dc_count=webchat_messages|length, dc_kind='web' %}{% include "portal/_delete_chat.html" %}{% endwith %}
         </div>
         {% include "portal/_shopify_trade_strip.html" %}
         {% if disc and disc.code %}{# Discounts in Chat Phase 2 (11 Nov 2026) #}
