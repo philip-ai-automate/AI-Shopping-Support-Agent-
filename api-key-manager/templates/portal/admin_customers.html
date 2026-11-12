@@ -265,6 +265,7 @@
       {% if c.balance_credits is not none %}<div class="cc-field"><span>Balance</span><span><strong>{{ "%.1f"|format(c.balance_credits) }}</strong> cr</span></div>{% endif %}
       <div class="cc-field"><span>Plan</span><span>{{ c.plan_name }}{% if c.billed == 'shopify' %} <span class="shop-tag">Shopify</span>{% endif %}</span></div>
       <div class="cc-field"><span>Heard about us</span><span>{{ c.heard }}</span></div>
+      {% if c.link_source %}<div class="cc-field"><span>Came from (link)</span><span>{{ c.link_source }}</span></div>{% endif %}
       <div class="cc-field"><span>Signed up</span><span>{{ c.created_at.strftime('%Y-%m-%d') if c.created_at else '—' }}</span></div>
     </div>
     <div class="cc-badges">
@@ -352,7 +353,7 @@
             {% else %}<span class="pill pill-red">Disabled</span>{% endif %}
           </td>
           <td class="muted">{{ c.created_at.strftime('%Y-%m-%d') if c.created_at else '—' }}</td>
-          <td{% if c.heard == 'Not answered' %} class="muted"{% endif %}>{{ c.heard }}</td>
+          <td><span{% if c.heard == 'Not answered' %} class="muted"{% endif %}>{{ c.heard }}</span>{% if c.link_source %}<div class="muted" style="font-size:11px" title="Where the sign-up link came from">Link: {{ c.link_source }}</div>{% endif %}</td>
           <td>{% if c.setup %}{% if c.setup.complete %}<span class="pill pill-green">{{ c.setup.done }} of {{ c.setup.total }} · done</span>{% else %}<span class="pill pill-red" title="Stopped at: {{ c.setup.stuck }}">{{ c.setup.done }} of {{ c.setup.total }} · {{ c.setup.stuck }}</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
           <td>
             {% if c.customer_id %}

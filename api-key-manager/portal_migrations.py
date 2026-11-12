@@ -2022,6 +2022,13 @@ def ensure_portal_tables():
         if not _column_exists(cur, "customers", "hear_about_us"):
             cur.execute("ALTER TABLE customers ADD COLUMN hear_about_us VARCHAR(30)")
 
+        # ── customers.signup_link_source (12 Nov 2026): where the sign-up link
+        # came from — utm_source/medium/campaign on the link the visitor clicked
+        # (e.g. "chatgpt.com"), else the referring site. Shown in Admin beside
+        # "How did you hear about us". Nullable: older sign-ups have none.
+        if not _column_exists(cur, "customers", "signup_link_source"):
+            cur.execute("ALTER TABLE customers ADD COLUMN signup_link_source VARCHAR(200)")
+
         # ── team_members: Shared Team Inbox — staff logins scoped to a tenant ──
         # Single flat 'agent' role for v1 (Inbox-only, enforced by a
         # before_request allowlist in portal_routes.py). The owner's login

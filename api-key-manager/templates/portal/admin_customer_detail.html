@@ -42,6 +42,8 @@
           <td style="border:none;padding:4px 8px">{{ customer.created_at.strftime('%Y-%m-%d %H:%M') if customer.created_at else '—' }}</td></tr>
       <tr><td class="muted" style="border:none;padding:4px 0">How did you hear about us</td>
           <td style="border:none;padding:4px 8px">{{ customer.hear_about_us_label }}</td></tr>
+      <tr><td class="muted" style="border:none;padding:4px 0">Came from (link)</td>
+          <td style="border:none;padding:4px 8px">{{ customer.signup_link_source or '—' }}</td></tr>
       {% set ia = customer.inactivity %}
       {% if ia %}
       <tr><td class="muted" style="border:none;padding:4px 0;vertical-align:top">Inactivity</td>

@@ -958,7 +958,7 @@ def customers():
 
     cur.execute(f"""
         SELECT c.id, c.first_name, c.last_name, c.email, c.phone_number, c.phone_verified,
-               c.email_verified, c.is_active, c.created_at, c.hear_about_us, c.business_country,
+               c.email_verified, c.is_active, c.created_at, c.hear_about_us, c.business_country, c.signup_link_source,
                t.id AS tenant_id, t.name AS tenant_name, t.domain, t.signup_product, t.source_type,
                t.account_kind,
                COALESCE(p.name,'Free') AS plan_name,
@@ -999,6 +999,7 @@ def customers():
                            if setup.get(row["tenant_id"]) else "na",
             "heard": _heard_label(row.get("hear_about_us")),
             "heard_value": row.get("hear_about_us") or CUSTOMER_HEARD_NONE,
+            "link_source": row.get("signup_link_source"),
             "source": row.get("source_type"),
             "kind": row.get("account_kind") or "real",
             "country_code": (row.get("business_country") or "").strip().upper() or None,

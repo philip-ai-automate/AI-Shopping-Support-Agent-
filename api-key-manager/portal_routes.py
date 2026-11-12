@@ -68,6 +68,63 @@ portal_bp = Blueprint("portal", __name__)
 # exact permission itself (_require_team_permission). Labels live on each
 # route, not in hand-kept lists here — see feature_access.py for why and for
 # the update policy every new feature must follow.
+_OWN_HOSTS = ("phixtra.com", "profitbuyz.com", "profitbuyz.uk", "profitbuy.ng")
+
+
+def _clean_utm(v):
+    import re as _re_utm
+    v = (v or "").strip()
+    return _re_utm.sub(r"[^A-Za-z0-9 ._:/+\-]", "", v)[:60]
+
+
+@portal_bp.before_app_request
+def _remember_link_source():
+    """12 Nov 2026: remember where a visitor's link came from (utm_* on the
+    link, else the referring site) so sign-up can record it for Admin.
+    Logged-out GET pages only; the latest utm link wins. Never blocks."""
+    try:
+        if request.method != "GET" or session.get("customer_id") or session.get("team_member_id"):
+            return None
+        src = _clean_utm(request.args.get("utm_source"))
+        if src:
+            parts = [src] + [x for x in (_clean_utm(request.args.get("utm_medium")),
+                                         _clean_utm(request.args.get("utm_campaign"))) if x]
+            session["signup_link_source"] = " · ".join(parts)[:200]
+            return None
+        if session.get("signup_link_source"):
+            return None
+        # phixtra.com passes on the outside site its visitor came from (no utm)
+        came = _clean_utm(request.args.get("came_from")).lower()
+        if came and "." in came and " " not in came:
+            session["signup_link_source"] = ("referrer: " + came)[:200]
+            return None
+        from urllib.parse import urlparse as _up
+        host = (_up(request.headers.get("Referer") or "").hostname or "").lower()
+        if host.startswith("www."):
+            host = host[4:]
+        if host and not any(host == h or host.endswith("." + h) for h in _OWN_HOSTS):
+            session["signup_link_source"] = ("referrer: " + host)[:200]
+    except Exception as e:
+        print("⚠️ link source error:", e)
+    return None
+
+
+def _save_link_source(cur, email):
+    """Write the remembered link source onto the new customer row (same
+    transaction as the INSERT). Never fails the sign-up."""
+    val = session.get("signup_link_source")
+    if not val or not email:
+        return
+    try:
+        cur.execute("SAVEPOINT link_src")
+        cur.execute("""UPDATE customers SET signup_link_source=%s
+                        WHERE lower(email)=lower(%s) AND signup_link_source IS NULL""", (val, email))
+        cur.execute("RELEASE SAVEPOINT link_src")
+    except Exception as e:
+        cur.execute("ROLLBACK TO SAVEPOINT link_src")
+        print("⚠️ save link source error:", e)
+
+
 @portal_bp.before_app_request
 def _track_staff_presence():
     """Team performance: first/last seen and active minutes per person per
@@ -3425,6 +3482,7 @@ def _register_whatsapp_merchant(
     """, (tenant_id, first_name, last_name, email, pw_hash, phone_number or None, confirmed,
           False,  # 2026-11-11: sign-up confirms the email only — the number is checked by Meta when connected
           verify_token, hear_about_us or None, business_country or None))
+    _save_link_source(cur3, email)
     if confirmed:
         cur3.execute("UPDATE tenants SET status='active' WHERE id=%s", (tenant_id,))
     conn.commit()
@@ -3587,6 +3645,7 @@ def _register_web_merchant(first_name, last_name, email, password, phone_number,
              pw_hash, phone_number or None, confirmed,
              False,  # 2026-11-11: email code only at sign-up; number not confirmed until Meta connect
              verify_token, hear_about_us or None, business_country or None))
+        _save_link_source(cur2, email)
         if confirmed:
             cur2.execute("UPDATE tenants SET status='active' WHERE id=%s", (int(tenant["id"]),))
         conn.commit()
@@ -4346,6 +4405,7 @@ def register():
             VALUES (%s, %s, %s, %s, %s, %s, FALSE, %s, %s)""",
             (int(tenant["id"]), first_name, last_name, email,
              pw_hash, phone_number or None, verify_token, hear_about_us or None))
+        _save_link_source(cur2, email)
         conn.commit()
         cur2.close()
     except Exception:
@@ -34177,6 +34237,7 @@ def provision_whatsapp_merchant(wa_phone: str, business_name: str) -> dict:
         RETURNING id
     """, (tenant_id, business_name or "Merchant", synth_email, unusable_pw, phone))
     customer_id = int(cur3.fetchone()[0])
+    _save_link_source(cur3, synth_email)
     conn.commit()
     cur3.close()
 
