@@ -1349,9 +1349,6 @@
             {% if staff_can_open('portal.store_info_website_connect') %}
             <a href="{{ url_for('portal.store_info_website_connect') }}" class="{% if request.endpoint == 'portal.store_info_website_connect' %}active{% endif %}">Connect Website{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Website + WhatsApp plans">🔒</span>{% endif %}</a>
             {% endif %}
-            {% if staff_can_open('portal.store_info_website_chatbox') %}
-            <a href="{{ url_for('portal.store_info_website_chatbox') }}" class="{% if request.endpoint == 'portal.store_info_website_chatbox' %}active{% endif %}">Add Chat Box{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Website + WhatsApp plans">🔒</span>{% endif %}</a>
-            {% endif %}
             {% if staff_can_open('portal.store_info_website_sync') %}
             <a href="{{ url_for('portal.store_info_website_sync') }}" class="{% if request.endpoint == 'portal.store_info_website_sync' %}active{% endif %}">Sync Website{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Website + WhatsApp plans">🔒</span>{% endif %}</a>
             {% endif %}
@@ -1473,7 +1470,7 @@
          sub-menu too. Same pages, ticks and padlocks. -->
     {% set _team_group = request.endpoint and (request.endpoint == 'portal.team_page' or request.endpoint.startswith('portal.team_create') or request.endpoint.startswith('portal.team_role') or request.endpoint.startswith('portal.team_department') or request.endpoint.startswith('portal.team_position') or request.endpoint == 'portal.record_access') %}
     {% set _bill_group = request.endpoint in ('portal.billing', 'portal.billing_plans', 'portal.invoices', 'portal.billing_subscribe', 'portal.billing_subscribe_checkout', 'portal.payment_settings') %}
-    {% set _set_group = _team_group or _bill_group or request.endpoint in ('portal.settings', 'portal.whatsapp_connect', 'portal.channels_page', 'buffer.connect', 'mailbox.page') %}
+    {% set _set_group = _team_group or _bill_group or request.endpoint in ('portal.settings', 'portal.settings_chatbox', 'portal.whatsapp_connect', 'portal.channels_page', 'buffer.connect', 'mailbox.page') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _set_group %}open{% endif %}"
            data-tour="nav-settings" onclick="sbToggle(this)">
@@ -1488,6 +1485,13 @@
            class="{% if request.endpoint == 'portal.settings' %}active{% endif %}">
           {{ 'My Settings' if session.get('team_member_id') else 'Account Settings' }}
           {% if 'settings.account' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
+        </a>
+        {% endif %}
+        {% if staff_can_open('portal.settings_chatbox') %}
+        <a href="{{ url_for('portal.settings_chatbox') }}"
+           class="{% if request.endpoint == 'portal.settings_chatbox' %}active{% endif %}">
+          Chat Box
+          {% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Website plans">🔒</span>{% endif %}
         </a>
         {% endif %}
         {% if staff_can_open('portal.channels_page') %}
@@ -2225,7 +2229,7 @@
     { icon:'✏️', title:'Modify Store Information', desc:'Edit or rename a Store Information entry',   url:'{{ url_for("portal.store_info_modify") }}',          tags:'business store info edit modify rename' },
     { icon:'🗑️', title:'Delete Store Information', desc:'Remove a custom Store Information entry',    url:'{{ url_for("portal.store_info_delete") }}',          tags:'business store info delete remove' },
     { icon:'🌐', title:'Connect Website', desc:'Let your AI learn from your website',               url:'{{ url_for("portal.store_info_website_connect") }}', tags:'website connect read crawl site pages wix shopify ai knowledge' },
-    { icon:'💬', title:'Add Chat Box',    desc:'Put the AI chat box on any website',                 url:'{{ url_for("portal.store_info_website_chatbox") }}', tags:'chat box widget code embed shopify wix squarespace website install' },
+    { icon:'🎨', title:'Chat Box',        desc:'Put the chat box on your website and set its colour, font, logo, button position and hours', url:'{{ url_for("portal.settings_chatbox") }}', tags:'add chat box install code embed shopify wix squarespace wordpress look customise customize colour color font logo avatar position button welcome message business hours style widget settings' },
     { icon:'🔄', title:'Sync Website',    desc:'See and refresh the pages your AI uses',             url:'{{ url_for("portal.store_info_website_sync") }}',    tags:'website sync refresh pages read again schedule' },
     { icon:'🗑️', title:'Delete Website',  desc:'Disconnect your website from your AI',              url:'{{ url_for("portal.store_info_website_delete") }}',  tags:'website delete disconnect remove pages' },
     { icon:'💳', title:'Payment Gateways',       desc:'Connect Stripe or Paystack',                   url:'{{ url_for("portal.payment_settings") }}',           tags:'payment gateway stripe paystack checkout' },

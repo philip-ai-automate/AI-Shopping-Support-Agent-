@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{% block title %}Add the chat box — PhiXtra Portal{% endblock %}
+{% block title %}Chat Box — PhiXtra Portal{% endblock %}
 {% block content %}
 {% include "portal/_website_styles.html" %}
 {% include "portal/_chatbox_guide_styles.html" %}
@@ -22,11 +22,12 @@
 .cb-tab[aria-selected="true"]{background:#0B1D40;border-color:#0B1D40;color:#fff}
 .cb-small{font-size:13px;color:#4A5B78;margin:10px 0 0;line-height:1.5}
 .cb-small a{color:#0B1D40;font-weight:700}
+.cb-part{font-size:19px;font-weight:800;color:#0B1D40;margin:26px 0 12px}
 
 </style>
 
 <div class="si-header">
-  <div class="si-title">💬 Add the chat box</div>
+  <div class="si-title">💬 Chat Box</div>
   {% if shopify %}
   <div class="si-sub">Your store is on Shopify, so there's no code to paste: the PhiXtra app adds the chat box to every page of <strong>{{ shopify.shop_name }}</strong>. You switch it on once, in your Shopify theme.</div>
   {% else %}
@@ -48,7 +49,8 @@
 </div>
 {% endif %}
 
-{% include "portal/_chatbox_customise.html" %}
+{# 13 Nov 2026: the chat box look moved to Settings › Chat Box. #}
+<h2 class="cb-part" id="install">1. Put it on your website</h2>
 
 {% if shopify %}
 {# Shopify store connected through the app (2026-11-06): no code. #}
@@ -127,4 +129,6 @@
   });
 })();
 </script>
+<h2 class="cb-part" id="look">2. How it looks</h2>
+{% include "portal/_chatbox_customise.html" %}
 {% endblock %}

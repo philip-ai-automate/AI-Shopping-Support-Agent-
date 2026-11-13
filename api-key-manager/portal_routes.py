@@ -3126,7 +3126,7 @@ def _send_account_ready_email(
         steps.append(("Connect your website.",
                       f"Give permission for {site}, then click Sync now so the AI can read your pages."))
         if not wp:
-            steps.append(("Add the chat box.", "Copy one line of code from the portal's Add Chat Box page into "
+            steps.append(("Add the chat box.", "Copy one line of code from the portal's Settings › Chat Box page into "
                                                "your website. There's a step-by-step guide for your platform."))
             steps.append(("Add your products (optional).", "Your AI reads them from your website's product pages. Nothing to prepare."))
     else:
@@ -7042,7 +7042,7 @@ def _setup_checklist(tenant_id: int):
         gkey = _chatbox_guide_key(t["website_platform"] or "")
         steps.append(dict(key="chatbox", title="Add the chat box", done=bool(t["chatbox_seen_at"]),
                           text=f"Copy one line of code into {names.get(t['website_platform'], 'your website')}, or send the code and the steps by email.",
-                          action="Other website builders", url=url_for("portal.store_info_website_chatbox"), check=True,
+                          action="Other website builders", url=url_for("portal.settings_chatbox"), check=True,
                           guide=CHATBOX_GUIDES[gkey], guide_key=gkey))
 
     # 4. Trial.
@@ -7197,6 +7197,15 @@ def _site_widget_key(tenant_id: int) -> str:
 @portal_bp.route("/store-info/website/chat-box")
 @team_feature("store.info")
 def store_info_website_chatbox():
+    """Old address: the chat box page moved to Settings › Chat Box (13 Nov 2026)."""
+    return redirect(url_for("portal.settings_chatbox") + (("#" + request.args["to"]) if request.args.get("to") else ""))
+
+
+@portal_bp.route("/settings/chat-box")
+@team_feature("store.info")
+def settings_chatbox():
+    """Settings › Chat Box (13 Nov 2026, user): one page to put the chat box on
+    the website (code / WordPress plugin / Shopify switch) and set how it looks."""
     r = _require_login()
     if r: return r
     customer  = _get_customer(_customer_id())
@@ -7261,7 +7270,7 @@ def setup_check_chatbox():
         insert_audit_log(action="chatbox_found_on_site", tenant_id=tenant_id, details={"domain": row[0]})
     flash(msg, "success" if found else "warning")
     if request.form.get("back") == "chatbox":
-        return redirect(url_for("portal.store_info_website_chatbox"))
+        return redirect(url_for("portal.settings_chatbox"))
     return redirect(url_for("portal.dashboard"))
 
 
@@ -7292,7 +7301,7 @@ def store_info_website_chatbox_customise():
             print("chatbox audit:", e)
         flash("Today's look is back on your chat box." if request.form.get("reset") == "1"
               else "Saved. Your chat box shows the new look on your website now.", "success")
-    return redirect(url_for("portal.store_info_website_chatbox") + "#customise")
+    return redirect(url_for("portal.settings_chatbox") + "#customise")
 
 
 @portal_bp.route("/media/chatbox/<int:tenant_id>/<fname>")
@@ -7318,7 +7327,7 @@ def store_info_website_chatbox_send():
     if r3: return r3
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    back = url_for("portal.store_info_website_chatbox") if request.form.get("back") == "chatbox" else url_for("portal.dashboard")
+    back = url_for("portal.settings_chatbox") if request.form.get("back") == "chatbox" else url_for("portal.dashboard")
     to = (request.form.get("email") or "").strip()
     if not _re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", to) or len(to) > 254:
         flash("Please type a valid email address.", "warning")
