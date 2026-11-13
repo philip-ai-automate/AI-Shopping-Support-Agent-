@@ -258,7 +258,7 @@
 
       {% set wu = fd.get('wa_usage', '') %}
       <div class="rg-f" id="blkUsage" hidden>
-        <span class="rg-lbl"><span id="lblUsage">How do your customers reach you on WhatsApp today?</span> <span class="req" aria-hidden="true">*</span></span>
+        <span class="rg-lbl"><span id="lblUsage">How do your customers reach you on WhatsApp today?</span> <span class="req" id="usageReq" aria-hidden="true">*</span><span id="usageOpt" style="font-weight:400;color:#4A5B78" hidden> (optional)</span></span>
         <input type="hidden" name="wa_usage" id="fUsage" value="{{ wu if wu in ('biz_app','normal','new','later') else '' }}">
         <div class="wu-dd" id="wuDd">
           <button type="button" class="wu-btn" id="wuBtn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="lblUsage wuVal">
@@ -516,6 +516,11 @@ function render() {
   el('chosenLabel').textContent = TYPE ? (TYPE_NAMES[TYPE] || '') + (isWeb && PLAT ? ' · ' + PLAT_NAMES[PLAT] : '') : 'Nothing chosen yet';
   el('chosenBtn').textContent = TYPE ? 'Change' : 'Choose';
   el('blkUsage').hidden = !(TYPE === 'whatsapp' || TYPE === 'both' || b2b);
+  // B2B (13 Nov 2026): WhatsApp is the second channel, so the question is optional
+  // and starts on "I'll add it later". Other types keep it required.
+  el('usageReq').hidden = b2b; el('usageOpt').hidden = !b2b;
+  if (b2b && !usage()) { el('fUsage').value = 'later'; USAGE_AUTO = true; }
+  else if (!b2b && USAGE_AUTO && usage() === 'later') { el('fUsage').value = ''; USAGE_AUTO = false; }
   el('blkWeb').hidden = !isWeb;
   el('blkBased').hidden = !(TYPE === 'web' || b2b);
   el('blkMobile').hidden = true;   // 2026-11-09: no mobile / WhatsApp code at sign-up
@@ -573,10 +578,11 @@ var RULES = [
   ['fHearAboutUs', 'hHearAboutUs', function(v){ return v !== ''; }]
 ];
 function visible(e){ return !!(e && e.offsetParent !== null); }
+var USAGE_AUTO = false;
 function usage(){ return el('fUsage').value; }
 function checkUsage(){
   if (el('blkUsage').hidden) { el('hUsage').hidden = true; el('wuBtn').classList.remove('f-invalid'); return true; }
-  var ok = usage() !== ''; el('hUsage').hidden = ok; el('wuBtn').classList.toggle('f-invalid', !ok); return ok;
+  var ok = usage() !== '' || TYPE === 'b2b'; el('hUsage').hidden = ok; el('wuBtn').classList.toggle('f-invalid', !ok); return ok;
 }
 // The WhatsApp question is a drop-down (2026-11-09, approved mock-up).
 // After an answer: one line, the number box (not for "later") and one help link.
@@ -607,7 +613,7 @@ function updateWa(){
   function open(){ list.hidden = false; dd.classList.add('open'); btn.setAttribute('aria-expanded', 'true');
     var cur = opts.findIndex(function(o){ return o.dataset.v === usage(); }); setAct(cur < 0 ? 0 : cur); }
   function close(){ list.hidden = true; dd.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); btn.removeAttribute('aria-activedescendant'); }
-  function pick(i){ el('fUsage').value = opts[i].dataset.v; close(); updateWa(); if (TRIED) checkUsage(); btn.focus(); }
+  function pick(i){ el('fUsage').value = opts[i].dataset.v; USAGE_AUTO = false; close(); updateWa(); if (TRIED) checkUsage(); btn.focus(); }
   opts.forEach(function(o, i){
     o.addEventListener('mousedown', function(e){ e.preventDefault(); });
     o.addEventListener('click', function(){ pick(i); });
