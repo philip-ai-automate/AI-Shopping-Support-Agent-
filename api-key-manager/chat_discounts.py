@@ -840,6 +840,10 @@ def list_codes(tenant_id: int, status: str = "", limit: int = 50) -> dict:
                         WHERE tenant_id=%s AND status = ANY(%s) AND created_at > NOW() - INTERVAL '30 days'""",
                     (tenant_id, list(GIVEN)))
         totals = {k: int(v or 0) for k, v in cur.fetchone().items()}
+        # 13 Nov 2026 (page redesign): codes given today (against the daily limit)
+        # and the share of codes used.
+        totals["today"] = _made_today(cur, tenant_id)
+        totals["used_pct"] = round(100 * totals["used"] / totals["n"]) if totals.get("n") else 0
         where = ""
         if status == "active":
             where = " AND c.status='active' AND c.ends_at > NOW()"
@@ -862,7 +866,8 @@ def list_codes(tenant_id: int, status: str = "", limit: int = 50) -> dict:
         for r in cur.fetchall():
             x = _card(tenant_id, r)
             x["name"] = (data_crypto.dec(r.get("h_name")) or r.get("l_name") or r.get("l_company") or "Website visitor")
-            x["in_inbox"] = bool(r.get("in_inbox"))
+            # Every website chat is in the Inbox since 13 Nov 2026.
+            x["in_inbox"] = bool(r.get("session_id")) and not str(r.get("session_id")).startswith("wa-")
             rows.append(x)
     finally:
         cur.close(); conn.close()

@@ -1,73 +1,139 @@
 {% extends "portal/base.html" %}
 {% block title %}Discounts in Chat — PhiXtra Portal{% endblock %}
+{# Redesigned 13 Nov 2026 (user-approved mock-up PhiXtra_Discounts_Page_Redesign.pdf):
+   status line + rule summary, solid result cards, rules in coloured groups,
+   live buyer preview, save bar shown only after a change. Same form fields. #}
 
 {% block head %}
 <style>
-  .dc-wrap{display:flex;flex-direction:column;gap:20px;max-width:920px}
-  .dc-title{font-size:22px;font-weight:800;letter-spacing:-.3px}
-  .dc-sub{color:var(--muted);margin-top:4px;max-width:70ch}
-  .dc-how{background:rgba(37,99,235,.04);border:1px solid rgba(37,99,235,.18);border-radius:16px;padding:16px 20px}
-  .dc-how h3{font-size:14px;font-weight:700;color:#2563EB;margin:0 0 8px}
-  .dc-how ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;font-size:14px}
-  .dc-onrow{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#fff}
-  .dc-onrow b{font-size:15px} .dc-onrow small{display:block;color:var(--muted);font-size:13px}
-  .dc-tog{position:relative;width:44px;height:24px;flex-shrink:0}
-  .dc-tog input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:1}
-  .dc-tog span{position:absolute;inset:0;border-radius:999px;background:rgba(3,12,24,.18);transition:.2s}
-  .dc-tog span::after{content:"";position:absolute;width:18px;height:18px;border-radius:50%;background:#fff;top:3px;left:3px;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:.2s}
-  .dc-tog input:checked + span{background:var(--good)}
-  .dc-tog input:checked + span::after{left:23px}
-  .dc-tog input:focus-visible + span{outline:2px solid #2563EB;outline-offset:2px}
-  .dc-rules{border:1px solid var(--line);border-radius:14px;background:#fff}
-  .dc-rule{display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:8px 20px;padding:14px 16px;border-top:1px solid var(--line)}
-  .dc-rule:first-child{border-top:0}
-  .dc-q{font-weight:600} .dc-q small{display:block;font-weight:400;color:var(--muted);font-size:12.5px}
-  .dc-opts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-  .dc-opt{position:relative}
-  .dc-opt input{position:absolute;opacity:0;pointer-events:none}
-  .dc-opt span{display:inline-block;border:1px solid var(--line);border-radius:10px;padding:6px 12px;background:#fff;cursor:pointer}
-  .dc-opt input:checked + span{border-color:var(--ink,#030C18);box-shadow:0 0 0 1px var(--ink,#030C18);font-weight:600}
-  .dc-opt input:focus-visible + span{outline:2px solid #2563EB;outline-offset:2px}
-  .dc-inp{border:1px solid rgba(3,12,24,.2);border-radius:10px;padding:6px 10px;width:90px;font:inherit;font-variant-numeric:tabular-nums}
-  .dc-inp.wide{width:min(100%,360px)}
-  .dc-hint{color:var(--muted);font-size:12.5px;width:100%}
-  .dc-cols{display:flex;flex-wrap:wrap;gap:6px;width:100%;margin-top:4px}
-  .dc-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#f6f7f8;border-radius:999px;padding:3px 10px;font-size:13px;cursor:pointer}
-  .dc-fixed{background:#f6f7f8;border-radius:12px;padding:12px 16px;font-size:13.5px}
-  .dc-fixed code{font-weight:700}
+  .dc-page{display:flex;flex-direction:column;gap:18px;max-width:1180px}
+  .dc-title{font-size:24px;font-weight:800;letter-spacing:-.3px;display:flex;align-items:center;gap:10px}
+  .dc-sub{color:var(--muted);margin-top:4px;max-width:78ch;font-size:15px;line-height:1.5}
+  .dc-how{color:var(--muted);font-size:13.5px;margin-top:6px}
+  .dc-how b{color:#0B1D40}
   .dc-banner{border-radius:12px;padding:12px 14px;font-size:13.5px}
   .dc-banner.warn{background:#fff7ed;border:1px solid rgba(247,144,9,.35);color:#7a4f00}
   .dc-banner.info{background:#f6f7f8;border:1px solid var(--line)}
   .dc-banner.err{background:#fef3f2;border:1px solid rgba(240,68,56,.35);color:#912018}
-  .dc-off{opacity:.5;pointer-events:none}
   .dc-actions{display:flex;gap:10px;flex-wrap:wrap}
-  @media (max-width:600px){.dc-rule{grid-template-columns:1fr}}
-  .cg-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:8px}
-  .cg-title{font-size:18px;font-weight:800}
-  .cg-filt{display:flex;gap:8px;flex-wrap:wrap}
-  .cg-filt a{border:1px solid var(--line);border-radius:10px;padding:6px 12px;color:var(--txt,#030C18);text-decoration:none;background:#fff}
-  .cg-filt a.on{border-color:#030C18;box-shadow:0 0 0 1px #030C18;font-weight:600}
-  .cg-tot{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-  .cg-tot div{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff}
-  .cg-tot small{display:block;color:var(--muted);font-size:12.5px}
-  .cg-tot b{font-size:22px;font-weight:800}
-  .cg-box{border:1px solid var(--line);border-radius:12px;overflow-x:auto;background:#fff}
-  .cg-tab{width:100%;border-collapse:collapse;min-width:820px}
-  .cg-tab th{background:#f6f7f8;text-align:left;font-size:12.5px;font-weight:700;padding:10px 14px;color:#3d4654}
+  .dc-off{opacity:.5;pointer-events:none}
+
+  /* status line */
+  .dc-status{display:flex;align-items:center;gap:16px;padding:16px 20px;border-radius:14px;border:1px solid #A6E3BF;background:#E7F8EE}
+  .dc-status.is-off{background:#F2F4F7;border-color:#D0D5DD}
+  .dc-status b{font-size:15px}
+  .dc-sum{font-size:14px;color:#3d4654;margin-top:3px;line-height:1.5}
+  .dc-sum .c1{color:#2D3FB3}.dc-sum .c2{color:#B54708}.dc-sum .c3{color:#067647}.dc-sum .c4{color:#6B21A8}
+  .dc-pill{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;background:#DCFAE6;color:#067647;margin-left:6px}
+  .is-off .dc-pill{background:#E4E7EC;color:#475467}
+  .dc-tog{position:relative;width:46px;height:26px;flex-shrink:0}
+  .dc-tog input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:1}
+  .dc-tog span{position:absolute;inset:0;border-radius:999px;background:rgba(3,12,24,.18);transition:.2s}
+  .dc-tog span::after{content:"";position:absolute;width:20px;height:20px;border-radius:50%;background:#fff;top:3px;left:3px;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:.2s}
+  .dc-tog input:checked + span{background:#12B76A}
+  .dc-tog input:checked + span::after{left:23px}
+  .dc-tog input:focus-visible + span{outline:2px solid #2563EB;outline-offset:2px}
+
+  /* solid result cards */
+  .dc-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  .dc-kpi{border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:4px;color:#fff}
+  .dc-kpi small{font-size:12.5px;font-weight:700}
+  .dc-kpi b{font-size:28px;font-weight:800;line-height:1.1}
+  .dc-kpi span{font-size:12px;opacity:.9}
+  .dc-kpi.k1{background:#2D3FB3}.dc-kpi.k2{background:#067647}.dc-kpi.k3{background:#B54708}.dc-kpi.k4{background:#6B21A8}
+
+  /* rules + preview */
+  .dc-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:18px;align-items:start}
+  .dc-rules{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .dc-sec{padding:16px 20px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
+  .dc-sec:first-child{border-top:0}
+  .dc-sec h3{margin:0;font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+  .dc-sec h3::before{content:"";width:10px;height:10px;border-radius:3px;background:currentColor}
+  .s1{background:#F2F5FF}.s1 h3{color:#2D3FB3}
+  .s2{background:#FFF8EC}.s2 h3{color:#B54708}
+  .s3{background:#F1FBF4}.s3 h3{color:#067647}
+  .s4{background:#F8F1FF}.s4 h3{color:#6B21A8}
+  .dc-row{display:grid;grid-template-columns:210px minmax(0,1fr);gap:8px 14px;align-items:center}
+  .dc-q{font-size:14px;font-weight:600}
+  .dc-q small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+  .dc-seg{display:inline-flex;flex-wrap:wrap;border:1px solid #C9D1DE;border-radius:10px;overflow:hidden;background:#fff}
+  .dc-seg label{position:relative;margin:0}
+  .dc-seg input{position:absolute;opacity:0;pointer-events:none}
+  .dc-seg span{display:block;font-size:13px;font-weight:600;padding:8px 14px;color:#475467;cursor:pointer;border-right:1px solid #C9D1DE}
+  .dc-seg label:last-child span{border-right:0}
+  .dc-seg input:checked + span{color:#fff;background:#0B1D40}
+  .s1 .dc-seg input:checked + span{background:#2D3FB3}
+  .s2 .dc-seg input:checked + span{background:#B54708}
+  .s3 .dc-seg input:checked + span{background:#067647}
+  .dc-seg input:focus-visible + span{outline:2px solid #2563EB;outline-offset:-2px}
+  .dc-inpw{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .dc-inp{border:1px solid #C9D1DE;border-radius:9px;padding:8px 12px;width:100px;font:inherit;font-size:14px;background:#fff;font-variant-numeric:tabular-nums}
+  .dc-inp.big1{border:2px solid #2D3FB3;color:#2D3FB3;font-weight:800;font-size:16px}
+  .dc-inp.big4{border:2px solid #6B21A8;color:#6B21A8;font-weight:800;font-size:16px}
+  .dc-inp.wide{width:min(100%,380px)}
+  .dc-unit1{color:#2D3FB3;font-weight:800}
+  .dc-hint{color:var(--muted);font-size:12.5px}
+  .dc-cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px}
+  .dc-cols label{display:flex;align-items:center;gap:8px;font-size:13px;border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 10px;margin:0;cursor:pointer}
+  .dc-cols input[type=checkbox]{width:16px!important;height:16px!important;min-width:16px;margin:0!important;padding:0!important;flex:0 0 16px;accent-color:#067647}
+  .dc-cols label span{flex:1 1 auto;min-width:0;text-align:left}
+  .dc-seg.stack{flex-direction:column}
+  .dc-seg.stack span{border-right:0;border-bottom:1px solid #C9D1DE}
+  .dc-seg.stack label:last-child span{border-bottom:0}
+  .dc-inp.min{width:140px}
+
+  .dc-prev{background:#0B1D40;color:#fff;border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:12px;position:sticky;top:12px}
+  .dc-prev h3{margin:0;font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;color:#9DB8E8}
+  .dc-phone{border-radius:14px;background:#F8FAFC;padding:14px;display:flex;flex-direction:column;gap:10px}
+  .dc-bin{align-self:flex-end;background:#0B1D40;color:#fff;border-radius:12px;padding:9px 12px;font-size:13px;max-width:80%}
+  .dc-bai{align-self:flex-start;background:#fff;color:#030C18;border:1px solid var(--line);border-radius:12px;padding:9px 12px;font-size:13px;max-width:90%;line-height:1.45}
+  .dc-code{margin-top:8px;border:1.5px dashed #2563EB;background:#EFF4FF;border-radius:10px;padding:9px 11px;display:flex;flex-direction:column;gap:3px}
+  .dc-code b{font-family:"SF Mono",Menlo,monospace;font-size:15px;letter-spacing:.04em;color:#1D3FAF}
+  .dc-code .cp{align-self:flex-start;font-size:12px;font-weight:700;background:#0B1D40;color:#fff;border-radius:8px;padding:5px 10px;margin-top:4px}
+  .dc-prev .rules{font-size:12.5px;color:#C9D6EE;line-height:1.55}
+  .dc-prev .rules b{color:#fff}
+
+  .dc-savebar{position:sticky;bottom:12px;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#0B1D40;color:#fff;border-radius:12px;padding:12px 16px;box-shadow:0 8px 24px rgba(3,12,24,.25)}
+  .dc-savebar[hidden]{display:none}
+  .dc-savebar b{font-size:14px}
+  .dc-savebar .btns{display:flex;gap:8px}
+  .dc-savebar button,.dc-savebar a{font:inherit;font-size:13px;font-weight:700;padding:8px 14px;border-radius:9px;cursor:pointer;text-decoration:none}
+  .dc-savebar .dis{background:transparent;color:#fff;border:1px solid #fff}
+  .dc-savebar .sav{background:#12B76A;color:#fff;border:1px solid #12B76A}
+
+  /* codes given */
+  .cg{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .cg-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;padding:14px 16px 0}
+  .cg-title{font-size:17px;font-weight:800}
+  .cg-filt{display:flex;gap:6px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
+  .cg-filt a{font-size:12.5px;font-weight:600;padding:5px 11px;border-radius:999px;border:1px solid var(--line);color:#475467;text-decoration:none;background:#fff}
+  .cg-filt a.on{background:#030C18;color:#fff;border-color:#030C18}
+  .cg-box{overflow-x:auto}
+  .cg-tab{width:100%;border-collapse:collapse;min-width:820px;font-size:13.5px}
+  .cg-tab th{background:#F2F5FF;color:#2D3FB3;text-align:left;font-size:12px;font-weight:700;padding:10px 14px}
   .cg-tab td{border-top:1px solid var(--line);padding:12px 14px;vertical-align:middle}
-  .cg-tab small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
-  .cg-code{font-family:"SF Mono",Menlo,monospace;font-weight:700}
-  .cg-st{border-radius:999px;padding:3px 10px;font-weight:600;font-size:12.5px;display:inline-block}
-  .cg-st.active{background:#EFF4FF;color:#1d4ed8}.cg-st.used{background:#ECFDF3;color:#067647}.cg-st.expired{background:#F2F4F7;color:#3d4654}
-  @media (max-width:700px){.cg-tot{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .cg-tab small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+  .cg-code{font-family:"SF Mono",Menlo,monospace;font-weight:800;background:#EFF4FF;color:#1D3FAF;border:1px dashed #2563EB;border-radius:7px;padding:3px 7px;white-space:nowrap}
+  .cg-badge{display:inline-block;font-weight:700;border-radius:999px;padding:3px 9px;font-size:12.5px;white-space:nowrap}
+  .cg-badge.disc{background:#E8EEFF;color:#2D3FB3}
+  .cg-badge.ai{background:#F3E8FF;color:#6B21A8}
+  .cg-badge.team{background:#E0F2FE;color:#075985}
+  .cg-st{border-radius:999px;padding:3px 10px;font-weight:700;font-size:12.5px;display:inline-block}
+  .cg-st.active{background:#EFF4FF;color:#1d4ed8}.cg-st.used{background:#DCFAE6;color:#067647}.cg-st.expired{background:#F2F4F7;color:#3d4654}
+  .cg-foot{padding:12px 16px;color:var(--muted);font-size:12.5px}
+  .cg-empty{padding:18px 16px;color:var(--muted);font-size:14px}
+
+  @media (max-width:980px){.dc-grid{grid-template-columns:1fr}.dc-prev{position:static}}
+  @media (max-width:700px){.dc-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.dc-row{grid-template-columns:1fr}}
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="dc-wrap">
+<div class="dc-page">
   <div>
     <div class="dc-title">🏷️ Discounts in Chat</div>
-    <div class="dc-sub">Let your AI Agent give a one-time discount code in chat, only inside the limits you set here. Codes are made in your {{ sw.store }} store.</div>
+    <div class="dc-sub">Win the sale when a buyer asks for a better price. Your AI Agent gives a one-time code in the chat, only inside the limits you set. Codes are made in your {{ sw.store }} store.</div>
+    <div class="dc-how">How it works: <b>buyer asks for a better price → AI Agent gives a code that works once, for that buyer only → you see below whether it was used.</b></div>
   </div>
 
   {% if state == 'b2b' %}
@@ -78,15 +144,6 @@
     <div class="dc-actions"><a class="btn btn-primary" href="{{ plans_url }}" target="_top" rel="noopener">See plans</a></div>
   {% else %}
 
-  <div class="dc-how">
-    <h3>How it works</h3>
-    <ol>
-      <li>A buyer asks your AI Agent for a better price.</li>
-      <li>If it fits your limits, the AI Agent gives a code that works once, for that buyer only.</li>
-      <li>The code is saved on the chat and on the buyer's lead, and you can see below if it was used.</li>
-    </ol>
-  </div>
-
   {% if state == 'update' %}
     <div class="dc-banner warn">To make discount codes in your WooCommerce shop, update the PhiXtra plugin in your WordPress to version 3.10 or newer, then open your WordPress admin once.</div>
   {% endif %}
@@ -94,120 +151,186 @@
     <div class="dc-banner warn">To make discount codes, PhiXtra needs one more permission in Shopify. It only lets PhiXtra create discount codes.</div>
     <div class="dc-actions"><a class="btn btn-primary" href="{{ approve_url }}" target="_blank" rel="noopener">Approve in Shopify</a></div>
   {% endif %}
-
   {% if error %}<div class="dc-banner err" role="alert">{{ error }}</div>{% endif %}
 
-  <form method="post" action="{{ url_for('portal.ai_discounts_save') }}" class="dc-wrap{% if state != 'ok' or not can_edit %} dc-off{% endif %}" style="max-width:none"
+  {% set t = codes.totals %}
+  <form method="post" action="{{ url_for('portal.ai_discounts_save') }}" id="dcForm"
+        class="dc-page{% if state != 'ok' or not can_edit %} dc-off{% endif %}" style="max-width:none"
         {% if state != 'ok' or not can_edit %}aria-disabled="true"{% endif %}>
-    <div class="dc-onrow">
-      <div><b>Discounts in chat</b><small>When this is off, your AI Agent never offers a discount.</small></div>
+
+    <div class="dc-status{% if not s.enabled %} is-off{% endif %}" id="dcStatus">
       <label class="dc-tog"><input type="checkbox" name="enabled" value="1" aria-label="Discounts in chat" {% if s.enabled %}checked{% endif %}><span></span></label>
+      <div style="flex:1">
+        <b id="dcOnText">{{ 'Discounts in chat are on' if s.enabled else 'Discounts in chat are off' }}</b><span class="dc-pill" id="dcOnPill">{{ 'On' if s.enabled else 'Off' }}</span>
+        <div class="dc-sum" id="dcSum"></div>
+      </div>
     </div>
 
-    <div class="dc-rules">
-      <div class="dc-rule"><div class="dc-q">Type of discount</div>
-        <div class="dc-opts">
-          <label class="dc-opt"><input type="radio" name="kind" value="percent" {% if s.kind != 'amount' %}checked{% endif %}><span>% off</span></label>
-          <label class="dc-opt"><input type="radio" name="kind" value="amount" {% if s.kind == 'amount' %}checked{% endif %}><span>Fixed amount off</span></label>
-        </div></div>
-      <div class="dc-rule"><div class="dc-q">Most your AI Agent can give</div>
-        <div class="dc-opts"><input class="dc-inp" name="value" inputmode="decimal" value="{{ s.value }}" aria-label="Most your AI Agent can give">
-          <span id="dc-unit">{{ '%' if s.kind != 'amount' else currency }}</span>
-          <span class="dc-hint">Your AI Agent never offers more than this.</span></div></div>
-      <div class="dc-rule"><div class="dc-q">Minimum order<small>Optional</small></div>
-        <div class="dc-opts"><input class="dc-inp" name="min_order" inputmode="decimal" value="{{ s.min_order if s.min_order is not none else '' }}" aria-label="Minimum order">
-          {{ currency }} <span class="dc-hint">Leave empty for no minimum. Shown in your store's currency.</span></div></div>
-      <div class="dc-rule"><div class="dc-q">When your AI Agent may offer a code</div>
-        <div class="dc-opts">
-          <label class="dc-opt"><input type="radio" name="trigger" value="asked" {% if s.trigger != 'hesitate' %}checked{% endif %}><span>Only when the buyer asks for a better price</span></label>
-          <label class="dc-opt"><input type="radio" name="trigger" value="hesitate" {% if s.trigger == 'hesitate' %}checked{% endif %}><span>Also when the buyer hesitates over the price</span></label>
-        </div></div>
-      <div class="dc-rule"><div class="dc-q">Code lasts</div>
-        <div class="dc-opts">
-          {% for h, lab in [(24, '24 hours'), (48, '48 hours'), (168, '7 days')] %}
-          <label class="dc-opt"><input type="radio" name="hours" value="{{ h }}" {% if s.hours == h %}checked{% endif %}><span>{{ lab }}</span></label>
-          {% endfor %}
-        </div></div>
-      <div class="dc-rule"><div class="dc-q">Products</div>
-        <div class="dc-opts">
-          <label class="dc-opt"><input type="radio" name="products" value="all" {% if s.products != 'collections' %}checked{% endif %}><span>All products</span></label>
-          <label class="dc-opt"><input type="radio" name="products" value="collections" {% if s.products == 'collections' %}checked{% endif %}><span>Only these {{ sw.groups }}</span></label>
-          <span class="dc-hint">With "Only these {{ sw.groups }}" you pick {{ sw.groups }} from your {{ sw.store }} store.</span>
-          <div class="dc-cols" id="dc-cols" {% if s.products != 'collections' %}hidden{% endif %}>
-            {% for c in collections %}
-            <label class="dc-chip"><input type="checkbox" name="collections" value="{{ c.id }}" {% if c.id in picked %}checked{% endif %}> {{ c.title }}</label>
-            {% else %}
-            <span class="dc-hint">No {{ sw.groups }} found in your {{ sw.store }} store.</span>
-            {% endfor %}
+    <div class="dc-kpis">
+      <div class="dc-kpi k1"><small>Codes given · last 30 days</small><b>{{ t.n }}</b><span>by AI Agent {{ t.ai }} · by your team {{ t.staff }}</span></div>
+      <div class="dc-kpi k2"><small>Used at checkout</small><b>{{ t.used }}</b><span>{{ t.used_pct }}% of codes given</span></div>
+      <div class="dc-kpi k3"><small>Active now</small><b>{{ codes.counts.active }}</b><span>not used yet, not ended</span></div>
+      <div class="dc-kpi k4"><small>Today</small><b>{{ t.today }} of {{ s.daily_max }}</b><span>codes left today: {{ [s.daily_max - t.today, 0]|max }}</span></div>
+    </div>
+
+    <div class="dc-grid">
+      <div class="dc-rules">
+        <div class="dc-sec s1">
+          <h3>The offer</h3>
+          <div class="dc-row"><div class="dc-q">Type of discount</div>
+            <div><span class="dc-seg">
+              <label><input type="radio" name="kind" value="percent" {% if s.kind != 'amount' %}checked{% endif %}><span>% off</span></label>
+              <label><input type="radio" name="kind" value="amount" {% if s.kind == 'amount' %}checked{% endif %}><span>Fixed amount off</span></label>
+            </span></div></div>
+          <div class="dc-row"><div class="dc-q">Most your AI Agent can give<small>It never offers more</small></div>
+            <div class="dc-inpw"><input class="dc-inp big1" name="value" inputmode="decimal" value="{{ s.value }}" aria-label="Most your AI Agent can give">
+              <span class="dc-unit1" id="dc-unit">{{ '%' if s.kind != 'amount' else currency }}</span></div></div>
+          <div class="dc-row"><div class="dc-q">Minimum order<small>Optional</small></div>
+            <div class="dc-inpw"><input class="dc-inp min" name="min_order" inputmode="decimal" value="{{ s.min_order if s.min_order is not none else '' }}" placeholder="No minimum" aria-label="Minimum order">
+              <span>{{ currency }}</span></div></div>
+        </div>
+
+        <div class="dc-sec s2">
+          <h3>When</h3>
+          <div class="dc-row"><div class="dc-q">Offer a code</div>
+            <div><span class="dc-seg stack">
+              <label><input type="radio" name="trigger" value="asked" {% if s.trigger != 'hesitate' %}checked{% endif %}><span>Only when the buyer asks</span></label>
+              <label><input type="radio" name="trigger" value="hesitate" {% if s.trigger == 'hesitate' %}checked{% endif %}><span>Also when they hesitate over the price</span></label>
+            </span></div></div>
+          <div class="dc-row"><div class="dc-q">Code lasts</div>
+            <div><span class="dc-seg">
+              {% for h, lab in [(24, '24 hours'), (48, '48 hours'), (168, '7 days')] %}
+              <label><input type="radio" name="hours" value="{{ h }}" {% if s.hours == h %}checked{% endif %}><span>{{ lab }}</span></label>
+              {% endfor %}
+            </span></div></div>
+        </div>
+
+        <div class="dc-sec s3">
+          <h3>Which products</h3>
+          <div class="dc-row"><div class="dc-q">Products</div>
+            <div><span class="dc-seg">
+              <label><input type="radio" name="products" value="all" {% if s.products != 'collections' %}checked{% endif %}><span>All products</span></label>
+              <label><input type="radio" name="products" value="collections" {% if s.products == 'collections' %}checked{% endif %}><span>Only these {{ sw.groups }}</span></label>
+            </span></div></div>
+          <div id="dc-cols-wrap" {% if s.products != 'collections' %}hidden{% endif %}>
+            <div class="dc-hint" style="margin-bottom:6px">Tick the {{ sw.groups }} from your {{ sw.store }} store:</div>
+            <div class="dc-cols" id="dc-cols">
+              {% for c in collections %}
+              <label><input type="checkbox" name="collections" value="{{ c.id }}" {% if c.id in picked %}checked{% endif %}><span>{{ c.title }}</span></label>
+              {% else %}
+              <span class="dc-hint">No {{ sw.groups }} found in your {{ sw.store }} store.</span>
+              {% endfor %}
+            </div>
           </div>
-        </div></div>
-      <div class="dc-rule"><div class="dc-q">Most codes per day</div>
-        <div class="dc-opts"><input class="dc-inp" name="daily_max" inputmode="numeric" value="{{ s.daily_max }}" aria-label="Most codes per day">
-          <span class="dc-hint">After this, your AI Agent stops offering codes until tomorrow.</span></div></div>
-      <div class="dc-rule"><div class="dc-q">Note for your AI Agent<small>Optional, up to 120 characters</small></div>
-        <div class="dc-opts"><input class="dc-inp wide" name="note" maxlength="120" value="{{ s.note }}" placeholder="e.g. Only for first orders" aria-label="Note for your AI Agent"></div></div>
+        </div>
+
+        <div class="dc-sec s4">
+          <h3>Limits</h3>
+          <div class="dc-row"><div class="dc-q">Most codes per day<small>Then it stops until tomorrow</small></div>
+            <div class="dc-inpw"><input class="dc-inp big4" name="daily_max" inputmode="numeric" value="{{ s.daily_max }}" aria-label="Most codes per day"><span class="dc-hint">codes a day</span></div></div>
+          <div class="dc-row"><div class="dc-q">Note for your AI Agent<small>Optional, up to 120 characters</small></div>
+            <div><input class="dc-inp wide" name="note" maxlength="120" value="{{ s.note }}" placeholder="e.g. Only for first orders" aria-label="Note for your AI Agent"></div></div>
+        </div>
+      </div>
+
+      <div class="dc-prev" aria-label="What the buyer sees">
+        <h3>What the buyer sees</h3>
+        <div class="dc-phone">
+          <div class="dc-bin">Can you give me a discount?</div>
+          <div class="dc-bai"><span id="pvSay"></span>
+            <div class="dc-code"><b>PHX-K7QM2D</b><span id="pvLine"></span><span class="cp">Copy code</span></div>
+          </div>
+        </div>
+        <div class="rules">Changes here as you change the rules. Each code works once, for one buyer, and a buyer gets only one code. Codes start with <b>PHX-</b>, so you can find them in {{ sw.find }}.</div>
+      </div>
     </div>
 
-    <div class="dc-fixed">Each code works once, for one buyer, and a buyer gets only one code. Codes start with <code>PHX-</code> so you can find them in {{ sw.find }}.</div>
-    {% if can_edit %}<div class="dc-actions"><button class="btn btn-primary" type="submit">Save discount rules</button></div>{% endif %}
+    {% if can_edit %}
+    <div class="dc-savebar" id="dcSave" {% if not error %}hidden {% endif %}role="region" aria-label="Unsaved changes">
+      <b>You have unsaved changes</b>
+      <span class="btns"><a class="dis" href="{{ url_for('portal.ai_discounts') }}">Discard</a><button class="sav" type="submit">Save discount rules</button></span>
+    </div>
+    {% endif %}
   </form>
 
   {# Phase 2 (11 Nov 2026): every code given, and whether it was used. #}
-  <div class="cg-head">
-    <div>
-      <div class="cg-title">Codes given</div>
-      <div class="dc-sub">We check your {{ sw.store }} store every 30 minutes to see which codes were used.</div>
-    </div>
+  <div class="cg">
+    <div class="cg-head"><div class="cg-title">Codes given</div><div class="dc-hint">Checked in your {{ sw.store }} store every 30 minutes</div></div>
     <div class="cg-filt">
       <a href="{{ url_for('portal.ai_discounts') }}" class="{{ 'on' if not show }}">All ({{ codes.counts.all }})</a>
       <a href="{{ url_for('portal.ai_discounts', show='active') }}" class="{{ 'on' if show == 'active' }}">Active ({{ codes.counts.active }})</a>
       <a href="{{ url_for('portal.ai_discounts', show='used') }}" class="{{ 'on' if show == 'used' }}">Used ({{ codes.counts.used }})</a>
       <a href="{{ url_for('portal.ai_discounts', show='expired') }}" class="{{ 'on' if show == 'expired' }}">Expired ({{ codes.counts.expired }})</a>
     </div>
+    {% if codes.rows %}
+    <div class="cg-box">
+      <table class="cg-tab">
+        <thead><tr><th>Given</th><th>Code</th><th>Discount</th><th>Buyer</th><th>Given by</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        {% for c in codes.rows %}
+          <tr>
+            <td>{{ c.given }}</td>
+            <td><span class="cg-code">{{ c.code }}</span></td>
+            <td><span class="cg-badge disc">{{ c.discount }}</span></td>
+            <td>{{ c.name }}<small>{{ c.email or 'no email given' }}</small></td>
+            <td>{% if c.given_by == 'AI Agent' %}<span class="cg-badge ai">AI Agent</span>{% else %}<span class="cg-badge team">{{ c.given_by|who }}</span>{% endif %}</td>
+            <td><span class="cg-st {{ c.status }}">{{ c.status_label }}</span><small>{{ c.when }}</small></td>
+            <td>
+              {% if c.in_inbox %}<a href="{{ url_for('portal.my_inbox', phone='web:' ~ c.session_id) }}"><b>Open chat</b></a>{% endif %}
+              {% if c.lead_id %}{% if c.in_inbox %}<br>{% endif %}<a href="{{ url_for('portal.lead_detail', lead_id=c.lead_id) }}"><b>Open lead</b></a>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="cg-foot">Shows the last 50 codes. "Open chat" opens the chat in your Inbox. "Open lead" shows when the buyer is on your Leads list.</div>
+    {% else %}
+    <div class="cg-empty">{% if show %}No codes here yet.{% else %}No codes given yet. When your AI Agent or your team gives a code, it shows here.{% endif %}</div>
+    {% endif %}
   </div>
-  <div class="cg-tot">
-    <div><small>Codes given, last 30 days</small><b>{{ codes.totals.n }}</b></div>
-    <div><small>Used</small><b>{{ codes.totals.used }}</b></div>
-    <div><small>Given by your AI Agent</small><b>{{ codes.totals.ai }}</b></div>
-    <div><small>Given by your team</small><b>{{ codes.totals.staff }}</b></div>
-  </div>
-  {% if codes.rows %}
-  <div class="cg-box">
-    <table class="cg-tab">
-      <thead><tr><th>Given</th><th>Code</th><th>Discount</th><th>Buyer</th><th>Given by</th><th>Status</th><th></th></tr></thead>
-      <tbody>
-      {% for c in codes.rows %}
-        <tr>
-          <td>{{ c.given }}</td>
-          <td class="cg-code">{{ c.code }}</td>
-          <td>{{ c.discount }}</td>
-          <td>{{ c.name }}<small>{{ c.email or 'no email given' }}</small></td>
-          <td>{{ c.given_by if c.given_by == 'AI Agent' else (c.given_by|who) }}</td>
-          <td><span class="cg-st {{ c.status }}">{{ c.status_label }}</span><small>{{ c.when }}</small></td>
-          <td>
-            {% if c.in_inbox %}<a href="{{ url_for('portal.my_inbox', phone='web:' ~ c.session_id) }}">Open chat</a>{% endif %}
-            {% if c.lead_id %}{% if c.in_inbox %}<br>{% endif %}<a href="{{ url_for('portal.lead_detail', lead_id=c.lead_id) }}">Open lead</a>{% endif %}
-          </td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  <div class="dc-hint">Shows the last 50 codes. “Open chat” shows when the chat was handed to your team. “Open lead” shows when the buyer is on your Leads list.</div>
-  {% else %}
-  <div class="dc-banner info">{% if show %}No codes here yet.{% else %}No codes given yet. When your AI Agent or your team gives a code, it shows here.{% endif %}</div>
-  {% endif %}
   {% endif %}
 </div>
 <script>
 (function () {
-  var cols = document.getElementById("dc-cols"), unit = document.getElementById("dc-unit");
-  document.querySelectorAll('input[name="products"]').forEach(function (r) {
-    r.addEventListener("change", function () { if (cols) { cols.hidden = r.value !== "collections"; } });
-  });
-  document.querySelectorAll('input[name="kind"]').forEach(function (r) {
-    r.addEventListener("change", function () { if (unit) { unit.textContent = r.value === "amount" ? {{ currency|tojson }} : "%"; } });
-  });
+  var form = document.getElementById("dcForm"); if (!form) return;
+  var CUR = {{ currency|tojson }}, SW = {{ sw.groups|tojson }};
+  function val(n) { var e = form.querySelector('[name="' + n + '"]:checked') || form.querySelector('[name="' + n + '"]'); return e ? e.value : ""; }
+  function num(v) { var x = parseFloat(String(v || "").replace(",", ".")); return isNaN(x) ? null : x; }
+  function offText() {
+    var v = num(form.querySelector('[name="value"]').value), k = val("kind");
+    if (v === null) return "";
+    return k === "amount" ? (CUR ? CUR + " " : "") + (v % 1 ? v.toFixed(2) : v) + " off" : (v % 1 ? v : Math.round(v)) + "% off";
+  }
+  function hoursText(h) { return h === "24" ? "24 hours" : h === "168" ? "7 days" : "48 hours"; }
+  function render() {
+    var on = form.querySelector('[name="enabled"]').checked;
+    document.getElementById("dcStatus").classList.toggle("is-off", !on);
+    document.getElementById("dcOnText").textContent = on ? "Discounts in chat are on" : "Discounts in chat are off";
+    document.getElementById("dcOnPill").textContent = on ? "On" : "Off";
+    var off = offText(), h = val("hours"), prods = val("products") === "collections" ? "only chosen " + SW : "all products";
+    var min = num(form.querySelector('[name="min_order"]').value), daily = form.querySelector('[name="daily_max"]').value || "20";
+    var trig = val("trigger") === "hesitate" ? "when the buyer asks or hesitates" : "only when the buyer asks";
+    var sum = document.getElementById("dcSum");
+    sum.textContent = "";
+    if (!on) { sum.textContent = "Your AI Agent never offers a discount."; }
+    else {
+      [["Up to ", off, "c1"], [" · " + trig + " · code lasts ", hoursText(h), "c2"], [" · ", prods, "c3"],
+       [min ? " · orders " + (CUR ? CUR + " " : "") + min + "+" : "", "", ""], [" · up to ", daily + " codes a day", "c4"]]
+        .forEach(function (p) { if (p[0]) sum.appendChild(document.createTextNode(p[0])); if (p[1]) { var b = document.createElement("b"); b.className = p[2]; b.textContent = p[1]; sum.appendChild(b); } });
+    }
+    document.getElementById("pvSay").textContent = "I can offer you " + (off || "a discount") + " today. Use this code at checkout:";
+    var end = new Date(Date.now() + parseInt(h || "48", 10) * 3600000);
+    var endTxt = end.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) + ", " + end.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    document.getElementById("pvLine").textContent = (off || "") + (min ? " on orders of " + (CUR ? CUR + " " : "") + min + " or more" : "") + " · works once · ends " + endTxt;
+    var unit = document.getElementById("dc-unit"); if (unit) unit.textContent = val("kind") === "amount" ? CUR : "%";
+    var cw = document.getElementById("dc-cols-wrap"); if (cw) cw.hidden = val("products") !== "collections";
+  }
+  var bar = document.getElementById("dcSave");
+  function dirty() { render(); if (bar) bar.hidden = false; }
+  form.addEventListener("input", dirty);
+  form.addEventListener("change", dirty);
+  render();
 })();
 </script>
 {% endblock %}
