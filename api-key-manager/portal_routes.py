@@ -2821,6 +2821,79 @@ def _start_wa_ai_trial(tenant_id: int) -> bool:
     return row is not None
 
 
+_WEB_TRIAL_TO_DUAL_WHERE = """
+       id = %s
+       AND signup_channel = 'website'
+       AND trial_granted_at IS NOT NULL
+       AND trial_ends_at IS NOT NULL AND trial_ends_at > NOW()
+       AND plan_id = (SELECT id FROM plans WHERE slug = 'web_enterprise' LIMIT 1)
+       AND EXISTS (SELECT 1 FROM plans WHERE slug = 'enterprise_dual')
+       AND NOT EXISTS (SELECT 1 FROM company_profiles cp WHERE cp.tenant_id = tenants.id AND cp.is_b2b)
+"""
+_WEB_TRIAL_TO_DUAL_SQL = ("UPDATE tenants SET plan_id = (SELECT id FROM plans WHERE slug = 'enterprise_dual' LIMIT 1),"
+                          " signup_channel = 'both' WHERE " + _WEB_TRIAL_TO_DUAL_WHERE)
+
+
+def _wa_connected(tenant_id: int) -> bool:
+    """True when the business has an active WhatsApp number on PhiXtra."""
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("SELECT 1 FROM wa_tenants WHERE tenant_id=%s AND active LIMIT 1", (int(tenant_id),))
+        ok = cur.fetchone() is not None
+        cur.close(); conn.close()
+        return ok
+    except Exception:
+        return False
+
+
+def _website_trial_can_add_wa(tenant_id: int) -> bool:
+    """13 Nov 2026: True when a website business is on its website trial
+    (Retail Scale · Website) and so can move to the WhatsApp + website trial."""
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("SELECT 1 FROM tenants WHERE " + _WEB_TRIAL_TO_DUAL_WHERE, (int(tenant_id),))
+        ok = cur.fetchone() is not None
+        cur.close(); conn.close()
+        return ok
+    except Exception as e:
+        print("⚠️ _website_trial_can_add_wa:", e)
+        return False
+
+
+def _website_trial_to_dual(tenant_id: int) -> bool:
+    """Move a website business on its website trial to the WhatsApp + website
+    trial (Retail Scale · Website + WhatsApp). Same end date; it becomes a
+    'both' business. Returns True if this call moved it."""
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute(_WEB_TRIAL_TO_DUAL_SQL + " RETURNING id", (int(tenant_id),))
+        moved = cur.fetchone() is not None
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    if moved:
+        _sync_wa_ai_to_plan([int(tenant_id)])
+        insert_audit_log(action="trial_moved_to_dual", tenant_id=int(tenant_id),
+                         details={"from": "web_enterprise", "to": "enterprise_dual", "why": "added WhatsApp"})
+    return moved
+
+
+@portal_bp.route("/whatsapp/add-to-trial", methods=["POST"])
+@team_feature("wa.connect_view")
+def whatsapp_add_to_trial():
+    """Dashboard › Connect WhatsApp for a website business on its trial."""
+    r = _require_login()
+    if r: return r
+    _rperm = _require_team_permission("wa.connect_view")
+    if _rperm: return _rperm
+    customer = _get_customer(_customer_id())
+    if not customer:
+        return redirect(url_for("portal.login"))
+    if _website_trial_to_dual(int(customer["tenant_id"])):
+        flash("Your trial now covers WhatsApp and your website. Connect your WhatsApp number below.", "success")
+    return redirect(url_for("portal.whatsapp_connect"))
+
+
 def _sync_wa_ai_to_plan(tenant_ids) -> None:
     """The plan decides whether a business's AI answers: off on the free
     AI-off plans (PhiXtra Connect, Website Free), on for every other plan.
@@ -2989,6 +3062,8 @@ def _send_account_ready_email(
     kind: str,              # "whatsapp" | "both" | "website"
     domain: str = "",
     website_platform: str = "",
+    trial_ends=None,
+    trial_plan_name: str = "",
 ) -> None:
     """Welcome email sent once, right after a new business verifies its email
     (2026-10-06). Everyone starts on PhiXtra Connect (Free, no AI) and starts
@@ -3060,13 +3135,27 @@ def _send_account_ready_email(
         steps = [st for st in steps if "optional" not in st[0]]
         steps.append(("Your prices.", "They come from your WooCommerce shop through the PhiXtra plugin, or from your website's "
                                       "product pages. Nothing to prepare."))
-    steps.append(("Start your 2-week AI trial when you're ready.", ""))
-
-    trial_head = "Increase your revenue and customer satisfaction"
-    trial_text = (f"Start your free 2-week trial of {product}. It answers {who} straight away, "
-                  f"day and night, and helps them buy.")
-    trial_small = (f"Full {trial_plan} for 14 days. No card needed. One trial per business. "
-                   f"After 14 days you go back to PhiXtra Connect unless you choose a plan.")
+    plan_box_name = "PhiXtra Connect (Free)"
+    trial_btn = "Start my free 2-week trial"
+    if trial_ends:
+        # 13 Nov 2026: the trial started with the account.
+        _ends = (trial_ends.date() if hasattr(trial_ends, "date") else trial_ends) - timedelta(days=1)
+        _ends_txt = _ends.strftime("%-d %B %Y")
+        plan_box_name = f"14-day free trial: {_h.escape(trial_plan_name or trial_plan)}"
+        team_line = f"Free until {_ends_txt}. No card needed."
+        trial_head = "Your 14-day free trial has started"
+        trial_text = (f"{product} answers {who} straight away, day and night, "
+                      f"and follows them up to the sale.")
+        trial_small = (f"Choose a plan any time to keep going. If you don't, after 14 days you go back "
+                       f"to PhiXtra Connect (free, without the AI Agent).")
+        trial_btn = "Open my dashboard"
+    else:
+        steps.append(("Start your 2-week AI trial when you're ready.", ""))
+        trial_head = "Increase your revenue and customer satisfaction"
+        trial_text = (f"Start your free 2-week trial of {product}. It answers {who} straight away, "
+                      f"day and night, and helps them buy.")
+        trial_small = (f"Full {trial_plan} for 14 days. No card needed. One trial per business. "
+                       f"After 14 days you go back to PhiXtra Connect unless you choose a plan.")
 
     feat_html = "".join(f"<li>{f}</li>" for f in features)
     steps_html = "".join(
@@ -3082,14 +3171,14 @@ def _send_account_ready_email(
         <p style="margin:0 0 14px">Your email is verified and your PhiXtra account for <b>{account_for}</b> is ready.</p>
         <div style="border:1px solid #D6DEEC;background:#F4F7FC;border-radius:10px;padding:14px 16px;margin:0 0 16px">
           <div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#4A5B78;margin-bottom:4px">Your plan</div>
-          <div style="font-weight:700;font-size:16px;color:#0B1D40;margin-bottom:6px">PhiXtra Connect (Free)</div>
+          <div style="font-weight:700;font-size:16px;color:#0B1D40;margin-bottom:6px">{plan_box_name}</div>
           <ul style="margin:0 0 8px;padding-left:18px">{feat_html}</ul>
           <p style="margin:0;font-size:14px">{team_line}</p>
         </div>
         <div style="background:#0B1D40;color:#ffffff;border-radius:12px;padding:22px 22px 18px;margin:0 0 20px;text-align:center">
           <div style="font-weight:700;font-size:19px;line-height:1.3;color:#ffffff;margin:0 0 8px">{trial_head}</div>
           <p style="margin:0 0 16px;font-size:14.5px;color:#DCE4F2">{trial_text}</p>
-          <a href="{trial_link}" style="display:inline-block;background:#ffffff;color:#0B1D40;padding:13px 26px;border-radius:10px;font-weight:700;font-size:15px;text-decoration:none">Start my free 2-week trial</a>
+          <a href="{trial_link}" style="display:inline-block;background:#ffffff;color:#0B1D40;padding:13px 26px;border-radius:10px;font-weight:700;font-size:15px;text-decoration:none">{trial_btn}</a>
           <p style="margin:12px 0 0;font-size:12.5px;color:#AFC0DC">{trial_small}</p>
         </div>
         <h3 style="font-size:15px;margin:0 0 8px;color:#111E2D">What to do next</h3>
@@ -3107,11 +3196,11 @@ def _send_account_ready_email(
     text = (
         f"Hi {first_name.strip() if first_name and first_name.strip() else 'there'},\n\n"
         f"Your email is verified and your PhiXtra account for {plain_name} is ready.\n\n"
-        f"YOUR PLAN: PhiXtra Connect (Free)\n"
+        f"YOUR PLAN: {plan_box_name}\n"
         + "".join(f"- {f}\n" for f in features).replace("&amp;", "&")
         + f"{team_line}\n\n"
         f"{trial_head.upper()}\n{trial_text}\n"
-        f"Start my free 2-week trial: {trial_link}\n{trial_small}\n\n"
+        f"{trial_btn}: {trial_link}\n{trial_small}\n\n"
         f"WHAT TO DO NEXT\n{text_steps}\n\n"
         f"Log in: {login_link}\nSee plans: {plans_link}\n\n"
         f"Questions? Email support@phixtra.com"
@@ -4655,6 +4744,14 @@ def _confirm_finish(row):
             conn.commit(); cur.close(); conn.close()
         except Exception as e:
             print("⚠️ save wa_number_usage:", e)
+    # 13 Nov 2026 (user): the 14-day free trial starts as soon as the account
+    # is created, on every sign-up route through this page (registration form,
+    # WordPress plugin). The Shopify app keeps its own trial through Shopify.
+    if not str(row.get("flow") or "").startswith("shopify"):
+        try:
+            _start_wa_ai_trial(int(res["tenant_id"]))
+        except Exception as e:
+            print("⚠️ auto trial at sign-up:", e)
     _send_welcome_after_confirm(cid)
     _log_in_owner(cid)
     # A new number goes straight to connecting it (plan screen 2); everyone
@@ -4848,8 +4945,9 @@ def _send_welcome_after_confirm(customer_id: int):
             SELECT c.first_name, c.email, c.phone_number, c.tenant_id,
                    t.name AS business_name, t.domain, t.source_type,
                    t.signup_channel, t.website_platform,
-                   k.trial_expires_at
+                   k.trial_expires_at, t.trial_ends_at, p.name AS plan_name
             FROM customers c
+            LEFT JOIN plans p ON p.id = (SELECT plan_id FROM tenants WHERE id = c.tenant_id)
             JOIN tenants t ON t.id = c.tenant_id
             LEFT JOIN api_keys k ON k.tenant_id = c.tenant_id AND k.key_type = 'whatsapp'
             WHERE c.id = %s
@@ -4873,6 +4971,8 @@ def _send_welcome_after_confirm(customer_id: int):
                 kind=_kind,
                 domain=wa_row.get("domain") or "",
                 website_platform=wa_row.get("website_platform") or "",
+                trial_ends=wa_row.get("trial_ends_at"),
+                trial_plan_name=wa_row.get("plan_name") or "",
             )
         elif wa_row:
             _send_verified_welcome_email_web(
@@ -6947,7 +7047,10 @@ def _setup_checklist(tenant_id: int):
 
     # 4. Trial.
     paid = t["plan_slug"] not in AI_OFF_FREE_PLAN_SLUGS
-    steps.append(dict(key="trial", title="Start your free B2B trial" if b2b else "Start your free trial",
+    # 13 Nov 2026: the trial starts at sign-up, so the step only shows for
+    # older accounts that never started one (the Dashboard banner counts down).
+    if not (t["trial_granted_at"] or paid):
+      steps.append(dict(key="trial", title="Start your free B2B trial" if b2b else "Start your free trial",
                       done=bool(t["trial_granted_at"]) or paid,
                       text=("The AI Sales Agent for B2B for 14 days, no card needed. Until then your team answers chats from the Inbox."
                             if b2b else "Full features for 14 days, no card needed. Until then your team answers website chats from the Inbox."),
@@ -6990,7 +7093,13 @@ def _setup_checklist(tenant_id: int):
                    shop_url=shop_tab, list_url=url_for("portal.data_sources"), source=prod["source"],
                    site_ok=(not wp) and bool(src), read_url=url_for("portal.store_info_website_read_products"))]
     wa_ok = t["channel_mode"] in ("dual", "both")
+    # 13 Nov 2026: a website business on its website trial can add WhatsApp;
+    # pressing Connect WhatsApp moves it to the WhatsApp + website trial.
+    wa_switch = (not wa_on) and _website_trial_can_add_wa(tenant_id)
+    if wa_switch:
+        wa_ok = True
     extras.append(dict(key="whatsapp", title="WhatsApp", done=wa_on,
+                       post_url=(url_for("portal.whatsapp_add_to_trial") if wa_switch else None),
                        text=("Connected." if wa_on else
                              "Let your AI Agent answer on WhatsApp too. About 5 minutes." if wa_ok else
                              "Answer customers on WhatsApp too. This needs a Dual-Agent plan."),
@@ -36706,7 +36815,8 @@ def billing_plans():
 
     # Default the toggle to whichever mode the merchant is currently on.
     default_channel_mode = "dual" if (current.get("channel_mode") == "dual"
-                                      or request.args.get("view") == "dual") else "single"
+                                      or request.args.get("view") == "dual"
+                                      or _wa_connected(tenant_id)) else "single"
     if is_b2b:
         default_channel_mode = "single"
 

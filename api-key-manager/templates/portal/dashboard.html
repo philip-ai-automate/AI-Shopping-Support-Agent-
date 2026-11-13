@@ -237,8 +237,8 @@ document.getElementById('scqForm').addEventListener('submit', function(e){
   <div style="display:flex;align-items:center;gap:10px">
     <span style="font-size:18px">⏳</span>
     <div>
-      <div style="font-size:14px;font-weight:700;color:#93370D">AI trial: {{ _dl }} day{{ '' if _dl == 1 else 's' }} left (ends {{ plan_info.trial_last_day.strftime('%-d %b %Y') }})</div>
-      <div style="font-size:13px;color:#475467">Choose a plan to keep the AI answering. If you don't, your AI features lock when the trial ends and you go back to {{ plan_info.free_plan_name }}.</div>
+      <div style="font-size:14px;font-weight:700;color:#93370D">Your free trial of {{ plan_info.plan_name }} is on: {{ _dl }} day{{ '' if _dl == 1 else 's' }} left (ends {{ plan_info.trial_last_day.strftime('%-d %b %Y') }})</div>
+      <div style="font-size:13px;color:#475467">Every enquiry answered and followed up to the sale while you finish setting up. Choose a plan any time to keep going. If you don't, you go back to {{ plan_info.free_plan_name }} when the trial ends.</div>
     </div>
   </div>
   <a href="{{ url_for('portal.billing_plans') }}" style="display:inline-block;background:#12B76A;color:#fff;padding:9px 16px;border-radius:10px;text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap">Choose a plan →</a>

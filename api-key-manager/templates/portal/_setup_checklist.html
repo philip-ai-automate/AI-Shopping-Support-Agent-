@@ -113,6 +113,8 @@
           {% endif %}
           {% if ex.source == 'list' %}<a class="su-btn line" href="{{ ex.list_url }}">Manage your list</a>
           {% elif ex.source is none %}<span class="su-text" style="flex-basis:100%;font-size:12.5px">Products not on your website? <a href="{{ ex.list_url }}">Upload a list instead</a>.</span>{% endif %}
+        {% elif not ex.done and ex.post_url %}
+          <form method="POST" action="{{ ex.post_url }}" style="margin:0"><button type="submit" class="su-btn line">{{ ex.action }}</button></form>
         {% elif not ex.done %}
           <a class="su-btn line" href="{{ ex.url }}">{{ ex.action }}</a>
         {% endif %}

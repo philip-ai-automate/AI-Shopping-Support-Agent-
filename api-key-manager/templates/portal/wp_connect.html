@@ -138,7 +138,7 @@
       <div class="g-recaptcha" data-sitekey="6LdARassAAAAAE2riEDaWAuK-g2DY7e67qoAjOUc"></div>
 
       <button type="submit" style="background:var(--ink);color:#fff;border:none;border-radius:10px;padding:13px 18px;font-size:14.5px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
-        <span id="submitLbl">{{ 'Create my B2B account & Connect' if st == 'b2b' else 'Create My Account & Connect' }}</span>
+        <span id="submitLbl">{{ 'Start my free B2B trial & Connect' if st == 'b2b' else 'Start my free trial & Connect' }}</span>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
       </button>
     </form>
@@ -155,13 +155,13 @@
       document.querySelectorAll('input[name="sell_to"]').forEach(function(r){
         r.addEventListener('change', function(){
           var b2b = this.value === 'b2b';
-          lbl.textContent = b2b ? 'Create my B2B account & Connect' : 'Create My Account & Connect';
+          lbl.textContent = b2b ? 'Start my free B2B trial & Connect' : 'Start my free trial & Connect';
           curLabel();
         });
       });
     })();
     </script>
-    <p style="text-align:center;font-size:12.5px;color:var(--muted);margin:12px 0 0">Next we'll email you a code to confirm your email.</p>
+    <p style="text-align:center;font-size:12.5px;color:var(--muted);margin:12px 0 0">Next we'll email you a code. Your 14-day free trial starts as soon as you enter it.</p>
 
     <p style="text-align:center;font-size:12.5px;color:var(--muted);margin:18px 0 0">
       Already have a PhiXtra account? <a href="{{ url_for('portal.login') }}">Log in instead</a>

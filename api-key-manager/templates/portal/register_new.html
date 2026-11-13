@@ -164,8 +164,8 @@
   </aside>
 
   <main class="rg-main">
-    <h1 id="mainTitle">Create your free account</h1>
-    <p class="rg-sub" id="mainSub">Free to start. No credit card needed.</p>
+    <h1 id="mainTitle">Start your 14-day free trial</h1>
+    <p class="rg-sub" id="mainSub">Your free trial starts as soon as you sign up. No card needed.</p>
 
     <div class="rg-chosen" id="chosenBar" hidden>
       <div><small>You are signing up for</small><b id="chosenLabel"></b></div>
@@ -362,7 +362,7 @@
       <div class="g-recaptcha" data-sitekey="6LdARassAAAAAE2riEDaWAuK-g2DY7e67qoAjOUc"></div>
       <p class="rg-err" id="hRecaptcha" hidden>Please tick "I'm not a robot" first.</p>
 
-      <button type="submit" class="rg-submit" id="submitBtn">Create free account</button>
+      <button type="submit" class="rg-submit" id="submitBtn">Start my free trial</button>
 
       <section class="rg-next" aria-label="What happens next">
         <h3>What happens next</h3>
@@ -392,7 +392,7 @@
       <div class="pp eg"><span class="lb">Already have WhatsApp on this number?</span><p>Then choose one of the first two options instead, so you can keep your app and your chats.</p></div>
     </div></dialog>
     <dialog class="wu-pop" id="wuLater" aria-labelledby="wuLaterT"><div class="wu-hd"><h3 id="wuLaterT">Add WhatsApp later</h3><button class="wu-x" type="button" aria-label="Close">✕</button></div><div class="wu-bd">
-      <div class="pp"><span class="lb">What happens</span><p>Your account is ready straight away. You can add your products, put the chat box on your website, and start your free trial.</p></div>
+      <div class="pp"><span class="lb">What happens</span><p>Your account and your 14-day free trial start straight away. You can add your products and put the chat box on your website.</p></div>
       <div class="pp"><span class="lb">When you're ready</span><p>Go to your Dashboard and click <b>Connect WhatsApp</b>.</p></div>
     </div></dialog>
     <dialog class="wu-pop" id="wuWhich" aria-labelledby="wuWhichT"><div class="wu-hd"><h3 id="wuWhichT">Which WhatsApp do I have?</h3><button class="wu-x" type="button" aria-label="Close">✕</button></div><div class="wu-bd">
@@ -421,22 +421,18 @@
       <div class="rg-choices" style="margin-top:18px">
         <button type="button" class="rg-choice" onclick="pickType('whatsapp')">
           <span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0B1D40" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.4 8.4 0 1 1 21 11.5z"/></svg></span>
-          <span class="tx"><b>WhatsApp only</b><span>Official WhatsApp number, shared team inbox and free CRM.</span></span>
+          <span class="tx"><b>WhatsApp Business</b><span>Never miss a sale on WhatsApp. Every enquiry answered and followed up, with your whole team working from one official business number.</span></span>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5B78" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
         </button>
         <button type="button" class="rg-choice" onclick="pickType('web')">
           <span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0B1D40" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19M12 2.5c2.6 2.7 3.9 5.9 3.9 9.5s-1.3 6.8-3.9 9.5c-2.6-2.7-3.9-5.9-3.9-9.5S9.4 5.2 12 2.5z"/></svg></span>
-          <span class="tx"><b>Website only</b><span>An AI Agent that chats on your website: WordPress, Shopify, Wix, Squarespace or any site.</span></span>
+          <span class="tx"><b>Website &amp; Online Store</b><span>Turn your website enquiries into sales. Every customer answered in their own language, day and night, and followed up until they buy. Your team takes over whenever they choose. Add WhatsApp any time.</span></span>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5B78" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
         </button>
-        <button type="button" class="rg-choice" onclick="pickType('both')">
-          <span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0B1D40" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="13" height="10" rx="2"/><path d="M21.5 13.5a5 5 0 0 1-7.4 4.4L11 19l1.1-3"/><path d="M6 17.5h4"/></svg></span>
-          <span class="tx"><b>WhatsApp and website</b><span>One AI Agent on both, one shared inbox. Website + WhatsApp plans.</span></span>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5B78" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
-        </button>
+        {# 13 Nov 2026: "WhatsApp and website" merged into Website & Online Store; WhatsApp is added from the Dashboard. #}
         <button type="button" class="rg-choice" onclick="pickType('b2b')">
           <span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0B1D40" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></svg></span>
-          <span class="tx"><b>I sell to other businesses (B2B)</b><span>Website chat and WhatsApp in your buyer's language, with follow-ups. AI Sales Agent for B2B.</span></span>
+          <span class="tx"><b>B2B &amp; Trade Sales</b><span>For wholesalers, distributors, manufacturers and exporters. Every enquiry answered in your buyer's language, quoted and followed up to the order.</span></span>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A5B78" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
         </button>
       </div>
@@ -482,18 +478,18 @@ var TYPE = document.getElementById('fType').value || '';
 var PLAT = document.getElementById('fPlatform').value || '';
 var PLAT_NAMES = {wordpress:'WordPress / WooCommerce', shopify:'Shopify', wix:'Wix', squarespace:'Squarespace', other:'Other or custom-built'};
 var PLAT_SHORT = {shopify:'Shopify', wix:'Wix', squarespace:'Squarespace', other:'your website'};
-var TYPE_NAMES = {whatsapp:'WhatsApp only', web:'Website only', both:'WhatsApp and website', b2b:'AI Sales Agent for B2B'};
+var TYPE_NAMES = {whatsapp:'WhatsApp Business', web:'Website & Online Store', both:'WhatsApp and website', b2b:'B2B & Trade Sales'};
 var ASIDE = {
   '':      ['PhiXtra AI Agent', 'Your WhatsApp, website and CRM on one platform.', 'Your AI Agent answers your customers, and your team sees every conversation in one place.',
-            ['Official WhatsApp Business API, approved by Meta', 'AI Agent chat for WordPress, Shopify, Wix, Squarespace or any site', 'A free CRM with a sales pipeline', 'Try the AI Agent free for 2 weeks, whenever you are ready']],
-  whatsapp:['WhatsApp AI Agent + CRM', 'Turn every WhatsApp message into a sale.', 'Your team works from one official WhatsApp number and a free CRM. Add the AI Agent when you are ready.',
-            ['Connect your business WhatsApp number in about 5 minutes', 'One shared inbox for your whole team', 'Every customer saved in a free CRM, with a sales pipeline', 'Try the AI Agent free for 2 weeks, whenever you are ready']],
-  web:     ['Website AI Agent', 'Let your AI Agent answer every visitor on your website.', 'Works on WordPress, Shopify, Wix, Squarespace or a site built for you.',
-            ['Answers from your own website pages and product list', 'Recommends products and passes serious buyers to your team', 'Every visitor conversation in one inbox, with a free CRM', 'Try the AI Agent free for 2 weeks, whenever you are ready']],
+            ['Official WhatsApp Business API, approved by Meta', 'Every enquiry answered and followed up to the sale', 'Every customer and deal in one sales pipeline', 'Your 14-day free trial starts as soon as you sign up']],
+  whatsapp:['WhatsApp Business', 'Turn every WhatsApp enquiry into a sale.', 'Your whole team works from one official business number.',
+            ["Every enquiry answered in seconds, day and night, in your customer's language", 'Followed up until they buy, so no sale is forgotten', 'Your whole team on one official business number, taking over any chat', '14-day free trial of Retail Scale, starting as soon as you sign up']],
+  web:     ['Website & Online Store', 'Turn your website enquiries into sales.', 'Works on WordPress, Shopify, Wix, Squarespace or a site built for you.',
+            ['Every customer answered in their own language, day and night', 'Serious buyers followed up until they order, and passed to your team', 'Every enquiry and sale tracked in one place, with a sales pipeline', 'Add WhatsApp any time', '14-day free trial of Retail Scale, starting as soon as you sign up']],
   both:    ['WhatsApp + Website AI Agent', 'One AI Agent on WhatsApp and your website.', 'The same AI Agent answers on both, and your team sees every conversation in one inbox.',
-            ['Connect your business WhatsApp number in about 5 minutes', 'Chat on WordPress, Shopify, Wix, Squarespace or any site', 'One shared inbox and a free CRM for both channels', 'Try the AI Agent free for 2 weeks, whenever you are ready']],
-  b2b:     ['AI Sales Agent for B2B', 'Every Enquiry. Every Language. Every Sales Opportunity.', 'For wholesalers, distributors, exporters and manufacturers.',
-            ["Website chat and WhatsApp answered in your buyer's language, day and night", 'Automatic follow-up by email and WhatsApp until they order', 'Every buyer and deal in a free CRM with a sales pipeline', 'Try it free for 2 weeks, whenever you are ready. No card needed']]
+            ['Every enquiry on WhatsApp and your website answered and followed up to the sale', 'Your team takes over any chat, in one shared inbox', 'Every customer and deal in one sales pipeline', '14-day free trial of Retail Scale, starting as soon as you sign up']],
+  b2b:     ['B2B & Trade Sales', 'Every Enquiry. Every Language. Every Sales Opportunity.', 'For wholesalers, distributors, exporters and manufacturers.',
+            ["Trade enquiries answered in your buyer's language, day and night", 'Quote requests ready for your salesperson, followed up to the order', 'Every buyer and deal in one sales pipeline', '14-day free trial of B2B Growth, starting as soon as you sign up']]
 };
 var CHECK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9DB8E8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M7.5 12.5l3 3 6-6.5"/></svg>';
 function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
@@ -501,23 +497,25 @@ function el(id){ return document.getElementById(id); }
 
 function steps() {
   var wp = PLAT === 'wordpress', short = PLAT_SHORT[PLAT] || 'your website';
-  var verify = ['Confirm your email.', 'We email you a code. Enter it and your account is ready.'];
+  var verify = ['Confirm your email.', 'Your 14-day free trial starts straight away.'];
+  var waLater = ['Want WhatsApp too?', 'Connect your number from your Dashboard whenever you are ready. About 5 minutes.'];
   var wa = ['Connect your WhatsApp number.', "Straight after sign-up, or later from your Dashboard. About 5 minutes."];
   var site = ['Connect your website.', 'You give permission first, then click Sync now and your AI Agent reads your public pages. If something blocks us, we tell you the reason and how to fix it.'];
   var box = wp ? ['Install the free PhiXtra plugin.', 'From WordPress.org (Plugins › Add New, search PhiXtra), then click Connect to PhiXtra inside it. That adds the chat box.'] : ['Add the chat box.', 'Copy one line of code into ' + short + ', with a step-by-step guide.'];
   var prod = wp ? ['Send your products with one click.', 'In the plugin, choose All published products and click Save. No Excel, nothing to prepare.'] : ['Add your products (optional).', "Your AI Agent reads them from your website's product pages. Nothing to prepare."];
-  var free = ['Your team replies free', 'on PhiXtra Connect, with the shared inbox and CRM.'];
+  var free = ['After the trial:', 'choose a plan, or your team keeps replying free on PhiXtra Connect.'];
   var trial = ['Start your 2-week AI Agent trial', 'from your dashboard when you are ready. No card needed.'];
-  var webFree = ['Your team replies free', 'on PhiXtra Connect: website chats come to your shared inbox, and replies show in the visitor\'s chat box.'];
-  var b2bVerify = ['Confirm your email.', 'We email you a code. Enter it and your account is ready.'];
+  var webFree = ['After the trial:', 'choose a plan, or your team keeps replying free on PhiXtra Connect.'];
+  var b2bVerify = ['Confirm your email.', 'Your 14-day free B2B trial starts straight away.'];
   var price = ['Your prices.', "From your WooCommerce shop through the PhiXtra plugin, or from your website's product pages. Nothing to prepare."];
   var b2bWa = ['Connect your WhatsApp number', 'whenever you are ready, from your Dashboard. About 5 minutes.'];
   var b2bTrial = ['Start your 2-week B2B trial', 'from your dashboard when you are ready. No card needed.'];
   // WordPress: the plugin comes first, then the website (31 Oct 2026).
   var webSteps = wp ? [box, prod, site] : [site, box, prod];
   var b2bSite = wp ? [box, price, site] : [site, box, price];
-  return {'': [verify, trial], whatsapp: [verify, wa, free, trial], web: [verify].concat(webSteps, [webFree, trial]), both: [verify, wa].concat(webSteps, [webFree, trial]),
-          b2b: [b2bVerify].concat(b2bSite, [b2bWa, b2bTrial])}[TYPE];
+  // 13 Nov 2026: the trial starts at sign-up, so there is no "start your trial" step.
+  return {'': [verify], whatsapp: [verify, wa, free], web: [verify].concat(webSteps, [webFree, waLater]), both: [verify, wa].concat(webSteps, [webFree]),
+          b2b: [b2bVerify].concat(b2bSite, [b2bWa])}[TYPE];
 }
 
 var BASED_HOME = document.createComment('blkBased');
@@ -550,9 +548,9 @@ function render() {
   el('lblBusinessName').textContent = b2b ? 'Registered company name' : 'Business name';
   el('fBusinessName').placeholder = b2b ? 'e.g. Harbour Supplies Ltd' : 'e.g. Unity Foods Distribution';
   el('lblBased').textContent = b2b ? 'Country of registration' : 'Where is your business based?';
-  el('mainTitle').textContent = b2b ? 'Start your free B2B trial' : 'Create your free account';
-  el('mainSub').textContent = b2b ? 'Free to start. Try the B2B agent free for 2 weeks. No credit card needed.' : 'Free to start. No credit card needed.';
-  el('submitBtn').textContent = b2b ? 'Create my B2B account' : 'Create free account';
+  el('mainTitle').textContent = b2b ? 'Start your 14-day free B2B trial' : 'Start your 14-day free trial';
+  el('mainSub').textContent = 'Your free trial starts as soon as you sign up. No card needed.';
+  el('submitBtn').textContent = b2b ? 'Start my free B2B trial' : 'Start my free trial';
   el('platformNote').textContent = PLAT === 'wordpress'
     ? 'Built on WordPress / WooCommerce. You will install one free PhiXtra plugin. It adds the chat box and, on WooCommerce shops, syncs your products and adds cart recovery.'
     : (PLAT ? 'Built on ' + PLAT_NAMES[PLAT] + '. You will paste one short line of code into ' + (PLAT_SHORT[PLAT] || 'your website') + '. It only works on this website address.' : '');
