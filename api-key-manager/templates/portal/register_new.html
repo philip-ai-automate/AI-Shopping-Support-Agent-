@@ -447,12 +447,21 @@
       <p>This tells us how to add the chat box to your site.</p>
       <div class="rg-plats" style="margin-top:18px">
         <button type="button" class="rg-plat" onclick="pickPlatform('wordpress')"><b>WordPress / WooCommerce</b><span>Install one free PhiXtra plugin</span></button>
-        <button type="button" class="rg-plat" onclick="pickPlatform('shopify')"><b>Shopify</b><span>Paste one line of code</span></button>
+        <button type="button" class="rg-plat" onclick="showStep('shopify')"><b>Shopify</b><span>Install the PhiXtra app from the Shopify App Store</span></button>
         <button type="button" class="rg-plat" onclick="pickPlatform('wix')"><b>Wix</b><span>Paste one line of code</span></button>
         <button type="button" class="rg-plat" onclick="pickPlatform('squarespace')"><b>Squarespace</b><span>Paste one line of code</span></button>
         <button type="button" class="rg-plat" onclick="pickPlatform('other')"><b>Other or custom-built</b><span>Paste one line of code</span></button>
       </div>
       <button type="button" class="rg-back" onclick="showStep('type')" style="margin-top:12px">← Back</button>
+    </div>
+
+    {# Shopify (13 Nov 2026): Shopify stores sign up inside Shopify via the app, not this form. #}
+    <div id="stepShopify" hidden>
+      <h2>Shopify stores sign up inside Shopify</h2>
+      <p>Install the PhiXtra app from the Shopify App Store. Your account is created there in one step, with your products, prices and (for B2B) your business buyers read straight from Shopify. Billing is through your Shopify bill.</p>
+      <a class="rg-plat" href="https://apps.shopify.com/phixtra" target="_blank" rel="noopener" style="margin-top:18px;display:flex;align-items:center;justify-content:center;min-height:52px;padding:12px 16px;text-decoration:none;text-align:center;background:var(--navy);color:#fff;border-color:var(--navy)"><b style="color:#fff">Get the app on the Shopify App Store</b></a>
+      <p style="margin-top:12px">Already have a PhiXtra account? Install the app and choose "Link my account".</p>
+      <button type="button" class="rg-back" onclick="showStep('platform')" style="margin-top:12px">← Back</button>
     </div>
   </div>
 </div>
@@ -546,7 +555,8 @@ function render() {
 window.showStep = function(which) {
   el('stepType').hidden = which !== 'type';
   el('stepPlatform').hidden = which !== 'platform';
-  el('stepLabel').textContent = which === 'platform' ? 'Step 2 of 2' : 'Step 1';
+  el('stepShopify').hidden = which !== 'shopify';
+  el('stepLabel').textContent = which === 'platform' || which === 'shopify' ? 'Step 2 of 2' : 'Step 1';
 };
 window.openPicker = function() { showStep('type'); el('picker').hidden = false; };
 window.closePicker = function() { el('picker').hidden = true; if (!TYPE) render(); };
