@@ -94,6 +94,7 @@ ADMIN_MODULES = {
     # "school_plans" deactivated 2026-11-06 (user): no admin page any more.
     "accounts":                  {"label": "Accounts (Account Manager)", "actions": ["view", "modify"]},
     "wa_diagnostics":            {"label": "WA Diagnostics",        "actions": ["view"]},
+    "wa_templates":              {"label": "WhatsApp Templates",    "actions": ["view"]},
     "recovery_queue":            {"label": "Recovery Queue",        "actions": ["view"]},
     "video_tutorials":           {"label": "Video Tutorials",       "actions": ["view", "modify"]},
     "social_media":               {"label": "Social Media Posts",    "actions": ["view", "create", "modify", "delete"]},
@@ -6069,6 +6070,47 @@ def wa_diagnostics():
         tenants.append(d)
 
     return render_template("portal/admin_wa_diagnostics.html", tenants=tenants)
+
+
+# ── WhatsApp Templates (13 Nov 2026) ─────────────────────────────────────────
+# View-only: every template Meta holds for PhiXtra's numbers and for each
+# business, with its approval status. Logic lives in admin_wa_templates.py.
+@portal_admin_bp.route("/wa-templates")
+def wa_templates():
+    r = _require_admin("wa_templates", "view")
+    if r: return r
+    import admin_wa_templates as WT
+    accs = WT.accounts()
+    for a in accs:
+        a["key"] = f"t{a['tenant_id']}w{a['waba_id']}"
+    refresh = request.args.get("refresh") == "1"
+    plat = next((a for a in accs if a["is_platform"]), None)
+    biz = request.args.get("biz") or (plat["key"] if plat else "all")
+    if biz == "all":
+        rows = WT.summary(accs, refresh)
+        # A WhatsApp account can hold numbers of more than one business
+        # (e.g. demo numbers on PhiXtra's own account): count it once.
+        owner_of, totals = {}, {g: 0 for g in WT.GROUPS}
+        for x in rows:
+            w = x["acc"]["waba_id"]
+            if w in owner_of:
+                x["shared_with"] = owner_of[w]
+                continue
+            owner_of[w] = "PhiXtra" if x["acc"]["is_platform"] else x["acc"]["business"]
+            for g in WT.GROUPS:
+                totals[g] += (x.get("counts") or {}).get(g, 0)
+        loaded = min((x["loaded_at"] for x in rows), default=None)
+        return render_template("portal/admin_wa_templates.html", accs=accs, biz="all", rows=rows,
+                               totals=totals, cant_read=sum(1 for x in rows if x["error"]),
+                               loaded=loaded, groups=WT.GROUPS, categories=WT.CATEGORIES)
+    acc = next((a for a in accs if a["key"] == biz), None)
+    if not acc:
+        flash("That WhatsApp account isn't connected any more.", "warning")
+        return redirect(url_for("portal_admin.wa_templates"))
+    view = WT.templates_for(acc, refresh)
+    cats = {c: sum(1 for t in view["templates"] if t["category"] == c) for c in WT.CATEGORIES}
+    return render_template("portal/admin_wa_templates.html", accs=accs, biz=biz, view=view, cats=cats,
+                           loaded=view["loaded_at"], groups=WT.GROUPS, categories=WT.CATEGORIES)
 
 
 @portal_admin_bp.route("/merchant-signup-qr")

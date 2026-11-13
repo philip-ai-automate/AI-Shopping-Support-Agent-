@@ -353,6 +353,10 @@
        href="{{ url_for('portal_admin.wa_diagnostics') }}">
       <span class="asb-icon">📡</span> WA Diagnostics
     </a>
+    <a class="asb-link {% if request.endpoint=='portal_admin.wa_templates' %}active{% endif %}"
+       href="{{ url_for('portal_admin.wa_templates') }}">
+      <span class="asb-icon">📩</span> WhatsApp Templates
+    </a>
     <a class="asb-link {% if request.endpoint=='portal_admin.video_tutorials' %}active{% endif %}"
        href="{{ url_for('portal_admin.video_tutorials') }}">
       <span class="asb-icon">🎬</span> Video Tutorials
@@ -460,6 +464,7 @@
     { icon:'🧩', title:'Modules',            desc:'Every module/feature the app knows about — read-only', url:'{{ url_for("portal_admin.admin_modules_catalog") }}', tags:'modules features catalog permissions roles plans reference' },
     { icon:'📋', title:'Plans',              desc:'Manage WhatsApp subscription plans',        url:'{{ url_for("portal_admin.admin_plans") }}',         tags:'plans subscription whatsapp quota limits assign' },
     { icon:'📡', title:'WA Diagnostics',     desc:'Debug WhatsApp connection issues',          url:'{{ url_for("portal_admin.wa_diagnostics") }}',      tags:'whatsapp diagnostics debug connection status check' },
+    { icon:'📩', title:'WhatsApp Templates', desc:'Every WhatsApp template and its Meta approval status', url:'{{ url_for("portal_admin.wa_templates") }}', tags:'whatsapp templates message approved meta status rejected pending' },
     { icon:'⚙️', title:'Settings',           desc:'Trial days, password and admin config',     url:'{{ url_for("portal_admin.admin_settings") }}',      tags:'settings admin password trial days config' },
     {% if session.get('portal_admin_role','owner') == 'owner' %}
     { icon:'🧑‍💼', title:'Team',              desc:'Manage support logins and permissions',     url:'{{ url_for("portal_admin.admin_team") }}',          tags:'team support staff logins permissions roles' },

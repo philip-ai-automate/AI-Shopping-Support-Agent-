@@ -1,0 +1,187 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}WhatsApp Templates — PhiXtra Admin{% endblock %}
+
+{% block content %}
+<style>
+.wt-screen{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.wt-filters{display:flex;flex-wrap:wrap;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line);background:#fafbfc}
+.wt-f{display:flex;flex-direction:column;gap:4px;min-width:150px;flex:1}
+.wt-f.wide{flex:1.4}
+.wt-f label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.wt-f select,.wt-f input{font:inherit;font-size:13px;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:9px;padding:8px 10px}
+.wt-counts{display:flex;flex-wrap:wrap;gap:8px;padding:12px 18px;border-bottom:1px solid var(--line)}
+.wt-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:650;padding:3px 10px;border-radius:999px;background:rgba(3,12,24,.05);color:var(--muted);white-space:nowrap}
+.wt-chip b{color:var(--ink);font-variant-numeric:tabular-nums}
+.wt-chip.bad{background:rgba(240,68,56,.08);color:var(--bad)}
+.wt-st{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.wt-st::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.wt-st.Approved{background:rgba(18,183,106,.1);color:#067647}
+.wt-st.Pending,.wt-st.Paused{background:rgba(247,144,9,.12);color:#B54708}
+.wt-st.Rejected{background:rgba(240,68,56,.1);color:#B42318}
+.wt-body{display:grid;grid-template-columns:minmax(0,1fr) 340px}
+.wt-body.one{grid-template-columns:1fr}
+@media(max-width:960px){.wt-body{grid-template-columns:1fr}}
+.wt-tbl{overflow-x:auto}
+.wt-tbl table{border-collapse:collapse;width:100%;min-width:620px;font-variant-numeric:tabular-nums}
+.wt-tbl th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:10px 14px;border-bottom:1px solid var(--line)}
+.wt-tbl td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:middle;font-size:13px}
+.wt-row{cursor:pointer}
+.wt-row:hover td,.wt-row.sel td{background:rgba(3,12,24,.04)}
+.wt-row:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+.wt-name{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;word-break:break-all}
+.wt-err td{background:rgba(240,68,56,.06)}
+.wt-prev{border-left:1px solid var(--line);padding:18px;display:flex;flex-direction:column;gap:12px}
+@media(max-width:960px){.wt-prev{border-left:0;border-top:1px solid var(--line)}}
+.wt-eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.wt-phone{background:#EFE7DD;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:4px}
+.wt-bubble{background:#fff;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;box-shadow:0 1px 1px rgba(0,0,0,.08)}
+.wt-bubble .h{font-weight:700}
+.wt-bubble .b{white-space:pre-wrap;overflow-wrap:anywhere}
+.wt-bubble .ft{font-size:12px;color:var(--muted)}
+.wt-media{background:rgba(3,12,24,.06);border-radius:8px;padding:18px;text-align:center;color:var(--muted);font-size:12px}
+.wt-var{background:#E7FCD8;border-radius:4px;padding:0 3px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+.wt-qbtn{background:#fff;border-radius:8px;padding:8px;text-align:center;color:#1D4ED8;font-weight:650;font-size:13px;box-shadow:0 1px 1px rgba(0,0,0,.08)}
+.wt-dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px}
+.wt-dl dt{color:var(--muted)}
+.wt-foot{padding:12px 18px;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
+.wt-p{display:flex;flex-direction:column;gap:12px}
+.wt-p[hidden],.wt-row[hidden]{display:none}
+.wt-link{font-weight:650;color:#1D4ED8}
+</style>
+
+<div class="page-header" style="margin-bottom:20px;gap:12px;flex-wrap:wrap">
+  <div>
+    <div class="section-title">📩 WhatsApp Templates</div>
+    <p class="muted">Every WhatsApp message template Meta holds, with its approval status. Loaded live from Meta. View only.</p>
+  </div>
+  <a class="btn btn-sm" href="{{ url_for('portal_admin.wa_templates', biz=biz, refresh=1) }}">↻ Refresh from Meta</a>
+</div>
+
+<div class="wt-screen">
+  <div class="wt-filters">
+    <div class="wt-f wide"><label for="wtBiz">Business</label>
+      <select id="wtBiz" onchange="location.href='{{ url_for('portal_admin.wa_templates') }}?biz='+encodeURIComponent(this.value)">
+        {% for a in accs if a.is_platform %}<option value="{{ a.key }}" {% if biz==a.key %}selected{% endif %}>{{ a.business }}</option>{% endfor %}
+        <option value="all" {% if biz=='all' %}selected{% endif %}>All businesses</option>
+        {% for a in accs if not a.is_platform %}<option value="{{ a.key }}" {% if biz==a.key %}selected{% endif %}>{{ a.business }}{% if a.phones %} · {{ a.phones|join(', ') }}{% endif %}</option>{% endfor %}
+      </select></div>
+    {% if biz != 'all' and view and not view.error %}
+    <div class="wt-f"><label for="wtSt">Status</label>
+      <select id="wtSt"><option value="">All statuses</option>{% for g in groups %}<option>{{ g }}</option>{% endfor %}</select></div>
+    <div class="wt-f"><label for="wtCat">Category</label>
+      <select id="wtCat"><option value="">All categories</option>{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select></div>
+    <div class="wt-f wide"><label for="wtQ">Search</label>
+      <input id="wtQ" type="search" placeholder="Template name or words in the message"></div>
+    {% endif %}
+  </div>
+
+{% if biz == 'all' %}
+  <div class="wt-counts">
+    <span class="wt-chip">Businesses <b>{{ rows|length }}</b></span>
+    {% for g in groups %}<span class="wt-chip">{{ g }} <b>{{ totals[g] }}</b></span>{% endfor %}
+    {% if cant_read %}<span class="wt-chip bad">Can't read <b>{{ cant_read }}</b></span>{% endif %}
+  </div>
+  <div class="wt-body one"><div class="wt-tbl"><table>
+    <thead><tr><th>Business</th><th>WhatsApp number</th>{% for g in groups %}<th>{{ g }}</th>{% endfor %}<th></th></tr></thead>
+    <tbody>
+    {% for x in rows %}
+      {% if x.error %}
+      <tr class="wt-err"><td><strong>{{ x.acc.business }}</strong></td><td>{{ x.acc.phones|join(', ') }}</td>
+        <td colspan="{{ groups|length }}">{{ x.error }}<div class="muted" title="Meta's message">{{ x.meta_error }}</div></td><td></td></tr>
+      {% else %}
+      <tr><td><strong>{{ x.acc.business }}</strong>{% if x.shared_with %}<div class="muted">Same WhatsApp account as {{ x.shared_with }}, so the same templates (counted once in the totals)</div>{% endif %}</td><td>{{ x.acc.phones|join(', ') }}</td>
+        {% for g in groups %}<td>{{ x.counts[g] }}</td>{% endfor %}
+        <td>{% if x.templates %}<a class="wt-link" href="{{ url_for('portal_admin.wa_templates', biz=x.acc.key) }}">Open ›</a>{% else %}<span class="muted">No templates</span>{% endif %}</td></tr>
+      {% endif %}
+    {% else %}
+      <tr><td colspan="{{ groups|length + 3 }}" class="muted">No business has a real WhatsApp connection yet.</td></tr>
+    {% endfor %}
+    </tbody></table></div></div>
+
+{% elif view.error %}
+  <div class="wt-body one"><div class="wt-tbl"><table><tbody>
+    <tr class="wt-err"><td><strong>Can't read templates.</strong> {{ view.error }}<div class="muted">Meta's message: {{ view.meta_error }}</div></td></tr>
+  </tbody></table></div></div>
+
+{% else %}
+  <div class="wt-counts">
+    {% for g in groups %}<span class="wt-chip">{{ g }} <b>{{ view.counts[g] }}</b></span>{% endfor %}
+    {% for c in categories %}<span class="wt-chip">{{ c }} <b>{{ cats[c] }}</b></span>{% endfor %}
+  </div>
+  {% if not view.templates %}
+  <div class="wt-body one"><div class="wt-tbl"><table><tbody>
+    <tr><td class="muted">{{ view.acc.business }} has no WhatsApp templates yet.</td></tr>
+  </tbody></table></div></div>
+  {% else %}
+  <div class="wt-body">
+    <div class="wt-tbl"><table>
+      <thead><tr><th>Template name</th><th>Category</th><th>Language</th><th>Status</th><th>Why rejected</th></tr></thead>
+      <tbody id="wtRows">
+      {% for t in view.templates %}
+        <tr class="wt-row{% if loop.first %} sel{% endif %}" tabindex="0" data-i="{{ loop.index0 }}" data-st="{{ t.group }}" data-cat="{{ t.category }}"
+            data-q="{{ (t.name ~ ' ' ~ (t.preview.body|striptags if t.preview.body else ''))|lower }}">
+          <td class="wt-name">{{ t.name }}</td><td>{{ t.category }}</td><td>{{ t.language }}</td>
+          <td><span class="wt-st {{ t.group }}" {% if t.status_label != t.group %}title="{{ t.status_label }}"{% endif %}>{{ t.group }}</span></td>
+          <td class="{{ '' if t.reason else 'muted' }}">{{ t.reason or '—' }}</td>
+        </tr>
+      {% endfor %}
+        <tr id="wtNone" hidden><td colspan="5" class="muted">No templates match these filters.</td></tr>
+      </tbody></table></div>
+    <aside class="wt-prev">
+      <span class="wt-eyebrow">Preview · as the buyer sees it</span>
+      {% for t in view.templates %}
+      <div class="wt-p" data-i="{{ loop.index0 }}" {% if not loop.first %}hidden{% endif %}>
+        <div class="wt-name" style="font-weight:700">{{ t.name }}</div>
+        <div class="wt-phone">
+          <div class="wt-bubble">
+            {% if t.preview.media %}<div class="wt-media">{{ t.preview.media }} header</div>{% endif %}
+            {% if t.preview.header %}<div class="h">{{ t.preview.header }}</div>{% endif %}
+            {% if t.preview.body %}<div class="b">{{ t.preview.body }}</div>{% endif %}
+            {% if t.preview.footer %}<div class="ft">{{ t.preview.footer }}</div>{% endif %}
+          </div>
+          {% for b in t.preview.buttons %}<div class="wt-qbtn">{{ b }}</div>{% endfor %}
+        </div>
+        {% if t.preview.examples %}<div class="muted">Green boxes are filled in when sent. Example: {% for e in t.preview.examples %}{{ '{{' ~ loop.index ~ '}}' }} = {{ e }}{{ ', ' if not loop.last }}{% endfor %}</div>{% endif %}
+        <dl class="wt-dl">
+          <dt>Status</dt><dd><span class="wt-st {{ t.group }}">{{ t.status_label }}</span></dd>
+          {% if t.reason %}<dt>Why rejected</dt><dd>{{ t.reason }}</dd>{% endif %}
+          <dt>Category</dt><dd>{{ t.category }}</dd>
+          <dt>Language</dt><dd>{{ t.language }}</dd>
+          <dt>Number</dt><dd>{{ view.acc.phones|join(', ') }}</dd>
+          <dt>Created by</dt><dd {% if t.by.startswith('Not recorded') %}class="muted"{% endif %}>{{ t.by }}</dd>
+        </dl>
+      </div>
+      {% endfor %}
+    </aside>
+  </div>
+  {% endif %}
+{% endif %}
+  <div class="wt-foot">Last loaded from Meta: {{ loaded.strftime('%-d %b %Y, %H:%M') ~ ' UTC' if loaded else '—' }}</div>
+</div>
+
+<script>
+(function(){
+  var rows=[].slice.call(document.querySelectorAll('.wt-row'));
+  if(!rows.length) return;
+  function pick(r){
+    rows.forEach(function(x){x.classList.toggle('sel',x===r)});
+    document.querySelectorAll('.wt-p').forEach(function(p){p.hidden=(p.dataset.i!==r.dataset.i)});
+  }
+  rows.forEach(function(r){
+    r.addEventListener('click',function(){pick(r)});
+    r.addEventListener('keydown',function(e){if(e.key==='Enter')pick(r)});
+  });
+  var st=document.getElementById('wtSt'),cat=document.getElementById('wtCat'),q=document.getElementById('wtQ');
+  function filter(){
+    var s=st.value,c=cat.value,t=q.value.trim().toLowerCase(),shown=0;
+    rows.forEach(function(r){
+      var ok=(!s||r.dataset.st===s)&&(!c||r.dataset.cat===c)&&(!t||r.dataset.q.indexOf(t)>-1);
+      r.hidden=!ok; if(ok) shown++;
+    });
+    document.getElementById('wtNone').hidden=shown>0;
+  }
+  [st,cat].forEach(function(e){e.addEventListener('change',filter)});
+  q.addEventListener('input',filter);
+})();
+</script>
+{% endblock %}
