@@ -67,6 +67,9 @@ def create_app():
     # Discounts in Chat Phase 2 (11 Nov 2026): Used / Expired checked in Shopify every 30 minutes.
     import chat_discounts
     chat_discounts.start()
+    # "AI Agent showed …" lines on leads linked to website chats (13 Nov 2026).
+    import chat_products_shown
+    chat_products_shown.start()
     # Quotations › Requests (2026-10-30): "did you send it?" alerts when a request's time is up.
     import quote_requests
     quote_requests.start()

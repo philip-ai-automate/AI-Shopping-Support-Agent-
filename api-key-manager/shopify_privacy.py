@@ -351,7 +351,7 @@ def delete_chats(req_id: int, by: str) -> dict:
         if not r["tenant_id"]:
             break
         try:
-            res = chat_delete.delete(r["tenant_id"], "web:" + sid, "PhiXtra (Shopify privacy request)")
+            res = chat_delete.delete(r["tenant_id"], "web:" + sid, "PhiXtra (Shopify privacy request)", full=True)
             if res.get("ok") or res.get("error") == "Chat not found.":
                 gone += 1
             else:

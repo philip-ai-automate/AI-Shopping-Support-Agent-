@@ -271,9 +271,12 @@ def words(platform: str) -> dict:
 
 
 def _is_b2b(cur, tenant_id: int) -> bool:
-    cur.execute("SELECT COALESCE(is_b2b, FALSE) FROM company_profiles WHERE tenant_id=%s", (int(tenant_id),))
+    cur.execute("SELECT COALESCE(is_b2b, FALSE) AS b2b FROM company_profiles WHERE tenant_id=%s", (int(tenant_id),))
     r = cur.fetchone()
-    return bool(r and r[0])
+    if not r:
+        return False
+    # 13 Nov 2026: works with both plain and dict cursors (the chat path uses a dict cursor).
+    return bool(r["b2b"] if isinstance(r, dict) else r[0])
 
 
 def _plan_ok(cur, tenant_id: int) -> bool:

@@ -14022,7 +14022,7 @@ def inbox_delete_chat():
         print(f"⚠️ delete chat t{tenant_id} {key}: {e}")
         res = {"ok": False, "error": "The chat couldn't be deleted. Please try again."}
     if res.get("ok"):
-        flash("Chat deleted", "success")
+        flash("Messages deleted. The buyer's details are kept." if key.startswith("web:") else "Chat deleted", "success")
     else:
         flash(res.get("error") or "The chat couldn't be deleted.", "danger")
     # 'web:' opens the Web Chat tab on its first conversation.
@@ -35942,67 +35942,104 @@ def _send_messenger_reply(tenant_id: int, key: str, text: str, actor: dict):
 
 
 def _get_webchat_conversations(tenant_id: int) -> list:
-    """One row per website-chat handoff session, most recent first. The AI
-    website chat widget logs a handoff_requests row every time a visitor
-    needs a human while their handoff is still pending — grouped here into
-    one conversation per session_id, matching the Messenger/WhatsApp shape.
-    Reuses wa_conversation_assignments for claim (key = 'web:<session_id>'),
-    same pattern as Messenger's 'fb:<page_id>:<psid>'."""
+    """One row per website-chat session, most recent first (13 Nov 2026, user:
+    the team must see EVERY website chat, not only hand-overs). Sessions come
+    from the chat itself (last 90 days) and from hand-over requests. Each row
+    has chat_state: 'needs_team' (the buyer asked for a person, pending),
+    'team' (taken over or claimed by the team) or 'ai' (the AI Agent is
+    handling it). Test sessions (AI Playground, internal tests) and
+    WhatsApp-originated hand-overs are left out. Claim key = 'web:<session_id>'."""
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        try:
+            _ensure_web_chat_takeover(cur)   # the list reads it; made on first Take Over otherwise
+            conn.commit()
+        except Exception as _e:
+            conn.rollback(); print("⚠️ ensure web_chat_takeover:", _e)
         cur.execute("""
             SELECT
-                'web:' || sub.session_id AS key,
-                sub.session_id, sub.visitor_name, sub.visitor_email,
-                sub.whatsapp_number, sub.status,
-                GREATEST(sub.last_handoff_at, COALESCE(cm.last_msg_at, sub.last_handoff_at)) AS last_at,
-                COALESCE(cm.last_content, sub.last_visitor_message) AS last_content,
-                COALESCE(cm.last_role, 'user') AS last_role,
+                'web:' || s.session_id AS key,
+                s.session_id,
+                h.visitor_name, h.visitor_email, h.whatsapp_number, h.status AS h_status,
+                h.last_visitor_message,
+                v.name AS v_name, v.email AS v_email, v.phone AS v_phone,
+                GREATEST(s.last_at, COALESCE(cm.last_msg_at, s.last_at)) AS last_at,
+                cm.last_content, COALESCE(cm.last_role, 'user') AS last_role,
                 a.assigned_to_key, a.assigned_to_label,
                 pr.last_seen_at,
-                (pr.last_seen_at > NOW() - INTERVAL '30 seconds') AS online
+                (pr.last_seen_at > NOW() - INTERVAL '30 seconds') AS online,
+                (tk.session_id IS NOT NULL) AS taken_over
             FROM (
+                SELECT session_id, MAX(last_at) AS last_at FROM (
+                    SELECT session_id, MAX(created_at) AS last_at
+                      FROM chat_messages
+                     WHERE tenant_id = %s AND created_at > NOW() - INTERVAL '90 days'
+                       AND session_id !~ '^(wa|playground|test|qa|sanity|sem)-'
+                     GROUP BY session_id
+                    UNION ALL
+                    -- 'wa-meta-…' hand-overs are WhatsApp chats (shown in the WhatsApp tab)
+                    SELECT session_id, MAX(created_at)
+                      FROM handoff_requests
+                     WHERE tenant_id = %s AND session_id NOT LIKE 'wa-meta-%%'
+                     GROUP BY session_id
+                ) u GROUP BY session_id
+            ) s
+            LEFT JOIN (
                 SELECT
                     session_id,
-                    MAX(created_at) AS last_handoff_at,
                     (ARRAY_AGG(visitor_name  ORDER BY created_at DESC) FILTER (WHERE visitor_name  IS NOT NULL))[1] AS visitor_name,
                     (ARRAY_AGG(visitor_email ORDER BY created_at DESC) FILTER (WHERE visitor_email IS NOT NULL))[1] AS visitor_email,
                     (ARRAY_AGG(whatsapp_number ORDER BY created_at DESC) FILTER (WHERE whatsapp_number IS NOT NULL))[1] AS whatsapp_number,
                     (ARRAY_AGG(visitor_message ORDER BY created_at DESC))[1] AS last_visitor_message,
                     CASE WHEN BOOL_OR(status = 'pending') THEN 'pending' ELSE 'handled' END AS status
                 FROM handoff_requests
-                -- 'wa-meta-<phone_number_id>-<customer_phone>' session_ids are
-                -- WhatsApp-originated handoffs (same underlying AI handoff
-                -- pipeline, reused by the gateway — see message_normalizer.py)
-                -- and already show in the WhatsApp tab via wa_handoff_state;
-                -- excluded here so a WhatsApp conversation never gets listed
-                -- twice under two different channels.
                 WHERE tenant_id = %s AND session_id NOT LIKE 'wa-meta-%%'
                 GROUP BY session_id
-            ) sub
+            ) h ON h.session_id = s.session_id
+            LEFT JOIN chat_visitors v ON v.tenant_id = %s AND v.session_id = s.session_id
             LEFT JOIN LATERAL (
                 SELECT content AS last_content, role AS last_role, created_at AS last_msg_at
                 FROM chat_messages
-                WHERE tenant_id = %s AND session_id = sub.session_id
+                WHERE tenant_id = %s AND session_id = s.session_id
                 ORDER BY created_at DESC LIMIT 1
             ) cm ON true
             LEFT JOIN wa_conversation_assignments a
-                   ON a.tenant_id = %s AND a.customer_phone = 'web:' || sub.session_id
+                   ON a.tenant_id = %s AND a.customer_phone = 'web:' || s.session_id
             LEFT JOIN web_chat_presence pr
-                   ON pr.tenant_id = %s AND pr.session_id = sub.session_id
+                   ON pr.tenant_id = %s AND pr.session_id = s.session_id
+            LEFT JOIN web_chat_takeover tk
+                   ON tk.tenant_id = %s AND tk.session_id = s.session_id
             ORDER BY last_at DESC
-        """, (tenant_id, tenant_id, tenant_id, tenant_id))
+            LIMIT 500
+        """, (tenant_id,) * 8)
         rows = cur.fetchall() or []
         cur.close(); conn.close()
+        out = []
         for r in rows:
-            r["last_content"] = data_crypto.dec(r.get("last_content"))
-            for f in ("visitor_name", "visitor_email", "whatsapp_number"):   # encrypted at rest (10 Nov 2026)
-                r[f] = data_crypto.dec(r.get(f))
+            for f in ("visitor_name", "visitor_email", "whatsapp_number", "v_name", "v_email", "v_phone"):
+                r[f] = data_crypto.dec(r.get(f))   # encrypted at rest (10 Nov 2026)
+            # Who the buyer is: what they gave at hand-over, else what PhiXtra
+            # knows from the chat (logged-in customer details).
+            r["visitor_name"] = r.get("visitor_name") or r.get("v_name")
+            r["visitor_email"] = r.get("visitor_email") or r.get("v_email")
+            r["whatsapp_number"] = r.get("whatsapp_number") or r.get("v_phone")
+            last = data_crypto.dec(r.get("last_content"))
+            if last is None:
+                last = data_crypto.dec(r.get("last_visitor_message"))
+            if last and "<<<PHIXTRA_" in last:
+                last = _re.sub(r"\s*<<<PHIXTRA_[A-Z]+(:.*?)?>>>", "", last, flags=_re.S).strip() or "(products shown)"
+            r["last_content"] = last if last else "Messages deleted"
+            r["status"] = r.get("h_status") or "ai"
             r["needs_reply"] = (r["status"] == "pending")
+            r["chat_state"] = ("needs_team" if r["needs_reply"]
+                               else "team" if (r.get("taken_over") or r.get("assigned_to_key")) else "ai")
             r["online"] = bool(r.get("online"))
             r["presence_words"] = _webchat_presence_words(r["online"], r.get("last_seen_at"))
-        return rows
+            out.append(r)
+        # "Needs your team" first, then newest first (already sorted).
+        out.sort(key=lambda r: 0 if r["chat_state"] == "needs_team" else 1)
+        return out
     except Exception as e:
         print("⚠️ _get_webchat_conversations error:", e)
         return []
@@ -36057,15 +36094,80 @@ def _get_webchat_messages(tenant_id: int, key: str, limit: int = 200) -> list:
         rows = cur.fetchall() or []
         cur.close(); conn.close()
         # The AI's hidden product tag (turned into product cards in the
-        # chat box) is kept in chat_messages — never show it in the Inbox.
+        # chat box) is kept in chat_messages — never show the tag itself.
+        # 13 Nov 2026 (user): show the team the same product cards the buyer
+        # saw, rebuilt from the titles in the tag.
+        all_titles = []
         for r in rows:
             r["content"] = data_crypto.dec(r.get("content"))
+            r["products"] = []
             if "<<<PHIXTRA_PRODUCTS" in (r.get("content") or ""):
+                m = _re.search(r"<<<PHIXTRA_PRODUCTS:(\[.*?\])>>>", r["content"], flags=_re.S)
+                if m:
+                    try:
+                        r["_titles"] = [str(t) for t in _json.loads(m.group(1)) if t][:6]
+                        all_titles += r["_titles"]
+                    except Exception:
+                        pass
                 r["content"] = _re.sub(r"\s*<<<PHIXTRA_PRODUCTS:.*?>>>", "", r["content"], flags=_re.S).strip()
+        if all_titles:
+            cards = _webchat_product_cards(tenant_id, all_titles)
+            for r in rows:
+                r["products"] = [cards[t.strip().lower()] for t in r.pop("_titles", [])
+                                 if t.strip().lower() in cards]
         return rows
     except Exception as e:
         print("⚠️ _get_webchat_messages error:", e)
         return []
+
+
+def _webchat_product_cards(tenant_id: int, titles: list) -> dict:
+    """{lower title: card} for product titles the AI Agent showed in a website
+    chat (13 Nov 2026). Matched to the business's products like the chat box
+    does: exact title first, then the same words ignoring punctuation."""
+    want = {t.strip().lower() for t in titles if t and t.strip()}
+    if not want:
+        return {}
+    def _norm(x):
+        return _re.sub(r" +", " ", _re.sub(r"[^a-z0-9 ]", "", (x or "").lower())).strip()
+    try:
+        conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""SELECT title, price_min, price_max, in_stock, url, image_url, currency
+                         FROM documents
+                        WHERE tenant_id = %s AND type = 'product' AND lower(title) = ANY(%s)""",
+                    (int(tenant_id), list(want)))
+        found = {(d["title"] or "").strip().lower(): d for d in cur.fetchall()}
+        for t in [t for t in want if t not in found]:
+            cur.execute("""SELECT title, price_min, price_max, in_stock, url, image_url, currency
+                             FROM documents WHERE tenant_id = %s AND type = 'product' AND title ILIKE %s
+                            LIMIT 20""", (int(tenant_id), "%" + t[:60].replace("%", "") + "%"))
+            for d in cur.fetchall():
+                if _norm(t) in _norm(d["title"]) or _norm(d["title"]) in _norm(t):
+                    found[t] = d
+                    break
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _webchat_product_cards:", e)
+        return {}
+    def _money(v, ccy):
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            return ""
+        if v <= 0:
+            return ""
+        try:
+            pre = _selling_currency.currency_label((ccy or "USD").upper())["prefix"]
+        except Exception:
+            pre = ""
+        return f"{pre}{v:,.2f}"
+    out = {}
+    for t, d in found.items():
+        lo, hi = _money(d.get("price_min"), d.get("currency")), _money(d.get("price_max"), d.get("currency"))
+        price = f"{lo} – {hi}" if (lo and hi and lo != hi) else (lo or hi)
+        out[t] = {"name": d.get("title") or "", "price": price, "in_stock": d.get("in_stock") is not False,
+                  "url": d.get("url") or "", "image_url": d.get("image_url") or ""}
+    return out
 
 
 def _send_webchat_reply(tenant_id: int, key: str, text: str, actor: dict):
@@ -36175,7 +36277,8 @@ def inbox_api_webchat_poll():
         out.append({"direction": m["direction"], "content": m["content"] or "",
                     "time": m["created_at"].strftime("%H:%M") if m.get("created_at") else "",
                     "by": display_actor(m.get("sent_by_label")) or "",
-                    "is_ai": bool(m.get("is_ai"))})
+                    "is_ai": bool(m.get("is_ai")),
+                    "products": m.get("products") or []})
     return jsonify({"count": len(msgs), "new": out, "online": bool(conv.get("online")),
                     "presence": conv.get("presence_words") or "",
                     "visitor": conv.get("visitor_name") or "Visitor"})

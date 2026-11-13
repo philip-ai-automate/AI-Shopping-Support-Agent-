@@ -632,6 +632,18 @@ html, body { overflow: hidden; height: 100%; }
   /* Discounts in Chat Phase 2 (11 Nov 2026) */
   .dcx-chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;font-size:12.5px;font-weight:600}
   .dcx-active{background:#EFF4FF;color:#1d4ed8}.dcx-used{background:#ECFDF3;color:#067647}.dcx-expired{background:#F2F4F7;color:#3d4654}
+  /* 13 Nov 2026: product cards the AI Agent showed + website chat states */
+  .wc-prods{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-top:6px;max-width:440px;align-self:flex-end;width:100%}
+  .wc-prod{border:1px solid var(--line,#E4E7EC);border-radius:10px;background:#fff;padding:7px;display:flex;flex-direction:column;gap:2px;font-size:11.5px;line-height:1.35;color:inherit;text-decoration:none}
+  .wc-prod img{width:100%;height:64px;object-fit:cover;border-radius:6px;background:#F2F4F7}
+  .wc-prod b{font-size:12px}
+  .wc-prod .ok{color:#067647}.wc-prod .no{color:#B54708}
+  .wc-prods-h{font-size:11px;color:var(--muted,#667085);margin-top:6px;align-self:flex-end}
+  .wc-st{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;margin-bottom:2px}
+  .wc-st.needs_team{background:#FEE4E2;color:#B42318}.wc-st.ai{background:#E0EAFF;color:#2D3FB3}.wc-st.team{background:#DCFAE6;color:#067647}
+  .wc-filters{display:flex;gap:6px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line,#E4E7EC)}
+  .wc-f{font:inherit;font-size:11.5px;font-weight:600;border:1px solid var(--line,#E4E7EC);background:#fff;border-radius:999px;padding:4px 10px;cursor:pointer;color:var(--muted,#475467)}
+  .wc-f.on{background:#030C18;color:#fff;border-color:#030C18}
   .dcx-card{border:1px dashed #2563EB;background:#fff;border-radius:12px;padding:8px 12px;margin-top:6px;display:flex;flex-direction:column;gap:2px;max-width:320px;align-self:flex-end}
   .dcx-card small{font-size:12px;color:var(--muted);font-weight:600}
   .dcx-card b{font-family:"SF Mono",Menlo,monospace;font-size:17px;letter-spacing:.04em}
@@ -737,7 +749,7 @@ html, body { overflow: hidden; height: 100%; }
           <div class="rail-icon" style="background:#7C3AED">
             <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg>
           </div>
-          <div class="rail-body"><div class="rail-name">Web Chat</div><div class="rail-meta">AI chat widget handoffs</div></div>
+          <div class="rail-body"><div class="rail-name">Web Chat</div><div class="rail-meta">Every website chat</div></div>
           <div class="rail-count">{{ webchat_conversations|length }}</div>
         </button>
 
@@ -1324,17 +1336,29 @@ html, body { overflow: hidden; height: 100%; }
           </div>
           <div class="list-header-sub">{{ webchat_conversations|length }} conversation{{ 's' if webchat_conversations|length != 1 }}</div>
         </div>
+        {% if webchat_conversations %}
+        {% set _wn = webchat_conversations|selectattr('chat_state','equalto','needs_team')|list|length %}
+        {% set _wa = webchat_conversations|selectattr('chat_state','equalto','ai')|list|length %}
+        {% set _wt = webchat_conversations|selectattr('chat_state','equalto','team')|list|length %}
+        <div class="wc-filters" id="wcFilters">
+          <button type="button" class="wc-f on" data-f="all">All</button>
+          <button type="button" class="wc-f" data-f="needs_team">Needs your team · {{ _wn }}</button>
+          <button type="button" class="wc-f" data-f="ai">AI Agent handling · {{ _wa }}</button>
+          <button type="button" class="wc-f" data-f="team">Your team handling · {{ _wt }}</button>
+        </div>
+        {% endif %}
         {% if not webchat_conversations %}
         <div class="empty-pane">
           <div class="empty-icon" style="font-size:36px">💬</div>
           <div>No website chats yet</div>
-          <p style="font-size:12.5px;color:var(--muted);margin-top:6px">When a visitor messages you from the chat box on your website, or the AI hands a website chat to your team, it shows up here.</p>
+          <p style="font-size:12.5px;color:var(--muted);margin-top:6px">Every chat from the chat box on your website shows up here, whether the AI Agent is handling it or the buyer asked for your team.</p>
         </div>
         {% else %}
         {% for c in webchat_conversations %}
-        <a class="inbox-item {% if c.key == active_phone %}active{% endif %}" href="?phone={{ c.key }}">
+        <a class="inbox-item wc-item {% if c.key == active_phone %}active{% endif %}" href="?phone={{ c.key }}" data-state="{{ c.chat_state }}">
           <div class="conv-avatar" style="background:#7C3AED"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
           <div class="conv-body">
+            <span class="wc-st {{ c.chat_state }}">{{ {'needs_team':'Needs your team','ai':'AI Agent handling','team':'Your team handling'}[c.chat_state] }}</span>
             <div class="conv-row1">
               <span class="conv-name">{{ c.visitor_name or 'Website visitor' }}</span>
               <span class="conv-time">{% if c.last_at %}{{ c.last_at.strftime('%d %b %H:%M') }}{% endif %}</span>
@@ -1458,6 +1482,19 @@ html, body { overflow: hidden; height: 100%; }
                   {{ (msg.content or '(message)')|chat_fmt }}
                   <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
                 </div>
+                {% if msg.products %}
+                <div class="wc-prods-h">Products shown to the buyer</div>
+                <div class="wc-prods">
+                  {% for p in msg.products %}
+                  <a class="wc-prod" href="{{ p.url or '#' }}" target="_blank" rel="noopener">
+                    {% if p.image_url %}<img src="{{ p.image_url }}" alt="" loading="lazy">{% endif %}
+                    <b>{{ p.name }}</b>
+                    {% if p.price %}<span>{{ p.price }}</span>{% endif %}
+                    <span class="{{ 'ok' if p.in_stock else 'no' }}">{{ 'In stock' if p.in_stock else 'Out of stock' }}</span>
+                  </a>
+                  {% endfor %}
+                </div>
+                {% endif %}
                 {% if disc and disc.code and msg.content and disc.code.code in msg.content %}
                 <div class="dcx-card">
                   <small>Discount code given by {{ disc.code.given_by if disc.code.given_by == 'AI Agent' else (disc.code.given_by|who) }}</small>
@@ -2140,6 +2177,17 @@ RT.timer=setTimeout(rtTick,RT.FAST);
 /* Live Web Chat thread (2026-10-06): new visitor messages and replies appear
    without a refresh, and the "on the website" label stays current. */
 (function(){
+  (function(){ /* 13 Nov 2026: website chat filters */
+    var bar=document.getElementById('wcFilters'); if(!bar) return;
+    bar.addEventListener('click',function(e){
+      var b=e.target.closest('.wc-f'); if(!b) return;
+      var f=b.getAttribute('data-f');
+      bar.querySelectorAll('.wc-f').forEach(function(x){x.classList.toggle('on',x===b);});
+      document.querySelectorAll('.wc-item').forEach(function(it){
+        it.style.display=(f==='all'||it.getAttribute('data-state')===f)?'':'none';
+      });
+    });
+  })();
   var box=document.getElementById('webchatMessages'); if(!box) return;
   var key=box.getAttribute('data-key'), count=parseInt(box.getAttribute('data-count')||'0',10);
   var pres=document.getElementById('webPresence'), lbl=document.getElementById('webReplyLabel');
@@ -2153,7 +2201,13 @@ RT.timer=setTimeout(rtTick,RT.FAST);
       w.innerHTML='<div class="msg-avatar" style="background:#7C3AED">'+icon+'</div><div class="bubble-col"><div class="bubble-sender">'+esc(visitor)+'</div><div class="chat-bubble bubble-in">'+chatFmt(m.content)+' <span class="bubble-time">'+esc(m.time)+'</span></div></div>';
     } else {
       w.className='msg-wrap outbound';
-      w.innerHTML='<div class="bubble-col"><div class="bubble-sender">'+esc(m.is_ai?'AI Agent':(m.by||'You'))+'</div><div class="chat-bubble bubble-agent">'+chatFmt(m.content)+' <span class="bubble-time">'+esc(m.time)+'</span></div></div>';
+      var pc='';
+      if(m.products&&m.products.length){
+        pc='<div class="wc-prods-h">Products shown to the buyer</div><div class="wc-prods">'+m.products.map(function(p){
+          return '<a class="wc-prod" href="'+esc(p.url||'#')+'" target="_blank" rel="noopener">'+(p.image_url?'<img src="'+esc(p.image_url)+'" alt="" loading="lazy">':'')+'<b>'+esc(p.name)+'</b>'+(p.price?'<span>'+esc(p.price)+'</span>':'')+'<span class="'+(p.in_stock?'ok':'no')+'">'+(p.in_stock?'In stock':'Out of stock')+'</span></a>';
+        }).join('')+'</div>';
+      }
+      w.innerHTML='<div class="bubble-col"><div class="bubble-sender">'+esc(m.is_ai?'AI Agent':(m.by||'You'))+'</div><div class="chat-bubble bubble-agent">'+chatFmt(m.content)+' <span class="bubble-time">'+esc(m.time)+'</span></div>'+pc+'</div>';
     }
     box.appendChild(w);
   }

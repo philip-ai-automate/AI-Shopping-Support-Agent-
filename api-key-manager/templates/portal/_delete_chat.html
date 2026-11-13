@@ -9,22 +9,25 @@
 <dialog id="{{ _dcid }}" class="dc-dialog" aria-labelledby="{{ _dcid }}h">
   <form method="POST" action="{{ url_for('portal.inbox_delete_chat') }}">
     <input type="hidden" name="key" value="{{ dc_key }}">
+    {% if dc_kind == 'web' %}
+    {# 13 Nov 2026 (user): website Delete chat removes the messages only; the buyer is kept. #}
+    <h4 id="{{ _dcid }}h">Delete the messages in this chat with {{ dc_name }}?</h4>
+    <div>This deletes all {{ dc_count }} message{{ 's' if dc_count != 1 }} in this chat, for everyone in your team.</div>
+    <div>The buyer's name and contact details, leads, quotes and discount codes are kept. If they write again, the chat continues under their name.</div>
+    <div>You can't undo this.</div>
+    {% else %}
     <h4 id="{{ _dcid }}h">Delete this chat with {{ dc_name }}?</h4>
     <div>This deletes, for everyone in your team:</div>
     <ul>
       <li>all {{ dc_count }} message{{ 's' if dc_count != 1 }}</li>
-      {% if dc_kind == 'web' %}
-      <li>the name, email and phone the buyer gave in the chat</li>
-      <li>the hand-over request</li>
-      {% else %}
       <li>what the AI Agent remembers of this chat</li>
-      {% endif %}
     </ul>
-    <div>{% if dc_kind == 'web' %}Leads, quotes and discount codes are kept.{% else %}The contact, leads, quotes and call log are kept.{% endif %} You can't undo this.</div>
+    <div>The contact, leads, quotes and call log are kept. You can't undo this.</div>
+    {% endif %}
     <div class="dc-row">
       <button type="button" class="btn btn-sm" style="background:#F2F4F7;color:var(--ink);border:1px solid var(--line)"
               onclick="this.closest('dialog').close()">Cancel</button>
-      <button type="submit" class="btn btn-sm" style="background:#B42318;color:#fff;border:1px solid #B42318">Delete chat</button>
+      <button type="submit" class="btn btn-sm" style="background:#B42318;color:#fff;border:1px solid #B42318">{{ 'Delete messages' if dc_kind == 'web' else 'Delete chat' }}</button>
     </div>
   </form>
 </dialog>

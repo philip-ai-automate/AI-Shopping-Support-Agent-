@@ -87,8 +87,14 @@ def count(tenant_id: int, key: str) -> int:
         cur.close(); conn.close()
 
 
-def delete(tenant_id: int, key: str, by: str) -> dict:
-    """Delete one chat of this business. Returns {'ok', 'kind', 'messages', 'lead_id'}."""
+def delete(tenant_id: int, key: str, by: str, full: bool = False) -> dict:
+    """Delete one chat of this business. Returns {'ok', 'kind', 'messages', 'lead_id'}.
+
+    13 Nov 2026 (user): a staff Delete chat removes the MESSAGES only. Who the
+    buyer is (name, email, phone, company from the chat or the hand-over) and
+    their links to leads, quotes and discount codes are kept, so a buyer who
+    writes again is still recognised. full=True (formal privacy requests only,
+    e.g. Shopify customers/redact) also erases who the buyer is."""
     tid = int(tenant_id)
     k = kind_of(key)
     if not k:
@@ -104,11 +110,20 @@ def delete(tenant_id: int, key: str, by: str) -> dict:
             lead_id = _lead_for(cur, tid, "web", sid)
             cur.execute("DELETE FROM chat_messages WHERE tenant_id=%s AND session_id=%s", (tid, sid)); n += cur.rowcount
             cur.execute("DELETE FROM web_chat_replies WHERE tenant_id=%s AND session_id=%s", (tid, sid)); n += cur.rowcount
-            for t in ("chat_summaries", "chat_sessions", "chat_visitors", "handoff_requests", "web_chat_presence",
-                      "web_chat_takeover", "web_chat_alert_queue", "push_subscriptions", "abandonment_queue"):
+            gone_tables = ["chat_summaries", "chat_sessions", "web_chat_presence", "web_chat_takeover",
+                           "web_chat_alert_queue", "abandonment_queue"]
+            if full:
+                gone_tables += ["chat_visitors", "handoff_requests", "push_subscriptions"]
+            else:
+                # Keep the buyer's details; close the hand-over and drop the
+                # copy of their message held on it.
+                cur.execute("""UPDATE handoff_requests SET status='handled', handled_at=COALESCE(handled_at, NOW()),
+                                      visitor_message=NULL
+                                WHERE tenant_id=%s AND session_id=%s""", (tid, sid))
+            for t in gone_tables:
                 cur.execute(f"DELETE FROM {t} WHERE tenant_id=%s AND session_id=%s", (tid, sid))
             cur.execute("DELETE FROM wa_conversation_assignments WHERE tenant_id=%s AND customer_phone=%s", (tid, key))
-            what = "Website chat"
+            what = "Website chat" if full else "Website chat messages"
         else:
             phone = key
             sessions = _sessions_wa(cur, tid, phone)
