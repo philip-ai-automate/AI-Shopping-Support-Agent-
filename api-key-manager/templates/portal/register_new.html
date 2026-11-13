@@ -446,13 +446,22 @@
       <h2>What is your website built on?</h2>
       <p>This tells us how to add the chat box to your site.</p>
       <div class="rg-plats" style="margin-top:18px">
-        <button type="button" class="rg-plat" onclick="pickPlatform('wordpress')"><b>WordPress / WooCommerce</b><span>Install one free PhiXtra plugin</span></button>
+        <button type="button" class="rg-plat" onclick="showStep('wordpress')"><b>WordPress / WooCommerce</b><span>Install the free PhiXtra plugin from WordPress.org</span></button>
         <button type="button" class="rg-plat" onclick="showStep('shopify')"><b>Shopify</b><span>Install the PhiXtra app from the Shopify App Store</span></button>
         <button type="button" class="rg-plat" onclick="pickPlatform('wix')"><b>Wix</b><span>Paste one line of code</span></button>
         <button type="button" class="rg-plat" onclick="pickPlatform('squarespace')"><b>Squarespace</b><span>Paste one line of code</span></button>
         <button type="button" class="rg-plat" onclick="pickPlatform('other')"><b>Other or custom-built</b><span>Paste one line of code</span></button>
       </div>
       <button type="button" class="rg-back" onclick="showStep('type')" style="margin-top:12px">← Back</button>
+    </div>
+
+    {# WordPress (13 Nov 2026): WordPress sites sign up from inside the plugin (/connect), not this form. #}
+    <div id="stepWordpress" hidden>
+      <h2>WordPress sites sign up inside WordPress</h2>
+      <p>Install the free PhiXtra plugin from WordPress.org (in WordPress: Plugins › Add New, search "PhiXtra"). Then click <b>Connect to PhiXtra</b> inside the plugin. Your account is created in one short step, with your website and email already filled in, and on WooCommerce shops your products are sent with one click.</p>
+      <a class="rg-plat" href="https://wordpress.org/plugins/phixtra-ai-shopping-assistant/" target="_blank" rel="noopener" style="margin-top:18px;display:flex;align-items:center;justify-content:center;min-height:52px;padding:12px 16px;text-decoration:none;text-align:center;background:var(--navy);color:#fff;border-color:var(--navy)"><b style="color:#fff">Get the plugin on WordPress.org</b></a>
+      <p style="margin-top:12px">Already have a PhiXtra account? Install the plugin, click Connect to PhiXtra and log in.</p>
+      <button type="button" class="rg-back" onclick="showStep('platform')" style="margin-top:12px">← Back</button>
     </div>
 
     {# Shopify (13 Nov 2026): Shopify stores sign up inside Shopify via the app, not this form. #}
@@ -524,7 +533,8 @@ function render() {
   el('chosenBar').hidden = false;
   el('chosenLabel').textContent = TYPE ? (TYPE_NAMES[TYPE] || '') + (isWeb && PLAT ? ' · ' + PLAT_NAMES[PLAT] : '') : 'Nothing chosen yet';
   el('chosenBtn').textContent = TYPE ? 'Change' : 'Choose';
-  el('blkUsage').hidden = !(TYPE === 'whatsapp' || TYPE === 'both' || b2b);
+  // 13 Nov 2026 (user): B2B has no WhatsApp question; WhatsApp is connected later from the Dashboard.
+  el('blkUsage').hidden = !(TYPE === 'whatsapp' || TYPE === 'both');
   // B2B (13 Nov 2026): WhatsApp is the second channel, so the question is optional
   // and starts on "I'll add it later". Other types keep it required.
   el('usageReq').hidden = b2b; el('usageOpt').hidden = !b2b;
@@ -556,7 +566,8 @@ window.showStep = function(which) {
   el('stepType').hidden = which !== 'type';
   el('stepPlatform').hidden = which !== 'platform';
   el('stepShopify').hidden = which !== 'shopify';
-  el('stepLabel').textContent = which === 'platform' || which === 'shopify' ? 'Step 2 of 2' : 'Step 1';
+  el('stepWordpress').hidden = which !== 'wordpress';
+  el('stepLabel').textContent = which === 'type' ? 'Step 1' : 'Step 2 of 2';
 };
 window.openPicker = function() { showStep('type'); el('picker').hidden = false; };
 window.closePicker = function() { el('picker').hidden = true; if (!TYPE) render(); };

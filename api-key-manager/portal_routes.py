@@ -3812,16 +3812,14 @@ def wp_connect():
         return render_template("portal/wp_connect.html", b2b_sells_options=B2B_SELLS_OPTIONS, selling_currencies=_selling_currency.currencies(), domain=tenant_domain, email=email,
                                form_data=request.form)
 
-    phone_country = (request.form.get("phone_country") or "").strip().upper()
-    phone_number, _perr = _phone_from_form(phone_number, phone_country)
-    if _perr:
-        flash(_perr, "danger")
-        return render_template("portal/wp_connect.html", b2b_sells_options=B2B_SELLS_OPTIONS, selling_currencies=_selling_currency.currencies(), domain=tenant_domain, email=email,
-                               form_data=request.form)
-
-    # Selling currency from the country (user 2026-11-09), US dollars by default.
-    selling_currency = _selling_currency.default_for_country(
-        (request.form.get("business_based") or phone_country or "").strip().upper())
+    # 13 Nov 2026 (user): plugin sign-up asks the basics only. No WhatsApp
+    # number (connected later from the Dashboard); the country, for the selling
+    # currency, comes from the visitor's location (Cloudflare), US dollars by default.
+    phone_number = None
+    phone_country = (request.headers.get("CF-IPCountry") or "").strip().upper()[:2]
+    if phone_country not in _pn.SUPPORTED_REGIONS:
+        phone_country = ""
+    selling_currency = _selling_currency.default_for_country(phone_country)
 
     if not tenant_domain:
         flash("Store domain is required.", "danger")
@@ -3839,25 +3837,10 @@ def wp_connect():
         website_platform="wordpress", selling_currency=selling_currency,
     )
     if (request.form.get("sell_to") or "").strip().lower() == "b2b":
-        g = lambda k, n=200: (request.form.get(k) or "").strip()[:n]
-        company = dict(registered_name=g("business_name"), trading_name=g("trading_name"),
-                       reg_country=g("business_based", 2).upper(), reg_number=g("reg_number", 60),
-                       vat_number=g("vat_number", 60), address_line1=g("address_line1", 255),
-                       city=g("city", 120), postcode=g("postcode", 30), sells=g("sells", 60),
-                       job_title=g("job_title", 120))
-        problem = None
-        if not company["registered_name"]:
-            problem = "Registered company name is required."
-        elif company["reg_country"] not in _pn.SUPPORTED_REGIONS:
-            problem = "Please choose your country of registration."
-        elif not company["address_line1"] or not company["city"]:
-            problem = "Please enter your business address and town or city."
-        if problem:
-            flash(problem, "danger")
-            return render_template("portal/wp_connect.html", b2b_sells_options=B2B_SELLS_OPTIONS, selling_currencies=_selling_currency.currencies(),
-                                   domain=tenant_domain, email=email, form_data=request.form)
-        signup_args.update(business_country=company["reg_country"], signup_channel="both",
-                           business_name=company["registered_name"], company=company)
+        # B2B: company details are asked at the first quote (13 Nov 2026), so
+        # the profile starts empty apart from the country.
+        company = dict(reg_country=phone_country or None)
+        signup_args.update(signup_channel="both", company=company)
     return _hold_signup("web", "wp_connect", signup_args, password, lambda: render_template("portal/wp_connect.html", b2b_sells_options=B2B_SELLS_OPTIONS, selling_currencies=_selling_currency.currencies(), domain=tenant_domain, email=email,
                                          form_data=request.form))
 
