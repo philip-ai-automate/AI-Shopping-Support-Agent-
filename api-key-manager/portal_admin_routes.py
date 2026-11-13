@@ -94,7 +94,7 @@ ADMIN_MODULES = {
     # "school_plans" deactivated 2026-11-06 (user): no admin page any more.
     "accounts":                  {"label": "Accounts (Account Manager)", "actions": ["view", "modify"]},
     "wa_diagnostics":            {"label": "WA Diagnostics",        "actions": ["view"]},
-    "wa_templates":              {"label": "WhatsApp Templates",    "actions": ["view"]},
+    "wa_templates":              {"label": "WhatsApp Templates",    "actions": ["view", "delete"]},
     "recovery_queue":            {"label": "Recovery Queue",        "actions": ["view"]},
     "video_tutorials":           {"label": "Video Tutorials",       "actions": ["view", "modify"]},
     "social_media":               {"label": "Social Media Posts",    "actions": ["view", "create", "modify", "delete"]},
@@ -6109,8 +6109,29 @@ def wa_templates():
         return redirect(url_for("portal_admin.wa_templates"))
     view = WT.templates_for(acc, refresh)
     cats = {c: sum(1 for t in view["templates"] if t["category"] == c) for c in WT.CATEGORIES}
+    can_delete = acc["is_platform"] and (_is_owner() or bool(
+        session.get("portal_admin_permissions", {}).get("wa_templates", {}).get("delete")))
     return render_template("portal/admin_wa_templates.html", accs=accs, biz=biz, view=view, cats=cats,
-                           loaded=view["loaded_at"], groups=WT.GROUPS, categories=WT.CATEGORIES)
+                           loaded=view["loaded_at"], groups=WT.GROUPS, categories=WT.CATEGORIES,
+                           can_delete=can_delete, protected=WT.protected_names() if can_delete else {})
+
+
+@portal_admin_bp.route("/wa-templates/delete", methods=["POST"])
+def wa_templates_delete():
+    r = _require_admin("wa_templates", "delete")
+    if r: return r
+    import admin_wa_templates as WT
+    key, name, tpl_id = (request.form.get(k) or "" for k in ("biz", "name", "id"))
+    acc = next((a for a in WT.accounts() if f"t{a['tenant_id']}w{a['waba_id']}" == key), None)
+    if not acc:
+        flash("That WhatsApp account isn't connected any more.", "warning")
+        return redirect(url_for("portal_admin.wa_templates"))
+    ok, msg = WT.delete_template(acc, name, tpl_id)
+    insert_audit_log(admin_username=_admin_user(), action="wa_template_delete" if ok else "wa_template_delete_failed",
+                     tenant_id=acc["tenant_id"], details={"name": name, "meta_template_id": tpl_id,
+                                                          "waba_id": acc["waba_id"], "result": msg})
+    flash(msg, "success" if ok else "danger")
+    return redirect(url_for("portal_admin.wa_templates", biz=key))
 
 
 @portal_admin_bp.route("/merchant-signup-qr")
@@ -6701,40 +6722,54 @@ _INACTIVE_ORDER = {"warned": 0, "active": 1, "no_email": 2, "protected": 3}
 
 @portal_admin_bp.route("/online")
 def whos_online():
-    """Who's Online — is anyone using the portal right now (safe to restart?)."""
+    """Accounts › Who's online (rebuilt 13 Nov 2026) — is anyone using PhiXtra
+    right now (safe to restart?) and who was on each day."""
     r = _require_admin("customers", "view")
     if r: return r
     import portal_presence as pp
-    from zoneinfo import ZoneInfo
-    import datetime as _dt
+    import admin_online as AO
     show_internal = request.args.get("internal") == "1"
-    tab = "daily" if request.args.get("tab") == "daily" else "now"
     rng = request.args.get("range", type=int)
     rng = rng if rng in (7, 14, 30) else 14
-    ctx = dict(tab=tab, show_internal=show_internal, app_label=pp.APP_LABEL,
-               active_min=pp.ACTIVE_MIN, idle_min=pp.IDLE_MIN, uk_tz=ZoneInfo(pp.CHART_TZ),
-               keep_days=pp.KEEP_DAYS, rng=rng)
-    if tab == "now":
-        hours, since = pp.hourly(days=rng, include_internal=show_internal)
-        ctx.update(people=pp.people(include_internal=show_internal), hours=hours, since=since,
-                   max_avg=max([h["avg"] for h in hours] + [1]))
-    else:
-        days, started = pp.daily(include_internal=show_internal)
-        ctx.update(days=days, started=started, day=None)
-        try:
-            day = _dt.date.fromisoformat(request.args.get("day") or "")
-        except ValueError:
-            day = None
-        if day and not (started and started <= day <= days[0]["day"]):
-            day = None   # before history started / in the future → back to the list
-        if day:
-            rows, per_hour = pp.day_detail(day, include_internal=show_internal)
-            known = [d["day"] for d in days]
-            ctx.update(day=day, day_rows=rows, per_hour=per_hour, max_hour=max(per_hour + [1]),
-                       day_info=next((d for d in days if d["day"] == day), None),
-                       prev_day=next((d for d in known if d < day), None),
-                       next_day=next((d for d in reversed(known) if d > day), None))
-    return render_template("portal/admin_online.html", **ctx)
+    people = pp.people(include_internal=show_internal)
+    for k in ("active", "idle", "today"):
+        for p in people[k]:
+            p["page"] = AO.page_name(p.get("path"))
+    hours, since = pp.hourly(days=rng, include_internal=show_internal)
+    days, started = pp.daily(include_internal=show_internal)
+    cust_days, _ = pp.daily(days=21)          # customer numbers always exclude PhiXtra/test
+    busiest = max(cust_days, key=lambda d: (d["people"], d["day"])) if cust_days else None
+    box = request.args.get("box")
+    if box not in ("active", "idle", "today"):
+        box = "active" if people["active"] else ("idle" if people["idle"] else ("today" if people["today"] else "active"))
+    return render_template("portal/admin_online.html", people=people, box=box, show_internal=show_internal,
+                           rng=rng, hours=hours, since=since, max_avg=max([h["avg"] for h in hours] + [0.1]),
+                           best=AO.best_window(hours) if since else None,
+                           days=days, chart_days=list(reversed(days[:21])), started=started,
+                           max_people=max([d["people"] for d in days[:21]] + [1]),
+                           on_today=cust_days[0]["people"] if cust_days else 0,
+                           last_cust=AO.last_customer(), busiest=busiest if busiest and busiest["people"] else None,
+                           app_label=pp.APP_LABEL, active_min=pp.ACTIVE_MIN, idle_min=pp.IDLE_MIN,
+                           uk_tz=AO.UK, keep_days=pp.KEEP_DAYS,
+                           view=("days" if request.args.get("view") == "days" else "now"),
+                           open_day=request.args.get("day") or "")
+
+
+@portal_admin_bp.route("/online/day")
+def whos_online_day():
+    """One day's detail for Who's online › Day by day (opened in place)."""
+    r = _require_admin("customers", "view")
+    if r: return jsonify({"ok": False}), 403
+    import admin_online as AO
+    import datetime as _dt
+    try:
+        day = _dt.date.fromisoformat(request.args.get("day") or "")
+    except ValueError:
+        return jsonify({"ok": False, "error": "Unknown day."}), 400
+    out = AO.day_json(day, request.args.get("internal") == "1")
+    resp = jsonify(dict(out, ok=True))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @portal_admin_bp.route("/online/count")
@@ -6958,28 +6993,31 @@ def incident_update(inc_id):
 
 @portal_admin_bp.route("/inactive-accounts")
 def inactive_accounts():
+    """Accounts › Inactive accounts (rebuilt 13 Nov 2026)."""
     r = _require_admin("customers", "view")
     if r: return r
     import inactivity_core as ic
+    import admin_inactive as AI
     from datetime import date, timedelta
-    accts = ic.accounts()
-    live = [a for a in accts if a["status"] != "deleted"]
-    live.sort(key=lambda a: (_INACTIVE_ORDER[a["status"]], a["next_on"] or date.max, -a["days_inactive"]))
-    deleted = sorted([a for a in accts if a["status"] == "deleted"], key=lambda a: a["deleted_at"], reverse=True)
-    counts = {k: sum(1 for a in live if a["status"] == k) for k in _INACTIVE_ORDER}
+    view = AI.build(ic.accounts())
 
     sample = {"first_name": "Ada", "business_name": "Ada's Fashion House", "days_inactive": 45,
               "deletion_on": date.today() + timedelta(days=ic.NOTICE_DAYS)}
     previews = []
-    for kind, when in (("warn1", "Day 45"), ("warn2", "7 days before"), ("warn3", "1 day before"), ("deleted", "Day 60")):
+    for kind, when in (("warn1", f"Day {ic.WARN_AFTER_DAYS}"), ("warn2", f"{ic.SECOND_WARNING_DAYS} days before deletion"),
+                       ("warn3", "1 day before deletion"), ("deleted", "Day 60, after deletion")):
         subject, html = ic.email_html(kind, sample)
         previews.append({"when": when, "subject": subject, "html": html})
 
-    return render_template("portal/admin_inactive_accounts.html", accounts=live, deleted=deleted,
-                           counts=counts, mode=ic.get_mode(), modes=ic.MODES, mode_labels=ic.MODE_LABELS,
-                           log=ic.recent_log(60), previews=previews,
-                           warn_after=ic.WARN_AFTER_DAYS, notice=ic.NOTICE_DAYS,
-                           tracking_start=ic.TRACKING_START.date())
+    log = ic.recent_log(2000)
+    emails = AI.email_stats(view, log)
+    for e, p in zip(emails, previews):
+        e.update(subject=p["subject"], html=p["html"])
+    mode = ic.get_mode()
+    return render_template("portal/admin_inactive_accounts.html", view=view, stages=AI.STAGES,
+                           mode=mode, mode_text=AI.MODE_TEXT, emails=emails, history=AI.history(log),
+                           can_modify=_require_admin("customers", "modify") is None, is_owner=_is_owner(),
+                           tracking_start=ic.TRACKING_START.date(), today=date.today())
 
 
 @portal_admin_bp.route("/inactive-accounts/mode", methods=["POST"])
@@ -6987,16 +7025,16 @@ def inactive_accounts_mode():
     r = _require_owner()
     if r: return r
     import inactivity_core as ic
+    back = url_for("portal_admin.inactive_accounts")
     mode = request.form.get("mode")
-    if mode not in ic.MODES:
-        flash("Pick Off, Test mode or On.", "danger")
-        return redirect(url_for("portal_admin.inactive_accounts"))
+    if mode not in ("off", "on"):   # "test" (Just tell me) removed 13 Nov 2026
+        flash("Choose Pause or Warn and delete.", "danger")
+        return redirect(back)
     ic.set_mode(mode, _admin_user())
     insert_audit_log(admin_username=_admin_user(), action="inactivity_mode", details={"mode": mode})
-    flash({"off": "Inactive accounts is OFF — nothing will be sent or deleted.",
-           "test": "Test mode — businesses get nothing; you get a daily email of what would happen.",
-           "on": "Inactive accounts is ON — warnings go out and accounts are deleted on their dates."}[mode], "success")
-    return redirect(url_for("portal_admin.inactive_accounts"))
+    flash({"off": "Saved: Paused. No warning emails go to businesses and nobody is deleted.",
+           "on": "Saved: Warn and delete. Warning emails go out on their dates and unused accounts are deleted on day 60."}[mode], "success")
+    return redirect(back)
 
 
 def _inactive_back(tenant_id):
@@ -7013,8 +7051,8 @@ def inactive_accounts_keep(tenant_id: int):
     ic.set_keep(tenant_id, keep, _admin_user())
     insert_audit_log(admin_username=_admin_user(), action="inactivity_keep" if keep else "inactivity_unkeep",
                      tenant_id=tenant_id)
-    flash("Kept — this account will never be deleted for inactivity." if keep
-          else "No longer kept — normal inactivity rules apply again.", "success")
+    flash("Saved: this business will never be deleted for not being used." if keep
+          else "Saved: normal rules apply again. It can be warned and deleted if it isn't used.", "success")
     return _inactive_back(tenant_id)
 
 
@@ -7024,7 +7062,7 @@ def inactive_accounts_delay(tenant_id: int):
     if r: return r
     import inactivity_core as ic
     ic.delay(tenant_id, _admin_user())
-    flash("Delayed by 30 days. Any warnings already sent start again later, with the new date.", "success")
+    flash("Given 30 more days. Every date moves 30 days later; any warnings already sent start again with the new date.", "success")
     return _inactive_back(tenant_id)
 
 

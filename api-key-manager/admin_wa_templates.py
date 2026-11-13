@@ -200,3 +200,60 @@ def summary(accs: list, refresh: bool = False) -> list:
     with ThreadPoolExecutor(max_workers=8) as ex:
         results = list(ex.map(lambda a: templates_for(a, refresh), accs))
     return results
+
+
+# ── Delete (13 Nov 2026) ─────────────────────────────────────────────────────
+# Only on PhiXtra's own WhatsApp account. Templates the system sends itself
+# are blocked: deleting one breaks that feature at once, and Meta won't let
+# the same name be used again for 30 days.
+
+def protected_names() -> dict:
+    """{template name: what PhiXtra uses it for}."""
+    import os
+    out = {os.getenv("WA_OTP_TEMPLATE", "phixtra_login_code"): "WhatsApp login codes"}
+    try:
+        import admin_accounts
+        for t in admin_accounts.AM_TEMPLATES:
+            out[t["name"]] = "Account Manager messages"
+    except Exception as e:
+        print("⚠️ admin_wa_templates AM names:", e)
+    pid = A.platform_tenant_id()
+    if pid is not None:
+        labels = {"staff_chat_alert": "staff alerts for waiting chats",
+                  "staff_chat_reminder": "staff reminders for waiting chats",
+                  "daily_report": "the daily report", "handoff_alert": "hand-over alerts"}
+        conn, cur = _db()
+        try:
+            cur.execute("SELECT template_type, template_name FROM wa_templates WHERE tenant_id=%s AND active", (pid,))
+            for r in cur.fetchall() or []:
+                out.setdefault(r["template_name"], labels.get(r["template_type"], r["template_type"].replace("_", " ")))
+        finally:
+            cur.close(); conn.close()
+    return out
+
+
+def delete_template(acc: dict, name: str, tpl_id: str) -> tuple:
+    """Delete one template (that exact language version) from Meta.
+    Returns (ok, message in plain words)."""
+    if not acc.get("is_platform"):
+        return False, "Templates can only be deleted on PhiXtra's own WhatsApp account."
+    if name in protected_names():
+        return False, f"{name} is used by PhiXtra ({protected_names()[name]}), so it can't be deleted here."
+    current = _fetch(acc, refresh=True)
+    if current["data"] is None:
+        return False, "Couldn't reach Meta to check the template. Try again in a minute."
+    if not any(t.get("id") == tpl_id and t.get("name") == name for t in current["data"]):
+        return False, f"{name} isn't on Meta any more. The list has been refreshed."
+    try:
+        r = requests.delete(f"{GRAPH}/{acc['waba_id']}/message_templates",
+                            params={"name": name, "hsm_id": tpl_id}, timeout=12,
+                            headers={"Authorization": f"Bearer {acc['token']}"}).json()
+    except Exception as e:
+        print("⚠️ admin_wa_templates delete:", e)
+        return False, "Couldn't reach Meta. Nothing was deleted. Try again in a minute."
+    with _lock:
+        _cache.pop(acc["waba_id"], None)
+    if r.get("success"):
+        return True, f"{name} was deleted from Meta."
+    e = r.get("error") or {}
+    return False, "Meta didn't delete it: " + (e.get("error_user_msg") or e.get("message") or "no reason given.")

@@ -259,7 +259,7 @@
     </a>
     {% set _am_due = am_due_count() if am_due_count is defined else 0 %}
     {% set _am_ep = request.endpoint or '' %}
-    {% set _am_group = _am_ep.startswith('portal_admin.am_') and not _am_ep.startswith('portal_admin.am_inbox') %}
+    {% set _am_group = (_am_ep.startswith('portal_admin.am_') and not _am_ep.startswith('portal_admin.am_inbox')) or _am_ep.startswith('portal_admin.inactive_accounts') or _am_ep.startswith('portal_admin.whos_online') %}
     <div class="asb-group-toggle {% if _am_group %}open{% endif %}" onclick="asbGroupToggle(this)">
       <span class="asb-gtitle"><span class="asb-icon">🤝</span> Accounts
         {% if _am_due %}<span style="background:#F04438;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px" title="Follow-ups due">{{ _am_due }}</span>{% endif %}</span>
@@ -269,18 +269,14 @@
       <a href="{{ url_for('portal_admin.am_dashboard') }}"
          class="{% if _am_ep == 'portal_admin.am_dashboard' %}active{% endif %}">Dashboard</a>
       <a href="{{ url_for('portal_admin.am_accounts') }}"
-         class="{% if _am_group and _am_ep not in ('portal_admin.am_settings', 'portal_admin.am_dashboard') %}active{% endif %}">All accounts</a>
+         class="{% if _am_group and _am_ep not in ('portal_admin.am_settings', 'portal_admin.am_dashboard') and not _am_ep.startswith('portal_admin.inactive_accounts') and not _am_ep.startswith('portal_admin.whos_online') %}active{% endif %}">All accounts</a>
+      <a href="{{ url_for('portal_admin.inactive_accounts') }}"
+         class="{% if _am_ep.startswith('portal_admin.inactive_accounts') %}active{% endif %}">Inactive accounts</a>
+      <a href="{{ url_for('portal_admin.whos_online') }}"
+         class="{% if _am_ep.startswith('portal_admin.whos_online') %}active{% endif %}">Who's online</a>
       <a href="{{ url_for('portal_admin.am_settings') }}"
          class="{% if _am_ep == 'portal_admin.am_settings' %}active{% endif %}">Settings</a>
     </div>
-    <a class="asb-link {% if 'inactive_accounts' in (request.endpoint or '') %}active{% endif %}"
-       href="{{ url_for('portal_admin.inactive_accounts') }}">
-      <span class="asb-icon">⏳</span> Inactive Accounts
-    </a>
-    <a class="asb-link {% if 'whos_online' in (request.endpoint or '') %}active{% endif %}"
-       href="{{ url_for('portal_admin.whos_online') }}">
-      <span class="asb-icon">🟢</span> Who's Online
-    </a>
     {% if is_staging %}
     <a class="asb-link {% if request.endpoint == 'portal_admin.staging_mail' %}active{% endif %}"
        href="{{ url_for('portal_admin.staging_mail') }}">

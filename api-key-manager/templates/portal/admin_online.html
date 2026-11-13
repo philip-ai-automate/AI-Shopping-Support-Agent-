@@ -1,225 +1,301 @@
 {% extends "portal/admin_base.html" %}
-{% block title %}Who's Online — PhiXtra Admin{% endblock %}
+{% block title %}Who's online — PhiXtra Admin{% endblock %}
 {% block content %}
+{# Rebuilt 13 Nov 2026 to the approved mock-up: verdict + customers box, Now / Day by day views,
+   one people list with 3 boxes, best time to restart, day rows that open in place, auto-update. #}
 <style>
-  .wo-verdict{border-radius:16px;padding:16px 18px;margin-bottom:16px;font-size:15px;font-weight:750;
-              display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .wo-verdict.safe{background:rgba(18,183,106,.08);border:1.5px solid rgba(18,183,106,.4);color:#05603A}
-  .wo-verdict.busy{background:rgba(247,144,9,.08);border:1.5px solid rgba(247,144,9,.45);color:#93370D}
-  .wo-verdict small{font-weight:500;font-size:12.5px;opacity:.85}
-  .wo-sec{margin-bottom:18px}
-  .wo-h{font-size:13px;font-weight:800;margin:0 0 8px;display:flex;align-items:center;gap:7px}
-  .wo-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
-  .wo-empty{font-size:12.5px;color:var(--muted);padding:12px 14px;background:#fff;border:1px dashed var(--line);border-radius:12px}
-  .wo-path{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--muted);word-break:break-all}
-  .wo-tag{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;background:rgba(3,12,24,.06);white-space:nowrap}
-  .wo-tag.int{background:rgba(99,102,241,.1);color:#4338CA}
-  .wo-chart{display:grid;grid-template-columns:repeat(24,1fr);gap:3px;align-items:end;height:130px;
-            background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 12px 0}
-  .wo-bar{background:var(--ink);border-radius:4px 4px 0 0;min-height:2px;opacity:.8}
-  .wo-bar.quiet{background:var(--good);opacity:.7}
-  .wo-hrs{display:grid;grid-template-columns:repeat(24,1fr);gap:3px;padding:4px 12px 0;font-size:10px;color:var(--muted);text-align:center}
-  .wo-tabs{display:flex;gap:6px;margin:0 0 16px}
-  .wo-tab{padding:7px 16px;border-radius:999px;font-size:13px;font-weight:750;text-decoration:none;
-          color:var(--ink);background:#fff;border:1px solid var(--line)}
-  .wo-tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
-  .wo-rng{display:inline-flex;gap:4px;margin-left:8px}
-  .wo-rng a{font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:999px;text-decoration:none;
-            color:var(--muted);border:1px solid var(--line);background:#fff}
-  .wo-rng a.on{color:#fff;background:var(--ink);border-color:var(--ink)}
-  .wo-days tr.click{cursor:pointer}
-  .wo-days tr.click:hover td{background:rgba(3,12,24,.03)}
-  .wo-nav{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
-  .wo-stat{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
-  .wo-stat div{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:12px;color:var(--muted)}
-  .wo-stat b{display:block;font-size:17px;color:var(--ink)}
-  .wo-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+  .wo-screen{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .wo-crumb{font-size:12px;color:var(--muted)} .wo-crumb a{color:var(--muted)}
+  .wo-eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .wo-sub{font-size:12px;color:var(--muted)}
+  .wo-headr{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+  .wo-tog{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;user-select:none;position:relative}
+  .wo-tog input{position:absolute;opacity:0;width:0;height:0}
+  .wo-tog .t{width:36px;height:20px;border-radius:999px;background:var(--line);position:relative;transition:.15s;flex-shrink:0}
+  .wo-tog .t::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:.15s}
+  .wo-tog input:checked + .t{background:#4338CA}
+  .wo-tog input:checked + .t::after{transform:translateX(16px)}
+  .wo-tog input:focus-visible + .t{outline:2px solid var(--ink);outline-offset:2px}
+  .wo-upd{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+  .wo-upd i{width:7px;height:7px;border-radius:50%;background:var(--good)}
+
+  .wo-status{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);border-bottom:1px solid var(--line)}
+  @media(max-width:860px){.wo-status{grid-template-columns:1fr}}
+  .wo-verdict{padding:18px 20px;display:flex;gap:14px;align-items:flex-start}
+  .wo-verdict .ic{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:20px;flex-shrink:0;font-weight:800}
+  .wo-verdict.safe .ic{background:rgba(18,183,106,.1);color:#067647}
+  .wo-verdict.busy .ic{background:rgba(247,144,9,.12);color:#B54708}
+  .wo-verdict .big{font-size:18px;font-weight:700;text-wrap:balance;margin:0 0 4px}
+  .wo-verdict.safe .big{color:#067647} .wo-verdict.busy .big{color:#B54708}
+  .wo-cust{padding:18px 20px;border-left:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+  @media(max-width:860px){.wo-cust{border-left:0;border-top:1px solid var(--line)}}
+  .wo-kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px;font-variant-numeric:tabular-nums;margin:0}
+  .wo-kv dt{color:var(--muted)} .wo-kv dd{margin:0;font-weight:650}
+
+  .vbar{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--line);overflow-x:auto}
+  .vb{font:inherit;font-size:14px;font-weight:650;background:none;border:0;border-bottom:2.5px solid transparent;color:var(--muted);padding:12px 10px 10px;cursor:pointer;white-space:nowrap}
+  .vb:hover{color:var(--ink)}
+  .vb[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink)}
+
+  .wo-boxes{display:flex;flex-wrap:wrap;gap:8px;padding:14px 20px;border-bottom:1px solid var(--line);background:#fafbfc}
+  .st{font:inherit;text-align:left;display:flex;flex-direction:column;gap:1px;min-width:150px;flex:1;border:1.5px solid var(--line);background:#fff;color:var(--ink);border-radius:10px;padding:8px 12px;cursor:pointer}
+  .st:hover{border-color:var(--muted)}
+  .st[aria-selected="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+  .st-n{font-size:22px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:8px}
+  .st-n .d{width:9px;height:9px;border-radius:50%}
+  .st-l{font-size:13px;font-weight:700} .st-s{font-size:11.5px;color:var(--muted)}
+  .st.zero .st-n,.st.zero .st-l{color:var(--muted)}
+
+  .wo-tbl{overflow-x:auto}
+  .wo-tbl table{border-collapse:collapse;width:100%;min-width:760px;font-variant-numeric:tabular-nums}
+  .wo-tbl th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:10px 14px;border-bottom:1px solid var(--line)}
+  .wo-tbl td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:middle;font-size:13px}
+  .wo-pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap}
+  .wo-pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+  .wo-pill.active{background:rgba(18,183,106,.1);color:#067647} .wo-pill.idle{background:rgba(247,144,9,.12);color:#B54708} .wo-pill.today{background:rgba(3,12,24,.06);color:var(--muted)}
+  .wo-chip{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;background:rgba(3,12,24,.06);color:var(--muted);white-space:nowrap}
+  .wo-chip.int{background:rgba(99,102,241,.1);color:#4338CA}
+  .wo-path{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--muted);word-break:break-all}
+  .wo-empty{padding:26px 20px;text-align:center;color:var(--muted)}
+  .wo-list[hidden],.wo-pane[hidden]{display:none}
+
+  .wo-sec{padding:18px 20px;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line)}
+  .wo-sec-h{display:flex;flex-wrap:wrap;gap:8px 14px;justify-content:space-between;align-items:baseline}
+  .wo-sec-h h3{font-size:14px;margin:0}
+  .chips{display:inline-flex;gap:4px}
+  .chipb{font-size:12px;font-weight:650;border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:999px;padding:3px 10px;text-decoration:none}
+  .chipb:hover{text-decoration:none;color:var(--ink)}
+  .chipb.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .wo-best{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;background:rgba(18,183,106,.08);color:#067647;border-radius:10px;padding:10px 12px;font-size:13px}
+  .wo-chart{display:grid;grid-template-columns:repeat(24,1fr);gap:3px;align-items:end;height:120px;border-bottom:1px solid var(--line);
+    background:repeating-linear-gradient(to top,transparent 0 29px,rgba(3,12,24,.05) 29px 30px)}
+  .wo-bar{background:var(--ink);opacity:.82;border-radius:4px 4px 0 0;min-height:3px}
+  .wo-bar.q{background:var(--good);opacity:.55}
+  .wo-bar.win{outline:2px solid var(--good);outline-offset:1px}
+  .wo-hrs{display:grid;grid-template-columns:repeat(24,1fr);gap:3px;font-size:10.5px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums}
+
+  .wo-dchart{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;align-items:end;height:110px;border-bottom:1px solid var(--line);
+    background:repeating-linear-gradient(to top,transparent 0 26px,rgba(3,12,24,.05) 26px 27px)}
+  .wo-dbar{font:inherit;border:0;padding:0;cursor:pointer;background:var(--ink);opacity:.8;border-radius:4px 4px 0 0;min-height:3px}
+  .wo-dbar.z{background:var(--line);opacity:1}
+  .wo-dbar[aria-pressed="true"]{background:#1D4ED8;opacity:1}
+  .wo-dlbl{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;font-size:10px;color:var(--muted);text-align:center}
+  .dayrow{cursor:pointer} .dayrow:hover td,.dayrow[aria-expanded="true"] td{background:rgba(3,12,24,.03)}
+  .det td{background:rgba(3,12,24,.03);padding:0!important}
+  .det-in{padding:14px 18px;display:flex;flex-direction:column;gap:12px}
+  .strip{display:grid;grid-template-columns:repeat(24,1fr);gap:2px;margin-top:6px}
+  .strip span{height:18px;border-radius:3px;background:rgba(18,183,106,.12)}
+  .strip span.on{background:var(--ink)}
+  .strip-l{display:grid;grid-template-columns:repeat(24,1fr);gap:2px;font-size:10px;color:var(--muted);text-align:center}
+  .minitbl{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .minitbl th,.minitbl td{padding:8px 12px;text-align:left;font-size:13px;border-bottom:1px solid var(--line)}
+  .minitbl th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .vb:focus-visible,.st:focus-visible,.chipb:focus-visible,.dayrow:focus-visible,.wo-dbar:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 </style>
 
-<div class="page-header wo-top">
+{% macro ago(s) -%}{% if s < 60 %}just now{% elif s < 3600 %}{{ s // 60 }} min ago{% else %}{{ s // 3600 }} h {{ (s % 3600) // 60 }} min ago{% endif %}{%- endmacro %}
+{% macro dur(m) -%}{% if m >= 60 %}{{ m // 60 }} h {{ m % 60 }} min{% else %}{{ m }} min{% endif %}{%- endmacro %}
+{% macro hm(dt) -%}{{ dt.astimezone(uk_tz).strftime('%H:%M') if dt else '—' }}{%- endmacro %}
+{% set n_act = people.active|length %}{% set n_idle = people.idle|length %}
+
+<div class="page-header" style="margin-bottom:18px;gap:12px;flex-wrap:wrap;align-items:flex-start">
   <div>
-    <h1 class="section-title">Who's Online</h1>
-    <p class="muted">Who is using the portal (incl. KeyLand + School) — check here before restarting the server.
-      Only real page opens and actions count; a tab left open goes idle. Times are UK time.</p>
+    <div class="wo-crumb"><a href="{{ url_for('portal_admin.am_dashboard') }}">Accounts</a> ›</div>
+    <div class="section-title">Who's online</div>
+    <p class="muted" style="max-width:70ch">Who is using PhiXtra right now and on each day, including KeyLand and School. Check here before restarting the server. Times are UK time.</p>
   </div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap">
-    {% set keep = dict(tab=(tab if tab == 'daily' else None), day=(day.isoformat() if tab == 'daily' and day else None), range=(rng if rng != 14 else None)) %}
-    <a href="{{ url_for('portal_admin.whos_online', internal=('1' if show_internal else None), **keep) }}" class="btn btn-sm">↻ Refresh</a>
-    {% if show_internal %}
-      <a href="{{ url_for('portal_admin.whos_online', **keep) }}" class="btn btn-sm">Hide PhiXtra / test / demo</a>
+  <div class="wo-headr">
+    <label class="wo-tog"><input type="checkbox" id="woInt" {% if show_internal %}checked{% endif %}><span class="t"></span>Include PhiXtra &amp; test accounts</label>
+    <span class="wo-upd"><i></i>Updates itself every minute · last <span id="woTime"></span></span>
+  </div>
+</div>
+
+<div class="wo-screen">
+  <div class="wo-status">
+    {% if n_act %}
+    <div class="wo-verdict busy"><span class="ic">!</span><div>
+      <p class="big">{{ n_act }} {{ 'person is' if n_act == 1 else 'people are' }} using PhiXtra now</p>
+      <p class="muted" style="font-size:12.5px;margin:0">A restart takes about 5 seconds. Anyone saving or sending at that moment may see an error, so wait if you can.</p></div></div>
     {% else %}
-      <a href="{{ url_for('portal_admin.whos_online', internal='1', **keep) }}" class="btn btn-sm">Show PhiXtra / test / demo</a>
+    <div class="wo-verdict safe"><span class="ic">✓</span><div>
+      <p class="big">Safe to restart. Nobody has used PhiXtra in the last {{ active_min }} minutes.</p>
+      <p class="muted" style="font-size:12.5px;margin:0">{% if n_idle %}{{ n_idle }} {{ 'has' if n_idle == 1 else 'have' }} a tab left open; they won't lose work unless they click during the restart.{% else %}Nobody has a tab left open either.{% endif %}
+        {% if people.hidden_internal %} {{ people.hidden_internal }} PhiXtra / test login{{ 's' if people.hidden_internal != 1 }} active (hidden).{% endif %}</p></div></div>
+    {% endif %}
+    <div class="wo-cust"><span class="wo-eyebrow">Customers</span>
+      <dl class="wo-kv">
+        <dt>On today</dt><dd>{{ on_today }}</dd>
+        <dt>Last customer on</dt><dd>{% if last_cust %}{{ last_cust.at.strftime('%a %-d %b, %H:%M') }}{% if last_cust.business %} <span class="wo-sub" style="font-weight:500">· {{ last_cust.business }}</span>{% endif %}{% else %}—{% endif %}</dd>
+        <dt>Busiest day, last 21</dt><dd>{% if busiest %}{{ busiest.day.strftime('%a %-d %b') }} · {{ busiest.people }} {{ 'person' if busiest.people == 1 else 'people' }}{% else %}—{% endif %}</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="vbar" role="tablist">
+    <button class="vb" role="tab" data-v="now" aria-selected="{{ 'true' if view == 'now' else 'false' }}">Now</button>
+    <button class="vb" role="tab" data-v="days" aria-selected="{{ 'true' if view == 'days' else 'false' }}">Day by day</button>
+  </div>
+
+  {# ── Now ── #}
+  <div class="wo-pane" data-pane="now" {% if view != 'now' %}hidden{% endif %}>
+    {% set boxes = [('active', 'Active now', 'Did something in the last ' ~ active_min ~ ' min', 'var(--good)'),
+                    ('idle', 'Tab left open', 'Last action ' ~ active_min ~ '–' ~ idle_min ~ ' min ago', 'var(--warn)'),
+                    ('today', 'Earlier today', 'Not in the last ' ~ idle_min ~ ' min', 'var(--line)')] %}
+    <div class="wo-boxes" role="tablist">
+      {% for k, l, s, c in boxes %}
+      <button class="st{% if not people[k] %} zero{% endif %}" role="tab" data-box="{{ k }}" aria-selected="{{ 'true' if box == k else 'false' }}">
+        <span class="st-n"><span class="d" style="background:{{ c }}"></span>{{ people[k]|length }}</span><span class="st-l">{{ l }}</span><span class="st-s">{{ s }}</span></button>
+      {% endfor %}
+    </div>
+    {% for k, l, s, c in boxes %}
+    <div class="wo-list" data-list="{{ k }}" {% if box != k %}hidden{% endif %}>
+      {% if people[k] %}
+      <div class="wo-tbl"><table>
+        <thead><tr><th>Person</th><th>Business</th><th>Where they are</th><th>Last action</th><th>First on today</th></tr></thead>
+        <tbody>
+        {% for r in people[k] %}
+          <tr>
+            <td><b>{{ r.person or r.actor_key }}</b>{% if r.is_team %} <span class="wo-chip">team</span>{% endif %}{% if r.internal %} <span class="wo-chip int">PhiXtra / test</span>{% endif %}
+                <div class="wo-sub">{{ r.email or '' }}</div></td>
+            <td>{{ r.business or '—' }}<div class="wo-sub">{{ app_label.get(r.app, r.app) }}{% if r.tenant_id %} · #{{ r.tenant_id }}{% endif %}</div></td>
+            <td>{{ r.page }}<div class="wo-path">{{ r.path }}</div></td>
+            <td><span class="wo-pill {{ k }}">{{ ago(r.secs_ago) }}</span></td>
+            <td>{{ hm(r.first_today_at) }}</td>
+          </tr>
+        {% endfor %}
+        </tbody></table></div>
+      {% else %}
+      <div class="wo-empty">{% if k == 'active' %}Nobody is using PhiXtra right now.{% elif k == 'idle' %}Nobody has a tab left open.{% else %}Nobody else used PhiXtra earlier today.{% endif %}
+        {% if not show_internal and last_cust %}<br><span style="font-size:12.5px">Last customer on: {{ last_cust.at.strftime('%a %-d %b, %H:%M') }}.</span>{% endif %}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    <div class="wo-sec">
+      <div class="wo-sec-h"><h3>Best time to restart</h3>
+        <div class="chips" role="group" aria-label="Period">
+          {% for n in (7, 14, 30) %}<a class="chipb {{ 'on' if n == rng }}" href="{{ url_for('portal_admin.whos_online', internal=('1' if show_internal else None), range=(n if n != 14 else None)) }}">{{ n }} days</a>{% endfor %}
+        </div></div>
+      {% if not since %}
+        <div class="wo-empty" style="border:1px dashed var(--line);border-radius:10px">Not enough history yet. The chart fills in over the next few days.</div>
+      {% else %}
+        {% if best %}{% set b_end = (best[0] + best[1]) % 24 %}
+        <div class="wo-best"><b>Quietest: {{ '%02d'|format(best[0]) }}:00 – {{ '%02d'|format(b_end) }}:00</b>
+          <span>Nobody{{ '' if show_internal else ' (no customer)' }} was on in {{ 'this hour' if best[1] == 1 else 'these ' ~ best[1] ~ ' hours' }} over the last {{ rng }} days.</span></div>
+        {% else %}
+        <div class="wo-best" style="background:rgba(3,12,24,.04);color:var(--muted)">No hour was completely quiet in the last {{ rng }} days. Pick the shortest bar.</div>
+        {% endif %}
+        <div class="wo-chart">
+          {% for h in hours %}
+            {% set inwin = best and ((h.hour - best[0]) % 24) < best[1] %}
+            <div class="wo-bar{{ ' q' if not h.avg }}{{ ' win' if inwin }}" style="height:{{ ([4, h.avg / max_avg * 100]|max)|round(0) if h.avg else 3 }}%"
+                 title="{{ '%02d'|format(h.hour) }}:00–{{ '%02d'|format(h.hour) }}:59 · average {{ h.avg }} · busiest {{ h.peak }}"></div>
+          {% endfor %}
+        </div>
+        <div class="wo-hrs">{% for h in hours %}<span>{{ h.hour if h.hour % 3 == 0 else '' }}</span>{% endfor %}</div>
+        <p class="wo-sub" style="margin:0">Bars show the average number of people on in each hour, last {{ rng }} days. Green = nobody on. Hover a bar for numbers.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Day by day ── #}
+  <div class="wo-pane" data-pane="days" {% if view != 'days' %}hidden{% endif %}>
+    {% if not started %}
+      <div class="wo-empty">Daily history has just started. The first day appears as soon as someone uses PhiXtra. Kept for {{ keep_days }} days.</div>
+    {% else %}
+    <div class="wo-sec" style="border-top:0">
+      <div class="wo-sec-h"><h3>People on each day</h3><span class="wo-sub">Last {{ chart_days|length }} days · click a bar to open that day · kept {{ keep_days }} days</span></div>
+      <div class="wo-dchart">
+        {% for d in chart_days %}
+        <button type="button" class="wo-dbar{{ ' z' if not d.people }}" data-day="{{ d.day.isoformat() }}" aria-pressed="false"
+                style="height:{{ ([5, d.people / max_people * 100]|max)|round(0) if d.people else 3 }}%"
+                title="{{ d.day.strftime('%a %-d %b') }} · {{ d.people }} {{ 'person' if d.people == 1 else 'people' }}" aria-label="{{ d.day.strftime('%a %-d %b') }}: {{ d.people }}"></button>
+        {% endfor %}
+      </div>
+      <div class="wo-dlbl">{% for d in chart_days %}<span>{{ d.day.day if (loop.index0 % 3 == 0 or d.is_today) else '' }}</span>{% endfor %}</div>
+    </div>
+    <div class="wo-tbl"><table>
+      <thead><tr><th>Day</th><th>People</th><th>On from – to</th><th>Busiest hour</th><th>Active time</th><th></th></tr></thead>
+      <tbody>
+      {% for d in days %}
+        <tr class="dayrow" tabindex="0" data-day="{{ d.day.isoformat() }}" aria-expanded="false">
+          <td><b>{{ d.day.strftime('%a %-d %b') }}</b>{% if d.is_today %} <span class="wo-chip">today so far</span>{% endif %}</td>
+          <td><b>{{ d.people }}</b></td>
+          <td>{% if d.first_at %}{{ hm(d.first_at) }} – {{ hm(d.last_at) }}{% else %}<span class="muted">nobody on</span>{% endif %}</td>
+          <td>{% if d.busiest %}{{ '%02d'|format(d.busiest[0]) }}:00{% else %}—{% endif %}</td>
+          <td>{{ dur(d.minutes) if d.minutes else '—' }}</td>
+          <td class="wo-sub" style="text-align:right" data-lbl>Open ▾</td>
+        </tr>
+      {% endfor %}
+      </tbody></table></div>
+    <p class="wo-sub" style="padding:10px 20px 16px;margin:0">Active time = minutes in which someone opened a page or did something. History started {{ started.strftime('%-d %b %Y') }}; kept {{ keep_days }} days.</p>
     {% endif %}
   </div>
 </div>
 
-{% set int_arg = '1' if show_internal else None %}
-<div class="wo-tabs">
-  <a class="wo-tab {{ 'on' if tab == 'now' }}" href="{{ url_for('portal_admin.whos_online', internal=int_arg) }}">Now</a>
-  <a class="wo-tab {{ 'on' if tab == 'daily' }}" href="{{ url_for('portal_admin.whos_online', tab='daily', internal=int_arg) }}">Daily</a>
-</div>
+<script>
+(function(){
+  var internal={{ 'true' if show_internal else 'false' }};
+  function setParams(ch){var u=new URL(location.href);Object.keys(ch).forEach(function(k){ch[k]==null?u.searchParams.delete(k):u.searchParams.set(k,ch[k])});history.replaceState(null,'',u);return u}
 
-{% if tab == 'now' %}
+  /* include PhiXtra & test */
+  document.getElementById('woInt').addEventListener('change',function(e){location.href=setParams({internal:e.target.checked?'1':null,box:null}).toString()});
 
-{% set n_act = people.active|length %}
-{% if n_act == 0 %}
-  <div class="wo-verdict safe">✅ Safe to restart — nobody active in the last {{ active_min }} minutes
-    {% if people.idle %}<small>({{ people.idle|length }} idle with a tab open — they won't lose work unless they click during the restart)</small>{% endif %}
-    {% if people.hidden_internal %}<small>· {{ people.hidden_internal }} PhiXtra/test/demo active (hidden)</small>{% endif %}
-  </div>
-{% else %}
-  <div class="wo-verdict busy">⚠ {{ n_act }} {{ 'person' if n_act == 1 else 'people' }} active now
-    <small>— a restart takes about 5 seconds; anyone saving or sending at that moment may see an error.</small>
-  </div>
-{% endif %}
+  /* views */
+  document.querySelectorAll('.vb').forEach(function(b){b.addEventListener('click',function(){
+    document.querySelectorAll('.vb').forEach(function(x){x.setAttribute('aria-selected',x===b)});
+    document.querySelectorAll('.wo-pane').forEach(function(p){p.hidden=p.dataset.pane!==b.dataset.v});
+    setParams({view:b.dataset.v==='days'?'days':null});
+  })});
 
-{% macro ptable(rows) %}
-  <div class="table-wrap" style="background:#fff">
-    <table>
-      <thead><tr><th>Person</th><th>Business</th><th>App</th><th>Page</th><th>Last action</th><th>First today</th></tr></thead>
-      <tbody>
-      {% for r in rows %}
-        <tr>
-          <td><b>{{ r.person or r.actor_key }}</b>{% if r.is_team %} <span class="wo-tag">team</span>{% endif %}
-              {% if r.internal %} <span class="wo-tag int">PhiXtra/test</span>{% endif %}
-              <div class="muted" style="font-size:11px">{{ r.email or '' }}</div></td>
-          <td>{{ r.business or '—' }}{% if r.tenant_id %} <span class="muted" style="font-size:11px">#{{ r.tenant_id }}</span>{% endif %}</td>
-          <td><span class="wo-tag">{{ app_label.get(r.app, r.app) }}</span></td>
-          <td class="wo-path">{{ r.path }}</td>
-          <td style="white-space:nowrap">
-            {% if r.secs_ago < 60 %}just now{% elif r.secs_ago < 3600 %}{{ r.secs_ago // 60 }} min ago{% else %}{{ r.secs_ago // 3600 }} h {{ (r.secs_ago % 3600) // 60 }} min ago{% endif %}
-          </td>
-          <td style="white-space:nowrap">{{ r.first_today_at.astimezone(uk_tz).strftime('%H:%M') if uk_tz else r.first_today_at.strftime('%H:%M') }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-{% endmacro %}
+  /* now boxes */
+  document.querySelectorAll('.st[data-box]').forEach(function(b){b.addEventListener('click',function(){
+    document.querySelectorAll('.st[data-box]').forEach(function(x){x.setAttribute('aria-selected',x===b)});
+    document.querySelectorAll('.wo-list').forEach(function(l){l.hidden=l.dataset.list!==b.dataset.box});
+    setParams({box:b.dataset.box});
+  })});
 
-<div class="wo-sec">
-  <h3 class="wo-h"><span class="wo-dot" style="background:var(--good)"></span> Active now <span class="muted" style="font-weight:600">(last {{ active_min }} min)</span></h3>
-  {% if people.active %}{{ ptable(people.active) }}{% else %}<div class="wo-empty">Nobody.</div>{% endif %}
-</div>
+  /* day by day: open in place */
+  var esc=function(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
+  var dur=function(m){return m>=60?Math.floor(m/60)+' h '+(m%60)+' min':m+' min'};
+  function closeDay(){
+    document.querySelectorAll('tr.det').forEach(function(t){t.remove()});
+    document.querySelectorAll('.dayrow').forEach(function(r){r.setAttribute('aria-expanded','false');r.querySelector('[data-lbl]').textContent='Open ▾'});
+    document.querySelectorAll('.wo-dbar').forEach(function(b){b.setAttribute('aria-pressed','false')});
+  }
+  function openDay(day){
+    var row=document.querySelector('.dayrow[data-day="'+day+'"]'); if(!row) return;
+    var was=row.getAttribute('aria-expanded')==='true'; closeDay();
+    if(was){setParams({day:null});return}
+    row.setAttribute('aria-expanded','true'); row.querySelector('[data-lbl]').textContent='Close ▴';
+    var bar=document.querySelector('.wo-dbar[data-day="'+day+'"]'); if(bar) bar.setAttribute('aria-pressed','true');
+    var tr=document.createElement('tr'); tr.className='det';
+    tr.innerHTML='<td colspan="6"><div class="det-in"><span class="wo-sub">Loading…</span></div></td>';
+    row.after(tr); setParams({day:day});
+    fetch('{{ url_for('portal_admin.whos_online_day') }}?day='+day+(internal?'&internal=1':''),{credentials:'same-origin'})
+      .then(function(r){return r.json()}).then(function(d){
+        var hrs='', lbl='';
+        for(var h=0;h<24;h++){var n=d.per_hour[h];hrs+='<span class="'+(n?'on':'')+'" title="'+String(h).padStart(2,'0')+':00 · '+n+' '+(n===1?'person':'people')+'"></span>';lbl+='<span>'+(h%3===0?h:'')+'</span>'}
+        var people=d.rows.length?'<table class="minitbl"><thead><tr><th>Person</th><th>Business</th><th>On from – to</th><th>Hours on</th><th>Active time</th></tr></thead><tbody>'+
+          d.rows.map(function(r){return '<tr><td><b>'+esc(r.person)+'</b>'+(r.team?' <span class="wo-chip">team</span>':'')+(r.internal?' <span class="wo-chip int">PhiXtra / test</span>':'')+'<div class="wo-sub">'+esc(r.email)+'</div></td><td>'+esc(r.business)+'<div class="wo-sub">'+esc(r.app)+'</div></td><td>'+r.first+' – '+r.last+'</td><td>'+esc(r.hours)+'</td><td>'+dur(r.minutes)+'</td></tr>'}).join('')+'</tbody></table>'
+          :'<p class="wo-sub" style="margin:0">Nobody used PhiXtra on this day.</p>';
+        tr.querySelector('.det-in').innerHTML='<div><span class="wo-eyebrow">Hour by hour</span><div class="strip">'+hrs+'</div><div class="strip-l">'+lbl+'</div></div>'+people;
+      }).catch(function(){tr.querySelector('.det-in').innerHTML='<span class="wo-sub">Couldn\'t load this day. Try again.</span>'});
+  }
+  document.querySelectorAll('.dayrow').forEach(function(r){
+    r.addEventListener('click',function(){openDay(r.dataset.day)});
+    r.addEventListener('keydown',function(e){if(e.key==='Enter')openDay(r.dataset.day)});
+  });
+  document.querySelectorAll('.wo-dbar').forEach(function(b){b.addEventListener('click',function(){
+    document.querySelectorAll('.vb').forEach(function(x){if(x.dataset.v==='days')x.click()});
+    openDay(b.dataset.day);
+    var row=document.querySelector('.dayrow[data-day="'+b.dataset.day+'"]'); if(row) row.scrollIntoView({block:'nearest',behavior:'smooth'});
+  })});
+  var want='{{ open_day|e }}'; if(want) openDay(want);
 
-<div class="wo-sec">
-  <h3 class="wo-h"><span class="wo-dot" style="background:var(--warn)"></span> Idle <span class="muted" style="font-weight:600">({{ active_min }}–{{ idle_min }} min — probably a tab left open)</span></h3>
-  {% if people.idle %}{{ ptable(people.idle) }}{% else %}<div class="wo-empty">Nobody.</div>{% endif %}
-</div>
-
-<div class="wo-sec">
-  <h3 class="wo-h"><span class="wo-dot" style="background:rgba(3,12,24,.25)"></span> Used the portal earlier today</h3>
-  {% if people.today %}{{ ptable(people.today) }}{% else %}<div class="wo-empty">Nobody else today.</div>{% endif %}
-</div>
-
-<div class="wo-sec">
-  <h3 class="wo-h">🕒 Quiet hours — average people active per hour, last {{ rng }} days (UK time)
-    <span class="wo-rng">{% for n in (7, 14, 30) %}<a class="{{ 'on' if n == rng }}" href="{{ url_for('portal_admin.whos_online', internal=int_arg, range=(n if n != 14 else None)) }}">{{ n }} days</a>{% endfor %}</span></h3>
-  {% if not since %}
-    <div class="wo-empty">Tracking started today — the chart fills in over the next few days.</div>
-  {% else %}
-    <div class="wo-chart">
-      {% for h in hours %}
-        <div class="wo-bar {% if h.avg == 0 %}quiet{% endif %}"
-             style="height:{{ (h.avg / max_avg * 100)|round(0) if h.avg else 2 }}%"
-             title="{{ '%02d'|format(h.hour) }}:00–{{ '%02d'|format(h.hour) }}:59 · average {{ h.avg }} · busiest {{ h.peak }}"></div>
-      {% endfor %}
-    </div>
-    <div class="wo-hrs">{% for h in hours %}<div>{{ h.hour if h.hour % 3 == 0 else '' }}</div>{% endfor %}</div>
-    <p class="muted" style="font-size:12px;margin-top:8px">Green = nobody used the portal in that hour. Hover a bar for numbers.
-      Tracking started {{ since.astimezone(uk_tz).strftime('%-d %b %Y %H:%M') if uk_tz else since.strftime('%-d %b %Y') }}.</p>
-  {% endif %}
-</div>
-
-{% else %}{# ── Daily ── #}
-
-{% macro hm(dt) %}{{ dt.astimezone(uk_tz).strftime('%H:%M') if dt else '—' }}{% endmacro %}
-{% macro dur(m) %}{% if m >= 60 %}{{ m // 60 }} h {{ m % 60 }} min{% else %}{{ m }} min{% endif %}{% endmacro %}
-
-{% if not started %}
-  <div class="wo-empty">Daily history has just started — the first day appears as soon as someone uses the portal. Kept for {{ keep_days }} days.</div>
-
-{% elif not day %}
-  <div class="wo-sec">
-    <h3 class="wo-h">📅 Day by day — last {{ keep_days }} days (UK time) <span class="muted" style="font-weight:600">· click a day to open it</span></h3>
-    <div class="table-wrap" style="background:#fff">
-      <table class="wo-days">
-        <thead><tr><th>Day</th><th>People</th><th>Busiest hour</th><th>First in / last out</th><th>Active time (all)</th><th>Quiet hours (nobody on)</th></tr></thead>
-        <tbody>
-        {% for d in days %}
-          {% set link = url_for('portal_admin.whos_online', tab='daily', day=d.day.isoformat(), internal=int_arg) %}
-          <tr class="click" onclick="location.href='{{ link }}'">
-            <td style="white-space:nowrap"><a href="{{ link }}"><b>{{ d.day.strftime('%a %-d %b') }}</b></a>{% if d.is_today %} <span class="wo-tag">today so far</span>{% endif %}</td>
-            <td><b>{{ d.people }}</b></td>
-            <td style="white-space:nowrap">{% if d.busiest %}{{ '%02d'|format(d.busiest[0]) }}:00–{{ '%02d'|format(d.busiest[0] + 1 if d.busiest[0] < 23 else 0) }}:00 <span class="muted">({{ d.busiest[1] }})</span>{% else %}—{% endif %}</td>
-            <td style="white-space:nowrap">{{ hm(d.first_at) }} / {{ hm(d.last_at) }}</td>
-            <td style="white-space:nowrap">{{ dur(d.minutes) if d.minutes else '—' }}</td>
-            <td style="color:var(--good);font-weight:650">{{ d.quiet or 'none' }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <p class="muted" style="font-size:12px;margin-top:8px">Active time = minutes in which someone opened a page or did something (reading one page for a while counts as 1 minute).
-      History started {{ started.strftime('%-d %b %Y') }}; kept {{ keep_days }} days.</p>
-  </div>
-
-{% else %}
-  <div class="wo-nav">
-    <a class="btn btn-sm" href="{{ url_for('portal_admin.whos_online', tab='daily', internal=int_arg) }}">← All days</a>
-    <h3 class="wo-h" style="margin:0;font-size:16px">{{ day.strftime('%A %-d %B %Y') }}{% if day_info and day_info.is_today %} <span class="wo-tag">today so far</span>{% endif %}</h3>
-    <div style="display:flex;gap:6px">
-      {% if prev_day %}<a class="btn btn-sm" href="{{ url_for('portal_admin.whos_online', tab='daily', day=prev_day.isoformat(), internal=int_arg) }}">‹ {{ prev_day.strftime('%a %-d') }}</a>{% endif %}
-      {% if next_day %}<a class="btn btn-sm" href="{{ url_for('portal_admin.whos_online', tab='daily', day=next_day.isoformat(), internal=int_arg) }}">{{ next_day.strftime('%a %-d') }} ›</a>{% endif %}
-    </div>
-  </div>
-
-  <div class="wo-stat">
-    <div><b>{{ day_rows|length }}</b>people</div>
-    <div><b>{% if day_info and day_info.busiest %}{{ '%02d'|format(day_info.busiest[0]) }}:00{% else %}—{% endif %}</b>busiest hour</div>
-    <div><b>{{ hm(day_info.first_at) if day_info else '—' }} / {{ hm(day_info.last_at) if day_info else '—' }}</b>first in / last out</div>
-    <div><b style="color:var(--good)">{{ (day_info.quiet if day_info else '') or 'none' }}</b>quiet hours</div>
-  </div>
-
-  <div class="wo-sec">
-    <h3 class="wo-h">🕒 People on, hour by hour (UK time)</h3>
-    <div class="wo-chart">
-      {% for n in per_hour %}
-        <div class="wo-bar {% if n == 0 %}quiet{% endif %}"
-             style="height:{{ (n / max_hour * 100)|round(0) if n else 2 }}%"
-             title="{{ '%02d'|format(loop.index0) }}:00–{{ '%02d'|format(loop.index0) }}:59 · {{ n }} {{ 'person' if n == 1 else 'people' }}"></div>
-      {% endfor %}
-    </div>
-    <div class="wo-hrs">{% for n in per_hour %}<div>{{ loop.index0 if loop.index0 % 3 == 0 else '' }}</div>{% endfor %}</div>
-    <p class="muted" style="font-size:12px;margin-top:8px">Green = nobody used the portal in that hour. Hover a bar for numbers.</p>
-  </div>
-
-  <div class="wo-sec">
-    <h3 class="wo-h">👥 Who used the portal</h3>
-    {% if day_rows %}
-    <div class="table-wrap" style="background:#fff">
-      <table>
-        <thead><tr><th>Person</th><th>Business</th><th>App</th><th>First seen</th><th>Last seen</th><th>Hours on</th><th>Active time</th></tr></thead>
-        <tbody>
-        {% for r in day_rows %}
-          <tr>
-            <td><b>{{ r.person or r.actor_key }}</b>{% if r.is_team %} <span class="wo-tag">team</span>{% endif %}
-                {% if r.internal %} <span class="wo-tag int">PhiXtra/test</span>{% endif %}
-                <div class="muted" style="font-size:11px">{{ r.email or '' }}</div></td>
-            <td>{{ r.business or '—' }}{% if r.tenant_id %} <span class="muted" style="font-size:11px">#{{ r.tenant_id }}</span>{% endif %}</td>
-            <td><span class="wo-tag">{{ app_label.get(r.app, r.app) }}</span></td>
-            <td style="white-space:nowrap">{{ hm(r.first_at) }}</td>
-            <td style="white-space:nowrap">{{ hm(r.last_at) }}</td>
-            <td style="white-space:nowrap">{{ r.hours or '—' }}</td>
-            <td style="white-space:nowrap">{{ dur(r.minutes) }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}<div class="wo-empty">Nobody used the portal on this day.</div>{% endif %}
-  </div>
-{% endif %}
-
-{% endif %}
+  /* updates itself every minute (only while the page is visible) */
+  var t=new Date(); document.getElementById('woTime').textContent=String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
+  setInterval(function(){ if(document.visibilityState==='visible') location.reload(); }, 60000);
+})();
+</script>
 {% endblock %}

@@ -2,7 +2,7 @@
 
   cd /root/phixtra-app/api-key-manager && ./venv/bin/python3 inactivity_jobs.py
 
-Mode is set on the admin Inactive Accounts page:
+Mode is set on Admin › Accounts › Inactive accounts (Pause / Warn and delete; old "test" mode no longer offered):
   off  — does nothing
   test — sends nothing to businesses; emails PhiXtra's admins what it WOULD do
   on   — sends the warnings, deletes accounts whose date has come, and emails
@@ -84,7 +84,7 @@ def _email_admins(mode, done):
             f"<th align=left style='padding:6px 8px'>Business</th><th align=left style='padding:6px 8px'>Email</th>"
             f"<th align=left style='padding:6px 8px'>Step</th><th align=left style='padding:6px 8px'>Detail</th></tr>"
             f"{rows}</table>"
-            f"<p>Keep or delay any account on the admin portal: Customers → Inactive Accounts.</p></div>")
+            f"<p>See every account and the emails sent in Admin: Accounts › Inactive accounts.</p></div>")
     subject = f"{'[TEST] ' if mode == 'test' else ''}Inactive accounts: {len(done)} today"
     for addr in to:
         send_email(addr, subject, html)

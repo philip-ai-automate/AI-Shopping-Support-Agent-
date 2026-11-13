@@ -46,6 +46,9 @@
 .wt-foot{padding:12px 18px;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
 .wt-p{display:flex;flex-direction:column;gap:12px}
 .wt-p[hidden],.wt-row[hidden]{display:none}
+.wt-locked{font-size:12px;color:var(--muted);background:rgba(3,12,24,.04);border-radius:9px;padding:8px 10px}
+.wt-confirm{display:flex;flex-direction:column;gap:8px;border:1px solid rgba(240,68,56,.35);background:rgba(240,68,56,.05);border-radius:10px;padding:12px;font-size:13px}
+.wt-confirm[hidden]{display:none}
 .wt-link{font-weight:650;color:#1D4ED8}
 </style>
 
@@ -150,6 +153,22 @@
           <dt>Number</dt><dd>{{ view.acc.phones|join(', ') }}</dd>
           <dt>Created by</dt><dd {% if t.by.startswith('Not recorded') %}class="muted"{% endif %}>{{ t.by }}</dd>
         </dl>
+        {% if can_delete %}
+          {% if t.name in protected %}
+          <div class="wt-locked">🔒 Used by PhiXtra for {{ protected[t.name] }}, so it can't be deleted here.</div>
+          {% else %}
+          <button type="button" class="btn btn-sm btn-danger wt-del-open" style="align-self:flex-start">Delete template</button>
+          <form class="wt-confirm" method="post" action="{{ url_for('portal_admin.wa_templates_delete') }}" hidden>
+            <strong>Delete {{ t.name }} from Meta?</strong>
+            <p>It's removed from PhiXtra's WhatsApp account straight away and can't be brought back. Meta won't let you make a new template with this name for 30 days.</p>
+            <input type="hidden" name="biz" value="{{ biz }}"><input type="hidden" name="name" value="{{ t.name }}"><input type="hidden" name="id" value="{{ t.id }}">
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button type="submit" class="btn btn-sm btn-primary wt-del-go" style="background:var(--bad);border-color:var(--bad)">Delete from Meta</button>
+              <button type="button" class="btn btn-sm wt-del-cancel">Cancel</button>
+            </div>
+          </form>
+          {% endif %}
+        {% endif %}
       </div>
       {% endfor %}
     </aside>
@@ -161,11 +180,19 @@
 
 <script>
 (function(){
+  document.querySelectorAll('.wt-p').forEach(function(p){
+    var open=p.querySelector('.wt-del-open'),f=p.querySelector('.wt-confirm');
+    if(!open) return;
+    open.addEventListener('click',function(){f.hidden=false;open.hidden=true});
+    p.querySelector('.wt-del-cancel').addEventListener('click',function(){f.hidden=true;open.hidden=false});
+    f.addEventListener('submit',function(){var b=f.querySelector('.wt-del-go');b.disabled=true;b.textContent='Deleting…'});
+  });
   var rows=[].slice.call(document.querySelectorAll('.wt-row'));
   if(!rows.length) return;
   function pick(r){
     rows.forEach(function(x){x.classList.toggle('sel',x===r)});
-    document.querySelectorAll('.wt-p').forEach(function(p){p.hidden=(p.dataset.i!==r.dataset.i)});
+    document.querySelectorAll('.wt-p').forEach(function(p){p.hidden=(p.dataset.i!==r.dataset.i);
+      var f=p.querySelector('.wt-confirm'),o=p.querySelector('.wt-del-open'); if(f){f.hidden=true;o.hidden=false}});
   }
   rows.forEach(function(r){
     r.addEventListener('click',function(){pick(r)});

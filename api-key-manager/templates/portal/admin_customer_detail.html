@@ -53,14 +53,14 @@
             {% if ia.status in ('active', 'warned', 'no_email') or ia.keep %}
             <div style="display:flex;gap:6px;margin-top:6px">
               <form method="POST" action="{{ url_for('portal_admin.inactive_accounts_keep', tenant_id=ia.tenant_id) }}"
-                    {% if not ia.keep %}onsubmit="return confirm('Keep this account? It will never be deleted for inactivity.')"{% endif %}>
+                    {% if not ia.keep %}onsubmit="return confirm('Never delete this account for not being used?')"{% endif %}>
                 <input type="hidden" name="keep" value="{{ '0' if ia.keep else '1' }}">
                 <input type="hidden" name="next" value="{{ request.path }}">
-                <button class="btn btn-sm">{{ 'Stop keeping' if ia.keep else 'Keep' }}</button></form>
+                <button class="btn btn-sm">{{ 'Allow deletion again' if ia.keep else 'Never delete' }}</button></form>
               {% if ia.status in ('active', 'warned') %}
               <form method="POST" action="{{ url_for('portal_admin.inactive_accounts_delay', tenant_id=ia.tenant_id) }}">
                 <input type="hidden" name="next" value="{{ request.path }}">
-                <button class="btn btn-sm">Delay 30 days</button></form>
+                <button class="btn btn-sm">Give 30 more days</button></form>
               {% endif %}
             </div>
             {% endif %}
