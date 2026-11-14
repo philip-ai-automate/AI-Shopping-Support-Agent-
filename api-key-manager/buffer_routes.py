@@ -4,7 +4,7 @@ same model as PressOne: a business that already uses Buffer pastes its own
 Buffer API key on Integration › Buffer, picks which of its Buffer social
 accounts PhiXtra may post to, then writes posts on the Social Media page.
 PhiXtra never posts through anyone else's Buffer. PhiXtra's own Buffer is
-set up separately in admin (portal_admin_routes.buffer_channels_settings).
+set up separately in admin (that admin page was removed 13 Nov 2026).
 
   GET  /integrations/buffer               connect screen / manage screen
   POST /integrations/buffer/key           check a key with Buffer and save it (connect or replace)

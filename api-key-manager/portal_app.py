@@ -24,7 +24,7 @@ def create_app():
     from portal_facebook_routes import facebook_bp
     from calls_routes import calls_bp
     from buffer_routes import buffer_bp
-    from ai_design_routes import social_bp, ai_admin_bp
+    from ai_design_routes import social_bp
     from upload_design_routes import upload_bp
     from social_calendar_routes import socialcal_bp
     from mailbox_routes import mailbox_bp
@@ -47,7 +47,6 @@ def create_app():
     flask_app.register_blueprint(calls_bp)
     flask_app.register_blueprint(buffer_bp)
     flask_app.register_blueprint(social_bp)
-    flask_app.register_blueprint(ai_admin_bp)
     flask_app.register_blueprint(upload_bp)
     flask_app.register_blueprint(socialcal_bp)
     flask_app.register_blueprint(mailbox_bp)

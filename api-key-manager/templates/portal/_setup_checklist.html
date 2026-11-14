@@ -46,6 +46,8 @@
     <span class="su-count">{{ setup.done }} of {{ setup.total }} done</span>
   </div>
   <div class="su-bar" role="progressbar" aria-valuemin="0" aria-valuemax="{{ setup.total }}" aria-valuenow="{{ setup.done }}"><span style="width:{{ (100 * setup.done / setup.total)|round|int }}%"></span></div>
+  {% if setup.done < setup.total %}{% import "portal/_setup_help.html" as shx with context %}{% set sh = setup_help('dashboard') %}
+  <div style="margin:12px 0 4px">{{ shx.box(sh, "Rather we do this for you? It's free.") }}</div>{{ shx.modal(sh) }}{% endif %}
   {% for st in setup.steps %}
   <div class="su-step{% if st.done %} done{% endif %}{% if st.locked %} locked{% endif %}">
     <div class="su-n">{% if st.done %}✓{% else %}{{ st.n }}{% endif %}</div>

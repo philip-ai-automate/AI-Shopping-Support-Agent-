@@ -80,6 +80,10 @@
         </div>
       </div>
 
+      {% import "portal/_setup_help.html" as shx with context %}
+      {% set sh = setup_help('connect', route='woocommerce', store_url=(domain or '')) %}
+      {{ shx.box(sh, "Rather we connect it for you? It's free.") }}
+
       {# 13 Nov 2026: no company details at sign-up. B2B businesses give them at their first quote. #}
 
       {% if not domain %}
@@ -177,5 +181,6 @@
   </div>
 
 </div>
+{{ shx.modal(sh) }}
 </body>
 </html>

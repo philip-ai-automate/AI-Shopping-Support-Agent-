@@ -726,7 +726,71 @@ def _state(row):
         except Exception as e:
             print(f"⚠️ shopify plan card {row['shop']}: {e}")
             out["billing"] = out["plan"] = None
+    # "Set it up for me" (14 Nov 2026): the booked call, and whether WhatsApp is connected yet.
+    try:
+        import setup_requests as _SR
+        b = _shop_setup_booking(row)
+        out["setup_help"] = _SR.thanks_text(b) if b else None
+        if row.get("tenant_id"):
+            conn = get_db_connection(); cur = conn.cursor()
+            try:
+                cur.execute("SELECT 1 FROM wa_tenants WHERE tenant_id=%s AND active LIMIT 1", (int(row["tenant_id"]),))
+                out["wa_connected"] = cur.fetchone() is not None
+            finally:
+                cur.close(); conn.close()
+    except Exception as e:
+        print(f"⚠️ shopify setup_help state {row.get('shop')}: {e}")
+        out["setup_help"] = None
     return out
+
+
+def _shop_setup_booking(row):
+    """The open "Set it up for me" booking for this store (by account or store)."""
+    import setup_requests as _SR
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""SELECT * FROM setup_requests
+                        WHERE status IN %s AND slot_at > NOW() - INTERVAL '2 hours'
+                          AND ((%s IS NOT NULL AND tenant_id=%s) OR (route='shopify' AND store_url=%s))
+                        ORDER BY created_at DESC LIMIT 1""",
+                    (_SR.OPEN, row.get("tenant_id"), row.get("tenant_id"), row["shop"]))
+        return cur.fetchone()
+    finally:
+        cur.close(); conn.close()
+
+
+@shopify_bp.route("/api/setup-help", methods=["POST"])
+@public_route
+def api_setup_help():
+    """Book a "Set it up for me" call from inside Shopify admin (14 Nov 2026).
+    The store is known from the session token, so no robot check."""
+    w = _who()
+    if not w:
+        return _bad_token()
+    shop, _user, row = w
+    import setup_requests as _SR
+    import setup_help_routes as _SHR
+    from portal_routes import _phone_entry_check
+    body = request.get_json(silent=True) or {}
+    if not (body.get("email") or "").strip():
+        body["email"] = row.get("shop_email") or ""      # the store's own email
+    data, errs = _SHR.validate(body, _phone_entry_check)
+    if errs:
+        return jsonify({"ok": False, "errors": errs}), 400
+    tenant_id = row.get("tenant_id")
+    company = row.get("shop_name") or shop
+    if tenant_id:
+        company = (_tenant_info(int(tenant_id)).get("name") or company)
+    data.update(route="shopify",
+                place=body.get("place") if body.get("place") in ("shopify_welcome", "shopify_home") else "shopify_welcome",
+                signup_choice=(body.get("choice") or "")[:40], company=company, store_url=shop,
+                tenant_id=tenant_id, customer_id=None)
+    data["email"] = data["email"] or (row.get("shop_email") or "")
+    ip = (request.headers.get("CF-Connecting-IP") or request.headers.get("X-Forwarded-For", request.remote_addr or "")).split(",")[0].strip()
+    b, err, is_new = _SR.create(data, ip)
+    if err:
+        return jsonify({"ok": False, "error": err}), 409 if "booked" in err else 429
+    return jsonify(_SHR.booked_json(b, is_new))
 
 
 def _quotes_state(tenant_id):

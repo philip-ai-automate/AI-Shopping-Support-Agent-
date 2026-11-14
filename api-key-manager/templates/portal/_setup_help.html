@@ -1,0 +1,234 @@
+{#- "Set it up for me" (14 Nov 2026, approved mock-up 1panZL64jYfXEjf1HgLnDE).
+    One box + one form + one booking calendar, used on every sign-up route.
+    Use:  import "portal/_setup_help.html" as shx with context
+          set sh = setup_help(place, route=..., choice=..., store_url=..., email=..., name=..., company=...)
+          shx.box(sh, heading, variant)   variant: light | dark | polaris
+          shx.modal(sh)                   once per page, near the end
+    The Shopify app sets window.SHX_POST = function(body) returning a fetch()
+    promise, to send with its session token. -#}
+
+{% macro box(sh, heading, variant='light', btn_class='', place='') -%}
+{%- if sh.booked -%}
+<div class="shx-thanks" data-shx-box>
+  <b>{{ sh.booked.title }}</b>{{ sh.booked.text }} <a href="{{ sh.booked.manage }}" target="_blank" rel="noopener">Change or cancel</a>
+</div>
+{%- else -%}
+<div class="shx-offer shx-{{ variant }}" data-shx-box>
+  <b class="shx-h">{{ heading }}</b>
+  <button type="button" class="shx-btn {{ btn_class }}" data-shx-open{% if place %} data-shx-place="{{ place }}"{% endif %}>Set it up for me</button>
+</div>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro cc_select(id, sel) -%}
+{%- set _pop = PHONE_COUNTRIES_POPULAR | map(attribute=0) | list -%}
+<select class="shx-in shx-cc" id="{{ id }}" aria-label="Country code">
+  <option value="">Country…</option>
+  <optgroup label="Most used">{% for iso, cname, cc in PHONE_COUNTRIES_POPULAR %}<option value="{{ iso }}"{% if iso == sel %} selected{% endif %}>{{ cname }} (+{{ cc }})</option>{% endfor %}</optgroup>
+  <optgroup label="All countries">{% for iso, cname, cc in PHONE_COUNTRIES %}{% if iso not in _pop %}<option value="{{ iso }}"{% if iso == sel %} selected{% endif %}>{{ cname }} (+{{ cc }})</option>{% endif %}{% endfor %}</optgroup>
+</select>
+{%- endmacro %}
+
+{% macro modal(sh, manage_token='') -%}
+<style>
+.shx-offer{border:1px solid #c7e9d6;background:#f0faf4;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;align-items:flex-start;gap:9px;color:#062b1a;text-align:left}
+.shx-offer .shx-h{font-size:14.5px;line-height:1.35;color:#062b1a}
+.shx-btn{border:0;border-radius:8px;padding:10px 16px;font:600 13.5px/1.2 inherit;font-family:inherit;cursor:pointer;background:#0b6b43;color:#fff}
+.shx-btn:hover{filter:brightness(1.08)}
+.shx-btn:focus-visible,.shx-modal button:focus-visible,.shx-modal select:focus-visible,.shx-modal input:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
+.shx-offer.shx-dark{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.2)}
+.shx-offer.shx-dark .shx-h{color:#fff}
+.shx-offer.shx-dark .shx-btn{background:#25D366;color:#05371c}
+.shx-offer.shx-polaris{background:#fff;border:0;border-radius:12px;box-shadow:0 1px 0 rgba(0,0,0,.07),inset 0 -1px 0 rgba(0,0,0,.05);color:#303030}
+.shx-offer.shx-polaris .shx-h{color:#303030;font-size:15px}
+.shx-offer.shx-polaris .shx-btn{background:#303030;font-size:12.5px;padding:7px 12px}
+.shx-thanks{border:1px solid #c7e9d6;background:#f0faf4;border-radius:10px;padding:13px 16px;color:#0b3b25;font-size:13px;line-height:1.5;text-align:left}
+.shx-thanks b{display:block;font-size:14.5px;color:#062b1a;margin-bottom:2px}
+.shx-thanks a{color:#0b6b43;font-weight:600}
+.shx-stage[hidden],[data-shx-box][hidden]{display:none!important}
+.shx-stage{position:fixed;inset:0;z-index:2147483000;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;overflow-y:auto}
+.shx-modal{background:#fff;color:#0f172a;border-radius:14px;width:100%;max-width:440px;padding:22px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 50px rgba(0,0,0,.25);font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;font-size:13.5px;text-align:left;margin:auto 0}
+.shx-modal h3{margin:0;font-size:18px;font-weight:800}
+.shx-modal .shx-s{margin:0;color:#475569;font-size:13px}
+.shx-f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:#334155;font-weight:600}
+.shx-in{border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;background:#fff;color:#0f172a;font:400 13.5px inherit;font-family:inherit;min-height:38px;width:100%;box-sizing:border-box}
+.shx-phone{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:6px}
+.shx-req{font-size:11px;color:#b45309;font-weight:600;margin-left:4px}
+.shx-f.shx-off .shx-req{display:none}
+.shx-f.shx-off{opacity:.62}
+.shx-how{display:flex;flex-wrap:wrap;gap:6px}
+.shx-how label{border:1.5px solid #cbd5e1;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;color:#334155;position:relative}
+.shx-how input{position:absolute;opacity:0;pointer-events:none}
+.shx-how label.on{border-color:#0b6b43;background:#f0faf4;color:#062b1a}
+.shx-how label:focus-within{outline:3px solid #93c5fd}
+.shx-err{color:#b42318;font-size:12px;font-weight:600}
+.shx-box{border:1px solid #e2e8f0;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.shx-head{display:flex;justify-content:space-between;align-items:center;font-size:13px}
+.shx-nav{border:0;background:#f1f5f9;border-radius:6px;width:28px;height:28px;cursor:pointer;color:#334155;font-size:15px}
+.shx-nav:disabled{opacity:.3;cursor:default}
+.shx-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center}
+.shx-dow{font-size:11px;color:#94a3b8;padding:2px 0;font-weight:600}
+.shx-day{border:0;background:#f0faf4;color:#0b3b25;border-radius:7px;height:32px;font:600 12.5px inherit;font-family:inherit;cursor:pointer;font-variant-numeric:tabular-nums}
+.shx-day:disabled{background:transparent;color:#cbd5e1;cursor:default;font-weight:400}
+.shx-day.sel{background:#0b6b43;color:#fff}
+.shx-sub{font-size:12px;color:#64748b;font-weight:400}
+.shx-slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:5px;max-height:150px;overflow-y:auto}
+.shx-slot{border:1.5px solid #cbd5e1;background:#fff;border-radius:7px;padding:6px 0;font:600 12px inherit;font-family:inherit;color:#334155;cursor:pointer;font-variant-numeric:tabular-nums}
+.shx-slot:disabled{border-style:dashed;color:#cbd5e1;text-decoration:line-through;cursor:default}
+.shx-slot.sel{border-color:#0b6b43;background:#0b6b43;color:#fff}
+.shx-actions{display:flex;gap:8px;flex-wrap:wrap}
+.shx-cancel{background:#fff;color:#0D2540;border:1.5px solid #cbd5e1}
+@media (max-width:420px){.shx-phone{grid-template-columns:1fr}}
+</style>
+<div class="shx-stage" id="shxStage" hidden>
+  <form class="shx-modal" id="shxForm" role="dialog" aria-modal="true" aria-labelledby="shxTitle" novalidate
+        data-place="{{ sh.place }}" data-route="{{ sh.route }}" data-choice="{{ sh.choice }}"
+        data-store="{{ sh.store_url }}" data-company="{{ sh.company }}" data-token="{{ manage_token }}">
+    <h3 id="shxTitle">{{ 'Change your set-up call' if manage_token else "We'll set it up for you" }}</h3>
+    {% if not manage_token %}<p class="shx-s">Tell us how to reach you and book a time. It's free.</p>
+    <input type="text" name="website" id="shxHp" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px">
+    <label class="shx-f" for="shxName">Your name<input class="shx-in" id="shxName" autocomplete="name" value="{{ sh.name }}"><span class="shx-err" data-err="name"></span></label>
+    <div class="shx-f">How should we contact you?
+      <div class="shx-how" role="radiogroup" aria-label="How should we contact you">
+        <label><input type="radio" name="shxHow" value="voice"><span>Voice call</span></label>
+        <label><input type="radio" name="shxHow" value="wa"><span>WhatsApp call or chat</span></label>
+        <label><input type="radio" name="shxHow" value="email"><span>Email</span></label>
+      </div><span class="shx-err" data-err="method"></span>
+    </div>
+    <div class="shx-f" data-for="voice">Phone number <span class="shx-req">required for voice call</span>
+      <div class="shx-phone">{{ cc_select('shxPhoneCc', sh.country) }}<input class="shx-in" id="shxPhone" type="tel" inputmode="tel" autocomplete="tel-national" aria-label="Phone number"{% if sh.phone %} value="+{{ sh.phone|string|trim|replace('+', '') }}"{% endif %}></div>
+      <span class="shx-err" data-err="phone"></span></div>
+    <div class="shx-f" data-for="wa">WhatsApp number <span class="shx-req">required for WhatsApp</span>
+      <div class="shx-phone">{{ cc_select('shxWaCc', sh.country) }}<input class="shx-in" id="shxWa" type="tel" inputmode="tel" aria-label="WhatsApp number"></div>
+      <span class="shx-err" data-err="wa"></span></div>
+    <label class="shx-f" data-for="email" for="shxEmail">Email <span class="shx-req">required for email</span>
+      <input class="shx-in" id="shxEmail" type="email" autocomplete="email" value="{{ sh.email }}"><span class="shx-err" data-err="email"></span></label>
+    {% endif %}
+    <div class="shx-f">{{ 'Choose a new time' if manage_token else 'Book a time' }}
+      <div class="shx-box" id="shxCal"><span class="shx-sub">Loading free times…</span></div>
+      <span class="shx-err" data-err="slot"></span>
+    </div>
+    <div class="shx-err" id="shxGenErr" role="alert"></div>
+    <div class="shx-actions">
+      <button type="submit" class="shx-btn" id="shxSend">{{ 'Move my call' if manage_token else 'Send' }}</button>
+      <button type="button" class="shx-btn shx-cancel" id="shxClose">Cancel</button>
+    </div>
+  </form>
+</div>
+<script>
+(function(){
+  if(window.__shx) return; window.__shx=1;
+  var stage=document.getElementById('shxStage'), form=document.getElementById('shxForm');
+  if(!stage||!form) return;
+  var token=form.dataset.token||'', last=null, cal={days:[],month:null,day:null,slot:null};
+  var TZ=''; try{TZ=Intl.DateTimeFormat().resolvedOptions().timeZone||'';}catch(e){}
+  var fmtT=new Intl.DateTimeFormat([], {hour:'2-digit',minute:'2-digit',hour12:false});
+  var fmtD=new Intl.DateTimeFormat('en-GB',{weekday:'short',day:'numeric',month:'short'});
+  var fmtM=new Intl.DateTimeFormat('en-GB',{month:'long',year:'numeric'});
+  function key(d){return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
+  function $(id){return document.getElementById(id);}
+
+  function prefill(){
+    var q=function(sel){var e=document.querySelector(sel);return e&&e.value?e.value.trim():'';};
+    var nm=$('shxName'), em=$('shxEmail'), ph=$('shxPhone');
+    if(nm&&!nm.value){var n=[q('input[name=first_name]')||q('#first'),q('input[name=last_name]')||q('#last')].filter(Boolean).join(' ');if(n)nm.value=n;}
+    if(em&&!em.value){var e=q('input[name=email]');var we=document.getElementById('w-email');if(!e&&we&&/@/.test(we.textContent))e=we.textContent.trim();if(e)em.value=e;}
+    if(!form.dataset.company){var c=q('input[name=business_name]')||q('input[name=company_name]');if(c)form.dataset.company=c;}
+    if(!form.dataset.store){var s=q('input[name=tenant_domain]')||q('input[name=domain]');if(s)form.dataset.store=s;}
+    var st=document.querySelector('input[name=sell_to]:checked');if(st)form.dataset.choice=st.value==='b2b'?'B2B':'Retail';
+    var cl=document.getElementById('chosenLabel');if(cl&&cl.textContent&&!/Nothing chosen/.test(cl.textContent))form.dataset.choice=cl.textContent.trim();
+    var wa=$('shxWa');if(wa&&!wa.value){var w=q('input[name=wa_phone_number]'),wc=q('select[name=wa_phone_number_country]');if(w){wa.value=w;if(wc)$('shxWaCc').value=wc;}}
+    if(ph&&!ph.value){var p=q('input[name=phone_number]'),pc=q('select[name=phone_number_country]');if(p){ph.value=p;if(pc)$('shxPhoneCc').value=pc;}}
+  }
+  function howUpd(){
+    var v=(form.querySelector('input[name=shxHow]:checked')||{}).value;
+    form.querySelectorAll('.shx-how label').forEach(function(l){l.classList.toggle('on',l.querySelector('input').checked);});
+    form.querySelectorAll('[data-for]').forEach(function(f){f.classList.toggle('shx-off',!!v&&f.dataset.for!==v);});
+    if(v==='wa'){var w=$('shxWa'),p=$('shxPhone');if(w&&!w.value&&p&&p.value){w.value=p.value;$('shxWaCc').value=$('shxPhoneCc').value;}}
+  }
+  form.addEventListener('change',function(e){if(e.target.name==='shxHow')howUpd();});
+
+  function loadSlots(){
+    $('shxCal').innerHTML='<span class="shx-sub">Loading free times…</span>';
+    fetch('/setup-help/slots'+(token?'?b='+encodeURIComponent(token):''),{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(j){
+      var by={};
+      (j.days||[]).forEach(function(d){d.slots.forEach(function(s){var t=new Date(s.at),k=key(t);(by[k]=by[k]||[]).push({at:s.at,t:t,free:s.free});});});
+      cal.days=by; var ks=Object.keys(by).sort();
+      var firstFree=ks.find(function(k){return by[k].some(function(s){return s.free;});});
+      var f=firstFree?new Date(firstFree+'T12:00:00'):new Date();
+      cal.month=new Date(f.getFullYear(),f.getMonth(),1); cal.day=firstFree||null; cal.slot=null; cal.min=ks[0]; cal.max=ks[ks.length-1];
+      render();
+    }).catch(function(){ $('shxCal').innerHTML='<span class="shx-err">Free times could not be loaded. Please try again.</span>'; });
+  }
+  function render(){
+    var m=cal.month, y=m.getFullYear(), mo=m.getMonth();
+    var h='<div class="shx-head"><button type="button" class="shx-nav" data-nav="-1" aria-label="Previous month"'+(key(new Date(y,mo,1))<= (cal.min||'')?' disabled':'')+'>‹</button><b>'+fmtM.format(m)+'</b><button type="button" class="shx-nav" data-nav="1" aria-label="Next month"'+(key(new Date(y,mo+1,1))>(cal.max||'')?' disabled':'')+'>›</button></div><div class="shx-grid">';
+    ['M','T','W','T','F','S','S'].forEach(function(d){h+='<span class="shx-dow">'+d+'</span>';});
+    var lead=(new Date(y,mo,1).getDay()+6)%7, n=new Date(y,mo+1,0).getDate();
+    for(var i=0;i<lead;i++)h+='<span></span>';
+    for(var d=1;d<=n;d++){var k=key(new Date(y,mo,d)),ok=(cal.days[k]||[]).some(function(s){return s.free;});
+      h+='<button type="button" class="shx-day'+(cal.day===k?' sel':'')+'" data-day="'+k+'"'+(ok?'':' disabled')+' aria-label="'+fmtD.format(new Date(y,mo,d))+(ok?'':' (no free times)')+'">'+d+'</button>';}
+    h+='</div>';
+    if(cal.day&&cal.days[cal.day]){
+      h+='<div class="shx-sub">'+fmtD.format(new Date(cal.day+'T12:00:00'))+' · times in your time zone'+(TZ?' ('+TZ.replace(/_/g,' ')+')':'')+'</div><div class="shx-slots">';
+      cal.days[cal.day].forEach(function(s){h+='<button type="button" class="shx-slot'+(cal.slot===s.at?' sel':'')+'" data-slot="'+s.at+'"'+(s.free?'':' disabled title="Taken"')+'>'+fmtT.format(s.t)+'</button>';});
+      h+='</div>';
+    } else if(!Object.keys(cal.days).length){ h+='<div class="shx-sub">No free times right now. Please email support@phixtra.com.</div>'; }
+    $('shxCal').innerHTML=h;
+  }
+  $('shxCal').addEventListener('click',function(e){var b=e.target.closest('button');if(!b||b.disabled)return;
+    if(b.dataset.nav){cal.month=new Date(cal.month.getFullYear(),cal.month.getMonth()+(+b.dataset.nav),1);}
+    else if(b.dataset.day){cal.day=b.dataset.day;cal.slot=null;}
+    else if(b.dataset.slot){cal.slot=b.dataset.slot;var se=form.querySelector('[data-err=slot]');if(se)se.textContent='';}
+    render();});
+
+  function open(btn){
+    last=btn||null; if(btn&&btn.dataset.shxPlace){form.dataset.place=btn.dataset.shxPlace;} stage.hidden=false; document.documentElement.style.overflow='hidden';
+    if(!token){prefill();howUpd();}
+    clearErr(); loadSlots();
+    var f=$('shxName')||$('shxSend'); setTimeout(function(){f&&f.focus();},30);
+  }
+  function close(){stage.hidden=true;document.documentElement.style.overflow='';if(last)last.focus();}
+  window.shxOpen=open;
+  document.addEventListener('click',function(e){var b=e.target.closest('[data-shx-open]');if(b){e.preventDefault();open(b);}});
+  $('shxClose').addEventListener('click',close);
+  stage.addEventListener('mousedown',function(e){if(e.target===stage)close();});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!stage.hidden)close();});
+  function clearErr(){form.querySelectorAll('[data-err]').forEach(function(s){s.textContent='';});$('shxGenErr').textContent='';}
+
+  function done(j){
+    var html='<b></b><span></span> <a target="_blank" rel="noopener">Change or cancel</a>';
+    document.querySelectorAll('[data-shx-box]').forEach(function(b){
+      var d=document.createElement('div');d.className='shx-thanks';d.setAttribute('data-shx-box','');d.innerHTML=html;
+      d.querySelector('b').textContent=j.title;d.querySelector('span').textContent=j.text;
+      if(j.manage)d.querySelector('a').href=j.manage;else d.querySelector('a').remove();
+      b.replaceWith(d);});
+    if(window.SHX_DONE)window.SHX_DONE(j);
+    close();
+  }
+  form.addEventListener('submit',function(e){
+    e.preventDefault(); clearErr();
+    if(!cal.slot){form.querySelector('[data-err=slot]').textContent='Choose a day and a time on the calendar.';return;}
+    var body, url;
+    if(token){ body={action:'move',slot:cal.slot}; url='/setup-help/b/'+encodeURIComponent(token); }
+    else{
+      body={name:$('shxName').value,method:(form.querySelector('input[name=shxHow]:checked')||{}).value||'',
+        phone:$('shxPhone').value,phone_cc:$('shxPhoneCc').value,wa:$('shxWa').value,wa_cc:$('shxWaCc').value,
+        email:$('shxEmail').value,slot:cal.slot,tz:TZ,place:form.dataset.place,route:form.dataset.route,
+        choice:form.dataset.choice,store_url:form.dataset.store,company:form.dataset.company,website:$('shxHp').value};
+      if(!body.method){form.querySelector('[data-err=method]').textContent='Choose how we should contact you.';return;}
+      url='/setup-help';
+    }
+    var send=$('shxSend'); send.disabled=true; send.textContent='Sending…';
+    var p=(!token&&window.SHX_POST)?window.SHX_POST(body):fetch(url,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    p.then(function(r){return r.json().catch(function(){return {ok:false};});}).then(function(j){
+      send.disabled=false; send.textContent=token?'Move my call':'Send';
+      if(j.ok){done(j);return;}
+      if(j.errors){Object.keys(j.errors).forEach(function(k){var s=form.querySelector('[data-err='+k+']');if(s)s.textContent=j.errors[k];});}
+      if(j.error){$('shxGenErr').textContent=j.error; if(/booked/.test(j.error))loadSlots();}
+      if(!j.errors&&!j.error)$('shxGenErr').textContent='Something went wrong. Please try again.';
+    }).catch(function(){send.disabled=false;send.textContent=token?'Move my call':'Send';$('shxGenErr').textContent='Could not send. Please check your connection and try again.';});
+  });
+})();
+</script>
+{%- endmacro %}

@@ -141,6 +141,15 @@
 
     <p class="note">Each code works for 10 minutes. Can't find the email? Check spam.</p>
     <p class="why">We check your email so your account is secure and our team can reach you to help you get set up.</p>
+    {% if not login %}
+    {% import "portal/_setup_help.html" as shx with context %}
+    {% set _a = row.args or {} %}
+    {% set sh = setup_help('code', route=('woocommerce' if row.flow == 'wp_connect' else 'portal'),
+                           store_url=(_a.tenant_domain or ''), email=(row.email or _a.email or ''),
+                           name=((_a.first_name or '') ~ ' ' ~ (_a.last_name or ''))|trim) %}
+    <div style="margin-top:18px">{{ shx.box(sh, "Stuck? We'll set it up for you, free.") }}</div>
+    {{ shx.modal(sh) }}
+    {% endif %}
   {% endif %}
   </div>
 </div>

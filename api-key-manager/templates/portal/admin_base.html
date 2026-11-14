@@ -259,21 +259,25 @@
     </a>
     {% set _am_due = am_due_count() if am_due_count is defined else 0 %}
     {% set _am_ep = request.endpoint or '' %}
-    {% set _am_group = (_am_ep.startswith('portal_admin.am_') and not _am_ep.startswith('portal_admin.am_inbox')) or _am_ep.startswith('portal_admin.inactive_accounts') or _am_ep.startswith('portal_admin.whos_online') %}
+    {% set _am_group = (_am_ep.startswith('portal_admin.am_') and not _am_ep.startswith('portal_admin.am_inbox')) or _am_ep.startswith('portal_admin.inactive_accounts') or _am_ep.startswith('portal_admin.whos_online') or _am_ep.startswith('portal_admin.setup_requests') %}
+    {% set _sr_new = setup_requests_new() if setup_requests_new is defined else 0 %}
     <div class="asb-group-toggle {% if _am_group %}open{% endif %}" onclick="asbGroupToggle(this)">
       <span class="asb-gtitle"><span class="asb-icon">🤝</span> Accounts
-        {% if _am_due %}<span style="background:#F04438;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px" title="Follow-ups due">{{ _am_due }}</span>{% endif %}</span>
+        {% if _am_due %}<span style="background:#F04438;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px" title="Follow-ups due">{{ _am_due }}</span>{% endif %}
+        {% if _sr_new %}<span style="background:#F04438;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px" title="New set-up requests">{{ _sr_new }}</span>{% endif %}</span>
       <span class="asb-arrow">▾</span>
     </div>
     <div class="asb-sub {% if _am_group %}open{% endif %}">
       <a href="{{ url_for('portal_admin.am_dashboard') }}"
          class="{% if _am_ep == 'portal_admin.am_dashboard' %}active{% endif %}">Dashboard</a>
       <a href="{{ url_for('portal_admin.am_accounts') }}"
-         class="{% if _am_group and _am_ep not in ('portal_admin.am_settings', 'portal_admin.am_dashboard') and not _am_ep.startswith('portal_admin.inactive_accounts') and not _am_ep.startswith('portal_admin.whos_online') %}active{% endif %}">All accounts</a>
+         class="{% if _am_group and _am_ep not in ('portal_admin.am_settings', 'portal_admin.am_dashboard') and not _am_ep.startswith('portal_admin.inactive_accounts') and not _am_ep.startswith('portal_admin.whos_online') and not _am_ep.startswith('portal_admin.setup_requests') %}active{% endif %}">All accounts</a>
       <a href="{{ url_for('portal_admin.inactive_accounts') }}"
          class="{% if _am_ep.startswith('portal_admin.inactive_accounts') %}active{% endif %}">Inactive accounts</a>
       <a href="{{ url_for('portal_admin.whos_online') }}"
          class="{% if _am_ep.startswith('portal_admin.whos_online') %}active{% endif %}">Who's online</a>
+      <a href="{{ url_for('portal_admin.setup_requests_page') }}" style="display:flex;justify-content:space-between;align-items:center"
+         class="{% if _am_ep.startswith('portal_admin.setup_requests') %}active{% endif %}">Set-up requests{% if _sr_new %}<span style="background:#F04438;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;margin-left:6px">{{ _sr_new }}</span>{% endif %}</a>
       <a href="{{ url_for('portal_admin.am_settings') }}"
          class="{% if _am_ep == 'portal_admin.am_settings' %}active{% endif %}">Settings</a>
     </div>
@@ -283,23 +287,19 @@
       <span class="asb-icon">📭</span> Staging mail
     </a>
     {% endif %}
+    {# Backup & Recovery group (13 Nov 2026), owner only #}
     {% if session.get('portal_admin_role', 'owner') == 'owner' %}
-    <a class="asb-link {% if request.endpoint and request.endpoint.startswith('portal_admin.backups') %}active{% endif %}"
-       href="{{ url_for('portal_admin.backups') }}">
-      <span class="asb-icon">💾</span> Backups
-    </a>
-    <a class="asb-link {% if request.endpoint and request.endpoint.startswith('portal_admin.privacy') %}active{% endif %}"
-       href="{{ url_for('portal_admin.privacy_requests') }}">
-      <span class="asb-icon">🛡️</span> Privacy Requests
-    </a>
-    <a class="asb-link {% if request.endpoint and request.endpoint.startswith('portal_admin.incident') %}active{% endif %}"
-       href="{{ url_for('portal_admin.incidents') }}">
-      <span class="asb-icon">🚨</span> Incidents
-    </a>
-    <a class="asb-link {% if request.endpoint and request.endpoint.startswith('portal_admin.access_log') %}active{% endif %}"
-       href="{{ url_for('portal_admin.access_log') }}">
-      <span class="asb-icon">🔍</span> Access Log
-    </a>
+    {% set _br_ep = request.endpoint or '' %}
+    {% set _br_bk = _br_ep.startswith('portal_admin.backups') %}
+    {% set _br_inc = _br_ep.startswith('portal_admin.incident') %}
+    <div class="asb-group-toggle {% if _br_bk or _br_inc %}open{% endif %}" onclick="asbGroupToggle(this)">
+      <span class="asb-gtitle"><span class="asb-icon">💾</span> Backup &amp; Recovery</span>
+      <span class="asb-arrow">▾</span>
+    </div>
+    <div class="asb-sub {% if _br_bk or _br_inc %}open{% endif %}">
+      <a href="{{ url_for('portal_admin.backups') }}" class="{% if _br_bk %}active{% endif %}">Backups</a>
+      <a href="{{ url_for('portal_admin.incidents') }}" class="{% if _br_inc %}active{% endif %}">Incidents</a>
+    </div>
     {% endif %}
     {% set _comeback_group = request.endpoint and request.endpoint.startswith('portal_admin.comeback_sequence') %}
     <div class="asb-group-toggle {% if _comeback_group %}open{% endif %}" onclick="asbGroupToggle(this)">
@@ -312,72 +312,64 @@
       <a href="{{ url_for('portal_admin.comeback_sequence_templates') }}"
          class="{% if request.endpoint=='portal_admin.comeback_sequence_templates' %}active{% endif %}">Email Templates</a>
     </div>
-    <a class="asb-link {% if request.endpoint=='portal_admin.onboard_wa' %}active{% endif %}"
-       href="{{ url_for('portal_admin.onboard_wa') }}">
-      <span class="asb-icon">📱</span> Onboard WA
-    </a>
     <a class="asb-link {% if 'catalogue' in (request.endpoint or '') or 'brands' in (request.endpoint or '') %}active{% endif %}"
        href="{{ url_for('portal_admin.catalogue_dashboard') }}">
       <span class="asb-icon">📂</span> Catalogue
     </a>
-    <a class="asb-link {% if request.endpoint=='portal_admin.api_keys' %}active{% endif %}"
-       href="{{ url_for('portal_admin.api_keys') }}">
-      <span class="asb-icon">🔑</span> API Keys
-    </a>
-    <a class="asb-link {% if request.endpoint=='portal_admin.invoices' %}active{% endif %}"
-       href="{{ url_for('portal_admin.invoices') }}">
-      <span class="asb-icon">🧾</span> Invoices
-    </a>
-    <a class="asb-link {% if request.endpoint=='portal_admin.credit_packages' %}active{% endif %}"
-       href="{{ url_for('portal_admin.credit_packages') }}">
-      <span class="asb-icon">📦</span> Credit Top-ups
-    </a>
-    <a class="asb-link {% if request.endpoint=='portal_admin.plugins' %}active{% endif %}"
-       href="{{ url_for('portal_admin.plugins') }}">
-      <span class="asb-icon">🔌</span> Plugins
-    </a>
-    <a class="asb-link {% if request.endpoint=='portal_admin.admin_modules_catalog' %}active{% endif %}"
-       href="{{ url_for('portal_admin.admin_modules_catalog') }}">
-      <span class="asb-icon">🧩</span> Modules
-    </a>
-    <a class="asb-link {% if request.endpoint in ('portal_admin.admin_plans','portal_admin.admin_plans_assign') %}active{% endif %}"
-       href="{{ url_for('portal_admin.admin_plans') }}">
-      <span class="asb-icon">📋</span> Plans
-    </a>
+    {# Billing group (13 Nov 2026): Plans, Invoices, Credit Top-ups #}
+    {% set _bl_ep = request.endpoint or '' %}
+    {% set _bl_plans = _bl_ep.startswith('portal_admin.admin_plan') %}
+    {% set _bl_inv = _bl_ep in ('portal_admin.invoices', 'portal_admin.invoice_download') %}
+    {% set _bl_cp = _bl_ep.startswith('portal_admin.credit_packages') %}
+    {% set _bl_group = _bl_plans or _bl_inv or _bl_cp %}
+    <div class="asb-group-toggle {% if _bl_group %}open{% endif %}" onclick="asbGroupToggle(this)">
+      <span class="asb-gtitle"><span class="asb-icon">💳</span> Billing</span>
+      <span class="asb-arrow">▾</span>
+    </div>
+    <div class="asb-sub {% if _bl_group %}open{% endif %}">
+      <a href="{{ url_for('portal_admin.admin_plans') }}" class="{% if _bl_plans %}active{% endif %}">Plans</a>
+      <a href="{{ url_for('portal_admin.invoices') }}" class="{% if _bl_inv %}active{% endif %}">Invoices</a>
+      <a href="{{ url_for('portal_admin.credit_packages') }}" class="{% if _bl_cp %}active{% endif %}">Credit Top-ups</a>
+    </div>
     {# School Plans deactivated 2026-11-06 (user): menu item removed; data + code kept. #}
-    <a class="asb-link {% if request.endpoint=='portal_admin.wa_diagnostics' %}active{% endif %}"
-       href="{{ url_for('portal_admin.wa_diagnostics') }}">
-      <span class="asb-icon">📡</span> WA Diagnostics
-    </a>
-    <a class="asb-link {% if request.endpoint=='portal_admin.wa_templates' %}active{% endif %}"
-       href="{{ url_for('portal_admin.wa_templates') }}">
-      <span class="asb-icon">📩</span> WhatsApp Templates
-    </a>
-    <a class="asb-link {% if request.endpoint=='portal_admin.video_tutorials' %}active{% endif %}"
-       href="{{ url_for('portal_admin.video_tutorials') }}">
-      <span class="asb-icon">🎬</span> Video Tutorials
-    </a>
-    <a class="asb-link {% if request.endpoint and request.endpoint.startswith('portal_admin.social_media_post') %}active{% endif %}"
-       href="{{ url_for('portal_admin.social_media_posts') }}">
-      <span class="asb-icon">📣</span> Social Media Posts
-    </a>
-    <a class="asb-link {% if request.endpoint=='portal_admin.buffer_channels_settings' %}active{% endif %}"
-       href="{{ url_for('portal_admin.buffer_channels_settings') }}">
-      <span class="asb-icon">🔗</span> PhiXtra's Buffer
-    </a>
-    <a class="asb-link {% if request.endpoint=='portal_admin.admin_settings' %}active{% endif %}"
-       href="{{ url_for('portal_admin.admin_settings') }}">
-      <span class="asb-icon">⚙️</span> Settings
-    </a>
-    {% if session.get('portal_admin_role','owner') == 'owner' %}
-    <a class="asb-link {% if request.endpoint and request.endpoint.startswith('portal_admin.admin_team') %}active{% endif %}"
-       href="{{ url_for('portal_admin.admin_team') }}">
-      <span class="asb-icon">🧑‍💼</span> Team
-    </a>
-    {% endif %}
+    {# Configuration group (13 Nov 2026) #}
+    {% set _cf_ep = request.endpoint or '' %}
+    {% set _cf = {'mod': _cf_ep == 'portal_admin.admin_modules_catalog', 'plg': _cf_ep == 'portal_admin.plugins',
+                  'api': _cf_ep.startswith('portal_admin.api_keys'),
+                  'diag': _cf_ep in ('portal_admin.wa_diagnostics', 'portal_admin.merchant_signup_qr'),
+                  'onb': _cf_ep == 'portal_admin.onboard_wa', 'tpl': _cf_ep.startswith('portal_admin.wa_templates')} %}
+    {% set _cf_group = _cf.values()|select|list|length > 0 %}
+    <div class="asb-group-toggle {% if _cf_group %}open{% endif %}" onclick="asbGroupToggle(this)">
+      <span class="asb-gtitle"><span class="asb-icon">🛠️</span> Configuration</span>
+      <span class="asb-arrow">▾</span>
+    </div>
+    <div class="asb-sub {% if _cf_group %}open{% endif %}">
+      <a href="{{ url_for('portal_admin.admin_modules_catalog') }}" class="{% if _cf.mod %}active{% endif %}">Modules</a>
+      <a href="{{ url_for('portal_admin.plugins') }}" class="{% if _cf.plg %}active{% endif %}">Plugins</a>
+      <a href="{{ url_for('portal_admin.api_keys') }}" class="{% if _cf.api %}active{% endif %}">API Keys</a>
+      <a href="{{ url_for('portal_admin.wa_diagnostics') }}" class="{% if _cf.diag %}active{% endif %}">WA Diagnostics</a>
+      <a href="{{ url_for('portal_admin.onboard_wa') }}" class="{% if _cf.onb %}active{% endif %}">Onboard WA</a>
+      <a href="{{ url_for('portal_admin.wa_templates') }}" class="{% if _cf.tpl %}active{% endif %}">WhatsApp Templates</a>
+    </div>
+    {# Settings group (13 Nov 2026): General + Team, Access log, Privacy requests (owner only) #}
+    {% set _st_ep = request.endpoint or '' %}
+    {% set _st_general = _st_ep in ('portal_admin.admin_settings', 'portal_admin.admin_save_trial_days', 'portal_admin.admin_change_password') %}
+    {% set _st_group = _st_general or _st_ep.startswith('portal_admin.admin_team') or _st_ep.startswith('portal_admin.access_log') or _st_ep.startswith('portal_admin.privacy') %}
+    <div class="asb-group-toggle {% if _st_group %}open{% endif %}" onclick="asbGroupToggle(this)">
+      <span class="asb-gtitle"><span class="asb-icon">⚙️</span> Settings</span>
+      <span class="asb-arrow">▾</span>
+    </div>
+    <div class="asb-sub {% if _st_group %}open{% endif %}">
+      <a href="{{ url_for('portal_admin.admin_settings') }}" class="{% if _st_general %}active{% endif %}">General</a>
+      {% if session.get('portal_admin_role','owner') == 'owner' %}
+      <a href="{{ url_for('portal_admin.admin_team') }}" class="{% if _st_ep.startswith('portal_admin.admin_team') %}active{% endif %}">Team</a>
+      <a href="{{ url_for('portal_admin.access_log') }}" class="{% if _st_ep.startswith('portal_admin.access_log') %}active{% endif %}">Access log</a>
+      <a href="{{ url_for('portal_admin.privacy_requests') }}" class="{% if _st_ep.startswith('portal_admin.privacy') %}active{% endif %}">Privacy requests</a>
+      {% endif %}
+    </div>
     <a class="asb-link {% if request.endpoint=='portal_admin.recovery_queue' %}active{% endif %}"
        href="{{ url_for('portal_admin.recovery_queue') }}">
-      <span class="asb-icon">🛒</span> Recovery
+      <span class="asb-icon">🛒</span> Cart Recovery
     </a>
   </div>
 
@@ -451,21 +443,25 @@
     { icon:'🤝', title:'Accounts',           desc:'Follow up sign-ups that did not finish set-up', url:'{{ url_for("portal_admin.am_accounts") }}',        tags:'accounts account manager onboarding churn follow up stalled sign ups whatsapp call email' },
     { icon:'📊', title:'Accounts Dashboard', desc:'What needs doing today, set-up funnel, where sign-ups stop', url:'{{ url_for("portal_admin.am_dashboard") }}', tags:'accounts dashboard account manager funnel trials follow ups never contacted' },
     { icon:'⚙️', title:'Accounts Settings',  desc:'Reply alerts and check-in button settings', url:'{{ url_for("portal_admin.am_settings") }}',          tags:'accounts settings reply alerts email account manager follow up days' },
-    { icon:'📱', title:'Onboard WhatsApp',   desc:'Set up a new merchant WhatsApp account',    url:'{{ url_for("portal_admin.onboard_wa") }}',          tags:'onboard new merchant whatsapp setup register' },
+    { icon:'📱', title:'Configuration › Onboard WA',   desc:'Set up a new merchant WhatsApp account',    url:'{{ url_for("portal_admin.onboard_wa") }}',          tags:'onboard new merchant whatsapp setup register' },
     { icon:'📂', title:'Catalogue',          desc:'Manage product catalogue and categories',   url:'{{ url_for("portal_admin.catalogue_dashboard") }}', tags:'catalogue products categories inventory' },
-    { icon:'🔑', title:'API Keys',           desc:'View and manage all API keys',              url:'{{ url_for("portal_admin.api_keys") }}',            tags:'api keys access developer integration' },
-    { icon:'🧾', title:'Invoices',           desc:'All merchant invoices and receipts',        url:'{{ url_for("portal_admin.invoices") }}',            tags:'invoices receipts billing history' },
-    { icon:'📦', title:'Credit Top-ups',      desc:'Manage credit top-ups and pricing', url:'{{ url_for("portal_admin.credit_packages") }}',    tags:'packages credits pricing billing top up' },
-    { icon:'🔌', title:'Plugins',            desc:'Manage downloadable WooCommerce plugins',   url:'{{ url_for("portal_admin.plugins") }}',             tags:'plugins woocommerce download wordpress' },
-    { icon:'🧩', title:'Modules',            desc:'Every module/feature the app knows about — read-only', url:'{{ url_for("portal_admin.admin_modules_catalog") }}', tags:'modules features catalog permissions roles plans reference' },
-    { icon:'📋', title:'Plans',              desc:'Manage WhatsApp subscription plans',        url:'{{ url_for("portal_admin.admin_plans") }}',         tags:'plans subscription whatsapp quota limits assign' },
-    { icon:'📡', title:'WA Diagnostics',     desc:'Debug WhatsApp connection issues',          url:'{{ url_for("portal_admin.wa_diagnostics") }}',      tags:'whatsapp diagnostics debug connection status check' },
-    { icon:'📩', title:'WhatsApp Templates', desc:'Every WhatsApp template and its Meta approval status', url:'{{ url_for("portal_admin.wa_templates") }}', tags:'whatsapp templates message approved meta status rejected pending' },
-    { icon:'⚙️', title:'Settings',           desc:'Trial days, password and admin config',     url:'{{ url_for("portal_admin.admin_settings") }}',      tags:'settings admin password trial days config' },
+    { icon:'🔑', title:'Configuration › API Keys',           desc:'View and manage all API keys',              url:'{{ url_for("portal_admin.api_keys") }}',            tags:'api keys access developer integration' },
+    { icon:'🧾', title:'Billing › Invoices',           desc:'All merchant invoices and receipts',        url:'{{ url_for("portal_admin.invoices") }}',            tags:'invoices receipts billing history' },
+    { icon:'📦', title:'Billing › Credit Top-ups',      desc:'Manage credit top-ups and pricing', url:'{{ url_for("portal_admin.credit_packages") }}',    tags:'packages credits pricing billing top up' },
+    { icon:'🔌', title:'Configuration › Plugins',            desc:'Manage downloadable WooCommerce plugins',   url:'{{ url_for("portal_admin.plugins") }}',             tags:'plugins woocommerce download wordpress' },
+    { icon:'🧩', title:'Configuration › Modules',            desc:'Every module/feature the app knows about — read-only', url:'{{ url_for("portal_admin.admin_modules_catalog") }}', tags:'modules features catalog permissions roles plans reference' },
+    { icon:'📋', title:'Billing › Plans',              desc:'Manage WhatsApp subscription plans',        url:'{{ url_for("portal_admin.admin_plans") }}',         tags:'plans subscription whatsapp quota limits assign' },
+    { icon:'📡', title:'Configuration › WA Diagnostics',     desc:'Debug WhatsApp connection issues',          url:'{{ url_for("portal_admin.wa_diagnostics") }}',      tags:'whatsapp diagnostics debug connection status check' },
+    { icon:'📩', title:'Configuration › WhatsApp Templates', desc:'Every WhatsApp template and its Meta approval status', url:'{{ url_for("portal_admin.wa_templates") }}', tags:'whatsapp templates message approved meta status rejected pending' },
+    { icon:'⚙️', title:'Settings › General', desc:'Trial days, password and admin config',     url:'{{ url_for("portal_admin.admin_settings") }}',      tags:'settings general admin password trial days config' },
     {% if session.get('portal_admin_role','owner') == 'owner' %}
-    { icon:'🧑‍💼', title:'Team',              desc:'Manage support logins and permissions',     url:'{{ url_for("portal_admin.admin_team") }}',          tags:'team support staff logins permissions roles' },
+    { icon:'💾', title:'Backup & Recovery › Backups', desc:'Nightly encrypted backups, restore tests, disk space', url:'{{ url_for("portal_admin.backups") }}', tags:'backup backups restore disk space recovery' },
+    { icon:'🚨', title:'Backup & Recovery › Incidents', desc:'Log and handle data/security incidents', url:'{{ url_for("portal_admin.incidents") }}', tags:'incident incidents breach security recovery' },
+    { icon:'🧑‍💼', title:'Settings › Team',   desc:'Manage support logins and permissions',     url:'{{ url_for("portal_admin.admin_team") }}',          tags:'team support staff logins permissions roles settings' },
+    { icon:'🔍', title:'Settings › Access log', desc:'Who opened what in Admin and the portal', url:'{{ url_for("portal_admin.access_log") }}',        tags:'access log audit who opened viewed settings security' },
+    { icon:'🛡️', title:'Settings › Privacy requests', desc:'Customer data and deletion requests', url:'{{ url_for("portal_admin.privacy_requests") }}', tags:'privacy requests gdpr delete data shopify settings' },
     {% endif %}
-    { icon:'🛒', title:'Recovery Queue',     desc:'View abandoned cart recovery queue',        url:'{{ url_for("portal_admin.recovery_queue") }}',      tags:'cart recovery abandoned queue' },
+    { icon:'🛒', title:'Cart Recovery',     desc:'View abandoned cart recovery queue',        url:'{{ url_for("portal_admin.recovery_queue") }}',      tags:'cart recovery abandoned queue' },
   ];
 
   var input   = document.getElementById('asbSearchInput');

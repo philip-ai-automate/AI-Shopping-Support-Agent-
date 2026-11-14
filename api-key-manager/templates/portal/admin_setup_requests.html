@@ -1,0 +1,115 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Set-up requests — PhiXtra Admin{% endblock %}
+{% block content %}
+{# "Set it up for me" bookings (14 Nov 2026, approved mock-up 1panZL64jYfXEjf1HgLnDE).
+   Open = New / Called / No answer, soonest call first. Status and notes save as you change them. #}
+<style>
+  .sr-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .sr-head h1{margin:0;font-size:22px}
+  .sr-sub{font-size:12.5px;color:var(--muted);margin-top:4px}
+  .sr-f{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+  .sr-f a{font-size:12.5px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;color:inherit;text-decoration:none}
+  .sr-f a.on{background:#111827;color:#fff;border-color:#111827}
+  .sr-wrap{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:12px}
+  .sr-t{border-collapse:collapse;width:100%;min-width:980px;font-size:13px}
+  .sr-t th{text-align:left;font-weight:600;color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;padding:10px;border-bottom:1px solid var(--line);background:#f9fafb}
+  .sr-t td{padding:11px 10px;border-bottom:1px solid #f1f2f4;vertical-align:top}
+  .sr-t td small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+  .sr-t tr.is-new td{background:#fffbeb}
+  .sr-t tr.is-focus td{box-shadow:inset 0 0 0 9999px rgba(37,99,235,.06)}
+  .sr-how{font-weight:700}
+  .sr-val a{font-weight:600;color:#2563eb;text-decoration:none}
+  .sr-when{font-weight:700;white-space:nowrap}
+  .sr-soon{display:inline-block;background:#fee2e2;color:#991b1b;border-radius:999px;font-size:11px;font-weight:700;padding:1px 8px;margin-top:3px}
+  .sr-st{border:1px solid var(--line);border-radius:8px;padding:5px 8px;font-size:12.5px;background:#fff}
+  .sr-notes{width:100%;min-width:180px;min-height:52px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit;font-size:12.5px;resize:vertical;box-sizing:border-box}
+  .sr-saved{font-size:11px;color:#15803d;min-height:14px}
+  .sr-empty{padding:30px;text-align:center;color:var(--muted)}
+</style>
+
+<div class="sr-head">
+  <div>
+    <h1>Set-up requests</h1>
+    <div class="sr-sub">Businesses that asked us to set PhiXtra up for them, from every sign-up route. Times are UK time. Alerts go to {{ sr.ALERT_EMAILS|join(' and ') }}.</div>
+  </div>
+</div>
+
+<div class="sr-f">
+  {% set vs = [('open','Open'),('new','New'),('called','Called'),('done','Set up done'),('closed','Closed'),('all','All')] %}
+  {% for k, label in vs %}
+    {% set n = counts.get(k) if k in ('open','new','done') else (counts.get('called',0) + counts.get('no_answer',0) if k == 'called' else None) %}
+    <a href="?view={{ k }}{% if route %}&route={{ route }}{% endif %}" class="{% if view == k and not rid %}on{% endif %}">{{ label }}{% if n %} ({{ n }}){% endif %}</a>
+  {% endfor %}
+  <span style="width:10px"></span>
+  {% for k, label in [('', 'Any route')] + sr.ROUTES.items()|list %}
+    <a href="?view={{ view }}{% if k %}&route={{ k }}{% endif %}" class="{% if route == k %}on{% endif %}">{{ label }}</a>
+  {% endfor %}
+  {% if rid %}<a href="?view=open" class="on">Showing request #{{ rid }} · show all</a>{% endif %}
+</div>
+
+<div class="sr-wrap">
+{% if rows %}
+<table class="sr-t">
+  <thead><tr><th>Asked</th><th>Business / person</th><th>Route</th><th>Contact by</th><th>Account</th><th>Status</th><th style="width:24%">Notes</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr id="r{{ r.id }}" class="{% if r.status == 'new' %}is-new{% endif %}{% if rid == r.id %} is-focus{% endif %}">
+    <td style="white-space:nowrap">{{ sr.when_text(r.created_at) }}</td>
+    <td><b>{{ r.company or '—' }}</b><small>{{ r.name or '' }}</small>
+      {% if r.phone %}<small>Phone <a href="tel:+{{ r.phone }}">{{ sr.plus(r.phone) }}</a></small>{% endif %}
+      {% if r.wa %}<small>WhatsApp <a href="https://wa.me/{{ r.wa }}" target="_blank" rel="noopener">{{ sr.plus(r.wa) }}</a></small>{% endif %}
+      {% if r.email %}<small><a href="mailto:{{ r.email }}">{{ r.email }}</a></small>{% endif %}</td>
+    <td>{{ sr.ROUTES.get(r.route, r.route) }}<small>{{ r.signup_choice or '' }}{% if r.signup_choice and r.place %} · {% endif %}{{ sr.PLACES.get(r.place, '') }}</small>
+      {% if r.store_url %}<small>{{ r.store_url }}</small>{% endif %}</td>
+    <td>
+      <div class="sr-how">{{ sr.METHODS.get(r.method, r.method) }}</div>
+      <div class="sr-val">{% if r.method == 'wa' %}<a href="https://wa.me/{{ r.wa }}" target="_blank" rel="noopener">{{ sr.plus(r.wa) }}</a>{% elif r.method == 'voice' %}<a href="tel:+{{ r.phone }}">{{ sr.plus(r.phone) }}</a>{% else %}<a href="mailto:{{ r.email }}">{{ r.email }}</a>{% endif %}</div>
+      <div class="sr-when">{{ sr.when_text(r.slot_at) }}</div>
+      {% if r.tz and r.tz != 'Europe/London' %}<small>Their time: {{ sr.when_text(r.slot_at, r.tz) }} ({{ r.tz.split('/')[-1].replace('_',' ') }})</small>{% endif %}
+    </td>
+    <td>{% if r.tenant_id %}<a href="{{ url_for('portal_admin.customer_detail', customer_id=r.customer_id) if r.customer_id else '#' }}">t{{ r.tenant_id }}{% if r.tenant_name %} · {{ r.tenant_name }}{% endif %}</a>{% else %}<span class="muted">Not signed up yet</span>{% endif %}</td>
+    <td>
+      <select class="sr-st" data-id="{{ r.id }}" aria-label="Status for {{ r.company or r.name }}">
+        {% for k, label in sr.STATUSES %}<option value="{{ k }}"{% if k == r.status %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <small class="sr-by">{% if r.handled_by %}by {{ r.handled_by }}{% endif %}</small>
+    </td>
+    <td><textarea class="sr-notes" data-id="{{ r.id }}" aria-label="Notes" placeholder="e.g. call back 3pm">{{ r.notes or '' }}</textarea><div class="sr-saved" data-for="{{ r.id }}"></div></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="sr-empty">No {{ 'open ' if view == 'open' else '' }}set-up requests{% if route %} from {{ sr.ROUTES.get(route) }}{% endif %}.</div>
+{% endif %}
+</div>
+
+<script>
+(function(){
+  function save(id, body, done){
+    fetch('{{ url_for("portal_admin.setup_requests_page") }}/' + id, {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
+    .then(function(r){return r.json();}).then(done).catch(function(){done({ok:false});});
+  }
+  function flag(id, msg, ok){var e=document.querySelector('.sr-saved[data-for="'+id+'"]');if(e){e.textContent=msg;e.style.color=ok?'#15803d':'#b42318';}}
+  document.querySelectorAll('.sr-st').forEach(function(s){
+    s.addEventListener('change', function(){
+      var id=s.dataset.id;
+      save(id, {status: s.value}, function(j){
+        flag(id, j.ok ? 'Saved' : (j.error || 'Not saved'), j.ok);
+        if(j.ok){var tr=document.getElementById('r'+id);tr.classList.toggle('is-new', j.status==='new');
+          var by=tr.querySelector('.sr-by'); if(by) by.textContent = j.by ? 'by '+j.by : '';}
+      });
+    });
+  });
+  document.querySelectorAll('.sr-notes').forEach(function(t){
+    var start=t.value;
+    t.addEventListener('blur', function(){
+      if(t.value===start) return;
+      save(t.dataset.id, {notes: t.value}, function(j){ flag(t.dataset.id, j.ok ? 'Saved' : (j.error || 'Not saved'), j.ok); if(j.ok) start=t.value; });
+    });
+  });
+  var f=document.querySelector('tr.is-focus'); if(f) f.scrollIntoView({block:'center'});
+})();
+</script>
+{% endblock %}

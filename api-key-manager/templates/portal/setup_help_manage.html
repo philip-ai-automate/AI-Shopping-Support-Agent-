@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Your set-up call — PhiXtra</title>
+<style>
+body{margin:0;background:#f5f7fa;font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;color:#0f172a;font-size:14px}
+.wrap{max-width:480px;margin:0 auto;padding:40px 16px}
+.card{background:#fff;border:1px solid #e3e8ef;border-radius:12px;padding:24px;display:flex;flex-direction:column;gap:14px}
+h1{font-size:20px;margin:0}
+.when{background:#f0faf4;border:1px solid #c7e9d6;border-radius:10px;padding:12px 14px;font-size:15px;color:#062b1a}
+.muted{color:#64748b;font-size:13px;margin:0}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row[hidden]{display:none}
+.b{border:0;border-radius:8px;padding:10px 16px;font:600 13.5px inherit;font-family:inherit;cursor:pointer}
+.b-go{background:#0b6b43;color:#fff}
+.b-line{background:#fff;color:#0D2540;border:1.5px solid #cbd5e1}
+.b-red{background:#b42318;color:#fff}
+.logo{font-weight:800;font-size:18px;color:#0D2540;margin-bottom:16px;display:block}
+</style>
+</head>
+<body>
+{% import "portal/_setup_help.html" as shx with context %}
+<div class="wrap">
+  <span class="logo">PhiXtra</span>
+  <div class="card" id="mCard">
+  {% if not r %}
+    <h1>This booking can't be found</h1>
+    <p class="muted">The link may be old. Email support@phixtra.com and we'll help.</p>
+  {% elif not can_change %}
+    <h1>Your set-up call</h1>
+    <div class="when">{{ when }}</div>
+    <p class="muted">{{ 'This call was cancelled.' if r.status == 'cancelled' else "This call can't be changed any more." }} To book again, use "Set it up for me" in your PhiXtra account, or email support@phixtra.com.</p>
+  {% else %}
+    <h1>Your set-up call</h1>
+    <div class="when" id="mWhen"><b>{{ when }}</b><br>{{ {'voice': "We'll phone you on " ~ sr.plus(r.phone) ~ ".", 'wa': "We'll contact you on WhatsApp on " ~ sr.plus(r.wa) ~ ".", 'email': "We'll email you at " ~ r.email ~ "."}[r.method] }}</div>
+    <div class="row" id="mBtns">
+      <button type="button" class="b b-go" data-shx-open>Change the time</button>
+      <button type="button" class="b b-line" id="mCancel">Cancel the call</button>
+    </div>
+    <div class="row" id="mSure" hidden>
+      <span class="muted" style="flex-basis:100%">Cancel your set-up call?</span>
+      <button type="button" class="b b-red" id="mYes">Yes, cancel it</button>
+      <button type="button" class="b b-line" id="mNo">Keep it</button>
+    </div>
+    <p class="muted" id="mMsg" role="status"></p>
+  {% endif %}
+  </div>
+</div>
+{% if r and can_change %}
+{{ shx.modal({'place': 'manage', 'route': r.route, 'choice': '', 'store_url': '', 'company': '', 'name': '', 'email': '', 'phone': '', 'country': ''}, manage_token=r.token) }}
+<script>
+(function(){
+  var tok={{ r.token|tojson }};
+  window.SHX_DONE=function(j){var w=document.getElementById('mWhen');w.innerHTML='<b></b><br><span></span>';w.querySelector('b').textContent=j.title;w.querySelector('span').textContent=j.text;
+    document.getElementById('mMsg').textContent='Moved. We have emailed you the new invite.';};
+  var c=document.getElementById('mCancel'),s=document.getElementById('mSure'),b=document.getElementById('mBtns');
+  c.onclick=function(){b.hidden=true;s.hidden=false;document.getElementById('mYes').focus();};
+  document.getElementById('mNo').onclick=function(){s.hidden=true;b.hidden=false;c.focus();};
+  document.getElementById('mYes').onclick=function(){
+    fetch('/setup-help/b/'+encodeURIComponent(tok),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cancel'})})
+    .then(function(r){return r.json();}).then(function(j){s.hidden=true;
+      document.getElementById('mWhen').textContent=j.ok?'Cancelled.':'This call could not be cancelled.';
+      document.getElementById('mMsg').textContent=j.ok?j.text:'Please email support@phixtra.com.';})
+    .catch(function(){document.getElementById('mMsg').textContent='Could not cancel. Please check your connection and try again.';});
+  };
+})();
+</script>
+{% endif %}
+</body>
+</html>

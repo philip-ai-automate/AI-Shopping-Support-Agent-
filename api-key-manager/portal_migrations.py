@@ -1376,60 +1376,10 @@ def ensure_portal_tables():
                 ON ambassador_documents USING GIN(products)
         """)
 
-        # ── social_media_posts: internal content queue for the social media
-        # team. Admin (owner) creates a post with an image + caption tagged
-        # for one or more platforms; the social media executive's scoped
-        # login sees it on /admin/social-media and marks it posted once
-        # she's actually published it manually on each platform.
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS social_media_posts (
-                id                 SERIAL PRIMARY KEY,
-                caption            TEXT NOT NULL,
-                image_filename     VARCHAR(255) NOT NULL,
-                original_filename  VARCHAR(255),
-                platforms          TEXT[] NOT NULL,
-                status             VARCHAR(20) NOT NULL DEFAULT 'ready',
-                created_by         VARCHAR(255),
-                posted_by          VARCHAR(255),
-                created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                posted_at          TIMESTAMPTZ
-            )
-        """)
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_social_media_posts_status
-                ON social_media_posts(status)
-        """)
-
-        # ── Buffer publishing fields on social_media_posts — added when the
-        # Canva → PhiXtra → Buffer flow was wired up. scheduled_for/buffer_*
-        # track a post sent to Buffer; public_token lets the unauthenticated
-        # image route (Buffer must fetch the image itself, no API upload
-        # exists) serve the file without exposing the admin-gated route.
-        if not _column_exists(cur, "social_media_posts", "scheduled_for"):
-            cur.execute("ALTER TABLE social_media_posts ADD COLUMN scheduled_for TIMESTAMPTZ")
-        if not _column_exists(cur, "social_media_posts", "buffer_status"):
-            cur.execute("ALTER TABLE social_media_posts ADD COLUMN buffer_status VARCHAR(20)")
-        if not _column_exists(cur, "social_media_posts", "buffer_post_ids"):
-            cur.execute("ALTER TABLE social_media_posts ADD COLUMN buffer_post_ids JSONB")
-        if not _column_exists(cur, "social_media_posts", "buffer_error"):
-            cur.execute("ALTER TABLE social_media_posts ADD COLUMN buffer_error TEXT")
-        if not _column_exists(cur, "social_media_posts", "is_urgent"):
-            cur.execute("ALTER TABLE social_media_posts ADD COLUMN is_urgent BOOLEAN NOT NULL DEFAULT FALSE")
-        if not _column_exists(cur, "social_media_posts", "public_token"):
-            cur.execute("ALTER TABLE social_media_posts ADD COLUMN public_token VARCHAR(64) UNIQUE")
-
-        # ── buffer_channel_map: one-time admin mapping of each Social Media
-        # Posts platform key (facebook/instagram/linkedin/tiktok/x) to the
-        # PhiXtra Buffer account's channel id for that platform.
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS buffer_channel_map (
-                platform          VARCHAR(20) PRIMARY KEY,
-                buffer_channel_id VARCHAR(64) NOT NULL,
-                channel_label     VARCHAR(255),
-                updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_by        VARCHAR(255)
-            )
-        """)
+        # Admin Social Media Posts + PhiXtra's Buffer removed 13 Nov 2026 (user): their two
+        # admin-only tables go. Businesses' social tables are untouched.
+        cur.execute("DROP TABLE IF EXISTS social_media_posts")
+        cur.execute("DROP TABLE IF EXISTS buffer_channel_map")
 
         # ── Buffer connections (2026-09-25): every business connects its OWN
         # Buffer account on Integration › Buffer, and PhiXtra admin has one

@@ -44,7 +44,14 @@ def send_email(to_email: str, subject: str, html_body: str, text_body: str | Non
         return False
 
     msg = EmailMessage()
-    msg["From"] = from_email
+    if reply_to or "<" in from_email:
+        msg["From"] = from_email          # sent on behalf of a business: as before
+    else:
+        # PhiXtra's own emails (13 Nov 2026): a sender name and a reply address,
+        # so they don't arrive as a bare no-reply (helps Gmail and Outlook).
+        from email.utils import formataddr as _fa
+        msg["From"] = _fa((os.getenv("SMTP_FROM_NAME", "PhiXtra"), from_email))
+        reply_to = os.getenv("SMTP_REPLY_TO", "support@phixtra.com")
     msg["To"] = to_email
     if cc_email:
         msg["Cc"] = cc_email
@@ -88,9 +95,12 @@ def send_email_with_attachment(
     to_email: str, subject: str, html_body: str,
     attachment_bytes: bytes, attachment_filename: str, attachment_mimetype: str = "image/png",
     text_body: str | None = None, from_name: str | None = None, reply_to: str | None = None,
-    cc_email: str | None = None,
+    cc_email: str | None = None, calendar_method: str | None = None,
 ) -> bool:
-    """Send an email with a single binary attachment. Returns True on success."""
+    """Send an email with a single binary attachment. Returns True on success.
+    calendar_method ('REQUEST' / 'CANCEL', 14 Nov 2026): the attachment is a
+    calendar invite (.ics); it is also added as a text/calendar part so Gmail
+    and Outlook show it as an invite with "Add to calendar"."""
     host = os.getenv("SMTP_HOST", "").strip()
     port = int(os.getenv("SMTP_PORT", "587"))
     user = os.getenv("SMTP_USER", "").strip()
@@ -120,6 +130,9 @@ def send_email_with_attachment(
     msg["Subject"] = subject
     msg.set_content(text_body or "Please view this email in an HTML-capable client.")
     msg.add_alternative(html_body, subtype="html")
+    if calendar_method:
+        msg.add_alternative(attachment_bytes.decode("utf-8"), subtype="calendar",
+                            params={"method": calendar_method})
     msg.add_attachment(attachment_bytes, maintype=maintype, subtype=subtype,
                        filename=attachment_filename)
 

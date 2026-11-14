@@ -96,8 +96,6 @@ ADMIN_MODULES = {
     "wa_diagnostics":            {"label": "WA Diagnostics",        "actions": ["view"]},
     "wa_templates":              {"label": "WhatsApp Templates",    "actions": ["view", "delete"]},
     "recovery_queue":            {"label": "Recovery Queue",        "actions": ["view"]},
-    "video_tutorials":           {"label": "Video Tutorials",       "actions": ["view", "modify"]},
-    "social_media":               {"label": "Social Media Posts",    "actions": ["view", "create", "modify", "delete"]},
     "comeback_sequence":          {"label": "Onboarding Drip Campaign", "actions": ["view", "modify"]},
     "modules":                    {"label": "Modules",                "actions": ["view"]},
 }
@@ -117,20 +115,6 @@ AMB_DOC_ICONS = {
     "xls": "📗", "xlsx": "📗", "ppt": "📙", "pptx": "📙",
     "jpg": "🖼️", "jpeg": "🖼️", "png": "🖼️",
 }
-
-# Social Media Posts — internal content queue (post images + captions ready
-# for the social media executive to publish manually on each platform).
-SM_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "static", "uploads", "social_media")
-SM_ALLOWED_EXTS  = {"jpg", "jpeg", "png", "webp", "gif"}
-SM_MAX_BYTES     = 15 * 1024 * 1024  # 15 MB
-SM_PLATFORMS = {
-    "facebook":  {"label": "Facebook",  "icon": "📘", "service": "facebook"},
-    "instagram": {"label": "Instagram", "icon": "📸", "service": "instagram"},
-    "linkedin":  {"label": "LinkedIn",  "icon": "💼", "service": "linkedin"},
-    "tiktok":    {"label": "TikTok",    "icon": "🎵", "service": "tiktok"},
-    "x":         {"label": "X",         "icon": "✖️", "service": "twitter"},
-}
-
 
 def _admin_logged_in() -> bool:
     """Logged in AND the login still exists and is active (Nov 2026: a
@@ -1472,8 +1456,13 @@ def customer_detail(customer_id: int):
         _kcur.close(); _kc.close()
     import turned_away as _turned_away   # 11 Nov 2026: refused entries, Admin only
     turned_away_rows = _turned_away.for_customer(int(customer["id"]), tenant_id, customer.get("email"))
+    try:   # "Set it up for me" bookings (14 Nov 2026)
+        import setup_requests as _SR
+        setup_help_rows = _SR.for_customer(int(customer["id"]), tenant_id, customer.get("email"))
+    except Exception as _e:
+        print("⚠️ customer detail setup_requests:", _e); setup_help_rows = []; _SR = None
     return render_template("portal/admin_customer_detail.html",
-                           turned_away=turned_away_rows,
+                           turned_away=turned_away_rows, setup_help_rows=setup_help_rows, sr=_SR,
                            account_kind=(_kr[0] if _kr else "real"), account_kinds=_account_kind.KINDS,
                            customer=customer, keys=keys,
                            invoices=invs, audit=audit,
@@ -6154,562 +6143,12 @@ def merchant_signup_qr():
                      download_name="phixtra-merchant-signup-qr.png")
 
 
-# ── Social Media Posts ───────────────────────────────────────────────────────
-# Internal content queue: owner (or a scoped support login) uploads an image +
-# caption tagged for one or more platforms. Publishing goes out through Buffer
-# (see buffer_client.py) — either reviewed in the "Ready to Post" queue and
-# sent/scheduled manually, or fired immediately via the Urgent Post path.
-# The social media executive's login has view+create+modify (no delete) so
-# she can both queue normal posts and fire urgent ones herself; delete stays
-# owner-only so the audit trail can't be wiped by that account.
+# Social Media Posts + PhiXtra's Buffer admin pages removed 13 Nov 2026 (user: not needed in Admin).
+# Businesses' own Social Media / Buffer (buffer_routes.py, ai_design_routes.social_bp) are untouched.
 
-def _sm_platforms_from_form() -> list:
-    submitted = request.form.getlist("platforms")
-    return [p for p in submitted if p in SM_PLATFORMS]
 
-
-def _sm_public_image_url(public_token: str) -> str:
-    base_url = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com").rstrip("/")
-    return f"{base_url}/admin/social-media/public/{public_token}/image"
-
-
-def _sm_save_post(caption: str, platforms: list, file, is_urgent: bool = False):
-    """Shared validation + save for both the normal upload and the Urgent
-    Post path. Returns (post_id, error_message) — error_message is set (and
-    post_id is None) if validation failed, so callers just flash it."""
-    if not caption:
-        return None, "Please add a caption for the post."
-    if not platforms:
-        return None, "Please select at least one platform."
-    if not file or not file.filename:
-        return None, "Please choose an image to upload."
-
-    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
-    if ext not in SM_ALLOWED_EXTS:
-        return None, "Only JPG, PNG, WEBP, and GIF images are allowed."
-
-    file.seek(0, 2)
-    size_bytes = file.tell()
-    file.seek(0)
-    if size_bytes > SM_MAX_BYTES:
-        return None, "Image is too large — 15 MB maximum."
-
-    stored_filename = f"{uuid.uuid4().hex}.{ext}"
-    os.makedirs(SM_UPLOAD_FOLDER, exist_ok=True)
-    file.save(os.path.join(SM_UPLOAD_FOLDER, stored_filename))
-    public_token = uuid.uuid4().hex
-
-    conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""
-        INSERT INTO social_media_posts
-            (caption, image_filename, original_filename, platforms, status,
-             created_by, is_urgent, public_token)
-        VALUES (%s, %s, %s, %s, 'ready', %s, %s, %s)
-        RETURNING id
-    """, (caption, stored_filename, file.filename, platforms, _admin_user(), is_urgent, public_token))
-    post_id = cur.fetchone()["id"]
-    conn.commit()
-    cur.close(); conn.close()
-    return post_id, None
-
-
-def _sm_send_to_buffer(post_id: int, scheduled_for_iso: str = None):
-    """Sends one post to Buffer on every mapped platform it's tagged with.
-    Returns (ok, message) for the caller to flash. On success with no
-    schedule, marks the post posted immediately (Buffer's "Share Now" is
-    synchronous from our side — it either publishes or errors)."""
-    conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM social_media_posts WHERE id=%s", (post_id,))
-    post = cur.fetchone()
-    if not post:
-        cur.close(); conn.close()
-        return False, "Post not found."
-
-    cur.execute("SELECT * FROM buffer_channel_map")
-    channel_map = {row["platform"]: row["buffer_channel_id"] for row in (cur.fetchall() or [])}
-
-    unmapped = [p for p in post["platforms"] if p not in channel_map]
-    if unmapped:
-        cur.close(); conn.close()
-        labels = ", ".join(SM_PLATFORMS.get(p, {}).get("label", p) for p in unmapped)
-        return False, (f"No Buffer channel mapped for: {labels}. "
-                        f"Set it up on the Buffer Channels settings page first.")
-
-    image_url = _sm_public_image_url(post["public_token"])
-    buffer_post_ids = dict(post.get("buffer_post_ids") or {})
-    errors = []
-    for platform in post["platforms"]:
-        try:
-            buf_id, _status = _ba.call(
-                _ba.ADMIN_OWNER, buffer_create_post, channel_map[platform], post["caption"], image_url,
-                scheduled_for_iso, service=SM_PLATFORMS.get(platform, {}).get("service"))
-            buffer_post_ids[platform] = buf_id
-        except BufferAPIError as e:
-            errors.append(f"{SM_PLATFORMS.get(platform, {}).get('label', platform)}: {e}")
-
-    if errors:
-        cur.execute("""UPDATE social_media_posts
-                        SET buffer_post_ids=%s, buffer_status='failed', buffer_error=%s
-                        WHERE id=%s""",
-                    (_json.dumps(buffer_post_ids), " | ".join(errors), post_id))
-        conn.commit()
-        cur.close(); conn.close()
-        insert_audit_log(admin_username=_admin_user(), action="social_media_post_buffer_error",
-                          details={"post_id": post_id, "errors": errors})
-        return False, f"Sent to some platforms, but failed on: {' | '.join(errors)}"
-
-    if scheduled_for_iso:
-        cur.execute("""UPDATE social_media_posts
-                        SET buffer_post_ids=%s, buffer_status='scheduled', buffer_error=NULL,
-                            scheduled_for=%s
-                        WHERE id=%s""",
-                    (_json.dumps(buffer_post_ids), scheduled_for_iso, post_id))
-        msg = f"Scheduled via Buffer for {scheduled_for_iso}."
-    else:
-        cur.execute("""UPDATE social_media_posts
-                        SET buffer_post_ids=%s, buffer_status='sent', buffer_error=NULL,
-                            status='posted', posted_at=NOW(), posted_by='Buffer'
-                        WHERE id=%s""",
-                    (_json.dumps(buffer_post_ids), post_id))
-        msg = "Sent to Buffer and published now."
-    conn.commit()
-    cur.close(); conn.close()
-
-    insert_audit_log(admin_username=_admin_user(), action="social_media_post_send_to_buffer",
-                      details={"post_id": post_id, "scheduled_for": scheduled_for_iso})
-    return True, msg
-
-
-@portal_admin_bp.route("/social-media", methods=["GET"])
-def social_media_posts():
-    r = _require_admin("social_media", "view")
-    if r: return r
-    conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM social_media_posts ORDER BY status ASC, created_at DESC")
-    posts = cur.fetchall() or []
-    cur.execute("SELECT platform FROM buffer_channel_map")
-    mapped_platforms = {row["platform"] for row in (cur.fetchall() or [])}
-    cur.close(); conn.close()
-    ready_count = sum(1 for p in posts if p["status"] == "ready")
-    unmapped_platforms = [p for p in SM_PLATFORMS if p not in mapped_platforms]
-    return render_template("portal/admin_social_media.html", posts=posts, platforms=SM_PLATFORMS,
-                            ready_count=ready_count, unmapped_platforms=unmapped_platforms)
-
-
-@portal_admin_bp.route("/social-media/upload", methods=["POST"])
-def social_media_post_upload():
-    r = _require_admin("social_media", "create")
-    if r: return r
-
-    caption   = (request.form.get("caption") or "").strip()
-    platforms = _sm_platforms_from_form()
-    file      = request.files.get("image_file")
-
-    post_id, err = _sm_save_post(caption, platforms, file)
-    if err:
-        flash(err, "warning")
-        return redirect(url_for("portal_admin.social_media_posts"))
-
-    insert_audit_log(admin_username=_admin_user(), action="social_media_post_upload",
-                      details={"platforms": platforms, "post_id": post_id})
-    flash("Post added — ready to publish.", "success")
-    return redirect(url_for("portal_admin.social_media_posts"))
-
-
-@portal_admin_bp.route("/social-media/urgent", methods=["POST"])
-def social_media_post_urgent():
-    """Fast path: caption + image + platforms, published via Buffer the
-    moment it's submitted — no "Ready to Post" review step."""
-    r = _require_admin("social_media", "create")
-    if r: return r
-
-    caption   = (request.form.get("caption") or "").strip()
-    platforms = _sm_platforms_from_form()
-    file      = request.files.get("image_file")
-
-    post_id, err = _sm_save_post(caption, platforms, file, is_urgent=True)
-    if err:
-        flash(err, "warning")
-        return redirect(url_for("portal_admin.social_media_posts"))
-
-    insert_audit_log(admin_username=_admin_user(), action="social_media_post_urgent",
-                      details={"platforms": platforms, "post_id": post_id})
-
-    ok, msg = _sm_send_to_buffer(post_id, scheduled_for_iso=None)
-    flash(msg, "success" if ok else "danger")
-    return redirect(url_for("portal_admin.social_media_posts"))
-
-
-@portal_admin_bp.route("/social-media/<int:post_id>/send-to-buffer", methods=["POST"])
-def social_media_post_send_to_buffer(post_id: int):
-    r = _require_admin("social_media", "modify")
-    if r: return r
-
-    # <input type="datetime-local"> gives "2026-09-10T15:00" with no timezone —
-    # the form label tells staff to enter it in UTC, so we just normalize to
-    # the ISO8601 shape Buffer's API expects.
-    raw = (request.form.get("scheduled_for") or "").strip()
-    scheduled_for_iso = None
-    if raw:
-        from datetime import datetime as _dt
-        try:
-            scheduled_for_iso = _dt.strptime(raw, "%Y-%m-%dT%H:%M").strftime("%Y-%m-%dT%H:%M:00.000Z")
-        except ValueError:
-            flash("Invalid schedule time.", "warning")
-            return redirect(url_for("portal_admin.social_media_posts"))
-
-    ok, msg = _sm_send_to_buffer(post_id, scheduled_for_iso)
-    flash(msg, "success" if ok else "danger")
-    return redirect(url_for("portal_admin.social_media_posts"))
-
-
-@portal_admin_bp.route("/social-media/<int:post_id>/check-buffer-status", methods=["POST"])
-def social_media_post_check_buffer_status(post_id: int):
-    r = _require_admin("social_media", "modify")
-    if r: return r
-
-    conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM social_media_posts WHERE id=%s", (post_id,))
-    post = cur.fetchone()
-    if not post or not post.get("buffer_post_ids"):
-        cur.close(); conn.close()
-        flash("Nothing to check — this post hasn't been sent to Buffer.", "warning")
-        return redirect(url_for("portal_admin.social_media_posts"))
-
-    statuses = {}
-    try:
-        for platform, buf_id in post["buffer_post_ids"].items():
-            statuses[platform] = _ba.call(_ba.ADMIN_OWNER, buffer_get_post_status, buf_id)
-    except BufferAPIError as e:
-        cur.close(); conn.close()
-        flash(f"Could not reach Buffer: {e}", "danger")
-        return redirect(url_for("portal_admin.social_media_posts"))
-
-    if statuses and all(s == "sent" for s in statuses.values()):
-        cur.execute("""UPDATE social_media_posts
-                        SET status='posted', buffer_status='sent', posted_at=NOW(), posted_by='Buffer'
-                        WHERE id=%s""", (post_id,))
-        conn.commit()
-        msg, level = "Confirmed live — marked Posted.", "success"
-    elif any(s == "failed" for s in statuses.values()):
-        cur.execute("UPDATE social_media_posts SET buffer_status='failed' WHERE id=%s", (post_id,))
-        conn.commit()
-        msg, level = "Buffer reports this post failed to publish.", "danger"
-    else:
-        msg, level = f"Still pending in Buffer ({', '.join(sorted(set(statuses.values())))}).", "warning"
-    cur.close(); conn.close()
-    flash(msg, level)
-    return redirect(url_for("portal_admin.social_media_posts"))
-
-
-@portal_admin_bp.route("/social-media/public/<token>/image", methods=["GET"])
-def social_media_post_public_image(token: str):
-    """Unauthenticated by design — Buffer's servers fetch the post image from
-    here when publishing, and can't carry an admin session cookie. Safe
-    because `token` is an unguessable 32-byte hex value, one per post, never
-    exposed anywhere the admin-only image/download routes aren't already."""
-    conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT image_filename FROM social_media_posts WHERE public_token=%s", (token,))
-    post = cur.fetchone()
-    cur.close(); conn.close()
-    if not post:
-        return "Not found", 404
-    return send_from_directory(SM_UPLOAD_FOLDER, post["image_filename"], as_attachment=False)
-
-
-@portal_admin_bp.route("/social-media/<int:post_id>/edit", methods=["POST"])
-def social_media_post_edit(post_id: int):
-    r = _require_admin("social_media", "modify")
-    if r: return r
-
-    caption   = (request.form.get("caption") or "").strip()
-    platforms = _sm_platforms_from_form()
-    file      = request.files.get("image_file")
-
-    if not caption:
-        flash("Please add a caption for the post.", "warning")
-        return redirect(url_for("portal_admin.social_media_posts"))
-    if not platforms:
-        flash("Please select at least one platform.", "warning")
-        return redirect(url_for("portal_admin.social_media_posts"))
-
-    conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM social_media_posts WHERE id=%s", (post_id,))
-    post = cur.fetchone()
-    if not post:
-        cur.close(); conn.close()
-        flash("Post not found.", "warning")
-        return redirect(url_for("portal_admin.social_media_posts"))
-
-    new_stored_filename = post["image_filename"]
-    new_original_name   = post["original_filename"]
-    old_stored_filename = None
-
-    if file and file.filename:
-        ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
-        if ext not in SM_ALLOWED_EXTS:
-            cur.close(); conn.close()
-            flash("Only JPG, PNG, WEBP, and GIF images are allowed.", "warning")
-            return redirect(url_for("portal_admin.social_media_posts"))
-        file.seek(0, 2)
-        size_bytes = file.tell()
-        file.seek(0)
-        if size_bytes > SM_MAX_BYTES:
-            cur.close(); conn.close()
-            flash("Image is too large — 15 MB maximum.", "warning")
-            return redirect(url_for("portal_admin.social_media_posts"))
-
-        new_stored_filename = f"{uuid.uuid4().hex}.{ext}"
-        os.makedirs(SM_UPLOAD_FOLDER, exist_ok=True)
-        file.save(os.path.join(SM_UPLOAD_FOLDER, new_stored_filename))
-        old_stored_filename = post["image_filename"]
-        new_original_name   = file.filename
-
-    cur.execute("""
-        UPDATE social_media_posts
-        SET caption=%s, platforms=%s, image_filename=%s, original_filename=%s
-        WHERE id=%s
-    """, (caption, platforms, new_stored_filename, new_original_name, post_id))
-    conn.commit()
-    cur.close(); conn.close()
-
-    if old_stored_filename:
-        try:
-            os.remove(os.path.join(SM_UPLOAD_FOLDER, old_stored_filename))
-        except OSError:
-            pass
-
-    insert_audit_log(admin_username=_admin_user(), action="social_media_post_edit",
-                      details={"post_id": post_id, "platforms": platforms})
-    flash("Post updated.", "success")
-    return redirect(url_for("portal_admin.social_media_posts"))
-
-
-@portal_admin_bp.route("/social-media/<int:post_id>/mark-posted", methods=["POST"])
-def social_media_post_mark_posted(post_id: int):
-    r = _require_admin("social_media", "modify")
-    if r: return r
-
-    conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT status FROM social_media_posts WHERE id=%s", (post_id,))
-    post = cur.fetchone()
-    if not post:
-        cur.close(); conn.close()
-        flash("Post not found.", "warning")
-        return redirect(url_for("portal_admin.social_media_posts"))
-
-    new_status = "ready" if post["status"] == "posted" else "posted"
-    if new_status == "posted":
-        cur.execute("""UPDATE social_media_posts
-                        SET status='posted', posted_at=NOW(), posted_by=%s WHERE id=%s""",
-                    (_admin_user(), post_id))
-    else:
-        cur.execute("""UPDATE social_media_posts
-                        SET status='ready', posted_at=NULL, posted_by=NULL WHERE id=%s""",
-                    (post_id,))
-    conn.commit()
-    cur.close(); conn.close()
-
-    insert_audit_log(admin_username=_admin_user(), action="social_media_post_status",
-                      details={"post_id": post_id, "status": new_status})
-    flash("Marked as posted." if new_status == "posted" else "Moved back to Ready to Post.", "success")
-    return redirect(url_for("portal_admin.social_media_posts"))
-
-
-@portal_admin_bp.route("/social-media/<int:post_id>/delete", methods=["POST"])
-def social_media_post_delete(post_id: int):
-    r = _require_admin("social_media", "delete")
-    if r: return r
-
-    conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM social_media_posts WHERE id=%s", (post_id,))
-    post = cur.fetchone()
-    if not post:
-        cur.close(); conn.close()
-        flash("Post not found.", "warning")
-        return redirect(url_for("portal_admin.social_media_posts"))
-
-    cur.execute("DELETE FROM social_media_posts WHERE id=%s", (post_id,))
-    conn.commit()
-    cur.close(); conn.close()
-
-    try:
-        os.remove(os.path.join(SM_UPLOAD_FOLDER, post["image_filename"]))
-    except OSError:
-        pass
-
-    insert_audit_log(admin_username=_admin_user(), action="social_media_post_delete",
-                      details={"post_id": post_id})
-    flash("Post deleted.", "success")
-    return redirect(url_for("portal_admin.social_media_posts"))
-
-
-@portal_admin_bp.route("/social-media/<int:post_id>/image", methods=["GET"])
-def social_media_post_image(post_id: int):
-    r = _require_admin("social_media", "view")
-    if r: return r
-    conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT image_filename FROM social_media_posts WHERE id=%s", (post_id,))
-    post = cur.fetchone()
-    cur.close(); conn.close()
-    if not post:
-        return "Post not found", 404
-    return send_from_directory(SM_UPLOAD_FOLDER, post["image_filename"], as_attachment=False)
-
-
-@portal_admin_bp.route("/social-media/<int:post_id>/download", methods=["GET"])
-def social_media_post_download(post_id: int):
-    r = _require_admin("social_media", "view")
-    if r: return r
-    conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT image_filename, original_filename FROM social_media_posts WHERE id=%s", (post_id,))
-    post = cur.fetchone()
-    cur.close(); conn.close()
-    if not post:
-        return "Post not found", 404
-    return send_from_directory(SM_UPLOAD_FOLDER, post["image_filename"],
-                                as_attachment=True,
-                                download_name=post["original_filename"] or post["image_filename"])
-
-
-@portal_admin_bp.route("/settings/buffer-channels", methods=["GET", "POST"])
-def buffer_channels_settings():
-    """PhiXtra's own Buffer (2026-09-25): the key is entered here instead of
-    on the server, and each Social Media Posts platform is pointed at one of
-    the real Buffer accounts from a dropdown. Owner-only, same as Team
-    management. Businesses connect their own Buffer separately on
-    Integration › Buffer (buffer_routes.py)."""
-    r = _require_owner()
-    if r: return r
-    owner = _ba.ADMIN_OWNER
-
-    if request.method == "POST":
-        action = request.form.get("action")
-        if action == "save_key":
-            api_key = (request.form.get("api_key") or "").strip()
-            if not api_key:
-                flash("Paste the Buffer API key first.", "warning")
-                return redirect(url_for("portal_admin.buffer_channels_settings"))
-            try:
-                orgs = _ba.check_key(api_key)
-                _ba.save_account(owner, None, api_key, orgs[0], _admin_user())
-            except BufferAPIError as e:
-                msg = ("Buffer didn't accept this key. Check you copied the whole key from Buffer › Settings › API, "
-                       "then try again.") if e.is_auth_error else f"Buffer said: {e}"
-                flash(msg, "danger")
-                return redirect(url_for("portal_admin.buffer_channels_settings"))
-            insert_audit_log(admin_username=_admin_user(), action="buffer_admin_key_saved",
-                              details={"organization": orgs[0].get("name")})
-            flash(f"Buffer accepted the key. Connected to “{orgs[0].get('name')}”.", "success")
-        elif action == "refresh":
-            try:
-                chans = _ba.refresh_channels(owner)
-                flash(f"Connection working. {len(chans)} Buffer account(s) found.", "success")
-            except BufferAPIError as e:
-                flash(f"Buffer said: {e}", "danger")
-        elif action == "disconnect":
-            _ba.disconnect(owner)
-            insert_audit_log(admin_username=_admin_user(), action="buffer_admin_disconnected", details={})
-            flash("PhiXtra's Buffer disconnected and the key deleted.", "success")
-        elif action == "save_map":
-            known = {c["channel_id"]: c for c in _ba.list_channels(owner)}
-            conn = get_db_connection()
-            cur  = conn.cursor()
-            for platform in SM_PLATFORMS:
-                channel_id = (request.form.get(f"channel__{platform}") or "").strip()
-                if channel_id in known:
-                    cur.execute("""
-                        INSERT INTO buffer_channel_map (platform, buffer_channel_id, channel_label, updated_by)
-                        VALUES (%s, %s, %s, %s)
-                        ON CONFLICT (platform) DO UPDATE
-                            SET buffer_channel_id=EXCLUDED.buffer_channel_id,
-                                channel_label=EXCLUDED.channel_label,
-                                updated_at=NOW(), updated_by=EXCLUDED.updated_by
-                    """, (platform, channel_id, known[channel_id]["title"], _admin_user()))
-                else:
-                    cur.execute("DELETE FROM buffer_channel_map WHERE platform=%s", (platform,))
-            conn.commit()
-            cur.close(); conn.close()
-            insert_audit_log(admin_username=_admin_user(), action="buffer_channels_update", details={})
-            flash("Saved which Buffer account each platform posts to.", "success")
-        return redirect(url_for("portal_admin.buffer_channels_settings"))
-
-    conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM buffer_channel_map")
-    current = {row["platform"]: row for row in (cur.fetchall() or [])}
-    cur.close(); conn.close()
-
-    _ba.refresh_channels_if_stale(owner)
-    account = _ba.get_account(owner)
-    channels = _ba.list_channels(owner) if account else []
-    return render_template("portal/admin_buffer_channels.html", platforms=SM_PLATFORMS,
-                            current=current, account=account, channels=channels)
-
-
-# Which product(s) a tutorial video is published to (Portal, Connect, or
-# both) — set by an admin on this page, read by portal_routes.video_tutorials()
-# to filter each product's own gallery. A video with no row here defaults to
-# ["portal"] only, matching reality for every video built before this
-# feature (2026-09-11): none were ever shown on Connect until an admin
-# explicitly adds it here.
-VIDEO_TUTORIAL_PRODUCTS = {"portal": "Portal", "connect": "Connect"}
-
-def _video_products_map():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT slug, products FROM tutorial_video_products")
-    rows = dict(cur.fetchall())
-    cur.close(); conn.close()
-    return rows
-
-
-@portal_admin_bp.route("/video-tutorials")
-def video_tutorials():
-    r = _require_admin("video_tutorials", "view")
-    if r: return r
-    products_by_slug = _video_products_map()
-    videos = [dict(v, products=products_by_slug.get(v["slug"], ["portal"])) for v in TUTORIAL_VIDEOS]
-    can_modify = _is_owner() or session.get("portal_admin_permissions", {}).get("video_tutorials", {}).get("modify")
-    return render_template("portal/admin_video_tutorials.html", videos=videos,
-                            product_options=VIDEO_TUTORIAL_PRODUCTS, can_modify=can_modify)
-
-
-@portal_admin_bp.route("/video-tutorials/<slug>/products", methods=["POST"])
-def video_tutorials_products(slug):
-    r = _require_admin("video_tutorials", "modify")
-    if r: return r
-    if slug not in {v["slug"] for v in TUTORIAL_VIDEOS}:
-        flash("That video doesn't exist.", "danger")
-        return redirect(url_for("portal_admin.video_tutorials"))
-
-    products = [p for p in request.form.getlist("products") if p in VIDEO_TUTORIAL_PRODUCTS]
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO tutorial_video_products (slug, products, updated_at)
-        VALUES (%s, %s, NOW())
-        ON CONFLICT (slug) DO UPDATE SET products = EXCLUDED.products, updated_at = NOW()
-    """, (slug, products))
-    conn.commit()
-    cur.close(); conn.close()
-
-    if products:
-        flash(f"Saved — now showing on: {', '.join(VIDEO_TUTORIAL_PRODUCTS[p] for p in products)}.", "success")
-    else:
-        flash("Saved — this video is hidden from every product's gallery until you tag it again.", "warning")
-    return redirect(url_for("portal_admin.video_tutorials"))
-
+# Admin › Video Tutorials removed 13 Nov 2026 (user). Businesses' Help › Video Tutorials
+# still reads tutorial_video_products (portal_routes.video_tutorials); that table stays.
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -6781,6 +6220,52 @@ def whos_online_count():
     resp = jsonify({"ok": True, "active": pp.active_count()})
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SET-UP REQUESTS — "Set it up for me" bookings from every sign-up route
+# (14 Nov 2026, approved mock-up 1panZL64jYfXEjf1HgLnDE). Rules: setup_requests.py
+# ══════════════════════════════════════════════════════════════════════════════
+
+@portal_admin_bp.route("/setup-requests")
+def setup_requests_page():
+    r = _require_admin("customers", "view")
+    if r: return r
+    import setup_requests as SR
+    view = request.args.get("view") or "open"
+    rid = request.args.get("id", type=int)
+    route = request.args.get("route") or ""
+    rows, counts = SR.for_admin(view, route, rid)
+    return render_template("portal/admin_setup_requests.html", rows=rows, counts=counts, view=view,
+                           rid=rid, route=route, sr=SR)
+
+
+@portal_admin_bp.route("/setup-requests/<int:rid>", methods=["POST"])
+def setup_requests_update(rid):
+    r = _require_admin("customers", "edit")
+    if r: return jsonify({"ok": False, "error": "You can't change this."}), 403
+    import setup_requests as SR
+    d = request.get_json(silent=True) or {}
+    if d.get("status") is not None and d.get("status") not in SR.STATUS_LABEL:
+        return jsonify({"ok": False, "error": "Unknown status."}), 400
+    row = SR.update(rid, status=d.get("status"), notes=d.get("notes") if "notes" in d else None, by=_admin_user())
+    if not row:
+        return jsonify({"ok": False, "error": "Not found."}), 404
+    return jsonify({"ok": True, "status": row["status"], "label": SR.STATUS_LABEL.get(row["status"], row["status"]),
+                    "by": row.get("handled_by") or ""})
+
+
+@portal_admin_bp.app_context_processor
+def _setup_requests_badge():
+    def setup_requests_new():
+        try:
+            if not session.get("portal_admin_logged_in"):
+                return 0
+            import setup_requests as SR
+            return SR.new_count()
+        except Exception:
+            return 0
+    return {"setup_requests_new": setup_requests_new}
 
 
 @portal_admin_bp.route("/backups")

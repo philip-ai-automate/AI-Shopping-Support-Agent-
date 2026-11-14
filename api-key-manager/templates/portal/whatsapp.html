@@ -383,6 +383,8 @@
   <p class="muted" style="margin-bottom:20px;font-size:13px">
     A Meta window opens and walks you through it — it takes about 5 minutes.
   </p>
+  {% if not connections %}{% import "portal/_setup_help.html" as shx with context %}{% set sh = setup_help('wa_settings') %}
+  <div style="margin:-6px 0 20px">{{ shx.box(sh, "Rather we connect it for you? It's free.") }}</div>{{ shx.modal(sh) }}{% endif %}
 
   {# "Keep my phone app" removed 2026-10-29 (it did not work); back 2026-11-09,
      rebuilt properly, shown only to businesses in WA_COEXIST_TENANTS until tested. #}

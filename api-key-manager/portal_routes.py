@@ -193,6 +193,13 @@ def _inject_granted_features():
         for _flag, _on in _plugin_features_for_tenant(tenant_id).items():
             if _on:
                 granted.add(PLUGIN_FEATURE_PLAN_KEYS[_flag])
+        _twin = _shopify_wa_plan_id(tenant_id)
+        if _twin and _twin != plan_id:
+            # Shopify stores: WhatsApp features of the "+ WhatsApp" twin plan (13 Nov 2026).
+            conn = get_db_connection(); cur = conn.cursor()
+            cur.execute("SELECT feature_key FROM plan_feature_grants WHERE plan_id=%s", (_twin,))
+            granted |= {r[0] for r in cur.fetchall() if _is_wa_feature_key(r[0])}
+            cur.close(); conn.close()
         if _wa_locked_for_tenant(tenant_id):
             granted = {k for k in granted if not _is_wa_feature_key(k)}
     except Exception as e:
@@ -1027,10 +1034,58 @@ def _is_wa_feature_key(feature_key: str) -> bool:
     return bool(feature_key) and feature_key.startswith(WA_FEATURE_PREFIXES)
 
 
+# 13 Nov 2026 (user): Shopify only allows 8 plans, so Shopify stores get no
+# separate "+ WhatsApp" plans. Until a separate WhatsApp Shopify app exists,
+# a store connected through the PhiXtra Shopify app can connect WhatsApp free:
+# its website plan counts as the "+ WhatsApp" twin for WhatsApp features only.
+SHOPIFY_WA_TWIN = {"web_startup": "startup_dual", "web_business": "business_dual",
+                   "web_enterprise": "enterprise_dual"}
+
+
+def _shopify_wa_plan_id(tenant_id: int):
+    """For a business connected through the Shopify app: the plan id whose
+    WhatsApp features it gets (the "+ WhatsApp" twin of its website plan, or
+    its own plan). None for every other business. Cached per request."""
+    try:
+        from flask import g as _g, has_request_context
+        cache = getattr(_g, "_shopify_wa_plan", None) if has_request_context() else None
+        if cache is not None and tenant_id in cache:
+            return cache[tenant_id]
+    except Exception:
+        cache = None
+    out = None
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("""SELECT p.slug, p.id,
+                              (SELECT id FROM plans WHERE slug = (%s::jsonb ->> p.slug) LIMIT 1)
+                         FROM tenants t JOIN plans p ON p.id = t.plan_id
+                        WHERE t.id = %s
+                          AND EXISTS (SELECT 1 FROM shopify_shops s
+                                       WHERE s.tenant_id = t.id AND s.uninstalled_at IS NULL)""",
+                    (_json.dumps(SHOPIFY_WA_TWIN), int(tenant_id)))
+        r = cur.fetchone()
+        cur.close(); conn.close()
+        if r:
+            out = r[2] or r[1]
+    except Exception as e:
+        print("⚠️ _shopify_wa_plan_id:", e)
+    try:
+        from flask import g as _g, has_request_context
+        if has_request_context():
+            if getattr(_g, "_shopify_wa_plan", None) is None:
+                _g._shopify_wa_plan = {}
+            _g._shopify_wa_plan[tenant_id] = out
+    except Exception:
+        pass
+    return out
+
+
 def _wa_locked_for_tenant(tenant_id: int) -> bool:
     """True when this tenant is a WooCommerce merchant whose plan doesn't
     include WhatsApp. Never raises; on a DB error it returns False so a
     WhatsApp merchant is never locked out by a hiccup."""
+    if _shopify_wa_plan_id(tenant_id):
+        return False   # Shopify stores: WhatsApp free (13 Nov 2026)
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -1286,11 +1341,14 @@ def _plan_grants_feature(plan: dict, feature_key: str) -> bool:
         return False
     if feature_key.startswith("legacy:"):
         return bool(plan.get(feature_key.split(":", 1)[1]))
+    plan_id = plan.get("plan_id")
+    if _is_wa_feature_key(feature_key) and plan.get("tenant_id"):
+        plan_id = _shopify_wa_plan_id(int(plan["tenant_id"])) or plan_id   # Shopify: "+ WhatsApp" twin
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
         "SELECT 1 FROM plan_feature_grants WHERE plan_id=%s AND feature_key=%s LIMIT 1",
-        (plan.get("plan_id"), feature_key),
+        (plan_id, feature_key),
     )
     granted = bool(cur.fetchone())
     cur.close(); conn.close()
@@ -3064,12 +3122,15 @@ def _send_account_ready_email(
     website_platform: str = "",
     trial_ends=None,
     trial_plan_name: str = "",
+    shopify: dict = None,
 ) -> None:
     """Welcome email sent once, right after a new business verifies its email
     (2026-10-06). Everyone starts on PhiXtra Connect (Free, no AI) and starts
     the 2-week AI trial themselves from the dashboard."""
     import html as _h
     greeting = _h.escape(first_name.strip()) if first_name and first_name.strip() else "there"
+    if shopify:
+        return _send_shopify_welcome_email(email, greeting, first_name, shopify)
     biz  = _h.escape((business_name or "").strip() or (domain or ""))
     site = _h.escape(domain or "your website")
     wp   = (website_platform or "") == "wordpress"
@@ -3157,6 +3218,11 @@ def _send_account_ready_email(
         trial_small = (f"Full {trial_plan} for 14 days. No card needed. One trial per business. "
                        f"After 14 days you go back to PhiXtra Connect unless you choose a plan.")
 
+    # 13 Nov 2026: one main button. With the trial on, the dark box's
+    # "Open my dashboard" is it; otherwise an "Open PhiXtra" button here.
+    bottom_btn = "" if trial_ends else (
+        f'<a href="{login_link}" style="display:inline-block;background:#0B1D40;color:#ffffff;padding:12px 22px;'
+        f'border-radius:10px;font-weight:700;text-decoration:none;margin:0 14px 8px 0">Open PhiXtra</a>')
     feat_html = "".join(f"<li>{f}</li>" for f in features)
     steps_html = "".join(
         f'<li style="margin-bottom:4px">{t}'
@@ -3184,10 +3250,9 @@ def _send_account_ready_email(
         <h3 style="font-size:15px;margin:0 0 8px;color:#111E2D">What to do next</h3>
         <ol style="margin:0 0 18px;padding-left:20px;line-height:1.75">{steps_html}</ol>
         <p style="margin:0 0 18px">
-          <a href="{login_link}" style="display:inline-block;background:#0B1D40;color:#ffffff;padding:12px 22px;border-radius:10px;font-weight:700;text-decoration:none;margin:0 10px 8px 0">Log in to PhiXtra</a>
-          <a href="{plans_link}" style="display:inline-block;background:#ffffff;color:#0B1D40;padding:10px 20px;border-radius:10px;font-weight:700;text-decoration:none;border:2px solid #0B1D40;margin:0 0 8px 0">See plans</a>
+          {bottom_btn}<a href="{plans_link}" style="color:#0B1D40;font-weight:700">See plans and prices</a>
         </p>
-        <p style="color:#6B7280;font-size:13px;margin:0">Questions? Email <a href="mailto:support@phixtra.com" style="color:#0B1D40">support@phixtra.com</a></p>
+        <p style="color:#6B7280;font-size:13px;margin:0">Questions? Just reply to this email.</p>
       </div>
     </div>"""
 
@@ -3202,9 +3267,48 @@ def _send_account_ready_email(
         f"{trial_head.upper()}\n{trial_text}\n"
         f"{trial_btn}: {trial_link}\n{trial_small}\n\n"
         f"WHAT TO DO NEXT\n{text_steps}\n\n"
-        f"Log in: {login_link}\nSee plans: {plans_link}\n\n"
-        f"Questions? Email support@phixtra.com"
+        f"Open PhiXtra: {login_link}\nSee plans and prices: {plans_link}\n\n"
+        f"Questions? Just reply to this email."
     )
+    send_email(email, "Your PhiXtra account is ready", html, text_body=text)
+
+
+def _send_shopify_welcome_email(email: str, greeting: str, first_name: str, shopify: dict) -> None:
+    """Welcome email for an account made from the PhiXtra Shopify app
+    (13 Nov 2026, user-approved wording B)."""
+    import html as _h
+    store = _h.escape(shopify.get("store_name") or "your store")
+    url = shopify.get("app_url") or "https://admin.shopify.com"
+    steps = [("Choose your plan in Shopify.",
+              "In your Shopify admin, open Apps › PhiXtra and click Choose plan. Every paid plan starts "
+              "with a 14-day free trial, billed through Shopify."),
+             ("Turn on the chat box.",
+              "On the PhiXtra Home screen in Shopify, press Turn on, then Save in the theme editor."),
+             ("Connect WhatsApp (optional).", "In PhiXtra, go to Settings › WhatsApp Connect.")]
+    steps_html = "".join(
+        f'<li style="margin-bottom:6px"><b>{t}</b><br><span style="color:#5A6577;font-size:13.5px;line-height:1.5">{d}</span></li>'
+        for t, d in steps)
+    html = f"""
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;background:#ffffff;color:#111E2D;font-size:15px;line-height:1.6;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden">
+      <div style="background:#0B1D40;color:#ffffff;padding:16px 24px;font-weight:700;font-size:18px">PhiXtra</div>
+      <div style="padding:24px">
+        <h2 style="font-size:21px;line-height:1.3;color:#0B1D40;margin:0 0 14px">Your account is ready</h2>
+        <p style="margin:0 0 14px">Hi {greeting},</p>
+        <p style="margin:0 0 16px">Your PhiXtra account is connected to your Shopify store <b>{store}</b>. PhiXtra answers every enquiry on your store, follows buyers up and tracks every sale.</p>
+        <h3 style="font-size:15px;margin:0 0 8px;color:#111E2D">Your next steps</h3>
+        <ol style="margin:0 0 16px;padding-left:20px;line-height:1.6">{steps_html}</ol>
+        <p style="margin:0 0 18px">Your products and prices are read from Shopify automatically. Nothing to prepare.</p>
+        <p style="margin:0 0 18px"><a href="{url}" style="display:inline-block;background:#0B1D40;color:#ffffff;padding:12px 22px;border-radius:10px;font-weight:700;text-decoration:none">Open PhiXtra in Shopify</a></p>
+        <p style="color:#6B7280;font-size:13px;margin:0">Questions? Just reply to this email.</p>
+      </div>
+    </div>"""
+    text = (f"Hi {first_name.strip() if first_name and first_name.strip() else 'there'},\n\n"
+            f"Your PhiXtra account is connected to your Shopify store {shopify.get('store_name') or 'your store'}. "
+            f"PhiXtra answers every enquiry on your store, follows buyers up and tracks every sale.\n\n"
+            f"YOUR NEXT STEPS\n"
+            + "".join(f"{i}. {t} {d}\n" for i, (t, d) in enumerate(steps, 1))
+            + f"\nYour products and prices are read from Shopify automatically. Nothing to prepare.\n\n"
+            f"Open PhiXtra in Shopify: {url}\n\nQuestions? Just reply to this email.")
     send_email(email, "Your PhiXtra account is ready", html, text_body=text)
 
 
@@ -4931,6 +5035,26 @@ def register_resend_phone_otp():
     return redirect(url_for("portal.register_verify_phone"))
 
 
+def _shopify_welcome_info(tenant_id):
+    """{'store_name', 'app_url'} when this account was made from the PhiXtra
+    Shopify app (13 Nov 2026: Shopify stores get their own welcome email)."""
+    try:
+        import shopify_app
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("""SELECT shop, shop_name FROM shopify_shops
+                        WHERE tenant_id=%s AND uninstalled_at IS NULL ORDER BY linked_at DESC NULLS LAST LIMIT 1""",
+                    (int(tenant_id),))
+        r = cur.fetchone(); cur.close(); conn.close()
+        if not r:
+            return None
+        store = r[0].replace(".myshopify.com", "")
+        return {"store_name": r[1] or store,
+                "app_url": f"https://admin.shopify.com/store/{store}/apps/{shopify_app._key()}"}
+    except Exception as e:
+        print("⚠️ _shopify_welcome_info:", e)
+        return None
+
+
 def _send_welcome_after_confirm(customer_id: int):
     """The "account is ready" / welcome email, sent once the email is
     confirmed — by the old email link (verify_email) or by the sign-up email
@@ -4973,6 +5097,7 @@ def _send_welcome_after_confirm(customer_id: int):
                 website_platform=wa_row.get("website_platform") or "",
                 trial_ends=wa_row.get("trial_ends_at"),
                 trial_plan_name=wa_row.get("plan_name") or "",
+                shopify=_shopify_welcome_info(wa_row["tenant_id"]),
             )
         elif wa_row:
             _send_verified_welcome_email_web(
@@ -7092,7 +7217,7 @@ def _setup_checklist(tenant_id: int):
                    plugin_url=(PLUGIN_PAGE_URL if wp and not t["chatbox_seen_at"] else None),
                    shop_url=shop_tab, list_url=url_for("portal.data_sources"), source=prod["source"],
                    site_ok=(not wp) and bool(src), read_url=url_for("portal.store_info_website_read_products"))]
-    wa_ok = t["channel_mode"] in ("dual", "both")
+    wa_ok = t["channel_mode"] in ("dual", "both") or bool(_shopify_wa_plan_id(tenant_id))
     # 13 Nov 2026: a website business on its website trial can add WhatsApp;
     # pressing Connect WhatsApp moves it to the WhatsApp + website trial.
     wa_switch = (not wa_on) and _website_trial_can_add_wa(tenant_id)
@@ -36950,7 +37075,9 @@ def billing_plans():
         plan_ccy = "USD"
         # Only the plans that exist in Shopify (9 Nov 2026): no channel switch,
         # no Custom plan; B2B businesses keep their three B2B plans.
-        _shop_slugs = set(shopify_billing.PLAN_MAP.values())
+        # 13 Nov 2026: Starter + WhatsApp left Shopify (8-plan limit); Shopify
+        # stores connect WhatsApp free instead, so it is never offered here.
+        _shop_slugs = set(shopify_billing.PLAN_MAP.values()) - {"startup_dual"}
         _pool = single_plans + dual_plans + custom_plans
         single_plans = [p for p in plans if p in _pool and (p["slug"] in _shop_slugs
                         or p["id"] == current.get("plan_id"))]
@@ -45531,3 +45658,11 @@ def quotes_quotation_send(qid: int):
                            lang=(ai_cover or {}).get("lang") or lang, covers=covers, ai_cover=ai_cover,
                            wa_ok=wa_ok, wa_why=(wa_why if not wa_ok else ""),
                            doc=_qq.to_doc(tenant_id, q, _qd.get(tenant_id), req), qr=_qr)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# "Set it up for me" (14 Nov 2026) — booking calendar + alerts, every sign-up
+# route. Routes: setup_help_routes.py · rules/storage: setup_requests.py
+# ══════════════════════════════════════════════════════════════════════════════
+import setup_help_routes as _setup_help_routes
+_setup_help_routes.register(portal_bp, _phone_entry_check, _customer_id)

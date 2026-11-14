@@ -39,8 +39,6 @@
   .req{color:#D92D20;font-weight:700;margin-left:2px}
   #blkCompany{display:flex;flex-direction:column;gap:inherit}
   #blkCompany[hidden]{display:none}
-  .b2-help{margin:14px 0 0;padding:12px 14px;border-radius:12px;background:var(--tint);color:var(--navy);font-size:14px;line-height:1.5}
-  .b2-help a{color:var(--navy);font-weight:700}
   .rg-chosen{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 16px;
              background:var(--tint);border:1px solid #C9D6EC;border-radius:12px;margin-bottom:22px}
   .rg-chosen small{display:block;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
@@ -160,6 +158,8 @@
     <h2 id="asTitle">Your WhatsApp, website and CRM on one platform.</h2>
     <p id="asSub">Your AI Agent answers your customers, and your team sees every conversation in one place.</p>
     <ul class="rg-benefits" id="asList"></ul>
+    {% import "portal/_setup_help.html" as shx with context %}{% set sh = setup_help('register') %}
+    <div class="shx-wide" style="margin:22px 0 4px">{{ shx.box(sh, "Rather we set it up for you? It's free.", 'dark') }}</div>
     <div class="rg-trust">PhiXtra is an official Meta-approved WhatsApp Tech Provider. A trading name of ProfitBuyz Limited.</div>
   </aside>
 
@@ -367,9 +367,10 @@
       <section class="rg-next" aria-label="What happens next">
         <h3>What happens next</h3>
         <ol id="nextSteps"></ol>
-        <p class="b2-help" id="b2Help" hidden><b>Prefer us to set it up with you?</b> <a href="https://outlook.office.com/book/TalktoUs1@phixtra.com/?ismsaljsauthenabled" target="_blank" rel="noopener">See PhiXtra in Action →</a> Book a free session and we load your price list together.</p>
       </section>
     </form>
+    <div class="shx-narrow" style="margin-top:18px">{{ shx.box(sh, "Rather we set it up for you? It's free.") }}</div>
+    <style>.shx-narrow{display:none}@media(max-width:640px){.shx-wide{display:none}.shx-narrow{display:block}}</style>
 
     <dialog class="wu-pop" id="wuBiz" aria-labelledby="wuBizT"><div class="wu-hd"><h3 id="wuBizT">You use the WhatsApp Business app</h3><button class="wu-x" type="button" aria-label="Close">✕</button></div><div class="wu-bd">
       <div class="pp"><span class="lb">What happens</span><p>Your number keeps working on your phone, just like today. The same chats also appear in PhiXtra, so your team and the AI Agent can answer them too.</p></div>
@@ -543,7 +544,7 @@ function render() {
   el('blkMobile').hidden = true;   // 2026-11-09: no mobile / WhatsApp code at sign-up
   updateWa();
   // B2B (2026-10-29): sections, company details, optional WhatsApp.
-  ['secAbout', 'secCompany', 'secReach', 'secLogin', 'blkJob', 'blkCompany', 'b2Help'].forEach(function(id){ el(id).hidden = !b2b; });
+  ['secAbout', 'secCompany', 'secReach', 'secLogin', 'blkJob', 'blkCompany'].forEach(function(id){ el(id).hidden = !b2b; });
   if (b2b) el('basedSlot').appendChild(el('blkBased')); else BASED_HOME.parentNode.insertBefore(el('blkBased'), BASED_HOME);
   el('lblBusinessName').textContent = b2b ? 'Registered company name' : 'Business name';
   el('fBusinessName').placeholder = b2b ? 'e.g. Harbour Supplies Ltd' : 'e.g. Unity Foods Distribution';
@@ -724,4 +725,5 @@ else if (TYPE === 'b2b' && !PLAT) { openPicker(); showStep('platform'); }
   if (based.value) fill();
 })();
 </script>
+{{ shx.modal(sh) }}
 {% endblock %}

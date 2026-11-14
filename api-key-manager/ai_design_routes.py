@@ -5,8 +5,7 @@ of screens used twice:
   social_bp      every business, under the Social Media menu
                  /social-posts/new, /social-posts/design/<id>…, /social-posts/brand-kit,
                  /social-posts/usage
-  ai_admin_bp    PhiXtra admin, from Social Media Posts
-                 /admin/social-media/design/…, /admin/social-media/brand-kit
+  (the PhiXtra admin copy, ai_admin_bp, was removed 13 Nov 2026)
 
 The engine (AI calls, allowance, Brand Kit, drawing) is ai_designer.py.
 Templates take `layout_base` (portal or admin frame) and an endpoint prefix
@@ -29,7 +28,6 @@ import buffer_accounts as ba
 
 social_bp = Blueprint("social", __name__)
 social_bp.context_processor(_inject_granted_features)
-ai_admin_bp = Blueprint("ai_admin", __name__, url_prefix="/admin/social-media")
 
 PLAN_KEY = "social.posts_view"
 
@@ -57,13 +55,6 @@ def _business_ctx():
               "colour": c["colour"]} for c in ba.list_channels(owner, enabled_only=True)]
     return Ctx(D.tenant_owner(tid), tid, _current_actor(customer)["label"], False, chans,
                customer.get("tenant_name") or ""), customer
-
-
-def _admin_ctx():
-    from portal_admin_routes import SM_PLATFORMS, _admin_user
-    chans = [{"channel_id": k, "service": v["service"], "label": v["label"], "title": v["label"],
-              "colour": ba.service_colour(v["service"])} for k, v in SM_PLATFORMS.items()]
-    return Ctx(D.ADMIN_OWNER, None, _admin_user(), True, chans, "PhiXtra")
 
 
 def _common(ctx, **extra):
@@ -214,8 +205,6 @@ def h_finish(ctx, sid, customer=None):
         v["captions"] = caps
         D._save_session(s)
         main_caption = next((t for t in caps.values() if t), "")
-        if ctx.is_admin:
-            return _admin_finish(ctx, s, main_caption)
         from buffer_routes import UPLOAD_FOLDER, create_post_from_design, _parse_when, wants_time
         when = _parse_when(request.form.get("scheduled_for_utc")) if wants_time(action) else None
         square, wide = D.save_final_images(ctx.owner_key, s, UPLOAD_FOLDER)
@@ -234,32 +223,6 @@ def h_finish(ctx, sid, customer=None):
     return render_template("portal/ai_design_finish.html", **_common(
         ctx, s=s, v=v, kit=kit, swatches=R.palette_swatches(kit), fallback=fallback,
         stamp=int(datetime.now().timestamp())))
-
-
-def _admin_finish(ctx, s, caption):
-    import uuid
-    from db import get_db_connection
-    from portal_admin_routes import SM_UPLOAD_FOLDER
-    square, _wide = D.save_final_images(ctx.owner_key, s, SM_UPLOAD_FOLDER)
-    try:
-        os.remove(os.path.join(SM_UPLOAD_FOLDER, _wide))
-    except OSError:
-        pass
-    platforms = [c["channel_id"] for c in s.get("channels") or []]
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("""INSERT INTO social_media_posts (caption, image_filename, original_filename, platforms, status,
-                                                   created_by, is_urgent, public_token)
-                   VALUES (%s,%s,'AI design.png',%s,'ready',%s,FALSE,%s) RETURNING id""",
-                (caption, square, platforms, ctx.actor, uuid.uuid4().hex))
-    post_id = cur.fetchone()[0]
-    conn.commit()
-    cur.close(); conn.close()
-    s["post_id"] = post_id
-    D._save_session(s)
-    insert_audit_log(admin_username=ctx.actor, action="social_media_post_ai_design", details={"post_id": post_id})
-    flash("Added to Social Media Posts as Ready to Post. Send or schedule it through Buffer from there.", "success")
-    return redirect(url_for("portal_admin.social_media_posts"))
 
 
 def h_brand_kit(ctx):
@@ -462,73 +425,3 @@ def _inject_social_menu():
                                       "socialcal.overview", "socialcal.calendar", "socialcal.approval", "socialcal.analytics",
                                       "socialcal.plan_month", "socialcal.plan_review",
                                       "socialcal.post_view")}
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# PhiXtra admin
-# ══════════════════════════════════════════════════════════════════════════
-
-def _adm(action):
-    from portal_admin_routes import _require_admin
-    r = _require_admin("social_media", action)
-    return r, (None if r else _admin_ctx())
-
-
-@ai_admin_bp.route("/design/new", methods=["GET", "POST"])
-def new_post():
-    r, ctx = _adm("create")
-    return r or h_new(ctx)
-
-
-@ai_admin_bp.route("/design/<int:sid>", methods=["GET"])
-def pick(sid):
-    r, ctx = _adm("create")
-    return r or h_pick(ctx, sid)
-
-
-@ai_admin_bp.route("/design/<int:sid>/<any(select, restyle, vote, rewrite, words):what>", methods=["POST"])
-def design_action(sid, what):
-    r, ctx = _adm("create")
-    return r or h_action(ctx, sid, what)
-
-
-@ai_admin_bp.route("/design/<int:sid>/again", methods=["GET", "POST"])
-def again(sid):
-    r, ctx = _adm("create")
-    return r or h_again(ctx, sid)
-
-
-@ai_admin_bp.route("/design/<int:sid>/img/<int:idx>/<size>.png", methods=["GET"])
-def design_img(sid, idx, size):
-    r, ctx = _adm("create")
-    return r or h_img(ctx, sid, idx, size)
-
-
-@ai_admin_bp.route("/design/<int:sid>/finish", methods=["GET", "POST"])
-def finish(sid):
-    r, ctx = _adm("create")
-    return r or h_finish(ctx, sid)
-
-
-@ai_admin_bp.route("/brand-kit", methods=["GET", "POST"])
-def brand_kit():
-    r, ctx = _adm("modify" if request.method == "POST" else "view")
-    return r or h_brand_kit(ctx)
-
-
-@ai_admin_bp.route("/brand-kit/preview.png", methods=["GET"])
-def brand_preview():
-    r, ctx = _adm("view")
-    return r or h_brand_preview(ctx)
-
-
-@ai_admin_bp.route("/brand-kit/logo", methods=["GET"])
-def brand_logo():
-    r, ctx = _adm("view")
-    return r or h_logo(ctx)
-
-
-@ai_admin_bp.route("/design/usage", methods=["GET"])
-def usage():
-    r, ctx = _adm("view")
-    return r or render_template("portal/ai_design_usage.html", **_common(ctx, log=D.usage_log(ctx.owner_key)))

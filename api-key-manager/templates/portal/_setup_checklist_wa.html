@@ -107,6 +107,9 @@
       <span class="sw-count">{{ setup.done }} of {{ setup.total }} done{% if setup.minutes_left %} · about {{ setup.minutes_left }} minutes left{% endif %}</span></div>
     <div class="sw-bar" role="progressbar" aria-valuemin="0" aria-valuemax="{{ setup.total }}" aria-valuenow="{{ setup.done }}"><span style="width:{{ (100 * setup.done / setup.total)|round|int }}%"></span></div>
   </div>
+  <div style="padding:0 22px">{% if setup.done < setup.total %}{% import "portal/_setup_help.html" as shx with context %}{% set sh = setup_help('dashboard') %}
+  <div style="margin:12px 0">{{ shx.box(sh, "Rather we do this for you? It's free.") }}</div>{{ shx.modal(sh) }}{% endif %}
+  </div>
 
   {% for st in setup.steps %}
   {% set i = loop.index0 %}{% set is_next = (i == setup.next_i) %}

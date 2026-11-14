@@ -809,6 +809,30 @@
 </div>
 {# ──────────────────────────────────────────────────────────────────────────── #}
 
+{# ASKED FOR SET-UP HELP (14 Nov 2026): "Set it up for me" bookings. #}
+{% if setup_help_rows %}
+<div class="card" id="setupHelp">
+  <div class="card-title">🙋 Asked for set-up help</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Asked</th><th>Contact by</th><th>Booked for (UK)</th><th>Where</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for h in setup_help_rows %}
+        <tr>
+          <td class="muted" style="white-space:nowrap">{{ sr.when_text(h.created_at) }}</td>
+          <td><b>{{ sr.METHODS.get(h.method, h.method) }}</b><div style="font-size:12px">{{ sr.contact_value(h) }}</div></td>
+          <td style="white-space:nowrap">{{ sr.when_text(h.slot_at) }}</td>
+          <td>{{ sr.ROUTES.get(h.route, h.route) }} · {{ sr.PLACES.get(h.place, '') }}</td>
+          <td>{{ sr.STATUS_LABEL.get(h.status, h.status) }}{% if h.notes %}<div class="muted" style="font-size:11.5px;white-space:pre-line">{{ h.notes }}</div>{% endif %}
+              <div><a href="{{ url_for('portal_admin.setup_requests_page', id=h.id) }}" style="font-size:12px">Open in Set-up requests</a></div></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 {# TURNED AWAY (11 Nov 2026): every time the portal refused something this
    business typed — phone numbers, sign-ups, logins. Admin only, 90 days. #}
 <div class="card" id="turnedAway">

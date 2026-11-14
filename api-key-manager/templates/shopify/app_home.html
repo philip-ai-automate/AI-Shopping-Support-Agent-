@@ -78,6 +78,9 @@
    </ul>
   </div>
 
+  {% import "portal/_setup_help.html" as shx with context %}{% set sh = setup_help('shopify_welcome', route='shopify') %}
+  <div id="w-help" style="margin-bottom:16px">{{ shx.box({'booked': None}, "Rather we set it up for you? It's free.", 'polaris') }}</div>
+
   <div class="card" id="c-form">
    <label class="f" style="margin-top:0">Who do you sell to?</label>
    <div class="choice">
@@ -137,6 +140,7 @@
   <!-- 7B (9 Nov 2026, approved mock-up Qk1B4uW9DFbE9zUxQkEnJo): the plan, billed through Shopify -->
   <div class="card hide" id="h-plan"><div class="plan"><div class="t"><b id="hp-title"></b><span class="d" id="hp-text"></span></div><div id="hp-act"></div></div></div>
   <div class="card">
+   <div id="h-help" class="hide" style="margin-bottom:12px">{{ shx.box({'booked': None}, "Want us to finish the set-up for you? It's free.", 'light', place='shopify_home') }}</div>
    <ul class="steps">
     <li><div class="n">1</div><div class="t"><b>Products</b><span id="h-products">Reading your products from Shopify…</span>
       <div class="prog wait" id="h-prog"><i></i></div>
@@ -152,6 +156,7 @@
  </div>
 
 </div>
+{{ shx.modal(sh) }}
 <script>
 (function () {
   const $ = (id) => document.getElementById(id);
@@ -355,8 +360,26 @@
     if (r.ok) render(r.d);
   }
 
+  // "Set it up for me" (14 Nov 2026): book through the Shopify session; show the booked call once there is one.
+  window.SHX_POST = function (body) {
+    return fetch('/shopify/api/setup-help', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  };
+  function setupHelp(d) {
+    if (d.setup_help) {
+      document.querySelectorAll('[data-shx-box]').forEach(function (b) {
+        if (b.classList.contains('shx-thanks')) return;
+        const t = document.createElement('div'); t.className = 'shx-thanks'; t.setAttribute('data-shx-box', '');
+        t.innerHTML = '<b></b><span></span> <a target="_blank" rel="noopener">Change or cancel</a>';
+        t.querySelector('b').textContent = d.setup_help.title; t.querySelector('span').textContent = d.setup_help.text;
+        t.querySelector('a').href = d.setup_help.manage; b.replaceWith(t);
+      });
+    }
+    $('h-help').classList.toggle('hide', !!d.wa_connected && !d.setup_help);
+  }
+
   function render(d) {
     st = d;
+    setupHelp(d);
     if (d.linked) {
       products(d.products);
       $('h-biz').textContent = d.business || d.shop_name;

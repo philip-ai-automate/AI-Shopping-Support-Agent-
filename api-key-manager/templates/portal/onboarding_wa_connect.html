@@ -96,6 +96,13 @@
   </div>
   <div id="signupError" class="flash danger"></div>
   {% include "portal/_support_connect_help.html" %}
+  {% import "portal/_setup_help.html" as shx with context %}{% set sh = setup_help('wa_connect') %}
+  <div id="waFailed" hidden style="margin-top:18px">
+    <div style="font-weight:800;font-size:16px;margin-bottom:10px">WhatsApp isn't connected yet</div>
+    {{ shx.box(sh, "Stuck with the Meta steps? We'll connect it for you, free.", place='wa_failed') }}
+  </div>
+  <div id="waOffer" style="margin-top:18px">{{ shx.box(sh, "Rather we connect WhatsApp for you? It's free.") }}</div>
+  {{ shx.modal(sh) }}
 
   <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--line)">
     <a href="{{ url_for('portal.dashboard') }}" class="muted" style="font-size:13px">
@@ -109,6 +116,9 @@
 <div class="card" style="margin-bottom:20px">
   <p style="font-size:14px;margin-bottom:20px">Connect your WhatsApp Business Account to get started.</p>
   <a href="{{ url_for('portal.whatsapp_connect') }}" class="btn btn-primary">Connect WhatsApp →</a>
+  {% import "portal/_setup_help.html" as shx with context %}{% set sh = setup_help('wa_connect') %}
+  <div style="margin-top:18px">{{ shx.box(sh, "Rather we connect WhatsApp for you? It's free.") }}</div>
+  {{ shx.modal(sh) }}
   <div style="margin-top:16px">
     <a href="{{ url_for('portal.dashboard') }}" class="muted" style="font-size:13px">Skip for now →</a>
   </div>
@@ -150,6 +160,16 @@
     } catch(e) {}
   });
 
+  // 14 Nov 2026: Meta window closed or failed part-way → say so and offer to do it for them.
+  function waNotConnected() {
+    var f = document.getElementById('waFailed'), o = document.getElementById('waOffer');
+    if (!f) return;
+    var booked = o && o.querySelector('.shx-thanks');
+    if (booked) return;               // already booked: the thanks line stays
+    f.hidden = false; if (o) o.hidden = true;
+    f.scrollIntoView({block: 'center', behavior: 'smooth'});
+  }
+
   function launchWhatsAppSignup() {
     _sessionInfo = {};
     setStatus('connecting', 'Opening WhatsApp signup...');
@@ -161,6 +181,7 @@
         sendCodeToBackend(response.authResponse.code);
       } else {
         setStatus('idle');
+        waNotConnected();
       }
     }, {
       config_id: '{{ meta_config_id }}',
@@ -186,7 +207,7 @@
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      if (data.error) { setStatus('idle'); showError(data.error); return; }
+      if (data.error) { setStatus('idle'); showError(data.error); waNotConnected(); return; }
       if (data.status === 'connected') {
         setStatus('connecting', 'Connected! Taking you to your dashboard...');
         window.location.href = '{{ url_for("portal.dashboard") }}';
@@ -197,7 +218,7 @@
     })
     .catch(function() {
       setStatus('idle');
-      showError('Network error. Please try again.');
+      showError('Network error. Please try again.'); waNotConnected();
     });
   }
 
