@@ -565,7 +565,7 @@ def _with_team_translation(tenant_id: int, message: str) -> str:
         import json as _json
         from llm import _get_client
         resp = _get_client().chat.completions.create(
-            model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
+            model=os.getenv("OPENAI_CHAT_MODEL", "gpt-5.6-luna"),
             messages=[{"role": "user", "content":
                        f"Detect the language of this customer message (ISO 639-1). If it is not '{team}', translate it "
                        f"into that language, keeping numbers, prices and names exactly. Reply as JSON "

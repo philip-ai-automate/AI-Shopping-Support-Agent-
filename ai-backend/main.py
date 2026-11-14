@@ -2728,7 +2728,7 @@ def _cb_translate(tenant_id: int, texts: dict, lang: str) -> dict:
                 pass
         try:
             resp = _llm_module._get_client().chat.completions.create(
-                model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"), timeout=15,
+                model=os.getenv("OPENAI_CHAT_MODEL", "gpt-5.6-luna"), timeout=15,
                 response_format={"type": "json_object"},
                 messages=[{"role": "system", "content":
                            "You translate the words of a shop or wholesaler's website chat box: a welcome message, "

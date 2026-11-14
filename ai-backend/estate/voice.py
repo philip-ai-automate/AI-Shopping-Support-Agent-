@@ -49,7 +49,7 @@ def transcribe(tenant_id: int, audio: bytes, filename: str = "voice.ogg") -> str
     f = io.BytesIO(audio)
     f.name = filename
     r = client.audio.transcriptions.create(
-        model=os.getenv("ESTATE_TRANSCRIBE_MODEL", "gpt-4o-transcribe"),
+        model=os.getenv("ESTATE_TRANSCRIBE_MODEL", "gpt-transcribe"),
         file=f,
         prompt=_hint(tenant_id),
     )
@@ -100,7 +100,7 @@ def read_agent_note(tenant_id: int, transcript: str, now_local: str) -> dict:
     from openai import OpenAI
     estates = LAND.load_estates(tenant_id)
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
-    kw = dict(model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
+    kw = dict(model=os.getenv("OPENAI_CHAT_MODEL", "gpt-5.6-luna"),
               messages=[{"role": "system", "content": _agent_prompt(now_local, estates)},
                         {"role": "user", "content": "Agent's note: " + transcript}],
               max_completion_tokens=1500, response_format={"type": "json_object"},

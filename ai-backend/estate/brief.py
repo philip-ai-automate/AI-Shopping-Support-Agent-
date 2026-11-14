@@ -163,7 +163,7 @@ def write(tenant_id: int, customer_id: int, tz) -> dict:
             + "\n\nCHAT ON WHATSAPP\n" + ("\n".join(g["history"]) or "No chat yet")
             + "\n\nTEAM ACTIVITY\n" + ("\n".join(g["team"]) or "Nothing logged yet"))
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
-    kw = dict(model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
+    kw = dict(model=os.getenv("OPENAI_CHAT_MODEL", "gpt-5.6-luna"),
               messages=[{"role": "system", "content": SYSTEM}, {"role": "user", "content": user[:24000]}],
               max_completion_tokens=2000, response_format={"type": "json_object"},
               reasoning_effort=os.getenv("ESTATE_REASONING_EFFORT", "low"))

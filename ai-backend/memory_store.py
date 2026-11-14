@@ -175,7 +175,7 @@ def maybe_summarize_session(session_id: str, tenant_id: int, keep_last_n: int = 
             user_content = transcript
 
         resp = client.chat.completions.create(
-            model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
+            model=os.getenv("OPENAI_CHAT_MODEL", "gpt-5.6-luna"),
             max_completion_tokens=max_out,
             messages=[
                 {"role": "system", "content": system_content},

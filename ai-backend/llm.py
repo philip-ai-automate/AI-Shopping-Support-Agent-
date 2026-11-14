@@ -227,7 +227,7 @@ def classify_relevant_products(user_message: str, raw_docs: list) -> tuple:
         )
 
         response = _get_client().chat.completions.create(
-            model=os.getenv("RELEVANCE_CHECK_MODEL", "gpt-4o-mini"),
+            model=os.getenv("RELEVANCE_CHECK_MODEL", "gpt-5.6-luna"),
             messages=[{"role": "user", "content": prompt}],
             max_completion_tokens=400,
             response_format={"type": "json_schema", "json_schema": _RELEVANCE_RESPONSE_SCHEMA},
@@ -302,7 +302,7 @@ def classify_campaign_reply(reply_text: str) -> tuple:
             f"Customer's reply: {reply_text!r}"
         )
         response = _get_client().chat.completions.create(
-            model=os.getenv("RELEVANCE_CHECK_MODEL", "gpt-4o-mini"),
+            model=os.getenv("RELEVANCE_CHECK_MODEL", "gpt-5.6-luna"),
             messages=[{"role": "user", "content": prompt}],
             max_completion_tokens=150,
             response_format={"type": "json_schema", "json_schema": _CAMPAIGN_REPLY_SCHEMA},
@@ -392,7 +392,7 @@ def ask_llm(system_prompt, user_message, context_chunks, history=None, structure
     max_out = int(max_output_tokens or os.getenv("LLM_MAX_OUTPUT_TOKENS", "1200"))
 
     create_kwargs = dict(
-        model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
+        model=os.getenv("OPENAI_CHAT_MODEL", "gpt-5.6-luna"),
         messages=messages,
         max_completion_tokens=max_out,
     )

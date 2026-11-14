@@ -92,7 +92,7 @@ def estate_ask_llm(
     max_out = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "600"))
 
     create_kwargs = dict(
-        model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
+        model=os.getenv("OPENAI_CHAT_MODEL", "gpt-5.6-luna"),
         messages=messages,
         max_completion_tokens=max_out,
     )
