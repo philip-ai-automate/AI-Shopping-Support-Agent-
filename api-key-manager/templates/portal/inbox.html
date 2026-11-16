@@ -1858,7 +1858,7 @@ var INBOX_INIT = {
   convs: {
     {% for c in conversations %}
     "{{ c.customer_phone }}": {
-      lastAt:  {% if c.last_message_at %}"{{ c.last_message_at.isoformat() }}"{% else %}null{% endif %},
+      lastAt:  {% if c.last_message_at %}"{{ c.last_message_at.strftime('%Y-%m-%dT%H:%M:%S') }}"{% else %}null{% endif %},{# same format as /inbox/api/poll (16 Nov 2026: old chats popped up on every page load) #}
       lastDir: "{{ c.last_direction or 'inbound' }}"
     }{% if not loop.last %},{% endif %}
     {% endfor %}
