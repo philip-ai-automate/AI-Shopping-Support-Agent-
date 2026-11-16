@@ -144,6 +144,16 @@ html, body { overflow: hidden; height: 100%; }
 }
 .inbox-item:hover  { background: #f5f5f5; text-decoration: none }
 .inbox-item.active { background: #ebebeb }
+/* Selected chat (16 Nov 2026, approved mock-up): channel colour on the open row
+   and on the chat header so it is clear which customer you are chatting with. */
+#realChannelView { --ch: #12B76A; --ch-bg: #E3F6EC; --ch-head: #F3FBF6 }
+#messengerGrid   { --ch: #0866FF; --ch-bg: #E7F0FF; --ch-head: #F4F8FF }
+#webchatView     { --ch: #7C3AED; --ch-bg: #F1EBFE; --ch-head: #F8F5FF }
+.inbox-item.active, .inbox-item.active:hover { background: var(--ch-bg, #ebebeb); box-shadow: inset 4px 0 0 var(--ch, transparent) }
+.inbox-item.active .conv-avatar { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--ch, transparent) }
+.inbox-item.active .conv-name { color: #030C18 }
+.inbox-item.active .conv-preview { color: rgba(3,12,24,.70) }
+.ch-chip { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; background: var(--ch, #667085); color: #fff; font-weight: 700; font-size: 11px; line-height: 16px; white-space: nowrap; flex-shrink: 0 }
 
 /* Avatar circle */
 .conv-avatar {
@@ -215,8 +225,9 @@ html, body { overflow: hidden; height: 100%; }
   font-size: 14px; font-weight: 700; color: #fff; letter-spacing: .02em;
 }
 .chat-name-wrap { min-width: 0 }
-.chat-name { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
-.chat-sub  { font-size: 11px; color: var(--muted); margin-top: 1px }
+.chat-name { font-weight: 800; font-size: 19px; color: #030C18; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.chat-sub  { font-size: 12px; color: rgba(3,12,24,.70); margin-top: 2px }
+.chat-header { background: var(--ch-head, #fff); box-shadow: inset 4px 0 0 var(--ch, transparent); height: auto !important; min-height: 64px; padding-left: 20px }
 
 /* Inline name editor */
 .name-display  { display: flex; align-items: center; gap: 6px }
@@ -934,6 +945,7 @@ html, body { overflow: hidden; height: 100%; }
               <button type="button" class="name-cancel-btn" onclick="closeNameEdit()">Cancel</button>
             </form>
             <div class="chat-sub" style="display:flex;align-items:center;gap:5px">
+              <span class="ch-chip">WhatsApp</span>
               <span>{% if active_name %}+{{ active_phone }} · {% endif %}<span id="msgCountLabel">{{ messages|length }} message{{ 's' if messages|length != 1 }}</span></span>
               {% if multi_number and active_conv and active_conv.agent_color %}
               · <span class="chat-agent-dot" style="background:{{ active_conv.agent_color }}"></span><span>{{ active_conv.conv_agent_name or (active_conv.conv_wa_number|with_plus if active_conv.conv_wa_number else '') }}</span>
@@ -1204,7 +1216,7 @@ html, body { overflow: hidden; height: 100%; }
             <div class="chat-avatar" style="background:#0866FF"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 0C5.24 0 0 4.952 0 11.64c0 3.499 1.434 6.521 3.769 8.61a.96.96 0 0 1 .323.683l.065 2.135a.96.96 0 0 0 1.347.85l2.381-1.053a.96.96 0 0 1 .641-.046A13 13 0 0 0 12 23.28c6.76 0 12-4.952 12-11.64S18.76 0 12 0m6.806 7.44c.522-.03.971.567.63 1.094l-4.178 6.457a.707.707 0 0 1-.977.208l-3.87-2.504a.44.44 0 0 0-.49.007l-4.363 3.01c-.637.438-1.415-.317-.995-.966l4.179-6.457a.706.706 0 0 1 .977-.21l3.87 2.505c.15.097.344.094.491-.007l4.362-3.008a.7.7 0 0 1 .364-.13" fill="#fff"/></svg></div>
             <div class="chat-name-wrap">
               <div class="chat-name">Facebook contact ····{{ active_msngr_conv.psid_short if active_msngr_conv else '' }}</div>
-              <div class="chat-sub">{{ active_msngr_conv.page_name if active_msngr_conv else '' }} · <span id="msngrMsgCount">{{ messenger_messages|length }} message{{ 's' if messenger_messages|length != 1 }}</span></div>
+              <div class="chat-sub" style="display:flex;align-items:center;gap:6px"><span class="ch-chip">Messenger</span><span>{{ active_msngr_conv.page_name if active_msngr_conv else '' }} · <span id="msngrMsgCount">{{ messenger_messages|length }} message{{ 's' if messenger_messages|length != 1 }}</span></span></div>
             </div>
           </div>
           {% if has_team %}
@@ -1347,6 +1359,7 @@ html, body { overflow: hidden; height: 100%; }
             <div class="chat-name-wrap">
               <div class="chat-name">{{ (active_webchat_conv.visitor_name if active_webchat_conv else None) or 'Website visitor' }}</div>
               <div class="chat-sub">
+                <span class="ch-chip" style="margin-right:4px">Website chat</span>
                 {% if active_webchat_conv and active_webchat_conv.visitor_email %}{{ active_webchat_conv.visitor_email }} · {% endif %}
                 {% if active_webchat_conv and active_webchat_conv.whatsapp_number %}{{ active_webchat_conv.whatsapp_number }} · {% endif %}
                 {{ webchat_messages|length }} message{{ 's' if webchat_messages|length != 1 }}
