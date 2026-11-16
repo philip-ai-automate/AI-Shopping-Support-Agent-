@@ -85,7 +85,7 @@ def _loop():
     while True:
         conn = None
         try:
-            conn = get_db_connection(); cur = conn.cursor()
+            conn = get_db_connection(); conn.autocommit = True; cur = conn.cursor()
             cur.execute("SELECT pg_try_advisory_lock(%s)", (_LOCK,))
             if cur.fetchone()[0]:
                 try:

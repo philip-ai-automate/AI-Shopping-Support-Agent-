@@ -5047,3 +5047,25 @@ def ensure_handoff_text_columns():
         conn.rollback(); print("⚠️  handoff text columns migration error:", e)
     finally:
         cur.close(); conn.close()
+
+
+def ensure_inbox_done_table():
+    """Inbox "Mark as done" (16 Nov 2026): a chat that needs no reply leaves the
+    waiting list and the red number. It is waiting again as soon as the
+    customer writes after done_at. chat_key = WhatsApp number, 'fb:…' or 'web:…'."""
+    from db import get_db_connection
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("""CREATE TABLE IF NOT EXISTS inbox_done (
+                           tenant_id     INTEGER     NOT NULL,
+                           chat_key      TEXT        NOT NULL,
+                           done_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                           done_by_key   TEXT,
+                           done_by_label TEXT,
+                           PRIMARY KEY (tenant_id, chat_key))""")
+        conn.commit()
+        print("✅ inbox_done ready")
+    except Exception as e:
+        conn.rollback(); print("⚠️  inbox_done migration error:", e)
+    finally:
+        cur.close(); conn.close()

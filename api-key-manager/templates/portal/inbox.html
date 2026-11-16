@@ -133,6 +133,8 @@ html, body { overflow: hidden; height: 100%; }
   background-repeat: no-repeat; background-position: right 8px center; padding-right: 24px;
 }
 .ctrl-row select:focus { border-color: rgba(3,12,24,.28); background-color: #fff }
+#filterSel { flex: 1.6; min-width: 0 }   /* room for "Waiting for your reply" (16 Nov 2026) */
+#sortSel { flex: 1; min-width: 0 }
 .ctrl-row select.active-filter { border-color: var(--ink); background: #f0f0f2 }
 
 /* Conversation items */
@@ -405,12 +407,15 @@ html, body { overflow: hidden; height: 100%; }
   padding: 10px 16px 14px; border-top: 1px solid rgba(0,0,0,.08);
   background: #f0ede8; flex-shrink: 0;
 }
-.reply-inner {
-  background: #fff; border-radius: 16px;
-  border: 1px solid rgba(3,12,24,.12);
-  box-shadow: 0 2px 8px rgba(0,0,0,.08);
-  overflow: hidden;
+.reply-inner { background: transparent }
+/* The place to type: white with a clear edge, darker edge + soft glow while typing (16 Nov). */
+.reply-field {
+  background: #fff; border-radius: 14px;
+  border: 1.5px solid rgba(3,12,24,.28);
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  overflow: hidden; transition: border-color .15s, box-shadow .15s;
 }
+.reply-field:focus-within { border-color: #1F3A6B; box-shadow: 0 0 0 3px rgba(31,58,107,.16) }
 .reply-toolbar {
   display: flex; align-items: center; gap: 4px;
   padding: 8px 12px 0; border-bottom: 1px solid rgba(3,12,24,.06);
@@ -433,7 +438,7 @@ html, body { overflow: hidden; height: 100%; }
 }
 .reply-actions {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 6px 12px 10px;
+  padding: 10px 2px 0;
 }
 .reply-hint { font-size: 11px; color: var(--muted) }
 .send-btn {
@@ -550,6 +555,13 @@ html, body { overflow: hidden; height: 100%; }
   font-size: 11px; color: var(--muted); margin-top: 1px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.rail-count.has-wait { background: #F04438; color: #fff; cursor: pointer }
+.rail-count.has-wait:hover { background: #D92D20 }
+/* "Waiting 3 days" on chats waiting for a reply + the line shown after clicking the red number (16 Nov 2026) */
+.wait-tag { font-size: 10.5px; font-weight: 700; color: #B42318; background: #FDE7E5; border-radius: 6px; padding: 1px 6px; white-space: nowrap; flex-shrink: 0 }
+.wait-banner { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 8px 12px; padding: 8px 11px; border-radius: 10px; background: #FFF4E5; border: 1px solid #F5B54A; font-size: 12.5px }
+.wait-banner a { color: #1F3A6B; font-weight: 700; text-decoration: underline; cursor: pointer }
 .rail-count {
   flex-shrink: 0; min-width: 22px; height: 22px; border-radius: 999px;
   background: rgba(3,12,24,.08); color: var(--ink); font-size: 11.5px; font-weight: 800;
@@ -738,6 +750,8 @@ html, body { overflow: hidden; height: 100%; }
      channels is pure client-side show/hide — no query param, no reload. #}
   <div class="inbox-body" id="inboxBody">
 
+{% set _iw = _inbox_waiting if (_inbox_waiting is defined and _inbox_waiting) else {} %}
+    {# Channel numbers = chats waiting for a reply (16 Nov 2026) #}
     <div class="channel-rail">
       <div class="rail-label">Channels</div>
       <div class="rail-items">
@@ -747,7 +761,7 @@ html, body { overflow: hidden; height: 100%; }
             <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           </div>
           <div class="rail-body"><div class="rail-name">All Conversations</div><div class="rail-meta">Every channel, one inbox</div></div>
-          {% if connection %}<div class="rail-count">{{ conversations|length }}</div>{% endif %}
+          <div class="rail-count{% if _iw.get('total', 0) %} has-wait{% endif %}" id="railWaitAll" title="Chats waiting for your reply. Click to see them">{{ _iw.get('total', 0) }}</div>
         </button>
 
         <button type="button" class="rail-item" id="railWhatsapp" onclick="selectChannel('whatsapp')">
@@ -758,7 +772,7 @@ html, body { overflow: hidden; height: 100%; }
             <div class="rail-name">WhatsApp</div>
             <div class="rail-meta">{% if connection %}{{ (connection.display_phone_number or connection.phone_number_id)|with_plus }}{% else %}Not connected{% endif %}</div>
           </div>
-          {% if connection %}<div class="rail-count">{{ conversations|length }}</div>{% endif %}
+          {% if connection %}<div class="rail-count{% if _iw.get('wa', 0) %} has-wait{% endif %}" id="railWaitWa" title="WhatsApp chats waiting for your reply. Click to see them">{{ _iw.get('wa', 0) }}</div>{% endif %}
         </button>
 
         <div class="rail-divider"></div>
@@ -768,7 +782,7 @@ html, body { overflow: hidden; height: 100%; }
             <svg viewBox="0 0 320 512" fill="#fff"><path d="M279.14 288l14.22-92.66h-88.91v-60.13c0-25.35 12.42-50.06 52.24-50.06h40.42V6.26S260.43 0 225.36 0c-73.22 0-121.08 44.38-121.08 124.72v70.62H22.89V288h81.39v224h100.17V288z"/></svg>
           </div>
           <div class="rail-body"><div class="rail-name">Messenger</div><div class="rail-meta">{% if messenger_pages %}{{ messenger_pages|length }} Page{{ 's' if messenger_pages|length != 1 }} connected{% else %}Not connected{% endif %}</div></div>
-          {% if messenger_pages %}<div class="rail-count" id="msngrRailCount">{{ messenger_conversations|length }}</div>
+          {% if messenger_pages %}<div class="rail-count{% if _iw.get('fb', 0) %} has-wait{% endif %}" id="railWaitFb" title="Messenger chats waiting for your reply. Click to see them">{{ _iw.get('fb', 0) }}</div>
           {% else %}<svg class="rail-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>{% endif %}
         </button>
 
@@ -777,7 +791,7 @@ html, body { overflow: hidden; height: 100%; }
             <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg>
           </div>
           <div class="rail-body"><div class="rail-name">Web Chat</div><div class="rail-meta">Every website chat</div></div>
-          <div class="rail-count">{{ webchat_conversations|length }}</div>
+          <div class="rail-count{% if _iw.get('web', 0) %} has-wait{% endif %}" id="railWaitWeb" title="Web chats waiting for your reply. Click to see them">{{ _iw.get('web', 0) }}</div>
         </button>
 
         <button type="button" class="rail-item locked" id="railInstagram" onclick="selectChannel('instagram')">
@@ -826,7 +840,7 @@ html, body { overflow: hidden; height: 100%; }
           <select id="filterSel" onchange="applyAll()">
             <option value="all">All conversations</option>
             {% if ai_enabled %}<option value="needs_agent">🔴 Needs agent</option>{% endif %}
-            <option value="unread">Unread (awaiting reply)</option>
+            <option value="unread">Waiting for your reply</option>
             <option value="replied">Replied</option>
             <option value="leads">🔥 Leads only</option>
             {% if has_team %}
@@ -875,6 +889,7 @@ html, body { overflow: hidden; height: 100%; }
            data-last-at="{{ c.last_message_at.strftime('%Y%m%d%H%M%S') if c.last_message_at else '0' }}"
            data-last-dir="{{ c.last_direction or 'inbound' }}"
            data-needs-reply="{{ 'true' if c.needs_reply else 'false' }}"
+           {% if c.needs_reply and c.last_message_at %}data-wait-since="{{ c.last_message_at.timestamp()|int }}"{% endif %}
            data-lead-tier="{{ c.lead_tier or '' }}"
            data-status="{{ c.handoff_status or '' }}"
            data-handoff="{{ c.handoff_session_id or '' }}"
@@ -993,6 +1008,7 @@ html, body { overflow: hidden; height: 100%; }
         </form>
         {% endif %}
         {% endif %}
+        {% with md_key=active_phone, md_waiting=(active_conv.needs_reply if active_conv else False) %}{% include "portal/_mark_done.html" %}{% endwith %}
         {% with dc_key=active_phone, dc_name=(active_name or ('+' ~ active_phone)), dc_count=messages|length, dc_kind='whatsapp' %}{% include "portal/_delete_chat.html" %}{% endwith %}
         </div>
       </div>
@@ -1126,14 +1142,16 @@ html, body { overflow: hidden; height: 100%; }
           </div>
           <div class="reply-inner">
             <form method="POST" action="{{ url_for('portal.inbox_reply', phone=active_phone) }}" id="replyForm">
-              <div class="reply-toolbar">
-                <button type="button" class="emoji-trigger" id="emojiBtn" onclick="togglePicker(event)" title="Emoji">😊</button>
-                <span class="reply-to-label">Message +{{ active_phone }}</span>
-              </div>
-              <div class="reply-textarea-wrap">
-                <textarea name="reply" id="replyBox" rows="3"
-                          placeholder="Type a message…"
-                          onkeydown="if(event.ctrlKey&&event.key==='Enter'){this.form.submit()}"></textarea>
+              <div class="reply-field">
+                <div class="reply-toolbar">
+                  <button type="button" class="emoji-trigger" id="emojiBtn" onclick="togglePicker(event)" title="Emoji">😊</button>
+                  <span class="reply-to-label">Message +{{ active_phone }}</span>
+                </div>
+                <div class="reply-textarea-wrap">
+                  <textarea name="reply" id="replyBox" rows="3"
+                            placeholder="Type a message…"
+                            onkeydown="if(event.ctrlKey&&event.key==='Enter'){this.form.submit()}"></textarea>
+                </div>
               </div>
               <div class="reply-actions">
                 <span class="reply-hint">Ctrl+Enter to send</span>
@@ -1235,6 +1253,7 @@ html, body { overflow: hidden; height: 100%; }
             {% endif %}
           </div>
           {% endif %}
+          {% if active_msngr_conv %}<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">{% with md_key=active_phone, md_waiting=active_msngr_conv.needs_reply %}{% include "portal/_mark_done.html" %}{% endwith %}</div>{% endif %}
         </div>
 
         <div class="chat-messages" id="msngrMessages" data-key="{{ active_phone }}" data-count="{{ messenger_messages|length }}">
@@ -1260,12 +1279,14 @@ html, body { overflow: hidden; height: 100%; }
           <div class="reply-wrap">
             <div class="reply-inner">
               <form method="POST" action="{{ url_for('portal.inbox_reply', phone=active_phone) }}">
-                <div class="reply-toolbar">
-                  <span class="reply-to-label">Message this Facebook contact</span>
-                </div>
-                <div class="reply-textarea-wrap">
-                  <textarea name="reply" rows="3" placeholder="Type a message… (only works within 24h of their last message — Facebook's own rule)"
-                            onkeydown="if(event.ctrlKey&&event.key==='Enter'){this.form.submit()}"></textarea>
+                <div class="reply-field">
+                  <div class="reply-toolbar">
+                    <span class="reply-to-label">Message this Facebook contact</span>
+                  </div>
+                  <div class="reply-textarea-wrap">
+                    <textarea name="reply" rows="3" placeholder="Type a message… (only works within 24h of their last message — Facebook's own rule)"
+                              onkeydown="if(event.ctrlKey&&event.key==='Enter'){this.form.submit()}"></textarea>
+                  </div>
                 </div>
                 <div class="reply-actions">
                   <span class="reply-hint">Ctrl+Enter to send</span>
@@ -1318,7 +1339,7 @@ html, body { overflow: hidden; height: 100%; }
         </div>
         {% else %}
         {% for c in webchat_conversations %}
-        <a class="inbox-item wc-item {% if c.key == active_phone %}active{% endif %}" href="?phone={{ c.key }}" data-state="{{ c.chat_state }}">
+        <a class="inbox-item wc-item {% if c.key == active_phone %}active{% endif %}" href="?phone={{ c.key }}" data-state="{{ c.chat_state }}"{% if c.needs_reply and c.last_at %} data-wait-since="{{ c.last_at.timestamp()|int }}"{% endif %}>
           <div class="conv-avatar" style="background:#7C3AED"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
           <div class="conv-body">
             <span class="wc-st {{ c.chat_state }}">{{ {'needs_team':'Needs your team','ai':'AI Agent handling','team':'Your team handling'}[c.chat_state] }}</span>
@@ -1402,6 +1423,7 @@ html, body { overflow: hidden; height: 100%; }
             {% endif %}
           </div>
           {% endif %}
+          {% with md_key=active_phone, md_waiting=(active_webchat_conv.needs_reply if active_webchat_conv else False) %}{% include "portal/_mark_done.html" %}{% endwith %}
           {% with dc_key=active_phone, dc_name=((active_webchat_conv.visitor_name if active_webchat_conv else None) or 'this website visitor'), dc_count=webchat_messages|length, dc_kind='web' %}{% include "portal/_delete_chat.html" %}{% endwith %}
         </div>
         {% include "portal/_shopify_trade_strip.html" %}
@@ -1513,14 +1535,16 @@ html, body { overflow: hidden; height: 100%; }
           <div class="reply-wrap">
             <div class="reply-inner">
               <form method="POST" action="{{ url_for('portal.inbox_reply', phone=active_phone) }}">
-                <div class="reply-toolbar">
-                  <span class="reply-to-label" id="webReplyLabel"
-                        data-online="The visitor is on the website. Your reply shows in their chat box straight away."
-                        data-away="The visitor has left. {{ _wc_away }}">{% if _wc_online %}The visitor is on the website. Your reply shows in their chat box straight away.{% else %}The visitor has left. {{ _wc_away }}{% endif %}</span>
-                </div>
-                <div class="reply-textarea-wrap">
-                  <textarea name="reply" rows="3" placeholder="Type your reply…"
-                            onkeydown="if(event.ctrlKey&&event.key==='Enter'){this.form.submit()}"></textarea>
+                <div class="reply-field">
+                  <div class="reply-toolbar">
+                    <span class="reply-to-label" id="webReplyLabel"
+                          data-online="The visitor is on the website. Your reply shows in their chat box straight away."
+                          data-away="The visitor has left. {{ _wc_away }}">{% if _wc_online %}The visitor is on the website. Your reply shows in their chat box straight away.{% else %}The visitor has left. {{ _wc_away }}{% endif %}</span>
+                  </div>
+                  <div class="reply-textarea-wrap">
+                    <textarea name="reply" rows="3" placeholder="Type your reply…"
+                              onkeydown="if(event.ctrlKey&&event.key==='Enter'){this.form.submit()}"></textarea>
+                  </div>
                 </div>
                 <div class="reply-actions">
                   <span class="reply-hint">Ctrl+Enter to send</span>
@@ -1820,6 +1844,7 @@ function applyAll() {
   if(cnt) cnt.textContent=visible.length;
   var nr=document.getElementById('noResults');
   if(nr) nr.style.display=(visible.length===0&&items.length>0)?'block':'none';
+  waitTags();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1862,6 +1887,7 @@ function selectChannel(name) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // REAL-TIME ENGINE
 // ═══════════════════════════════════════════════════════════════════════════════
+var INBOX_WAITING = {{ (_iw or {})|tojson }};
 var INBOX_INIT = {
   phone: {{ active_phone | tojson }},
   multiNumber: {{ multi_number | tojson }},
@@ -2063,6 +2089,7 @@ function rtBuildConvItem(c){
   a.setAttribute('data-last-at',  fmtLastAt(c.last_message_at));
   a.setAttribute('data-last-dir', c.last_direction||'inbound');
   a.setAttribute('data-needs-reply', c.needs_reply?'true':'false');
+  if(c.needs_reply&&c.last_ts) a.setAttribute('data-wait-since', c.last_ts);
   a.setAttribute('data-lead-tier', c.lead_tier||'');
   a.setAttribute('data-status',   c.handoff_status||'');
   a.setAttribute('data-handoff',  c.handoff_session_id||'');
@@ -2106,6 +2133,7 @@ function rtUpdateConvs(convs){
       el.setAttribute('data-last-at',  fmtLastAt(c.last_message_at));
       el.setAttribute('data-last-dir', c.last_direction||'inbound');
       el.setAttribute('data-needs-reply', c.needs_reply?'true':'false');
+      if(c.needs_reply&&c.last_ts) el.setAttribute('data-wait-since', c.last_ts); else el.removeAttribute('data-wait-since');
       el.setAttribute('data-name',     c.display_name||'');
       el.setAttribute('data-status',   c.handoff_status||'');
       el.setAttribute('data-handoff',  c.handoff_session_id||'');
@@ -2136,11 +2164,99 @@ function rtUpdateConvs(convs){
   applyAll();
 }
 
-function rtUpdateBadge(convs){
-  var badge=document.getElementById('sidebarInboxBadge'); if(!badge) return;
-  var count=convs.filter(function(c){return c.needs_reply;}).length;
-  badge.textContent=count<100?String(count):'99+'; badge.style.display=count>0?'':'none';
+// Red number + channel numbers = chats waiting for a reply on every channel (16 Nov 2026).
+function rtUpdateBadge(convs, waiting){
+  if(!waiting) return;
+  if(window.phxInboxBadge) window.phxInboxBadge(waiting);
+  [['railWaitAll','total'],['railWaitWa','wa'],['railWaitFb','fb'],['railWaitWeb','web']].forEach(function(x){
+    var el=document.getElementById(x[0]); if(!el) return;
+    var n=waiting[x[1]]||0; el.textContent=n; el.classList.toggle('has-wait', n>0);
+  });
 }
+
+// "Waiting 3 days" on every chat that is waiting for a reply.
+function waitWords(since){
+  var s=Math.max(0, Date.now()/1000 - since), d=Math.floor(s/86400), h=Math.floor(s/3600);
+  if(d>=1) return 'Waiting '+d+(d===1?' day':' days');
+  if(h>=1) return 'Waiting '+h+(h===1?' hour':' hours');
+  return 'Waiting under 1 hour';
+}
+function waitTags(){
+  document.querySelectorAll('.inbox-item').forEach(function(el){
+    var since=parseInt(el.getAttribute('data-wait-since')||'0',10);
+    var tag=el.querySelector('.wait-tag');
+    if(!since){ if(tag) tag.remove(); return; }
+    if(!tag){
+      var row=el.querySelector('.conv-row2'); if(!row) return;
+      tag=document.createElement('span'); tag.className='wait-tag';
+      var dot=row.querySelector('.conv-badge'); row.insertBefore(tag, dot||null);
+    }
+    tag.textContent=waitWords(since);
+  });
+}
+
+// Opened from the red number (?show=waiting): only the chats waiting for a reply.
+function waitBanner(beforeEl, text, onAll){
+  if(!beforeEl) return;
+  var b=document.createElement('div'); b.className='wait-banner';
+  b.innerHTML='<span>'+text+'</span><a role="button" tabindex="0">Show all conversations</a>';
+  b.querySelector('a').addEventListener('click', function(){
+    b.remove(); onAll && onAll();
+    try{ history.replaceState({},'',location.pathname); }catch(e){}
+  });
+  beforeEl.parentNode.insertBefore(b, beforeEl);
+}
+function clearWaiting(){
+  document.querySelectorAll('.wait-banner').forEach(function(b){ b.remove(); });
+}
+// Show only one channel's chats waiting for a reply ('all' = the WhatsApp list).
+function showWaiting(ch){
+  var w=INBOX_WAITING||{}, t=w.total||0;
+  function chats(n){ return n+(n===1?' chat':' chats'); }
+  clearWaiting();
+  selectChannel(ch);
+  if(ch==='all'||ch==='whatsapp'){
+    var f=document.getElementById('filterSel'), so=document.getElementById('sortSel'), n=w.wa||0;
+    if(n>0 && f && so){ f.value='unread'; so.value='oldest'; applyAll(); }
+    waitBanner(document.getElementById('convList'),
+      n===0 ? 'No WhatsApp chats are waiting for your reply right now.'
+            : 'Showing the <b>'+chats(n)+' waiting for your reply</b>, oldest wait first.'
+              + (t>n ? ' More are waiting on the other channels on the left.' : ''),
+      function(){ if(f&&so){ f.value='all'; so.value='newest'; applyAll(); } });
+  } else if(ch==='webchat'){
+    var nb=document.querySelector('#wcFilters .wc-f[data-f="needs_team"]'); if(nb) nb.click();
+    waitBanner(document.getElementById('wcFilters'),
+      'Showing the <b>'+chats(w.web||0)+' waiting for your reply</b>.'
+        + (t>(w.web||0) ? ' More are waiting on the other channels on the left.' : ''),
+      function(){ var a=document.querySelector('#wcFilters .wc-f[data-f="all"]'); if(a) a.click(); });
+  } else if(ch==='messenger'){
+    waitBanner(document.getElementById('msngrList'),
+      'Messenger: <b>'+chats(w.fb||0)+' waiting for your reply</b>, marked ●.'
+        + (t>(w.fb||0) ? ' More are waiting on the other channels on the left.' : ''), null);
+  }
+}
+// From the red number in the side menu: the channel with waiting chats.
+function openWaiting(){
+  var w=INBOX_WAITING||{};
+  showWaiting((w.wa||0)>0 || !(w.total) ? 'all' : (w.web||0)>0 ? 'webchat' : 'messenger');
+}
+// Channel list: the red number shows that channel's waiting chats; the
+// channel name shows all its chats, as before (16 Nov 2026, user).
+document.addEventListener('click', function(e){
+  var item=e.target.closest && e.target.closest('.rail-item'); if(!item) return;
+  var ch={railAll:'all', railWhatsapp:'whatsapp', railMessenger:'messenger', railWebchat:'webchat'}[item.id];
+  if(!ch) return;
+  var cnt=e.target.closest('.rail-count');
+  if(cnt && cnt.classList.contains('has-wait')){
+    e.preventDefault(); e.stopPropagation(); showWaiting(ch); return;
+  }
+  if(document.querySelector('.wait-banner')){        // leaving the waiting view
+    clearWaiting();
+    var f=document.getElementById('filterSel'), so=document.getElementById('sortSel');
+    if(f&&so&&f.value==='unread'){ f.value='all'; so.value='newest'; applyAll(); }
+    var a=document.querySelector('#wcFilters .wc-f[data-f="all"]'); if(a) a.click();
+  }
+}, true);
 
 function rtTick(){
   RT.timer=null;
@@ -2151,7 +2267,7 @@ function rtTick(){
       setStatus('live');
       rtUpdateConvs(data.conversations||[]);
       if(RT.phone) rtUpdateMessages(data.messages||[]);
-      rtUpdateBadge(data.conversations||[]);
+      rtUpdateBadge(data.conversations||[], data.waiting);
     })
     .catch(function(){setStatus('error');})
     .finally(function(){ RT.timer=setTimeout(rtTick,document.hidden?RT.SLOW:RT.FAST); });
@@ -2160,6 +2276,10 @@ document.addEventListener('visibilitychange',function(){
   if(!document.hidden){ clearTimeout(RT.timer); RT.timer=setTimeout(rtTick,800); }
 });
 RT.timer=setTimeout(rtTick,RT.FAST);
+document.addEventListener('DOMContentLoaded', function(){
+  waitTags();
+  if(new URLSearchParams(location.search).get('show')==='waiting') openWaiting();
+});
 </script>
 <script>
 /* Live Web Chat thread (2026-10-06): new visitor messages and replies appear
@@ -2235,7 +2355,7 @@ RT.timer=setTimeout(rtTick,RT.FAST);
         sig=d.sig;
         if(d.list_html!==undefined) list.innerHTML=d.list_html;
         var cc=document.getElementById('msngrConvCount'); if(cc) cc.textContent=plural(d.conv_count,'conversation');
-        var rc=document.getElementById('msngrRailCount'); if(rc) rc.textContent=d.conv_count;
+        waitTags();
         if(box && d.thread_html!==undefined && String(d.msg_count)!==box.getAttribute('data-count')){
           var near=box.scrollHeight-box.scrollTop-box.clientHeight<120;
           box.innerHTML=d.thread_html; box.setAttribute('data-count',d.msg_count);

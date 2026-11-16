@@ -30,6 +30,35 @@ def _label_actor_options():
         return None
 
 
+# Database updates (run_migrations.py) wait at most 3 seconds for a table lock,
+# then give up and are tried again, so they can't freeze the portal (16 Nov 2026).
+import contextlib as _ctxlib
+import contextvars as _ctxvars
+_migrating = _ctxvars.ContextVar("phx_migrating", default=False)
+
+
+@_ctxlib.contextmanager
+def migration_lock_limit():
+    tok = _migrating.set(True)
+    try:
+        yield
+    finally:
+        _migrating.reset(tok)
+
+
+def _conn_options():
+    # A connection left open mid-transaction for 5 minutes is closed by the
+    # database, so it can't block everyone else (16 Nov 2026). 5 minutes, not 1:
+    # some jobs wait on the AI Agent / Shopify with a transaction open.
+    opts = ["-c idle_in_transaction_session_timeout=300s"]
+    if _migrating.get():
+        opts.append("-c lock_timeout=3s")
+    label = _label_actor_options()
+    if label:
+        opts.append(label)
+    return " ".join(opts)
+
+
 def get_db_connection():
     try:
         conn = psycopg2.connect(
@@ -38,7 +67,7 @@ def get_db_connection():
             user=os.getenv("PG_USER"),
             password=os.getenv("PG_PASSWORD"),
             dbname=os.getenv("PG_DB"),
-            options=_label_actor_options(),
+            options=_conn_options(),
         )
         return conn
     except Exception as e:

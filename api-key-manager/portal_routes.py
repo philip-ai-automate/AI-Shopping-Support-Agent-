@@ -14163,6 +14163,57 @@ def inbox_delete_chat():
     return redirect(url_for("portal.my_inbox", phone="web:") if tab else url_for("portal.my_inbox"))
 
 
+@portal_bp.route("/inbox/mark-done", methods=["POST"])
+@team_feature("inbox.page")
+def inbox_mark_done():
+    """"Mark as done" (16 Nov 2026): a waiting chat that needs no reply (visitor
+    gone, spam, "thanks") leaves the waiting list and the red number. It is
+    waiting again once the customer writes. {"key": …, "undo": true} undoes it.
+    Owner always; a team member needs "Reply" and access to the chat."""
+    r = _require_login()
+    if r: return jsonify({"error": "login_required"}), 401
+    if not _team_member_has_permission("inbox.page") or not _team_member_has_permission("inbox.reply"):
+        return jsonify({"error": "You don't have permission to do this."}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    data = request.get_json(silent=True) or {}
+    key  = str(data.get("key") or "").strip()[:200]
+    undo = bool(data.get("undo"))
+    if not (key.startswith("web:") or key.startswith("fb:") or key.isdigit()):
+        return jsonify({"error": "This chat can't be marked as done."}), 400
+    actor = _current_actor(customer)
+    if not _team_can_access_phone(tenant_id, actor, key):
+        return jsonify({"error": "You don't have access to this conversation."}), 403
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        if undo:
+            cur.execute("DELETE FROM inbox_done WHERE tenant_id = %s AND chat_key = %s RETURNING done_at",
+                        (tenant_id, key))
+            row = cur.fetchone()
+            if row and key.startswith("web:"):
+                cur.execute("""UPDATE handoff_requests SET status = 'pending', handled_at = NULL
+                                WHERE tenant_id = %s AND session_id = %s AND status = 'handled' AND handled_at = %s""",
+                            (tenant_id, key[4:], row[0]))
+        else:
+            cur.execute("""INSERT INTO inbox_done (tenant_id, chat_key, done_at, done_by_key, done_by_label)
+                           VALUES (%s, %s, NOW(), %s, %s)
+                           ON CONFLICT (tenant_id, chat_key) DO UPDATE
+                              SET done_at = NOW(), done_by_key = EXCLUDED.done_by_key, done_by_label = EXCLUDED.done_by_label
+                           RETURNING done_at""", (tenant_id, key, actor["key"], actor["label"]))
+            done_at = cur.fetchone()[0]
+            if key.startswith("web:"):
+                cur.execute("""UPDATE handoff_requests SET status = 'handled', handled_at = %s
+                                WHERE tenant_id = %s AND session_id = %s AND status = 'pending'""",
+                            (done_at, tenant_id, key[4:]))
+        conn.commit()
+    except Exception as e:
+        conn.rollback(); print(f"⚠️ inbox_mark_done t{tenant_id} {key}: {e}")
+        return jsonify({"error": "Couldn't save that. Please try again."}), 500
+    finally:
+        cur.close(); conn.close()
+    return jsonify({"ok": True, "waiting": _inbox_waiting(customer)})
+
+
 @portal_bp.route("/inbox/discount-code", methods=["POST"])
 @team_feature("ai.discounts_send")
 def inbox_send_discount_code():
@@ -14347,6 +14398,8 @@ def tutorials():
 def video_tutorials():
     r = _require_login()
     if r: return r
+    if not VIDEO_TUTORIALS_ON:
+        return redirect(url_for("portal.tutorials"))
     customer = _get_customer(_customer_id())
     # Which product this gallery is being viewed as — controls which videos
     # show, per the "products" tag an admin sets at /admin/video-tutorials
@@ -35699,6 +35752,40 @@ def _score_lead(conv: dict, messages: list | None = None) -> dict:
     return {"score": min(score, 100), "tier": tier, "signals": matched}
 
 
+def _inbox_done_map(tenant_id: int) -> dict:
+    """{chat_key: done_at} for chats marked "done" (16 Nov 2026)."""
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("SELECT chat_key, done_at FROM inbox_done WHERE tenant_id = %s", (tenant_id,))
+        out = dict(cur.fetchall())
+        cur.close(); conn.close()
+        return out
+    except Exception as e:
+        print("⚠️ _inbox_done_map:", e)
+        return {}
+
+
+def _inbox_done_info(tenant_id: int, key: str):
+    """The "done" record of one chat (who / when), or None."""
+    if not key:
+        return None
+    try:
+        conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT done_at, done_by_key, done_by_label FROM inbox_done WHERE tenant_id = %s AND chat_key = %s",
+                    (tenant_id, key))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        return row
+    except Exception as e:
+        print("⚠️ _inbox_done_info:", e)
+        return None
+
+
+def _still_waiting(done_at, last_at) -> bool:
+    """Marked done after the customer's last message = not waiting."""
+    return not (done_at and last_at and done_at >= last_at)
+
+
 def _get_inbox_conversations(tenant_id: int, allowed_number_ids=None) -> list:
     """Return one row per contact, sorted by most recent message, with display name and handoff status.
 
@@ -35799,6 +35886,7 @@ def _get_inbox_conversations(tenant_id: int, allowed_number_ids=None) -> list:
         rows = cur.fetchall() or []
         cur.close(); conn.close()
         # Attach lead scores (lightweight — no extra DB queries)
+        _done = _inbox_done_map(tenant_id)
         result = []
         for row in rows:
             d = dict(row)
@@ -35809,6 +35897,8 @@ def _get_inbox_conversations(tenant_id: int, allowed_number_ids=None) -> list:
             # wa_history_import). live_last_direction is NULL when zero live
             # messages exist for this customer.
             d["needs_reply"] = (d.get("live_last_direction") == "inbound")
+            if d["needs_reply"] and d["customer_phone"] in _done:   # "Mark as done" (16 Nov 2026)
+                d["needs_reply"] = _still_waiting(_done[d["customer_phone"]], d.get("last_message_at"))
             lead = _score_lead(d)
             d["lead_score"] = lead["score"]
             d["lead_tier"]  = lead["tier"]
@@ -35979,9 +36069,12 @@ def _get_messenger_conversations(tenant_id: int) -> list:
         """, (tenant_id, tenant_id, tenant_id))
         rows = cur.fetchall() or []
         cur.close(); conn.close()
+        _done = _inbox_done_map(tenant_id)
         for r in rows:
             r["last_content"] = data_crypto.dec(r.get("last_content"))
             r["psid_short"] = (r["psid"] or "")[-4:]
+            if r.get("needs_reply") and r["key"] in _done:          # "Mark as done" (16 Nov 2026)
+                r["needs_reply"] = _still_waiting(_done[r["key"]], r.get("last_at"))
         return rows
     except Exception as e:
         print("⚠️ _get_messenger_conversations error:", e)
@@ -36112,10 +36205,13 @@ def _get_webchat_conversations(tenant_id: int) -> list:
                        AND session_id !~ '^(wa|playground|test|qa|sanity|sem)-'
                      GROUP BY session_id
                     UNION ALL
-                    -- 'wa-meta-…' hand-overs are WhatsApp chats (shown in the WhatsApp tab)
+                    -- 'wa-meta-…' hand-overs are WhatsApp chats (shown in the WhatsApp tab).
+                    -- Test sessions left out here too (16 Nov 2026: test chats that asked
+                    -- for a person showed up and counted as waiting).
                     SELECT session_id, MAX(created_at)
                       FROM handoff_requests
                      WHERE tenant_id = %s AND session_id NOT LIKE 'wa-meta-%%'
+                       AND session_id !~ '^(wa|playground|test|qa|sanity|sem)-'
                      GROUP BY session_id
                 ) u GROUP BY session_id
             ) s
@@ -36177,6 +36273,93 @@ def _get_webchat_conversations(tenant_id: int) -> list:
     except Exception as e:
         print("⚠️ _get_webchat_conversations error:", e)
         return []
+
+
+def _inbox_waiting(customer: dict = None) -> dict:
+    """Chats waiting for a reply, per channel (16 Nov 2026, user: the red Inbox
+    number must say what it counts). Same rules as the Inbox lists: WhatsApp =
+    the customer's live message is the last one; Messenger = the customer wrote
+    last; Web Chat = the visitor asked for a person and is still waiting
+    ("Needs your team"). Same visibility as the lists (WhatsApp numbers ticked
+    for a team member, Messenger / Web Chat access, own-contacts rule), so the
+    number always matches what the person can open. Light: only waiting chats
+    are fetched. Cached for the request."""
+    cached = getattr(g, "_inbox_waiting_cache", None)
+    if cached is not None:
+        return cached
+    out = {"wa": 0, "fb": 0, "web": 0, "total": 0}
+    try:
+        customer = customer or _get_customer(_customer_id())
+        tenant_id = int(customer["tenant_id"])
+        actor = _current_actor(customer)
+        conn = get_db_connection(); cur = conn.cursor()
+        try:
+            # WhatsApp
+            allowed = _get_team_member_number_ids(actor["team_member_id"]) if actor["is_team"] else None
+            if _get_wa_connection(tenant_id) and not (allowed is not None and len(allowed) == 0):
+                number_join = ""
+                args = [tenant_id]
+                if allowed is not None:
+                    number_join = ("JOIN LATERAL (SELECT phone_number_id FROM wa_message_log"
+                                   " WHERE tenant_id = %s AND customer_phone = x.customer_phone"
+                                   " ORDER BY created_at DESC LIMIT 1) l ON l.phone_number_id = ANY(%s)")
+                    args += [tenant_id, list(allowed)]
+                cur.execute(f"""
+                    SELECT x.customer_phone FROM (
+                        SELECT DISTINCT ON (customer_phone) customer_phone, direction, created_at
+                          FROM wa_message_log
+                         WHERE tenant_id = %s AND is_historical IS NOT TRUE
+                         ORDER BY customer_phone, created_at DESC
+                    ) x
+                    {number_join}
+                    LEFT JOIN inbox_done dn ON dn.tenant_id = %s AND dn.chat_key = x.customer_phone
+                    WHERE x.direction = 'inbound' AND (dn.done_at IS NULL OR dn.done_at < x.created_at)
+                """, args + [tenant_id])
+                out["wa"] = sum(1 for (p,) in cur.fetchall() if _inbox_can_see(tenant_id, p, [p]))
+            # Messenger
+            if (not actor["is_team"]) or _team_member_has_messenger_access(actor["team_member_id"]):
+                cur.execute("SELECT 1 FROM fb_pages WHERE tenant_id = %s AND active = TRUE LIMIT 1", (tenant_id,))
+                if cur.fetchone():
+                    cur.execute("""
+                        SELECT 'fb:' || sub.page_id || ':' || sub.psid FROM (
+                            SELECT DISTINCT ON (page_id, psid) page_id, psid, direction, created_at
+                              FROM fb_message_log WHERE tenant_id = %s
+                             ORDER BY page_id, psid, created_at DESC
+                        ) sub
+                        JOIN fb_pages p ON p.page_id = sub.page_id AND p.tenant_id = %s
+                        LEFT JOIN inbox_done dn ON dn.tenant_id = %s AND dn.chat_key = 'fb:' || sub.page_id || ':' || sub.psid
+                        WHERE sub.direction = 'inbound' AND (dn.done_at IS NULL OR dn.done_at < sub.created_at)
+                    """, (tenant_id, tenant_id, tenant_id))
+                    out["fb"] = sum(1 for (k,) in cur.fetchall() if _inbox_can_see(tenant_id, k))
+            # Web Chat
+            if (not actor["is_team"]) or _team_member_has_webchat_access(actor["team_member_id"]):
+                cur.execute("""
+                    SELECT h.session_id, h.wa, h.em, v.phone, v.email FROM (
+                        SELECT session_id,
+                               (ARRAY_AGG(whatsapp_number ORDER BY created_at DESC) FILTER (WHERE whatsapp_number IS NOT NULL))[1] AS wa,
+                               (ARRAY_AGG(visitor_email  ORDER BY created_at DESC) FILTER (WHERE visitor_email  IS NOT NULL))[1] AS em
+                          FROM handoff_requests
+                         WHERE tenant_id = %s AND session_id NOT LIKE 'wa-meta-%%'
+                           AND session_id !~ '^(wa|playground|test|qa|sanity|sem)-'
+                         GROUP BY session_id
+                        HAVING BOOL_OR(status = 'pending')
+                    ) h
+                    LEFT JOIN chat_visitors v ON v.tenant_id = %s AND v.session_id = h.session_id
+                """, (tenant_id, tenant_id))
+                n = 0
+                for sid, wa, em, vp, ve in cur.fetchall():
+                    wa = data_crypto.dec(wa) or data_crypto.dec(vp)
+                    em = data_crypto.dec(em) or data_crypto.dec(ve)
+                    if _inbox_can_see(tenant_id, "web:" + sid, [wa], [em]):
+                        n += 1
+                out["web"] = n
+        finally:
+            cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ _inbox_waiting error:", e)
+    out["total"] = out["wa"] + out["fb"] + out["web"]
+    g._inbox_waiting_cache = out
+    return out
 
 
 def _webchat_presence_words(online: bool, last_seen_at) -> str:
@@ -36677,6 +36860,7 @@ def my_inbox():
             print("⚠️ inbox Shopify trade strip:", e)
     return render_template(
         "portal/inbox.html",
+        active_done=_inbox_done_info(tenant_id, active_phone),   # "Mark as done" (16 Nov 2026)
         shopify_strip=shopify_strip,
         customer=customer,
         connection=connection,
@@ -36927,6 +37111,10 @@ def inbox_api_poll():
         if d.get("created_at"):
             d["created_at"] = d["created_at"].strftime("%Y-%m-%dT%H:%M:%S")
         if d.get("last_message_at"):
+            try:
+                d["last_ts"] = int(d["last_message_at"].timestamp())   # "Waiting 3 days" (16 Nov 2026)
+            except Exception:
+                pass
             d["last_message_at"] = d["last_message_at"].strftime("%Y-%m-%dT%H:%M:%S")
         for k in ("delivered_at", "read_at"):   # WhatsApp ticks
             if d.get(k):
@@ -36941,6 +37129,7 @@ def inbox_api_poll():
     return jsonify({
         "conversations": [_fmt(c) for c in convs],
         "messages":      [_fmt(m) for m in msgs],
+        "waiting":       _inbox_waiting(customer),   # red number + channel counts (16 Nov 2026)
     })
 
 
@@ -40759,6 +40948,10 @@ PHIXTRA_SUPPORT_TENANT_ID = 19
 # the SMS menu back for PHIXTRA_SUPPORT_TENANT_ID. Templates read the same
 # switch as SMS_ENABLED (portal_app.py context processor).
 SMS_ENABLED = False
+# Video Tutorials on/off (16 Nov 2026, user): off while the videos are out of date
+# and the portal is still being built. Off = no menu item, no search entry, and
+# /video-tutorials goes to the How-To Guides. Videos and their settings are kept.
+VIDEO_TUTORIALS_ON = False
 
 
 def _sms_allowed(tenant_id) -> bool:

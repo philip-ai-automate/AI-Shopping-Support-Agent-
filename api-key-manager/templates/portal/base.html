@@ -251,6 +251,14 @@
         min-width:8px!important; width:8px; height:8px!important; padding:0!important;
         font-size:0!important; border-radius:50%!important;
       }
+      .sidebar.collapsed #sidebarInboxBadge.is-zero{display:none!important}
+      /* Hover box on the red Inbox number (16 Nov 2026) */
+      .ibx-tip{position:fixed;z-index:10000;width:236px;background:#fff;color:#030C18;border-radius:10px;
+               padding:10px 12px;font-size:12.5px;line-height:1.45;box-shadow:0 10px 28px rgba(3,12,24,.28);pointer-events:none}
+      .ibx-tip b{display:block;margin-bottom:4px;font-size:13px}
+      .ibx-tip .ch{display:flex;justify-content:space-between;gap:10px;color:rgba(3,12,24,.62)}
+      .ibx-tip .ch i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+      .ibx-tip .go{margin-top:6px;font-weight:700;color:#1F3A6B}
 
       .sidebar.collapsed .sb-footer{padding:12px 8px 16px}
       .sidebar.collapsed .sb-logout{font-size:0; justify-content:center; gap:0}
@@ -692,14 +700,56 @@
       <span style="display:flex;align-items:center;gap:10px">
         <span class="sb-icon">💬</span> Inbox
       </span>
-      <span id="sidebarInboxBadge"
-            style="background:#F04438;color:#fff;font-size:11px;font-weight:700;
+      {# Red number = chats waiting for a reply, all channels (16 Nov 2026).
+         Click it: Inbox on just those chats. Hover: how many on each channel. #}
+      {% set _iw = _inbox_waiting if (_inbox_waiting is defined and _inbox_waiting) else {} %}
+      <span id="sidebarInboxBadge" class="{% if not _inbox_unread_count %}is-zero{% endif %}"
+            role="link" tabindex="0"
+            data-href="{{ url_for('portal.my_inbox', show='waiting') }}"
+            data-wa="{{ _iw.get('wa', 0) }}" data-fb="{{ _iw.get('fb', 0) }}" data-web="{{ _iw.get('web', 0) }}"
+            aria-label="{{ _inbox_unread_count }} chat{{ '' if _inbox_unread_count == 1 else 's' }} waiting for your reply. Open them"
+            style="background:#F04438;color:#fff;font-size:11px;font-weight:700;cursor:pointer;
                    padding:2px 7px;border-radius:999px;line-height:1.4;flex-shrink:0;
                    {% if not _inbox_unread_count %}display:none{% endif %}">
         {{ _inbox_unread_count if _inbox_unread_count and _inbox_unread_count < 100 else ('99+' if _inbox_unread_count else '0') }}
       </span>
       {% if 'inbox.page' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
     </a>
+    <script>
+    (function(){
+      var b = document.getElementById('sidebarInboxBadge'); if (!b) return;
+      var tip = null;
+      function n(k){ return parseInt(b.getAttribute('data-' + k) || '0', 10) || 0; }
+      function show(){
+        var t = n('wa') + n('fb') + n('web'); if (!t) return;
+        hide();
+        tip = document.createElement('div'); tip.className = 'ibx-tip'; tip.setAttribute('role', 'tooltip');
+        tip.innerHTML = '<b>' + t + (t === 1 ? ' chat' : ' chats') + ' waiting for your reply</b>' +
+          '<div class="ch"><span><i style="background:#25D366"></i>WhatsApp</span><span>' + n('wa') + '</span></div>' +
+          '<div class="ch"><span><i style="background:#7C3AED"></i>Web Chat</span><span>' + n('web') + '</span></div>' +
+          '<div class="ch"><span><i style="background:#0866FF"></i>Messenger</span><span>' + n('fb') + '</span></div>' +
+          '<div class="go">Click to see them →</div>';
+        document.body.appendChild(tip);
+        var r = b.getBoundingClientRect(), w = tip.offsetWidth;
+        tip.style.top = (r.bottom + 8) + 'px';
+        tip.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - 24)) + 'px';
+      }
+      function hide(){ if (tip) { tip.remove(); tip = null; } }
+      function go(e){ e.preventDefault(); e.stopPropagation(); window.location.href = b.getAttribute('data-href'); }
+      b.addEventListener('mouseenter', show); b.addEventListener('focus', show);
+      b.addEventListener('mouseleave', hide); b.addEventListener('blur', hide);
+      b.addEventListener('click', go);
+      b.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === ' ') go(e); });
+      window.phxInboxBadge = function(w){            // live update from the Inbox poll
+        if (!w) return;
+        b.setAttribute('data-wa', w.wa || 0); b.setAttribute('data-fb', w.fb || 0); b.setAttribute('data-web', w.web || 0);
+        var t = w.total || 0;
+        b.textContent = t < 100 ? String(t) : '99+';
+        b.style.display = t > 0 ? '' : 'none'; b.classList.toggle('is-zero', !t);
+        b.setAttribute('aria-label', t + (t === 1 ? ' chat' : ' chats') + ' waiting for your reply. Open them');
+      };
+    })();
+    </script>
     {% endif %}
 
     <!-- ── Outreach group (2026-10-24, was "Campaigns"): WhatsApp and Email
@@ -1599,11 +1649,13 @@
           How-To Guides
           {% if 'help.tutorials' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
+{% if VIDEO_TUTORIALS_ON %}
         <a href="{{ url_for('portal.video_tutorials') }}"
            class="{% if request.endpoint == 'portal.video_tutorials' %}active{% endif %}">
           Video Tutorials
           {% if 'help.videos' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
+        {% endif %}
       </div>
     </div>
 
@@ -2245,7 +2297,9 @@
     {% if not shopify_billed() %}{ icon:'💳', title:'Buy AI Credit',          desc:'Top up your AI credit balance',               url:'{{ url_for("portal.billing") }}',                    tags:'credits buy top up balance tokens recharge ai designs' },{% endif %}
     { icon:'🧾', title:'Invoices',               desc:'Download your billing receipts',               url:'{{ url_for("portal.invoices") }}',                   tags:'invoice receipt billing history download pdf payment' },
     { icon:'📚', title:'How-To Guides',          desc:'Help & Tutorials: step-by-step guides, e.g. the full CRM guide',         url:'{{ url_for("portal.tutorials") }}',                  tags:'help guide tutorial support how to faq learn' },
+{% if VIDEO_TUTORIALS_ON %}
     { icon:'🎬', title:'Video Tutorials',        desc:'Help & Tutorials: short walkthrough videos',    url:'{{ url_for("portal.video_tutorials") }}',            tags:'video tutorial watch walkthrough demo guide' },
+    {% endif %}
     { icon:'⚙️', title:'Account Settings',       desc:'Update profile, password and preferences',    url:'{{ url_for("portal.settings") }}',                   tags:'settings account profile password email notification preferences' },
     {% if _store_platform == 'shopify' %}
     { icon:'🛍️', title:'Shopify Store',          desc:'Your Shopify store: products, chat box, buyers, quote orders', url:'{{ url_for("portal.shopify_store") }}', tags:'shopify store products sync chat box theme buyers b2b companies draft order' },

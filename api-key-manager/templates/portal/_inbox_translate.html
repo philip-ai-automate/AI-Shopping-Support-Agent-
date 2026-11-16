@@ -14,13 +14,19 @@
 .ctr-tag{font-size:10.5px;font-weight:800;background:#E8EEF8;color:#0B1D40;border-radius:6px;padding:1px 6px;margin-left:5px;vertical-align:1px}
 .ctr-prev-en{display:block;color:#0B1D40;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ctr-head{display:inline-block;margin-left:6px;font-weight:700;color:#0B1D40}
-.ctr-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:6px 12px 0;font-size:12.5px;color:#5A6B85}
-.ctr-bar label{display:inline-flex!important;align-items:center;gap:6px;margin:0!important;font-weight:600;white-space:nowrap}
-.ctr-bar select{width:auto!important;min-width:0!important;margin:0!important;font:inherit;font-size:12.5px;border:1px solid #D9E1EE;border-radius:999px;padding:3px 8px;background:#fff;color:#0B1D40;font-weight:700}
-.ctr-prev{margin:6px 12px 4px;padding:8px 11px;border-radius:10px;background:#E8EEF8;color:#0B1D40;font-size:13px;line-height:1.4;
-          border-left:3px solid #0B1D40;white-space:pre-wrap;word-break:break-word}
+/* Translate strip: its own dark navy band above the typing box, so it never looks like the place to type (16 Nov). */
+.ctr-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:0 0 8px;padding:8px 12px;
+         border-radius:12px;background:#1F3A6B;color:#fff;font-size:12.5px}
+.ctr-bar .ctr-bl{display:inline-flex;align-items:center;gap:7px;font-weight:600}
+.ctr-bar label{display:inline-flex!important;align-items:center;gap:6px;margin:0!important;font-weight:600;white-space:nowrap;color:#fff!important}
+.ctr-bar select{width:auto!important;min-width:0!important;margin:0!important;font:inherit;font-size:12.5px;border:1px solid #fff;border-radius:8px;padding:4px 8px;background:#fff;color:#1F3A6B;font-weight:700}
+.ctr-bar select:focus-visible{outline:2px solid #9DB8E8;outline-offset:2px}
+.ctr-prev{margin:8px 0 0;padding:9px 12px;border-radius:12px;background:#EAF6EE;color:#030C18;font-size:13px;line-height:1.45;
+          border:1px dashed #9AD3AE;white-space:pre-wrap;word-break:break-word}
+.ctr-prev .ctr-l{display:flex;justify-content:space-between;gap:8px;color:#0E5A2C;white-space:normal}
+.ctr-prev .ctr-l em{font-style:normal;font-weight:600;letter-spacing:0;text-transform:none;color:rgba(3,12,24,.58)}
 .ctr-prev.wait{opacity:.6}
-.ctr-err{margin:6px 12px 0;font-size:12.5px;color:#B42318}
+.ctr-err{margin:6px 2px 0;font-size:12.5px;color:#B42318}
 </style>
 <script>
 (function(){
@@ -106,6 +112,7 @@
     var sel = form.querySelector('.ctr-lang');
     return sel && sel.value !== '' && sel.value !== TEAM;
   }
+  function prevLabel(name){ return '<span class="ctr-l"><span>Buyer will receive · ' + esc(name) + '</span><em>Preview, not editable</em></span>'; }
   var timers = new WeakMap();
   function refreshPrev(form){
     if (!form) return;
@@ -120,7 +127,7 @@
     var sel = form.querySelector('.ctr-lang'), to = sel.value, name = sel.options[sel.selectedIndex].textContent;
     if (btn) btn.innerHTML = 'Send in ' + esc(name) + '&nbsp;➤';
     prev.hidden = false; prev.classList.add('wait');
-    prev.innerHTML = '<span class="ctr-l">🌐 The buyer will receive (' + esc(name) + ')</span>Translating…';
+    prev.innerHTML = prevLabel(name) + 'Translating…';
     clearTimeout(timers.get(form));
     timers.set(form, setTimeout(function(){ doTranslate(form); }, 600));
   }
@@ -131,7 +138,7 @@
       if (ta.value !== src || sel.value !== to) return null;
       form._ctr = {src: src, to: to, out: d.text};
       prev.classList.remove('wait');
-      prev.innerHTML = '<span class="ctr-l">🌐 The buyer will receive (' + esc(name) + ')</span>' + fmt(d.text);
+      prev.innerHTML = prevLabel(name) + fmt(d.text);
       return form._ctr;
     }).catch(function(){
       prev.hidden = true; var err = form.querySelector('.ctr-err');
@@ -161,10 +168,11 @@
       var opts = '<option value="' + esc(TEAM) + '">Send as written (' + esc(TEAMN) + ')</option>';
       (CFG.langs || []).forEach(function(l){ if (l[0] !== TEAM) opts += '<option value="' + esc(l[0]) + '">' + esc(l[1]) + '</option>'; });
       var bar = document.createElement('div'); bar.className = 'ctr-bar';
-      bar.innerHTML = '<span>Type in ' + esc(TEAMN) + '. PhiXtra translates before sending.</span>' +
-                      '<label>Send in <select class="ctr-lang" aria-label="Language the buyer gets">' + opts + '</select></label>';
-      var wrap = ta.closest('.reply-textarea-wrap') || ta;
+      bar.innerHTML = '<span class="ctr-bl"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>PhiXtra translates your reply</span>' +
+                      '<label>Buyer gets <select class="ctr-lang" aria-label="Language the buyer gets">' + opts + '</select></label>';
+      var wrap = ta.closest('.reply-field') || ta.closest('.reply-textarea-wrap') || ta;
       wrap.parentNode.insertBefore(bar, wrap);
+      if (/^Type (a message|your reply)…$/.test(ta.placeholder)) ta.placeholder = 'Type your reply in ' + TEAMN + '…';
       wrap.insertAdjacentHTML('afterend', '<div class="ctr-prev" hidden></div><p class="ctr-err" hidden></p>');
       var sel = bar.querySelector('.ctr-lang');
       if (CFG.reply_mode === 'as_written') sel.value = TEAM;

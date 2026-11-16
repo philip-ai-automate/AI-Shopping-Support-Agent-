@@ -17,8 +17,10 @@ load_dotenv()
 def create_app():
     flask_app = Flask(__name__, template_folder="templates", static_folder="static")
     flask_app.secret_key = os.getenv("PORTAL_SECRET_KEY", "change-this-secret-in-env")
+    # Page templates go live as soon as the file is saved, no restart (16 Nov 2026).
+    flask_app.config["TEMPLATES_AUTO_RELOAD"] = True
+    flask_app.jinja_env.auto_reload = True
 
-    from portal_migrations import ensure_portal_tables, ensure_b2b_tables, ensure_coexist_tables, ensure_wa_usage_column, ensure_handoff_text_columns
     from portal_routes import portal_bp
     from portal_admin_routes import portal_admin_bp
     from portal_facebook_routes import facebook_bp
@@ -30,16 +32,15 @@ def create_app():
     from mailbox_routes import mailbox_bp
     from bookings_routes import bookings_bp
     from school_routes import school_bp
-    from school_migrations import ensure_school_tables
     from portal_routes_estate import estate_bp
 
-    # Run DB migrations on startup (all idempotent — safe)
-    ensure_portal_tables()
-    ensure_b2b_tables()
-    ensure_coexist_tables()
-    ensure_wa_usage_column()
-    ensure_handoff_text_columns()
-    ensure_school_tables()
+    # Database updates no longer run on every start (16 Nov 2026): on a restart one
+    # waited on a lock and froze the whole portal for 5 minutes. They run from
+    # run_migrations.py (deploy_portal.sh) with a 3-second lock limit instead.
+    # PHIXTRA_STARTUP_MIGRATIONS=1 in .env brings back the old way.
+    if os.getenv("PHIXTRA_STARTUP_MIGRATIONS") == "1":
+        import run_migrations
+        run_migrations.run_all()
 
     flask_app.register_blueprint(portal_bp)
     flask_app.register_blueprint(portal_admin_bp, url_prefix="/admin")
@@ -93,7 +94,8 @@ def create_app():
     flask_app.register_blueprint(demo_bp)
     # PhiXtra for Shopify (2026-11-01, Step 1 Part 1: install & connect).
     import shopify_app
-    shopify_app.ensure_tables()
+    if os.getenv("PHIXTRA_STARTUP_MIGRATIONS") == "1":
+        shopify_app.ensure_tables()       # else run_migrations.py does it
     flask_app.register_blueprint(shopify_app.shopify_bp)
     flask_app.register_blueprint(shopify_app.shopify_root_bp)
     flask_app.before_request(enforce_demo_lock)
@@ -297,8 +299,8 @@ def create_app():
         """SMS_ENABLED for templates: the one on/off switch for everything SMS
         (menu, Sales Pipeline SMS bits, SMS consent row, SMS wording).
         Lives in portal_routes.py; off since 2026-09-28."""
-        from portal_routes import SMS_ENABLED
-        return {"SMS_ENABLED": SMS_ENABLED}
+        from portal_routes import SMS_ENABLED, VIDEO_TUTORIALS_ON
+        return {"SMS_ENABLED": SMS_ENABLED, "VIDEO_TUTORIALS_ON": VIDEO_TUTORIALS_ON}
 
     @flask_app.context_processor
     def _inject_bookings_connected():
@@ -575,42 +577,21 @@ def create_app():
 
     @flask_app.context_processor
     def inject_inbox_unread():
-        """Count unread inbound WhatsApp messages for the sidebar badge."""
+        """Red Inbox number = chats waiting for a reply on WhatsApp, Messenger
+        and Web Chat (16 Nov 2026; was WhatsApp messages since the Inbox was
+        last opened). See portal_routes._inbox_waiting."""
+        empty = {'_inbox_unread_count': 0, '_inbox_waiting': {'wa': 0, 'fb': 0, 'web': 0, 'total': 0}}
         if not _session.get('portal_logged_in'):
-            return {'_inbox_unread_count': 0}
-        cid = _session.get('impersonate_customer_id') or _session.get('customer_id')
-        if not cid:
-            return {'_inbox_unread_count': 0}
-        last_seen = _session.get('inbox_last_seen')  # ISO string or None
+            return empty
+        if not (_session.get('impersonate_customer_id') or _session.get('customer_id')):
+            return empty
         try:
-            from db import get_db_connection
-            import datetime
-            conn = get_db_connection()
-            cur  = conn.cursor()
-            # Resolve tenant_id from customer
-            cur.execute("SELECT tenant_id FROM customers WHERE id=%s", (int(cid),))
-            row = cur.fetchone()
-            if not row:
-                cur.close(); conn.close()
-                return {'_inbox_unread_count': 0}
-            tenant_id = int(row[0])
-            if last_seen:
-                cur.execute("""
-                    SELECT COUNT(*) FROM wa_message_log
-                    WHERE tenant_id=%s AND direction='inbound'
-                      AND created_at > %s
-                """, (tenant_id, last_seen))
-            else:
-                cur.execute("""
-                    SELECT COUNT(*) FROM wa_message_log
-                    WHERE tenant_id=%s AND direction='inbound'
-                """, (tenant_id,))
-            count = int((cur.fetchone() or [0])[0])
-            cur.close(); conn.close()
-            return {'_inbox_unread_count': count}
+            from portal_routes import _inbox_waiting
+            w = _inbox_waiting()
+            return {'_inbox_unread_count': w['total'], '_inbox_waiting': w}
         except Exception as e:
             print("⚠️ inject_inbox_unread error:", e)
-            return {'_inbox_unread_count': 0}
+            return empty
 
     @flask_app.context_processor
     def inject_campaign_review_pending():

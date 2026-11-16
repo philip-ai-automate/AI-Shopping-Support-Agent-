@@ -1,0 +1,84 @@
+{# "Mark as done" (16 Nov 2026, mock-up https://claude.ai/artifact/B2T88ugLatJ9hQJfwPVTzw).
+   Shown on a waiting chat: takes it off the waiting list and the red number.
+   It is waiting again when the customer writes. Needs md_key, md_waiting. #}
+{% if md_key and staff_can('inbox.reply') %}
+  {% if md_waiting %}
+  <button type="button" class="btn btn-sm md-btn" data-key="{{ md_key }}"
+          title="No reply needed. Takes this chat off the waiting list.">✓ Mark as done</button>
+  {% elif active_done %}
+  <span class="md-chip" title="Marked as done: no reply needed">Done · by {{ (active_done.done_by_label|who(active_done.done_by_key)) }}, {{ active_done.done_at.strftime('%d %b %H:%M') }}</span>
+  <template class="md-line-tpl"><div class="md-line">✓ Marked as done by {{ (active_done.done_by_label|who(active_done.done_by_key)) }} · no reply needed</div></template>
+  {% endif %}
+{% endif %}
+{% if not _md_js_done %}{% set _md_js_done = true %}
+<style>
+.md-btn{background:#fff!important;color:#067647!important;border:1px solid #067647!important;white-space:nowrap;font-weight:700}
+.md-btn:hover{background:#ECFDF3!important}
+.md-btn[disabled]{opacity:.6;cursor:wait}
+.md-chip{display:inline-flex;align-items:center;font-size:11.5px;font-weight:700;color:#067647;background:#DCFAE6;border-radius:8px;padding:4px 9px;white-space:nowrap}
+.md-line{justify-self:center;align-self:center;margin:10px auto;width:fit-content;font-size:12px;color:#067647;background:#DCFAE6;border-radius:999px;padding:4px 12px}
+.md-toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:10001;max-width:calc(100vw - 32px);
+          background:#030C18;color:#fff;border-radius:10px;padding:10px 14px;font-size:13px;display:flex;gap:14px;align-items:center;box-shadow:0 10px 28px rgba(3,12,24,.3)}
+.md-toast a{color:#9DB8E8;font-weight:700;text-decoration:underline;cursor:pointer}
+</style>
+<script>
+(function(){
+  if (window._mdInit) return; window._mdInit = true;
+  var H = {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'};
+  function post(body){
+    return fetch('/inbox/mark-done', {method:'POST', headers:H, credentials:'same-origin', body:JSON.stringify(body)})
+      .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error || 'Something went wrong.'); return d; }); });
+  }
+  function counts(w){ if (w && typeof rtUpdateBadge === 'function') rtUpdateBadge(null, w); else if (w && window.phxInboxBadge) window.phxInboxBadge(w); }
+  function msgBox(from){ var c = from.closest('.inbox-chat') || document; return c.querySelector('.chat-messages'); }
+  function addLine(from, html){
+    var box = msgBox(from); if (!box) return;
+    var d = document.createElement('div'); d.className = 'md-line'; d.innerHTML = html; box.appendChild(d);
+    box.scrollTop = box.scrollHeight;
+  }
+  function rowFor(key){
+    var rows = document.querySelectorAll('.inbox-item');
+    for (var i = 0; i < rows.length; i++){
+      var el = rows[i], ph = el.getAttribute('data-phone'), href = el.getAttribute('href') || '';
+      if (ph === key || href === '?phone=' + key || href.indexOf('phone=' + encodeURIComponent(key)) >= 0) return el;
+    }
+    return null;
+  }
+  function toast(text, undoKey){
+    var old = document.querySelector('.md-toast'); if (old) old.remove();
+    var t = document.createElement('div'); t.className = 'md-toast'; t.setAttribute('role', 'status');
+    t.innerHTML = '<span>' + text + '</span>' + (undoKey ? '<a role="button" tabindex="0">Undo</a>' : '');
+    document.body.appendChild(t);
+    if (undoKey) t.querySelector('a').addEventListener('click', function(){
+      t.querySelector('a').textContent = 'Undoing…';
+      post({key: undoKey, undo: true}).then(function(){ location.reload(); })
+        .catch(function(e){ t.querySelector('span').textContent = e.message; });
+    });
+    setTimeout(function(){ if (t.parentNode) t.remove(); }, 12000);
+  }
+  // Server-rendered "done" line goes to the end of the chat.
+  document.addEventListener('DOMContentLoaded', function(){
+    document.querySelectorAll('.md-line-tpl').forEach(function(tp){
+      var box = msgBox(tp); if (box) box.appendChild(tp.content.cloneNode(true));
+    });
+  });
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('.md-btn'); if (!b) return;
+    var key = b.getAttribute('data-key'); b.disabled = true;
+    post({key: key}).then(function(d){
+      var chip = document.createElement('span'); chip.className = 'md-chip'; chip.textContent = 'Done · by You, just now';
+      b.replaceWith(chip);
+      addLine(chip, '✓ Marked as done by You · no reply needed');
+      var row = rowFor(key);
+      if (row){
+        row.setAttribute('data-needs-reply', 'false'); row.removeAttribute('data-wait-since');
+        var dot = row.querySelector('.conv-badge'); if (dot) dot.remove();
+        var wt = row.querySelector('.wait-tag'); if (wt) wt.remove();
+      }
+      counts(d.waiting);
+      toast('Marked as done. It comes back if the customer writes again.', key);
+    }).catch(function(err){ b.disabled = false; toast(err.message, null); });
+  });
+})();
+</script>
+{% endif %}
