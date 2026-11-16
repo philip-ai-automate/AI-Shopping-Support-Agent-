@@ -1,0 +1,30 @@
+{# Messenger conversation list - shared by the Inbox page and the live poll (16 Nov 2026) #}
+        {% if not messenger_conversations %}
+        <div class="empty-pane">
+          <div class="empty-icon" style="font-size:36px">💬</div>
+          <div>No Messenger conversations yet</div>
+          <p style="font-size:12.5px;color:var(--muted);margin-top:6px">A message to {{ messenger_pages[0].page_name or 'your Page' }} on Facebook will appear here.</p>
+        </div>
+        {% else %}
+        {% for c in messenger_conversations %}
+        <a class="inbox-item {% if c.key == active_phone %}active{% endif %}" href="?phone={{ c.key }}">
+          <div class="conv-avatar" style="background:#0866FF"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 0C5.24 0 0 4.952 0 11.64c0 3.499 1.434 6.521 3.769 8.61a.96.96 0 0 1 .323.683l.065 2.135a.96.96 0 0 0 1.347.85l2.381-1.053a.96.96 0 0 1 .641-.046A13 13 0 0 0 12 23.28c6.76 0 12-4.952 12-11.64S18.76 0 12 0m6.806 7.44c.522-.03.971.567.63 1.094l-4.178 6.457a.707.707 0 0 1-.977.208l-3.87-2.504a.44.44 0 0 0-.49.007l-4.363 3.01c-.637.438-1.415-.317-.995-.966l4.179-6.457a.706.706 0 0 1 .977-.21l3.87 2.505c.15.097.344.094.491-.007l4.362-3.008a.7.7 0 0 1 .364-.13" fill="#fff"/></svg></div>
+          <div class="conv-body">
+            <div class="conv-row1">
+              <span class="conv-name">Facebook contact ····{{ c.psid_short }}{% if messenger_pages|length > 1 %} · {{ c.page_name }}{% endif %}</span>
+              <span class="conv-time">{% if c.last_at %}{{ c.last_at.strftime('%d %b %H:%M') }}{% endif %}</span>
+            </div>
+            <div class="conv-row2">
+              <span class="conv-preview">
+                {% if c.last_dir == 'outbound' %}→{% else %}←{% endif %}
+                {{ (c.last_content or '')|chat_plain|truncate(50) }}
+              </span>
+              {% if has_team and c.assigned_to_label %}
+              <span class="claim-tag" title="Claimed by {{ (c.assigned_to_label|who(c.assigned_to_key)) }}">🙋 {{ (c.assigned_to_label|who(c.assigned_to_key)) if c.assigned_to_key != current_actor_key else 'You' }}</span>
+              {% endif %}
+              {% if c.needs_reply %}<span class="conv-badge" title="Awaiting reply">●</span>{% endif %}
+            </div>
+          </div>
+        </a>
+        {% endfor %}
+        {% endif %}

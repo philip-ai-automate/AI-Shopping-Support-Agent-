@@ -36418,6 +36418,135 @@ def inbox_api_webchat_poll():
                     "visitor": conv.get("visitor_name") or "Visitor"})
 
 
+@portal_bp.route("/inbox/api/messenger-poll")
+@team_feature("inbox.page")
+def inbox_api_messenger_poll():
+    """Live Messenger for the Inbox (16 Nov 2026, user: "why do i need to
+    refresh to see messages?"). Returns a signature of the conversation
+    list; when it changes, the re-rendered list (same partial the page uses)
+    and, for the open chat, its re-rendered thread. Same team gates as
+    my_inbox's Messenger block."""
+    import hashlib as _hl
+    from flask import jsonify
+    r = _require_login()
+    if r: return jsonify({"error": "login_required"}), 401
+    if not _team_member_has_permission("inbox.page"):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    actor     = _current_actor(customer)
+    if actor["is_team"] and not _team_member_has_messenger_access(actor["team_member_id"]):
+        return jsonify({"error": "forbidden"}), 403
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT page_id, page_name, connected_at FROM fb_pages "
+                    "WHERE tenant_id=%s AND active=TRUE ORDER BY connected_at DESC", (tenant_id,))
+        pages = cur.fetchall() or []
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ messenger-poll pages error:", e)
+        return jsonify({"error": "unavailable"}), 503
+    if not pages:
+        return jsonify({"sig": ""})
+    convs = [c for c in _get_messenger_conversations(tenant_id) if _inbox_can_see(tenant_id, c["key"])]
+    sig = _hl.sha1("|".join(f'{c["key"]}:{c["last_at"]}:{c.get("assigned_to_key") or ""}'
+                            for c in convs).encode()).hexdigest()[:16]
+    newest_in = max((c["last_at"] for c in convs if c["last_dir"] == "inbound" and c["last_at"]), default=None)
+    out = {"sig": sig, "conv_count": len(convs),
+           "newest_inbound": newest_in.isoformat() if newest_in else ""}
+    if request.args.get("sig", "") == sig:
+        return jsonify(out)
+    key = request.args.get("key", "")
+    has_team = _tenant_has_team(tenant_id)
+    ctx = dict(messenger_conversations=convs, messenger_pages=pages, active_phone=key,
+               has_team=has_team, current_actor_key=actor["key"])
+    out["list_html"] = render_template("portal/_messenger_list.html", **ctx)
+    if key.startswith("fb:") and any(c["key"] == key for c in convs):
+        msgs = _get_messenger_messages(tenant_id, key)
+        ctx["messenger_messages"] = msgs
+        out["thread_html"] = render_template("portal/_messenger_thread.html", **ctx)
+        out["msg_count"] = len(msgs)
+    return jsonify(out)
+
+
+@portal_bp.route("/inbox/api/notify-poll")
+@team_feature("inbox.page")
+def inbox_api_notify_poll():
+    """New Messenger + website-chat messages for the Inbox pop-ups (16 Nov
+    2026, user: a pop-up must say which channel and open the chat). WhatsApp
+    pop-ups come from /inbox/api/poll. First call (no 'since') only returns
+    the database clock as the starting point, so old messages never pop up."""
+    import re as _rx
+    from flask import jsonify
+    r = _require_login()
+    if r: return jsonify({"error": "login_required"}), 401
+    if not _team_member_has_permission("inbox.page"):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    actor     = _current_actor(customer)
+    since     = (request.args.get("since") or "").strip()
+    events = []
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT NOW() AS now")
+        now = cur.fetchone()["now"]
+        if since:
+            if (not actor["is_team"]) or _team_member_has_messenger_access(actor["team_member_id"]):
+                cur.execute("""
+                    SELECT 'fb:' || m.page_id || ':' || m.psid AS key, m.psid, m.content, m.created_at
+                      FROM fb_message_log m
+                      JOIN fb_pages p ON p.page_id = m.page_id AND p.tenant_id = m.tenant_id AND p.active
+                     WHERE m.tenant_id = %s AND m.direction = 'inbound'
+                       AND m.created_at > %s::timestamptz AND m.created_at <= %s
+                     ORDER BY m.created_at DESC LIMIT 5
+                """, (tenant_id, since, now))
+                for m in cur.fetchall() or []:
+                    events.append({"channel": "messenger", "key": m["key"],
+                                   "name": "Facebook contact \u00b7\u00b7\u00b7\u00b7" + (m["psid"] or "")[-4:],
+                                   "preview": data_crypto.dec(m["content"]) or "(message)",
+                                   "at": m["created_at"]})
+            cur.execute("""
+                SELECT u.session_id, u.content, u.created_at,
+                       v.name AS v_name,
+                       (SELECT h.visitor_name FROM handoff_requests h
+                         WHERE h.tenant_id = %s AND h.session_id = u.session_id AND h.visitor_name IS NOT NULL
+                         ORDER BY h.created_at DESC LIMIT 1) AS h_name
+                  FROM (
+                    SELECT session_id, content, created_at FROM chat_messages
+                     WHERE tenant_id = %s AND role = 'user'
+                       AND session_id !~ '^(wa|playground|test|qa|sanity|sem)-'
+                       AND created_at > %s::timestamptz AND created_at <= %s
+                    UNION ALL
+                    SELECT session_id, visitor_message, created_at FROM handoff_requests
+                     WHERE tenant_id = %s AND session_id NOT LIKE 'wa-meta-%%'
+                       AND created_at > %s::timestamptz AND created_at <= %s
+                  ) u
+                  LEFT JOIN chat_visitors v ON v.tenant_id = %s AND v.session_id = u.session_id
+                 ORDER BY u.created_at DESC LIMIT 5
+            """, (tenant_id, tenant_id, since, now, tenant_id, since, now, tenant_id))
+            for w in cur.fetchall() or []:
+                txt = data_crypto.dec(w["content"]) or ""
+                txt = _rx.sub(r"\s*<<<PHIXTRA_[A-Z]+(:.*?)?>>>", "", txt, flags=_rx.S).strip()
+                events.append({"channel": "web", "key": "web:" + w["session_id"],
+                               "name": data_crypto.dec(w.get("h_name")) or data_crypto.dec(w.get("v_name")) or "Visitor",
+                               "preview": txt or "(message)", "at": w["created_at"]})
+        cur.close(); conn.close()
+    except Exception as e:
+        print("⚠️ notify-poll error:", e)
+        return jsonify({"error": "unavailable"}), 503
+    seen, out = set(), []
+    for e in sorted(events, key=lambda e: e["at"], reverse=True):   # newest message per chat
+        if e["key"] in seen or not _inbox_can_see(tenant_id, e["key"]):
+            continue
+        seen.add(e["key"])
+        out.append({"channel": e["channel"], "key": e["key"], "name": e["name"],
+                    "preview": (e["preview"] or "")[:90]})
+    return jsonify({"now": now.isoformat(), "events": out[:3][::-1]})
+
+
 @portal_bp.route("/inbox")
 @team_feature("inbox.page")
 def my_inbox():

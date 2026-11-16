@@ -481,6 +481,21 @@ html, body { overflow: hidden; height: 100%; }
 }
 .rt-toast.show { transform: translateX(-50%) translateY(0); opacity: 1 }
 
+/* New-message pop-ups (16 Nov 2026): channel + name + preview, click opens the chat */
+.nt-stack { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 501;
+  display: flex; flex-direction: column; gap: 8px; width: min(440px, calc(100vw - 32px)); pointer-events: none; }
+.nt-card { pointer-events: auto; display: block; text-decoration: none; color: var(--ink); background: #fff;
+  border: 1px solid var(--line); border-left: 4px solid var(--nt, #667085); border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(3,12,24,.18); padding: 10px 14px; cursor: pointer;
+  animation: ntIn .25s cubic-bezier(.34,1.56,.64,1); }
+.nt-card:hover { box-shadow: 0 10px 28px rgba(3,12,24,.26) }
+.nt-top { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700 }
+.nt-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--nt, #667085); flex-shrink: 0 }
+.nt-who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.nt-open { color: var(--nt, #667085); font-size: 12.5px; white-space: nowrap }
+.nt-msg { margin: 3px 0 0 18px; font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+@keyframes ntIn { from { opacity: 0; transform: translateY(-12px) } to { opacity: 1; transform: none } }
+
 /* ── Empty states ─────────────────────────────────────────────────────────── */
 .empty-pane {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -673,6 +688,7 @@ html, body { overflow: hidden; height: 100%; }
 {% macro avatar_initials(name, phone) %}{% if name %}{% set _w=name.split() %}{% if _w|length>=2 %}{{ _w[0][0]|upper }}{{ _w[1][0]|upper }}{% else %}{{ _w[0][:2]|upper }}{% endif %}{% else %}{{ phone[-4:] }}{% endif %}{% endmacro %}
 
 <div class="rt-toast" id="rtToast"></div>
+<div class="nt-stack" id="ntStack"></div>
 
 <div class="inbox-app">
 
@@ -741,7 +757,7 @@ html, body { overflow: hidden; height: 100%; }
             <svg viewBox="0 0 320 512" fill="#fff"><path d="M279.14 288l14.22-92.66h-88.91v-60.13c0-25.35 12.42-50.06 52.24-50.06h40.42V6.26S260.43 0 225.36 0c-73.22 0-121.08 44.38-121.08 124.72v70.62H22.89V288h81.39v224h100.17V288z"/></svg>
           </div>
           <div class="rail-body"><div class="rail-name">Messenger</div><div class="rail-meta">{% if messenger_pages %}{{ messenger_pages|length }} Page{{ 's' if messenger_pages|length != 1 }} connected{% else %}Not connected{% endif %}</div></div>
-          {% if messenger_pages %}<div class="rail-count">{{ messenger_conversations|length }}</div>
+          {% if messenger_pages %}<div class="rail-count" id="msngrRailCount">{{ messenger_conversations|length }}</div>
           {% else %}<svg class="rail-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>{% endif %}
         </button>
 
@@ -1166,39 +1182,11 @@ html, body { overflow: hidden; height: 100%; }
             Messenger
           </div>
           <div class="list-header-sub">
-            {{ messenger_conversations|length }} conversation{{ 's' if messenger_conversations|length != 1 }}
+            <span id="msngrConvCount">{{ messenger_conversations|length }} conversation{{ 's' if messenger_conversations|length != 1 }}</span>
             <a href="{{ url_for('facebook.messenger_connect') }}" style="float:right;font-size:12px">Manage</a>
           </div>
         </div>
-        {% if not messenger_conversations %}
-        <div class="empty-pane">
-          <div class="empty-icon" style="font-size:36px">💬</div>
-          <div>No Messenger conversations yet</div>
-          <p style="font-size:12.5px;color:var(--muted);margin-top:6px">A message to {{ messenger_pages[0].page_name or 'your Page' }} on Facebook will appear here.</p>
-        </div>
-        {% else %}
-        {% for c in messenger_conversations %}
-        <a class="inbox-item {% if c.key == active_phone %}active{% endif %}" href="?phone={{ c.key }}">
-          <div class="conv-avatar" style="background:#0866FF"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 0C5.24 0 0 4.952 0 11.64c0 3.499 1.434 6.521 3.769 8.61a.96.96 0 0 1 .323.683l.065 2.135a.96.96 0 0 0 1.347.85l2.381-1.053a.96.96 0 0 1 .641-.046A13 13 0 0 0 12 23.28c6.76 0 12-4.952 12-11.64S18.76 0 12 0m6.806 7.44c.522-.03.971.567.63 1.094l-4.178 6.457a.707.707 0 0 1-.977.208l-3.87-2.504a.44.44 0 0 0-.49.007l-4.363 3.01c-.637.438-1.415-.317-.995-.966l4.179-6.457a.706.706 0 0 1 .977-.21l3.87 2.505c.15.097.344.094.491-.007l4.362-3.008a.7.7 0 0 1 .364-.13" fill="#fff"/></svg></div>
-          <div class="conv-body">
-            <div class="conv-row1">
-              <span class="conv-name">Facebook contact ····{{ c.psid_short }}{% if messenger_pages|length > 1 %} · {{ c.page_name }}{% endif %}</span>
-              <span class="conv-time">{% if c.last_at %}{{ c.last_at.strftime('%d %b %H:%M') }}{% endif %}</span>
-            </div>
-            <div class="conv-row2">
-              <span class="conv-preview">
-                {% if c.last_dir == 'outbound' %}→{% else %}←{% endif %}
-                {{ (c.last_content or '')|chat_plain|truncate(50) }}
-              </span>
-              {% if has_team and c.assigned_to_label %}
-              <span class="claim-tag" title="Claimed by {{ (c.assigned_to_label|who(c.assigned_to_key)) }}">🙋 {{ (c.assigned_to_label|who(c.assigned_to_key)) if c.assigned_to_key != current_actor_key else 'You' }}</span>
-              {% endif %}
-              {% if c.needs_reply %}<span class="conv-badge" title="Awaiting reply">●</span>{% endif %}
-            </div>
-          </div>
-        </a>
-        {% endfor %}
-        {% endif %}
+        <div id="msngrList">{% include "portal/_messenger_list.html" %}</div>
       </div>
 
       <div class="inbox-chat">
@@ -1216,7 +1204,7 @@ html, body { overflow: hidden; height: 100%; }
             <div class="chat-avatar" style="background:#0866FF"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 0C5.24 0 0 4.952 0 11.64c0 3.499 1.434 6.521 3.769 8.61a.96.96 0 0 1 .323.683l.065 2.135a.96.96 0 0 0 1.347.85l2.381-1.053a.96.96 0 0 1 .641-.046A13 13 0 0 0 12 23.28c6.76 0 12-4.952 12-11.64S18.76 0 12 0m6.806 7.44c.522-.03.971.567.63 1.094l-4.178 6.457a.707.707 0 0 1-.977.208l-3.87-2.504a.44.44 0 0 0-.49.007l-4.363 3.01c-.637.438-1.415-.317-.995-.966l4.179-6.457a.706.706 0 0 1 .977-.21l3.87 2.505c.15.097.344.094.491-.007l4.362-3.008a.7.7 0 0 1 .364-.13" fill="#fff"/></svg></div>
             <div class="chat-name-wrap">
               <div class="chat-name">Facebook contact ····{{ active_msngr_conv.psid_short if active_msngr_conv else '' }}</div>
-              <div class="chat-sub">{{ active_msngr_conv.page_name if active_msngr_conv else '' }} · {{ messenger_messages|length }} message{{ 's' if messenger_messages|length != 1 }}</div>
+              <div class="chat-sub">{{ active_msngr_conv.page_name if active_msngr_conv else '' }} · <span id="msngrMsgCount">{{ messenger_messages|length }} message{{ 's' if messenger_messages|length != 1 }}</span></div>
             </div>
           </div>
           {% if has_team %}
@@ -1237,45 +1225,8 @@ html, body { overflow: hidden; height: 100%; }
           {% endif %}
         </div>
 
-        <div class="chat-messages">
-          {% if not messenger_messages %}
-          <div class="empty-pane">
-            <div class="empty-icon" style="font-size:36px">💬</div>
-            <div>No messages yet in this conversation</div>
-          </div>
-          {% else %}
-          {% set ns2 = namespace(last_date=None) %}
-          {% for msg in messenger_messages %}
-            {% set msg_date = msg.created_at.strftime('%d %b %Y') if msg.created_at else None %}
-            {% if msg_date and msg_date != ns2.last_date %}
-              <div class="date-sep"><span>{{ msg_date }}</span></div>
-              {% set ns2.last_date = msg_date %}
-            {% endif %}
-            {% if msg.direction == 'inbound' %}
-            <div class="msg-wrap inbound">
-              <div class="msg-avatar" style="background:#0866FF"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 0C5.24 0 0 4.952 0 11.64c0 3.499 1.434 6.521 3.769 8.61a.96.96 0 0 1 .323.683l.065 2.135a.96.96 0 0 0 1.347.85l2.381-1.053a.96.96 0 0 1 .641-.046A13 13 0 0 0 12 23.28c6.76 0 12-4.952 12-11.64S18.76 0 12 0m6.806 7.44c.522-.03.971.567.63 1.094l-4.178 6.457a.707.707 0 0 1-.977.208l-3.87-2.504a.44.44 0 0 0-.49.007l-4.363 3.01c-.637.438-1.415-.317-.995-.966l4.179-6.457a.706.706 0 0 1 .977-.21l3.87 2.505c.15.097.344.094.491-.007l4.362-3.008a.7.7 0 0 1 .364-.13" fill="#fff"/></svg></div>
-              <div class="bubble-col">
-                <div class="bubble-sender">Customer</div>
-                <div class="chat-bubble bubble-in">
-                  {{ (msg.content or '(message)')|chat_fmt }}
-                  <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
-                </div>
-              </div>
-            </div>
-            {% else %}
-            <div class="msg-wrap outbound">
-              <div class="bubble-col">
-                <div class="bubble-sender">{{ (msg.sent_by_label|who) if (has_team and (msg.sent_by_label|who)) else 'You' }}</div>
-                <div class="chat-bubble bubble-agent">
-                  {{ (msg.content or '(message)')|chat_fmt }}
-                  <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
-                </div>
-              </div>
-            </div>
-            {% endif %}
-          {% endfor %}
-          {% endif %}
-        </div>
+        <div class="chat-messages" id="msngrMessages" data-key="{{ active_phone }}" data-count="{{ messenger_messages|length }}">
+{% include "portal/_messenger_thread.html" %}        </div>
 
         {% set msngr_must_claim = has_team and not (active_msngr_conv and active_msngr_conv.assigned_to_key == current_actor_key) %}
         <div class="chat-reply">
@@ -1959,6 +1910,30 @@ function showToast(msg){
   el.textContent=msg; el.classList.add('show');
   clearTimeout(_toastTimer); _toastTimer=setTimeout(function(){el.classList.remove('show');},4000);
 }
+// New-message pop-up (16 Nov 2026): says which channel, who, the start of the
+// message; click opens that chat. 8 s on screen (kept while hovered), max 3.
+var NT_CH={whatsapp:{label:'WhatsApp',color:'#12B76A'},messenger:{label:'Messenger',color:'#0866FF'},web:{label:'Website chat',color:'#7C3AED'}};
+function showNotif(ch,key,name,preview){
+  var st=document.getElementById('ntStack'), c=NT_CH[ch]; if(!st||!c) return;
+  var old=st.querySelector('[data-key="'+String(key).replace(/"/g,'')+'"]'); if(old) old.remove();
+  var a=document.createElement('a'); a.className='nt-card'; a.href='/inbox?phone='+encodeURIComponent(key);
+  a.setAttribute('data-key',key); a.style.setProperty('--nt',c.color);
+  var top=document.createElement('div'); top.className='nt-top';
+  var dot=document.createElement('span'); dot.className='nt-dot';
+  var who=document.createElement('span'); who.className='nt-who'; who.textContent=c.label+' \u00b7 '+(name||'');
+  var op=document.createElement('span'); op.className='nt-open'; op.textContent='Open \u203a';
+  top.appendChild(dot); top.appendChild(who); top.appendChild(op); a.appendChild(top);
+  var msg=String(preview||'').replace(/\*\*/g,'').trim();
+  if(msg){ var m=document.createElement('div'); m.className='nt-msg'; m.textContent='\u201c'+msg+'\u201d'; a.appendChild(m); }
+  st.insertBefore(a,st.firstChild);
+  while(st.children.length>3) st.removeChild(st.lastChild);
+  var hover=false, gone=false;
+  function close(){ if(!hover&&!gone){ gone=true; a.remove(); } }
+  a.addEventListener('mouseenter',function(){hover=true;});
+  a.addEventListener('mouseleave',function(){hover=false; setTimeout(close,2000);});
+  setTimeout(close,8000);
+  playNotifSound();
+}
 
 // Scroll on load
 (function(){ var el=document.getElementById('chatMessages'); if(el) el.scrollTop=el.scrollHeight; })();
@@ -2113,6 +2088,7 @@ function rtUpdateConvs(convs){
       el=rtBuildConvItem(c); list.insertBefore(el,list.firstChild);
       el.style.background='rgba(18,183,106,.12)';
       setTimeout(function(){el.style.transition='background 1.2s';el.style.background='';},100);
+      if(c.last_direction!=='outbound'&&phone!==RT.phone) showNotif('whatsapp', phone, c.display_name||('+'+phone), c.last_content||'');
     } else {
       el.setAttribute('data-last-at',  fmtLastAt(c.last_message_at));
       el.setAttribute('data-last-dir', c.last_direction||'inbound');
@@ -2139,8 +2115,7 @@ function rtUpdateConvs(convs){
       if(c.needs_reply&&phone!==RT.phone){
         el.style.background='rgba(18,183,106,.08)';
         setTimeout(function(){el.style.transition='background 1.4s';el.style.background='';},100);
-        showToast('💬 New message from '+(c.display_name||('+'+phone)));
-        playNotifSound();
+        showNotif('whatsapp', phone, c.display_name||('+'+phone), c.last_content||'');
       }
     }
     RT.convs[phone]={lastAt:c.last_message_at||'',lastDir:c.last_direction||'inbound'};
@@ -2226,6 +2201,58 @@ RT.timer=setTimeout(rtTick,RT.FAST);
       .finally(function(){ setTimeout(tick,document.hidden?15000:4000); });
   }
   setTimeout(tick,4000);
+})();
+</script>
+{% if messenger_pages %}
+<script>
+/* Live Messenger (16 Nov 2026): new Facebook messages appear in the list and
+   the open chat without a refresh. Pop-ups come from the notify poll below. */
+(function(){
+  var list=document.getElementById('msngrList'); if(!list) return;
+  var box=document.getElementById('msngrMessages');
+  var key=box?box.getAttribute('data-key'):'';
+  var sig='';
+  function plural(n,w){return n+' '+w+(n===1?'':'s');}
+  function tick(){
+    fetch('/inbox/api/messenger-poll?sig='+encodeURIComponent(sig)+'&key='+encodeURIComponent(key||''),{credentials:'same-origin',cache:'no-store'})
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(d){
+        if(!d||!d.sig) return;
+        if(d.sig===sig) return;
+        sig=d.sig;
+        if(d.list_html!==undefined) list.innerHTML=d.list_html;
+        var cc=document.getElementById('msngrConvCount'); if(cc) cc.textContent=plural(d.conv_count,'conversation');
+        var rc=document.getElementById('msngrRailCount'); if(rc) rc.textContent=d.conv_count;
+        if(box && d.thread_html!==undefined && String(d.msg_count)!==box.getAttribute('data-count')){
+          var near=box.scrollHeight-box.scrollTop-box.clientHeight<120;
+          box.innerHTML=d.thread_html; box.setAttribute('data-count',d.msg_count);
+          var mc=document.getElementById('msngrMsgCount'); if(mc) mc.textContent=plural(d.msg_count,'message');
+          if(near) box.scrollTop=box.scrollHeight;
+        }
+      }).catch(function(){})
+      .finally(function(){ setTimeout(tick,document.hidden?15000:4000); });
+  }
+  if(box) box.scrollTop=box.scrollHeight;
+  tick();
+})();
+</script>
+{% endif %}
+<script>
+/* Messenger + website-chat pop-ups (16 Nov 2026). Not shown for the chat
+   already open on screen. */
+(function(){
+  var since='', open=(new URLSearchParams(location.search)).get('phone')||'';
+  function tick(){
+    fetch('/inbox/api/notify-poll?since='+encodeURIComponent(since),{credentials:'same-origin',cache:'no-store'})
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(d){
+        if(!d||!d.now) return;
+        if(since) (d.events||[]).forEach(function(e){ if(e.key!==open) showNotif(e.channel,e.key,e.name,e.preview); });
+        since=d.now;
+      }).catch(function(){})
+      .finally(function(){ setTimeout(tick,document.hidden?15000:4000); });
+  }
+  tick();
 })();
 </script>
 {% include "portal/_fix_answer_modal.html" %}

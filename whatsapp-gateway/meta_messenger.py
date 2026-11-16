@@ -20,9 +20,12 @@ _APP_SECRET = os.getenv("META_APP_SECRET", "") or os.getenv("FB_APP_SECRET", "")
 
 
 def _verify_signature(body: bytes, sig_header: str) -> bool:
-    """Same HMAC check as WhatsApp's — same app, same shared secret."""
+    """Same HMAC check as WhatsApp's — same app, same shared secret.
+    Fails closed (16 Nov 2026): with no secret configured, every Messenger
+    webhook is rejected rather than accepted unchecked."""
     if not _APP_SECRET:
-        return True
+        print("⚠️ [MESSENGER] no app secret set — rejecting webhook")
+        return False
     expected = hmac.new(_APP_SECRET.encode(), body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(f"sha256={expected}", sig_header or "")
 
