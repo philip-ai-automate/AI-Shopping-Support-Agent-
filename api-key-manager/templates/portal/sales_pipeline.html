@@ -351,7 +351,7 @@
     <div>
       <div class="sp-eyebrow">Sales</div>
       <h1>Sales Pipeline</h1>
-      <p>Track your own customers and deals — separate from <a href="{{ url_for('portal.leads_page') }}">Leads</a>. Best for high-value items that take time to close.</p>
+      <p>Follow every real sales opportunity from first contact to order won, so no enquiry is forgotten.</p>
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:8px">
@@ -446,7 +446,7 @@
 
 {% if quote_on and dq_tiles %}
 {# One Sales Pipeline (2026-11-10): quote figures, this month #}
-<div class="dq-tiles">
+<div class="dq-tiles" data-sptour="quote-tiles">
   <div class="dq-tile dq-t-green"><span>Quotes sent this month</span><b>{{ '{:,}'.format(dq_tiles.sent_month or 0) }}</b></div>
   <div class="dq-tile dq-t-amber"><span>Waiting for the buyer</span><b>{{ '{:,}'.format(dq_tiles.waiting_n or 0) }}{% if dq_tiles.waiting_v %} · {{ dq_tiles.waiting_v|money_total }}{% endif %}</b></div>
   <div class="dq-tile dq-t-blue"><span>Quote win rate this month</span><b>{{ (dq_tiles.win_rate ~ '%') if dq_tiles.win_rate is not none else '—' }}</b></div>
@@ -2013,28 +2013,33 @@ function spTourOpenFirstRowMenu() {
 <script>
 (function(){
   var STEPS = [
+    // Rewritten 18 Nov 2026 (user approved): sales follow-up wording, quote step, no emojis.
     { sel: null, pos: 'center',
-      title: '👋 Welcome to your Sales Pipeline',
-      body: 'Track your own customers and deals through your sales process — great for high-value items that take time to close (real estate, vehicles, appliances, B2B). This tour will open each real stage form so you know exactly what to fill in. Skip anytime with Esc or "Skip tour".' },
+      title: 'Welcome to your Sales Pipeline',
+      body: 'Every real sales opportunity is followed here, from first contact to order won, so no enquiry is forgotten. This tour opens each stage form so you know what to fill in. Press Esc or "Skip tour" at any time.' },
 
     { sel: '[data-sptour="stage-funnel"]', pos: 'bottom',
-      title: '📊 The 6 Pipeline Stages',
+      title: 'The 6 Pipeline Stages',
       body: 'Every deal moves left to right: <b>New Opportunity → Contacted → Qualified → Proposal Sent → Negotiating → Won</b>. Close one at any time with a reason: <b>Not a Fit</b> if the business is not right for you, or <b>Lost</b> if a Qualified deal said no.<br><br>' +
-            '<i>Example: a customer asks about a sofa set in your showroom → add them as a Lead → once you confirm it\'s a real opportunity, Qualify it on the Leads page → it appears here as a New Opportunity → call them → once they confirm budget and need, move them to Qualified.</i><br><br>' +
+            '<i>Example: a buyer asks for a price on WhatsApp or your website chat → it becomes a Lead → once you confirm it is a real opportunity, Qualify it on the Leads page → it appears here as a New Opportunity.</i><br><br>' +
             'Next, let\'s open the real form for each stage.' },
 
+    { sel: '[data-sptour="quote-tiles"]', pos: 'bottom',
+      title: 'Quotes at a glance',
+      body: 'Quotes sent this month, quotes waiting for the buyer, your quote win rate, and buyers who opened a quote but have not replied. Click <b>Buyer opened, no reply</b> to see those deals: they are the ones to follow up first.' },
+
     { sel: '[data-sptour="add-deal-btn"]', pos: 'bottom',
-      title: '+ Create Sales Lead',
-      body: 'Click here the moment a prospective customer shows interest — before you\'ve even contacted them.<br><br>' +
-            '<i>Example: a customer calls asking about a dining set. Add "Adaeze Interiors Ltd", contact person, phone, what they\'re interested in, an estimated deal value, and a note like "Budget confirmed".</i>' },
+      title: '+ Add Lead',
+      body: 'Click here as soon as a buyer shows interest, even before you have contacted them.<br><br>' +
+            '<i>Example: Northfield Supplies Ltd asks about a bulk order. Add the company, the contact person, their phone number, what they want and an estimated deal value.</i>' },
 
     { sel: '[data-sptour="pipeline-table"]', pos: 'top',
-      title: '📋 Your Deals Table',
-      body: 'Every deal you\'ve added lives here with its current stage. Below, we\'ll open the real "advance" form for each stage in turn.' },
+      title: 'Your Deals',
+      body: 'Every deal and its current stage. Switch between <b>List</b> and <b>Board</b> at the top right, and add <b>Your columns</b> to keep the details you track. Next, we\'ll open the form for each stage.' },
 
     { sel: '#advanceModal .modal-card', pos: 'right',
       before: function(){ openAdvanceModal(0, 'Example Customer', 'contacted', null); },
-      title: '① → Contacted',
+      title: '→ Contacted',
       body: 'Logged the first time you reach out.<br><br>' +
             '<b>Contact Channel</b> — e.g. Phone Call<br>' +
             '<b>Contact Date</b> — e.g. today\'s date<br>' +
@@ -2042,50 +2047,50 @@ function spTourOpenFirstRowMenu() {
 
     { sel: '#advanceModal .modal-card', pos: 'right',
       before: function(){ openAdvanceModal(0, 'Example Customer', 'qualified', null); },
-      title: '② → Qualified',
-      body: 'Logged once you\'ve confirmed this is a genuine, fundable opportunity.<br><br>' +
+      title: '→ Qualified',
+      body: 'Logged once you have confirmed it is a real opportunity: need and budget confirmed.<br><br>' +
             '<b>Qualified Date</b> — e.g. today\'s date<br>' +
             '<b>Notes</b> — e.g. "Budget confirmed at £4,500, wants delivery within 3 weeks."' },
 
     { sel: '#advanceModal .modal-card', pos: 'right',
       before: function(){ openAdvanceModal(0, 'Example Customer', 'proposal_sent', 450000); },
-      title: '③ → Proposal Sent',
-      body: 'Logged once you\'ve sent a quote or formal proposal.<br><br>' +
+      title: '→ Proposal Sent',
+      body: 'Logged once you have sent a quote or formal proposal. When you send a quote from Quotations, the deal moves to Proposal Sent and its value is filled in for you.<br><br>' +
             '<b>Proposal Date</b> — e.g. today\'s date<br>' +
             '<b>Deal Value</b> — optionally update the quoted amount<br>' +
             '<b>Notes</b> — e.g. "Quoted £4,500 for the full order including delivery."' },
 
     { sel: '#advanceModal .modal-card', pos: 'right',
       before: function(){ openAdvanceModal(0, 'Example Customer', 'negotiating', 450000); },
-      title: '④ → Negotiating',
-      body: 'Logged while you\'re discussing price, terms, or final details.<br><br>' +
+      title: '→ Negotiating',
+      body: 'Logged while you are discussing price, terms, or final details.<br><br>' +
             '<b>Notes</b> — e.g. "Asked for a 10% discount on bulk order, offered free delivery instead."' },
 
     { sel: '#advanceModal .modal-card', pos: 'right',
       before: function(){ openAdvanceModal(0, 'Example Customer', 'won', 450000); },
-      title: '⑤ → Won',
+      title: '→ Won',
       body: 'The final stage — the deal is closed and the customer has purchased.<br><br>' +
             '<b>Won Date</b> — e.g. today\'s date<br>' +
             '<b>Final Deal Value</b> — optionally update to the actual closed amount.' },
 
     { sel: '[data-sptour="history-btn"]', pos: 'left',
       before: function(){ spTourOpenFirstRowMenu(); },
-      title: '🕘 History',
+      title: 'History',
       body: 'Each row\'s ⋮ menu opens actions for that deal — this opens a full timeline of every stage change: who changed it, when, and any notes. Handy if you forget exactly where you left off with a customer.' },
 
     { sel: '[data-sptour="drop-btn"]', pos: 'left',
       before: function(){ spTourOpenFirstRowMenu(); },
-      title: '🚫 Close a Deal',
+      title: 'Close a Deal',
       body: 'Two choices, with a reason:<br><b>Not a Fit</b>: you\'re stopping, the business isn\'t right for you (too small, doesn\'t need the service, wrong contact).<br><b>Mark as Lost</b>: a Qualified deal where the customer said no (price, a competitor).<br><br>' +
             'It moves to the Closed list below. You keep the record and can reopen it.' },
 
     { sel: '[data-sptour="dropped-section"]', pos: 'top',
-      title: '📂 Closed: Lost & Not a Fit',
+      title: 'Closed: Lost & Not a Fit',
       body: 'A running record of everything closed, with the stage it reached and the reason. Nothing is ever deleted, and Reopen puts it back.' },
 
     { sel: null, pos: 'center', last: true,
-      title: '🎉 You\'re ready!',
-      body: 'That\'s your Sales Pipeline covered. Click "🎓 Take a Tour" in the page header any time you want to run through this again.' },
+      title: 'You\'re all set',
+      body: 'Click <b>Take a Tour</b> at the top of this page any time to see this again, or ask <b>Ask PhiXtra</b> if you get stuck.' },
   ];
 
   var cur = 0, steps = [];

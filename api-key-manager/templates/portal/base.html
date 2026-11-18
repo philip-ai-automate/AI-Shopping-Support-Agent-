@@ -1110,7 +1110,7 @@
                    else (editing if request.endpoint == 'portal.quotes_request_edit'
                    else (req if request.endpoint in ('portal.quotes_quotation', 'portal.quotes_quotation_send') else none)) %}
     <div class="sb-group">
-      <div class="sb-group-toggle {% if _quotes_group %}open{% endif %}" onclick="sbToggle(this)">
+      <div class="sb-group-toggle {% if _quotes_group %}open{% endif %}" data-tour="nav-quotes" onclick="sbToggle(this)">
         <span class="sb-gtitle">
           <span class="sb-icon">🧾</span> Quotations
         </span>
@@ -1420,7 +1420,7 @@
     {% set _rep_group = request.endpoint in ('portal.reports', 'portal.report_usage', 'portal.report_cart', 'portal.report_billing', 'portal.report_ai_performance', 'portal.report_custom_picker', 'portal.report_custom_entity', 'portal.report_leads_sources', 'portal.report_not_a_fit', 'portal.email_campaigns_reports', 'portal.email_campaign_report', 'calls.calls_report', 'portal.analytics', 'portal.reports_page', 'portal.whatsapp_reports') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _rep_group %}open{% endif %}"
-           onclick="sbToggle(this)">
+           data-tour="nav-reports" onclick="sbToggle(this)">
         <span class="sb-gtitle">
           <span class="sb-icon">📈</span> Reports
         </span>
@@ -1935,43 +1935,47 @@
 
 <script>
 (function(){
+  // Rewritten 18 Nov 2026 (user approved wording): sales system, all channels, AI Agent.
   var STEPS = [
     { sel: null, pos: 'center',
-      title: '👋 Welcome to PhiXtra!',
-      body:  'Let me show you around the portal in under 2 minutes. You can skip anytime by pressing Esc or clicking "Skip tour".' },
+      title: 'Welcome to PhiXtra',
+      body:  'PhiXtra makes sure no enquiry is missed. Your AI Agent answers every buyer, turns enquiries into quotes and follows up until the sale. This tour shows you where everything is.' },
     { sel: '[data-tour="nav-dashboard"]', pos: 'right',
-      title: '📊 Dashboard',
-      body:  'Your command centre. See WhatsApp status, AI stats, hot leads, and customers waiting for a human agent — all at a glance.' },
-    { sel: '#tour-wa-hero', pos: 'bottom',
-      title: '📱 WhatsApp Connection',
-      body:  'This strip shows your WhatsApp Business number. When the dot is green, your AI assistant is live and responding to customers 24/7.' },
-    { sel: '#tour-kpi', pos: 'bottom',
-      title: '📈 Live Stats',
-      body:  'Messages received, messages sent, active conversations, and customers awaiting a reply — all in real time.' },
+      title: 'Dashboard',
+      body:  'Start here each day: what to set up next, new enquiries, quotes waiting and sales won.' },
     { sel: '[data-tour="nav-conversations"]', pos: 'right',
-      title: '💬 Inbox',
-      body:  'Every WhatsApp conversation your AI handles appears here. Customers are automatically scored Hot, Warm, or Cold based on their buying intent.' },
-    { sel: '[data-tour="nav-contacts"]', pos: 'right',
-      title: '👥 Contacts',
-      body:  'Every customer who messages you is saved automatically. Add notes and view their full chat history.' },
+      title: 'Inbox',
+      body:  'Every enquiry from your website chat, WhatsApp and Messenger in one place. Your AI Agent replies day and night in the buyer\'s language, and your team can take over any chat.' },
     { sel: '[data-tour="nav-leads"]', pos: 'right',
-      title: '🔥 Leads',
-      body:  'Customers showing strong buying intent are listed here. Focus your follow-ups where they will convert best.' },
+      title: 'Leads',
+      body:  'Your AI Agent qualifies each enquiry and scores it, so your team calls the buyers most likely to buy first.' },
+    { sel: '[data-tour="nav-quotes"]', pos: 'right',
+      title: 'Quotations',
+      body:  'Requests to quote arrive from your AI Agent. Make the quotation, send it, and PhiXtra follows it up until the buyer answers.' },
+    { sel: '[data-tour="nav-contacts"]', pos: 'right',
+      title: 'CRM',
+      body:  'Your contacts and Sales Pipeline: every deal from first message to won, with its full history.' },
     { sel: '[data-tour="nav-campaigns"]', pos: 'right',
-      title: '📣 Outreach',
-      body:  'Send WhatsApp and email campaigns, make and answer calls, and post on social media. Great for promotions, flash sales, and re-engagement.' },
-    { sel: '[data-tour="nav-ai"]', pos: 'right',
-      title: '🤖 AI Agent',
-      body:  'Customise your AI\'s personality and behaviour. Set handoff rules to decide when the AI steps aside for a human agent.' },
+      title: 'Outreach',
+      body:  'Bring buyers back with WhatsApp and email campaigns, follow-ups, calls and social posts.' },
     { sel: '[data-tour="nav-ecommerce"]', pos: 'right',
-      title: '🏪 Products & Orders',
-      body:  'Manage your products, view customer profiles, sync your WooCommerce store, and add products from Excel — all feeding your AI\'s knowledge.' },
+      title: 'Products & Orders',
+      body:  'Your products and prices, from your website, Shopify, WooCommerce or a list, so your AI Agent always gives the right price.' },
+    { sel: '[data-tour="nav-ai"]', pos: 'right',
+      title: 'AI Agent',
+      body:  'Set how your AI Agent sells: what it knows, how it talks, when it hands over to your team, and your chat box.' },
+    { sel: '[data-tour="nav-reports"]', pos: 'right',
+      title: 'Reports',
+      body:  'See your enquiries, leads, quotes and sales, by person and by period.' },
     { sel: '[data-tour="nav-settings"]', pos: 'right',
-      title: '⚙️ Settings',
-      body:  'Your account settings (profile, logo, business name, notifications), the services you connect under Integration, your Team, and Credits & Billing: top up credits, download invoices and manage your plan.' },
+      title: 'Settings',
+      body:  'Your business details, team and roles, integrations like Shopify and Xero, and your plan.' },
+    { sel: '#apxBtn', pos: 'bottom',
+      title: 'Ask PhiXtra',
+      body:  'Not sure how to do something? Ask PhiXtra and it takes you straight there.' },
     { sel: null, pos: 'center', last: true,
-      title: '🎉 You\'re all set!',
-      body:  'That\'s the full tour. Explore the portal at your own pace — and click "Take a Tour" in the sidebar anytime to run it again.' },
+      title: 'You\'re all set',
+      body:  'Run this tour again any time from "Take a Tour" in the menu.' },
   ];
 
   var cur = 0;
@@ -2144,7 +2148,7 @@
     { icon:'✅', title:'Needs Review',           desc:'Interested campaign replies awaiting approval', url:'{{ url_for("portal.whatsapp_campaign_reviews") }}', tags:'campaign intelligence interested opportunity approve reject automation' },
     { icon:'👥', title:'Contacts',               desc:'View and manage all your customers',            url:'{{ url_for("portal.whatsapp_contacts") }}',          tags:'customers phone numbers contacts list' },
     { icon:'🔥', title:'Leads',                  desc:'Customers with strong buying intent',           url:'{{ url_for("portal.leads_page") }}',                 tags:'hot warm cold intent prospects' },
-    { icon:'🧭', title:'Sales Pipeline',         desc:'Track your own customers and deals by stage',  url:'{{ url_for("portal.sales_pipeline") }}',             tags:'crm pipeline deals stages sales customers negotiate' },
+    { icon:'🧭', title:'Sales Pipeline',         desc:'Follow every sales opportunity to order won', url:'{{ url_for("portal.sales_pipeline") }}',             tags:'crm pipeline deals stages sales customers negotiate' },
     { icon:'🏷️', title:'Labels',                 desc:'Label Contacts and deals (Bounced, VIP…)',  url:'{{ url_for("portal.lead_labels_page") }}',           tags:'tags labels status bounced vip' },
     { icon:'⚙️', title:'Pipeline Settings',       desc:'Rename your pipeline stages and Lead Score labels', url:'{{ url_for("portal.sales_pipeline_settings") }}', tags:'settings stage names score hot warm cold rename' },
     { icon:'🎯', title:'How Lead Scoring Works',  desc:'What makes a Lead Hot, Warm, or Cold, explained',  url:'{{ url_for("portal.lead_scoring_explainer") }}', tags:'hot warm cold score points explainer signals' },
