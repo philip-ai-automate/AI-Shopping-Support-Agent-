@@ -14,13 +14,13 @@
 
   {% if not is_admin %}
   <div class="ad-two">
-    <div class="ad-panel">
+    {% if not shopify_billed() %}<div class="ad-panel">
       <h3>Need more?</h3>
       <div class="ad-row">
         <a class="btn btn-primary" href="{{ url_for('portal.billing') }}">Buy extra AI designs</a>
       </div>
       <span class="ad-hint">Extra AI designs are used after this month's allowance and never expire.{% if allow.extra %} You have {{ allow.extra }} extra.{% endif %}</span>
-    </div>
+    </div>{% endif %}
     <div class="ad-panel">
       <h3>Free, never counted</h3>
       <ul style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.8">

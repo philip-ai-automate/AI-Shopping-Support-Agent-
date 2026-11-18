@@ -18454,6 +18454,27 @@ def shopify_billed() -> bool:
     return g._shopify_billed
 
 
+# Shopify App Store rule 1.2.1 (18 Nov 2026): businesses billed through the
+# Shopify app must never reach PhiXtra's own Stripe/Flutterwave checkout pages.
+_SHOPIFY_BLOCKED_BILLING = {
+    "portal.billing", "portal.billing_checkout", "portal.billing_checkout_ngn",
+    "portal.billing_add_card", "portal.billing_save_card",
+    "portal.billing_subscribe", "portal.billing_subscribe_post",
+    "portal.billing_subscribe_checkout", "portal.billing_subscribe_complete",
+    "portal.billing_switch_plan", "portal.billing_plan_upgrade",
+}
+
+
+@portal_bp.before_request
+def _shopify_billing_block():
+    if request.endpoint not in _SHOPIFY_BLOCKED_BILLING:
+        return None
+    if not shopify_billed():
+        return None
+    flash("Your plan is billed through Shopify. To change it, choose a plan on this page.", "info")
+    return redirect(url_for("portal.billing_plans"))
+
+
 @portal_bp.app_template_global()
 def business_country_not_set() -> bool:
     """True when the logged-in business hasn't chosen its country yet —
