@@ -4,7 +4,7 @@
    Answers come from ask_phixtra.py (portal map + this person's plan, role and
    set-up status). It never changes anything: it explains and links. #}
 <style>
-  .apx-btn{position:fixed; right:20px; bottom:20px; z-index:8000; display:flex; align-items:center; gap:8px;
+  .apx-btn{position:fixed; right:20px; top:14px; z-index:8000; display:flex; align-items:center; gap:8px;
     background:#0B1A33; color:#fff; border:1px solid #0B1A33; border-radius:999px; padding:9px 16px 9px 9px;
     font:700 14px/1 inherit; cursor:pointer; box-shadow:0 6px 20px rgba(15,23,42,.18)}
   .apx-btn:hover{background:#13294D; border-color:#13294D}
@@ -40,10 +40,12 @@
   .apx-send{width:46px; height:46px; border:0; border-radius:10px; background:#0B1A33; cursor:pointer; display:flex; align-items:center; justify-content:center; flex:0 0 auto}
   .apx-send:disabled{opacity:.5; cursor:default}
   .apx-typing{font-size:13.5px; color:#475569}
+  /* Inbox has its own buttons top right: leave room for Ask PhiXtra */
+  @media (min-width:641px){ .inbox-topbar{padding-right:180px !important} }
   /* Wide screens: the panel is a column beside the page, not on top of it */
   @media (min-width:1100px){ body.apx-on{padding-right:400px} body.apx-on .apx-panel{box-shadow:none} }
   @media (max-width:640px){
-    .apx-btn{right:12px; bottom:12px; padding:8px}
+    .apx-btn{right:12px; top:9px; padding:6px}
     .apx-btn span{display:none}
     .apx-panel{width:100vw}
   }
