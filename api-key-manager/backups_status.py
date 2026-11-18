@@ -110,7 +110,7 @@ def view():
 
 
 def request_job(kind):
-    if kind not in ("backup", "restore"):
+    if kind != "backup":                       # 18 Nov: the old "restore" request file was never read (fix 16)
         return False
     os.makedirs(REQ, exist_ok=True)
     with open(os.path.join(REQ, kind), "w") as f:
@@ -145,3 +145,225 @@ def disk_view():
                     "used": human_bytes(u.used), "free": human_bytes(u.free),
                     "total": human_bytes(u.total), "warn": pct >= DISK_LIMIT})
     return out
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Backups & Restore (14 Nov 2026, approved mock-up XwMNVPaYNf9MADHaZty3wc)
+# Jobs run in /root/phixtra-backup/jobs.py (service phixtra-backup-jobs);
+# this page only writes request files and reads jobs/<id>.json.
+# ══════════════════════════════════════════════════════════════════════
+import glob as _glob, re as _re, secrets as _secrets, subprocess as _sp
+
+JOBS = os.path.join(BASE, "jobs")
+MANIFESTS = os.path.join(STATUS, "manifests")
+ENV_FILE = "/root/.config/phixtra-backup/env"
+ACTIVE_STATES = ("queued", "running", "stopping", "awaiting_confirm", "switching", "undoing")
+KIND_LABEL = {"test": "Test", "db": "Restore", "site": "Restore", "mail": "Restore", "files": "Download"}
+STATE_LABEL = {"queued": "Starting", "running": "Running", "stopping": "Stopping…", "awaiting_confirm": "Waiting for your confirmation",
+               "switching": "Switching", "undoing": "Undoing", "done": "Done", "failed": "Failed",
+               "stopped": "Stopped", "cancelled": "Cancelled", "undone": "Undone"}
+
+
+def _restic_env():
+    env = os.environ.copy()
+    try:
+        for line in open(ENV_FILE):
+            m = _re.match(r"\s*(?:export\s+)?([A-Z_]+)=(.*)", line)
+            if m:
+                env[m.group(1)] = m.group(2).strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return env
+
+
+def snap_ids():
+    return [s.get("id") for s in (_load("snapshots.json", []) or [])]
+
+
+def snap_label(sid):
+    for s in _load("snapshots.json", []) or []:
+        if s.get("id") == sid:
+            t = _t(s.get("time"))
+            return t.strftime("%a %-d %b, %H:%M") if t else sid
+    return sid
+
+
+def _job_view(j):
+    if not j:
+        return None
+    j = dict(j)
+    j["state_label"] = STATE_LABEL.get(j.get("state"), j.get("state"))
+    j["snap_label"] = snap_label(j.get("snap"))
+    for k in ("created", "finished", "undo_until", "confirmed_at"):
+        t = _t(j.get(k))
+        j[k + "_uk"] = t.strftime("%a %-d %b, %H:%M") if t else None
+    started = _t(j.get("created"))
+    if started:
+        end = _t(j.get("finished")) or _dt.datetime.now(UK)
+        j["elapsed"] = int((end - started).total_seconds())
+    if j.get("download") and os.path.exists(j["download"].get("file") or ""):
+        j["download_ready"] = True
+    for k in ("work", "pid", "pgid", "tmpdir"):
+        j.pop(k, None)
+    return j
+
+
+def _target_key(j):
+    return (j.get("kind"), None if j.get("kind") == "db" else j.get("target"))
+
+
+def undoable(rows=None):
+    """Fix 5 (18 Nov): restores that can still be undone — the newest finished
+    restore of each database/site/mailbox, while its 7 days last. Same rule
+    as jobs.py undo_open()."""
+    if rows is None:
+        rows = _all_jobs()
+    seen, out = set(), []
+    now = _dt.datetime.now(UK)
+    for j in rows:                                   # newest first
+        if j.get("kind") not in ("db", "site", "mail") or not j.get("undo") or j.get("state") not in ("done", "undone"):
+            continue
+        k = _target_key(j)
+        if k in seen:
+            continue
+        seen.add(k)
+        t = _t(j.get("undo_until"))
+        if j.get("state") == "done" and t and t > now and not j.get("needs_attention"):
+            out.append(_job_view(j))
+    return out
+
+
+def can_undo(jid):
+    return any(u["id"] == jid for u in undoable())
+
+
+def _all_jobs():
+    rows = []
+    for p in sorted(_glob.glob(os.path.join(JOBS, "*.json")), reverse=True):
+        try:
+            with open(p) as f:
+                rows.append(json.load(f))
+        except Exception:
+            pass
+    return rows
+
+
+def jobs_state():
+    """What the page polls: the active (or just finished) job + recent history."""
+    allrows = _all_jobs()
+    rows = allrows[:40]
+    active = next((j for j in rows if j.get("state") in ACTIVE_STATES), None)
+    if not active and rows:
+        last = rows[0]
+        fin = _t(last.get("finished"))
+        if fin and (_dt.datetime.now(UK) - fin).total_seconds() < 6 * 3600:
+            active = last
+    pending = bool(_glob.glob(os.path.join(REQ, "*.json")))
+    return {"active": _job_view(active), "busy": bool(active and active.get("state") in ACTIVE_STATES) or pending,
+            "pending": pending, "history": [_job_view(j) for j in rows[:25]], "undoable": undoable(allrows)}
+
+
+def get_job(jid):
+    if not _re.fullmatch(r"[0-9]{8}-[0-9]{6}-[a-z]+", jid or ""):
+        return None
+    try:
+        with open(os.path.join(JOBS, jid + ".json")) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def send_request(obj):
+    os.makedirs(REQ, exist_ok=True)
+    p = os.path.join(REQ, f"{int(_dt.datetime.now().timestamp() * 1000)}-{_secrets.token_hex(3)}.json")
+    with open(p + ".tmp", "w") as f:
+        json.dump(obj, f)
+    os.replace(p + ".tmp", p)
+
+
+def sites():
+    out = []
+    for p in sorted(_glob.glob("/home/*/public_html/wp-config.php")):
+        out.append(p.split("/")[2])
+    return out
+
+
+def mailboxes():
+    return sorted("/".join(p.split("/")[3:5]) for p in _glob.glob("/home/vmail/*/*/Maildir"))
+
+
+def inside(sid):
+    """What a backup holds: the record written at backup time, else the
+    database files read from the backup itself."""
+    if sid not in snap_ids():
+        return None
+    m = None
+    try:
+        with open(os.path.join(MANIFESTS, sid + ".json")) as f:
+            m = json.load(f)
+    except Exception:
+        pass
+    if m:
+        m["recorded"] = True
+        for k in ("databases", "sites", "mailboxes", "other"):
+            for x in m.get(k, []):
+                x["size"] = human_bytes(x.get("bytes")) if x.get("bytes") is not None else "—"
+        return m
+    out = {"recorded": False, "portal": {}, "databases": [], "sites": [{"site": s, "size": "—"} for s in sites()],
+           "mailboxes": [{"box": b, "size": "—"} for b in mailboxes()], "other": []}
+    try:
+        r = _sp.run(["restic", "ls", "--json", sid, "/root/phixtra-backup/dumps"], capture_output=True, text=True,
+                    timeout=120, env=_restic_env())
+        for line in r.stdout.splitlines():
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            n = d.get("name") or ""
+            if d.get("type") == "file" and (n.startswith("pg_") or n.startswith("mysql_")) and "globals" not in n:
+                out["databases"].append({"name": _re.sub(r"^(pg_|mysql_)|\.(dump|sql\.gz)$", "", n),
+                                         "kind": "PostgreSQL" if n.startswith("pg_") else "MariaDB",
+                                         "size": human_bytes(d.get("size"))})
+    except Exception as e:
+        out["error"] = str(e)[:200]
+    return out
+
+
+BROWSE_ROOTS = ["/home", "/root/phixtra-app", "/vault/phixtra-media", "/etc", "/var/spool/cron", "/usr/local/bin"]
+
+
+def browse(sid, path):
+    """One folder of a backup (not recursive) for picking files to download."""
+    if sid not in snap_ids():
+        return {"error": "Unknown backup."}
+    path = "/" + "/".join(p for p in (path or "").split("/") if p and p not in (".", ".."))
+    if path == "/":
+        return {"path": "/", "items": [{"name": r, "path": r, "type": "dir"} for r in BROWSE_ROOTS]}
+    if not any(path == r or path.startswith(r + "/") for r in BROWSE_ROOTS):
+        return {"error": "Only websites, mailboxes, the PhiXtra app, media and settings can be downloaded here."}
+    r = _sp.run(["restic", "ls", "--json", sid, path], capture_output=True, text=True, timeout=180, env=_restic_env())
+    items = []
+    for line in r.stdout.splitlines():
+        try:
+            d = json.loads(line)
+        except Exception:
+            continue
+        p = d.get("path") or ""
+        if d.get("struct_type") != "node" or p == path or os.path.dirname(p) != path:
+            continue
+        items.append({"name": d.get("name"), "path": p, "type": "dir" if d.get("type") == "dir" else "file",
+                      "size": human_bytes(d.get("size")) if d.get("type") == "file" else ""})
+    items.sort(key=lambda x: (x["type"] != "dir", x["name"].lower()))
+    return {"path": path, "items": items[:800], "more": len(items) > 800}
+
+
+def download_path(jid):
+    j = get_job(jid)
+    d = (j or {}).get("download") or {}
+    f = d.get("file") or ""
+    if not f.startswith("/vault/restore-downloads/") or not os.path.exists(f):
+        return None
+    t = _t(d.get("until"))
+    if t and _dt.datetime.now(UK) > t:
+        return None
+    return f

@@ -6275,7 +6275,150 @@ def backups():
     if r: return r
     import backups_status as bs
     return render_template("portal/admin_backups.html", v=bs.view(),
-                           disks=bs.disk_view(), disk_limit=bs.DISK_LIMIT)
+                           disks=bs.disk_view(), disk_limit=bs.DISK_LIMIT,
+                           st=bs.jobs_state(), sites=bs.sites(), mailboxes=bs.mailboxes())
+
+
+# ── Backups & Restore jobs (14 Nov 2026, mock-up XwMNVPaYNf9MADHaZty3wc) — owner only ──
+
+def _bk_json(obj, code=200):
+    resp = jsonify(obj); resp.headers["Cache-Control"] = "no-store"
+    return resp, code
+
+
+def _bk_owner():
+    if not _admin_logged_in() or not _is_owner():
+        return _bk_json({"ok": False, "error": "Only the owner can do this."}, 403)
+    return None
+
+
+def _bk_two_step(code):
+    """The owner's 2-step code (authenticator app, or a recovery code)."""
+    import admin_2fa
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("SELECT id FROM admin_users WHERE username=%s", (_admin_user(),))
+        row = cur.fetchone()
+    finally:
+        cur.close(); conn.close()
+    if not row:
+        return False, "Your login was not found."
+    a = admin_2fa.get(row[0])
+    if not admin_2fa.is_set_up(a):
+        return False, "Set up 2-step login (Admin › Team) before restoring."
+    code = (code or "").replace(" ", "")
+    if admin_2fa.check_app_code(row[0], code) or (len(code) > 6 and admin_2fa.use_recovery_code(row[0], code)):
+        return True, ""
+    return False, "That 2-step code is not right. Try the newest code from your app."
+
+
+@portal_admin_bp.route("/backups/state")
+def backups_state():
+    r = _bk_owner()
+    if r: return r
+    import backups_status as bs
+    return _bk_json(bs.jobs_state())
+
+
+@portal_admin_bp.route("/backups/inside/<sid>")
+def backups_inside(sid):
+    r = _bk_owner()
+    if r: return r
+    import backups_status as bs
+    data = bs.inside(sid)
+    return _bk_json(data or {"error": "Unknown backup."}, 200 if data else 404)
+
+
+@portal_admin_bp.route("/backups/browse")
+def backups_browse():
+    r = _bk_owner()
+    if r: return r
+    import backups_status as bs
+    return _bk_json(bs.browse(request.args.get("snap"), request.args.get("path") or "/"))
+
+
+@portal_admin_bp.route("/backups/start", methods=["POST"])
+def backups_start():
+    r = _bk_owner()
+    if r: return r
+    import backups_status as bs
+    if not request.is_json:                      # fix 16: JSON posts only (blocks plain cross-site forms)
+        return _bk_json({"ok": False, "error": "Bad request."}, 415)
+    d = request.get_json(silent=True) or {}
+    kind, sid, target = d.get("kind"), d.get("snap"), d.get("target")
+    if kind not in ("test", "db", "site", "mail", "files"):
+        return _bk_json({"ok": False, "error": "Choose what to do."}, 400)
+    if sid not in bs.snap_ids():
+        return _bk_json({"ok": False, "error": "Choose a backup."}, 400)
+    if bs.jobs_state()["busy"]:
+        return _bk_json({"ok": False, "error": "Another test or restore is running. Stop it or wait for it first."}, 409)
+    if kind == "site" and target not in bs.sites():
+        return _bk_json({"ok": False, "error": "Choose a website."}, 400)
+    if kind == "mail" and target not in bs.mailboxes():
+        return _bk_json({"ok": False, "error": "Choose a mailbox."}, 400)
+    if kind == "files":
+        if not isinstance(target, list) or not target or len(target) > 50 or not all(
+                isinstance(p, str) and any(p == root or p.startswith(root + "/") for root in bs.BROWSE_ROOTS)
+                and ".." not in p for p in target):
+            return _bk_json({"ok": False, "error": "Choose the files or folders to download."}, 400)
+    if kind in ("test", "db"):
+        target = None
+    bs.send_request({"do": "start", "kind": kind, "snap": sid, "target": target, "by": _admin_user()})
+    insert_audit_log(admin_username=_admin_user(), action=f"backup_{kind}_start", details={"snap": sid, "target": target})
+    return _bk_json({"ok": True})
+
+
+@portal_admin_bp.route("/backups/job/<jid>/<action>", methods=["POST"])
+def backups_job_action(jid, action):
+    r = _bk_owner()
+    if r: return r
+    import backups_status as bs
+    j = bs.get_job(jid)
+    if not j or action not in ("stop", "cancel", "confirm", "undo"):
+        return _bk_json({"ok": False, "error": "Not found."}, 404)
+    if not request.is_json:                      # fix 16
+        return _bk_json({"ok": False, "error": "Bad request."}, 415)
+    d = request.get_json(silent=True) or {}
+    if action in ("confirm", "undo"):
+        if action == "confirm":
+            if j.get("state") != "awaiting_confirm":
+                return _bk_json({"ok": False, "error": "This restore is not waiting for confirmation."}, 409)
+            want = {"db": "portal database", "site": j.get("target"), "mail": j.get("target")}.get(j["kind"], "")
+            if (d.get("typed") or "").strip().lower() != (want or "").lower():
+                return _bk_json({"ok": False, "error": f"Type {want} exactly to confirm."}, 400)
+        if action == "undo" and not bs.can_undo(jid):   # fix 1 + 5: still in its 7 days, and the newest restore of that item
+            return _bk_json({"ok": False, "error": "Undo is no longer available for this restore."}, 409)
+        if action == "undo" and bs.jobs_state()["busy"]:
+            return _bk_json({"ok": False, "error": "Another test or restore is running. Wait for it first."}, 409)
+        ok, why = _bk_two_step(d.get("code"))
+        if not ok:
+            return _bk_json({"ok": False, "error": why}, 400)
+        if action == "confirm" and j["kind"] in ("db", "site", "mail"):
+            try:   # a record in Admin › Incidents for every real restore (approved mock-up)
+                import incidents as _inc
+                import datetime as _dtm
+                _inc.create({"found_at": _dtm.datetime.now(), "title": f"Restore: {j.get('target_label')} to backup {bs.snap_label(j.get('snap'))}",
+                             "reported_by": _admin_user(), "grade": "low", "systems": ["backups"],
+                             "what": f"Restore started from Admin › Backups & Restore by {_admin_user()}. Job {jid}.",
+                             "practice": False}, _admin_user())
+            except Exception as e:
+                print("⚠️ restore incident:", e)
+    bs.send_request({"do": action, "id": jid, "by": _admin_user()})
+    insert_audit_log(admin_username=_admin_user(), action=f"backup_job_{action}", details={"job": jid})
+    return _bk_json({"ok": True})
+
+
+@portal_admin_bp.route("/backups/download/<jid>")
+def backups_download(jid):
+    r = _require_owner()
+    if r: return r
+    import backups_status as bs
+    f = bs.download_path(jid)
+    if not f:
+        flash("That download has expired or is not ready.", "warning")
+        return redirect(url_for("portal_admin.backups"))
+    insert_audit_log(admin_username=_admin_user(), action="backup_download", details={"job": jid})
+    return send_file(f, as_attachment=True, download_name=f"phixtra-backup-files-{jid}.zip")
 
 
 @portal_admin_bp.route("/privacy")

@@ -1,81 +1,158 @@
 {% extends "portal/admin_base.html" %}
-{% block title %}Backups — PhiXtra Admin{% endblock %}
+{% block title %}Backups & Restore — PhiXtra Admin{% endblock %}
 {% block content %}
+{# Rebuilt 14 Nov 2026 to the approved mock-up XwMNVPaYNf9MADHaZty3wc: always pick the backup first,
+   see what's inside, Test (never touches live) and Restore (owner only, safe copy → check → confirm
+   with typed name + 2-step code → switch, Undo 7 days), progress + Stop on every job, history.
+   Jobs run in /root/phixtra-backup/jobs.py (service phixtra-backup-jobs). #}
 <style>
-  .bk-verdict{border-radius:16px;padding:16px 18px;margin-bottom:16px;font-size:15px;font-weight:750;
-              display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .bk-verdict.ok{background:rgba(18,183,106,.08);border:1.5px solid rgba(18,183,106,.4);color:#05603A}
-  .bk-verdict.bad{background:rgba(240,68,56,.07);border:1.5px solid rgba(240,68,56,.45);color:#912018}
-  .bk-verdict.run{background:rgba(46,144,250,.07);border:1.5px solid rgba(46,144,250,.45);color:#194185}
-  .bk-verdict small{font-weight:500;font-size:12.5px;opacity:.85}
-  .bk-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:18px}
-  .bk-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:12px;color:var(--muted)}
-  .bk-card b{display:block;font-size:15px;color:var(--ink);margin:2px 0}
-  .bk-card form{margin-top:6px}
+  .bk-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .bk-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:16px}
+  .bk-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px 13px;font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:2px}
+  .bk-card small{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+  .bk-card b{font-size:15px;color:var(--ink)}
+  .bk-card form{margin:4px 0 0}
+  .bk-ok{color:#05603A!important}.bk-warn{color:#93370D!important}.bk-bad{color:#B42318!important}
+  .bk-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px}
+  .bk-actions .muted{font-size:12px}
+  .bk-btn{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:9px;padding:9px 14px;font:600 13px inherit;font-family:inherit;cursor:pointer;white-space:nowrap;text-decoration:none}
+  .bk-btn:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
+  .bk-btn[disabled]{opacity:.5;cursor:not-allowed}
+  .bk-green{background:#0b6b43;color:#fff}.bk-dark{background:#111827;color:#fff}.bk-line{background:#fff;color:#111827;border:1.5px solid #d1d5db}
+  .bk-red{background:#B42318;color:#fff}.bk-sm{padding:5px 10px;font-size:12px}
   .bk-sec{margin-bottom:20px}
-  .bk-h{font-size:13px;font-weight:800;margin:0 0 8px}
-  .bk-empty{font-size:12.5px;color:var(--muted);padding:12px 14px;background:#fff;border:1px dashed var(--line);border-radius:12px}
-  .bk-tag{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;background:rgba(3,12,24,.06);white-space:nowrap}
-  .bk-warn{color:#93370D;font-weight:700}
-  .bk-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
-  .bk-counts{font-size:11.5px;color:var(--muted)}
+  .bk-h{font-size:13.5px;font-weight:800;margin:0 0 8px}
+  .bk-panel{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
+  .bk-panel.run{border-color:#93c5fd;box-shadow:0 0 0 3px rgba(37,99,235,.08)}
+  .bk-panel.wait{border-color:#fcd34d;box-shadow:0 0 0 3px rgba(245,158,11,.1)}
+  .bk-ph{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+  .bk-ph h4{margin:0;font-size:14.5px}
+  .bk-pill{display:inline-block;border-radius:99px;padding:2px 9px;font-weight:600;font-size:11.5px;margin-left:6px;vertical-align:1px}
+  .p-run{background:#dbeafe;color:#1e40af}.p-ok{background:#dcfce7;color:#166534}.p-stop{background:#fef3c7;color:#92400e}
+  .p-bad{background:#fee2e2;color:#991b1b}.p-no{background:#f3f4f6;color:#4b5563}.p-wait{background:#fef3c7;color:#92400e}
+  .bk-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+  .bk-steps li{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center;font-size:13px}
+  .bk-dot{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800}
+  .d-done{background:#16a34a;color:#fff}.d-now{background:#2563eb;color:#fff}.d-wait{border:1.5px dashed #9ca3af}
+  .d-stopped{background:#f59e0b;color:#fff}.d-failed{background:#dc2626;color:#fff}
+  .bk-prog{height:7px;border-radius:9px;background:#e5e7eb;overflow:hidden;margin-top:5px}.bk-prog i{display:block;height:100%;background:#2563eb}
+  .bk-sub{font-size:12px;color:var(--muted)}
+  .bk-confirm{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;font-size:12.5px}
+  .bk-note{font-size:12.5px;background:#f0f9ff;border:1px solid #bae6fd;color:#0c4a6e;border-radius:10px;padding:10px 12px}
+  .bk-danger{font-size:12.5px;background:#fef2f2;border:1px solid #fecaca;color:#7f1d1d;border-radius:10px;padding:10px 12px}
+  .bk-tbl{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:12px}
+  .bk-tbl table{border-collapse:collapse;width:100%;min-width:700px;font-size:12.5px}
+  .bk-tbl th{text-align:left;font-weight:600;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:8px 10px;border-bottom:1px solid var(--line);background:#f9fafb}
+  .bk-tbl td{padding:9px 10px;border-bottom:1px solid #f1f2f4;vertical-align:middle}
+  .bk-tbl td.n{font-variant-numeric:tabular-nums}
+  .bk-tbl tr.inside td{background:#fafbfc}
+  .bk-rowact{text-align:right;white-space:nowrap}
+  .bk-cmp td.up{color:#166534}.bk-cmp td.down{color:#B42318}
+  .bk-inside{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;padding:4px 0}
+  .bk-grp{border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12.5px;background:#fff}
+  .bk-grp b{display:block;margin-bottom:4px}
+  .bk-grp ul{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:2px}
+  .bk-stage{position:fixed;inset:0;z-index:2000;background:rgba(15,23,42,.5);display:flex;align-items:flex-start;justify-content:center;padding:28px 12px;overflow-y:auto}
+  .bk-stage[hidden],.bk-hide[hidden]{display:none!important}
+  .bk-modal{background:#fff;border-radius:14px;padding:20px;width:100%;max-width:600px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 50px rgba(0,0,0,.25);margin:auto 0}
+  .bk-modal h3{margin:0;font-size:18px}
+  .bk-f{display:flex;flex-direction:column;gap:5px;font-size:12.5px;font-weight:600}
+  .bk-in{border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font:400 13px inherit;font-family:inherit;background:#fff;min-height:36px;width:100%;box-sizing:border-box}
+  .bk-choice{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px}
+  .bk-opt{border:1.5px solid #d1d5db;border-radius:10px;padding:10px 12px;font-size:12.5px;cursor:pointer;display:flex;gap:9px;align-items:flex-start}
+  .bk-opt b{display:block;font-size:13.5px}
+  .bk-opt:has(input:checked){border-color:#111827;box-shadow:inset 0 0 0 1px #111827;background:#f9fafb}
+  .bk-browse{border:1px solid var(--line);border-radius:10px;max-height:280px;overflow-y:auto}
+  .bk-browse div{display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid #f3f4f6;font-size:12.5px}
+  .bk-browse a{cursor:pointer;color:#2563eb;text-decoration:none}
+  .bk-crumb{font-size:12px;color:var(--muted);word-break:break-all}
+  .bk-err{color:#B42318;font-size:12.5px;font-weight:600}
 </style>
 
-{% macro uk(dt, fmt='%a %-d %b %H:%M') %}{{ dt.strftime(fmt) if dt else '—' }}{% endmacro %}
+{% macro uk(dt, fmt='%a %-d %b, %H:%M') %}{{ dt.strftime(fmt) if dt else '—' }}{% endmacro %}
 
-<div class="page-header bk-top">
+<div class="bk-top">
   <div>
-    <h1 class="section-title">Backups</h1>
-    <p class="muted">Nightly encrypted backup of all databases, the app, websites, mailboxes, product photos and server settings.
-      Times are UK time.</p>
-  </div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap">
-    <a href="{{ url_for('portal_admin.backups') }}" class="btn btn-sm">↻ Refresh</a>
-    <form method="post" action="{{ url_for('portal_admin.backups_run') }}" style="margin:0">
-      <input type="hidden" name="kind" value="backup">
-      <button class="btn btn-sm" {% if v.running or v.requested.backup %}disabled{% endif %}>Back up now</button>
-    </form>
-    <form method="post" action="{{ url_for('portal_admin.backups_run') }}" style="margin:0">
-      <input type="hidden" name="kind" value="restore">
-      <button class="btn btn-sm" {% if v.running or v.requested.restore %}disabled{% endif %}>Run restore test now</button>
-    </form>
+    <h1 class="section-title">Backups &amp; Restore</h1>
+    <p class="muted" style="margin:2px 0 0">A full backup of the server runs every night at {{ uk(v.next, '%H:%M') }} (UK). {{ v.snaps|length }} backups kept ({{ v.keep }}). Only the owner can test or restore.</p>
   </div>
 </div>
 
-{% if v.running %}
-  <div class="bk-verdict run">⏳ {{ 'Backup' if v.running.kind == 'backup' else 'Restore test' }} running — started {{ uk(v.running.since, '%H:%M') }}
-    <small>(a backup takes about 3–5 minutes; refresh to update)</small></div>
-{% elif v.requested.backup or v.requested.restore %}
-  <div class="bk-verdict run">⏳ {{ 'Backup' if v.requested.backup else 'Restore test' }} asked for — starts within a minute. <small>Refresh to update.</small></div>
-{% elif v.last_ok is none %}
-  <div class="bk-verdict bad">⚠ No backup has run yet.</div>
-{% elif not v.last_ok %}
-  <div class="bk-verdict bad">⚠ Last backup FAILED — {{ v.last_msg or 'see log' }}
-    <small>{{ uk(v.last_finished) }} · an email was sent to philip@phixtra.com</small></div>
-{% elif v.stale %}
-  <div class="bk-verdict bad">⚠ No backup for more than a day — last one {{ uk(v.last.time) }}.
-    <small>The nightly job may not have run.</small></div>
-{% else %}
-  <div class="bk-verdict ok">✅ Last backup OK — {{ uk(v.last_finished) }}{% if v.last_mins %}, took {{ v.last_mins }} min{% endif %}{% if v.last %}, {{ v.last.added }} new{% endif %}
-    {% if v.last_msg %}<small>· {{ v.last_msg }}</small>{% endif %}</div>
-{% endif %}
-
 <div class="bk-cards">
-  <div class="bk-card">Next backup<b>{{ uk(v.next) }}</b>every night, low priority so the portal stays fast</div>
-  <div class="bk-card">Last restore test
-    {% if v.restore_last.finished %}
-      <b>{{ '✅ Passed' if v.restore_last.ok else '⚠ Failed' }}</b>{{ uk(v.restore_last.finished) }}{% if v.restore_last.msg %} — {{ v.restore_last.msg }}{% endif %}
-    {% else %}<b>None yet</b>{% endif %}
-    <div>Automatic on the 1st of each month</div></div>
-  <div class="bk-card">Kept<b>{{ v.keep }}</b>{{ v.snaps|length }} backup{{ '' if v.snaps|length == 1 else 's' }} now · {{ v.stored or '—' }} stored (compressed, encrypted)</div>
-  <div class="bk-card">Backup key in your password manager
-    {% if v.key_saved %}<b>✅ Saved</b>marked {{ v.key_saved.at }}
-    {% else %}<b class="bk-warn">Not confirmed</b>Without the key nobody can open the backups.
-      <form method="post" action="{{ url_for('portal_admin.backups_key_saved') }}"
-            onsubmit="return confirm('Have you copied the backup key into your password manager?')">
-        <button class="btn btn-sm">I've saved it</button></form>
-    {% endif %}</div>
-  <div class="bk-card">Off-site copy<b class="bk-warn">Not set up yet</b>Backups are on this server's second disk only. Off-site copy is the next step.</div>
+  <div class="bk-card"><small>Last backup</small>
+    {% if v.last_ok is none %}<b class="bk-bad">None yet</b>
+    {% elif not v.last_ok %}<b class="bk-bad">⚠ Failed</b><span>{{ v.last_msg or 'see log' }} · {{ uk(v.last_finished) }}</span>
+    {% elif v.stale %}<b class="bk-bad">⚠ Over a day old</b><span>{{ uk(v.last.time) }}</span>
+    {% else %}<b class="bk-ok">{{ uk(v.last_finished, '%a %-d %b, %H:%M') }} ✓</b><span>{% if v.last_mins %}took {{ v.last_mins }} min{% endif %}{% if v.last %} · {{ v.last.added }} new{% endif %}</span>{% endif %}</div>
+  <div class="bk-card"><small>Next backup</small><b>{{ uk(v.next) }}</b><span>automatic, low priority</span></div>
+  <div class="bk-card"><small>Last test</small>
+    {% if v.restore_last.finished %}<b class="{{ 'bk-ok' if v.restore_last.ok else 'bk-bad' }}">{{ uk(v.restore_last.finished, '%-d %b') }} {{ '✓ passed' if v.restore_last.ok else '⚠ failed' }}</b>{% else %}<b>None yet</b>{% endif %}
+    <span>automatic test on the 1st of each month</span></div>
+  <div class="bk-card"><small>Off-site copy</small><b class="bk-warn">Not set up</b><span>backups are on this server only</span></div>
+  <div class="bk-card"><small>Backup key</small>
+    {% if v.key_saved %}<b class="bk-ok">Saved ✓</b><span>marked {{ v.key_saved.at }}</span>
+    {% else %}<b class="bk-warn">Not confirmed saved</b><span>without it nobody can open the backups</span>
+      <form method="post" action="{{ url_for('portal_admin.backups_key_saved') }}" onsubmit="return window.bkKeySure ? true : (bkAskKey(this), false)">
+        <button class="bk-btn bk-line bk-sm" type="submit" id="bkKeyBtn">I've saved it</button></form>{% endif %}</div>
+</div>
+
+<div class="bk-actions">
+  <button class="bk-btn bk-green" type="button" id="bkTestBtn">🧪 Test a backup</button>
+  <button class="bk-btn bk-dark" type="button" id="bkRestoreBtn">↩ Restore from a backup</button>
+  <form method="post" action="{{ url_for('portal_admin.backups_run') }}" style="margin:0">
+    <input type="hidden" name="kind" value="backup">
+    <button class="bk-btn bk-line" type="submit" {% if v.running or v.requested.backup %}disabled{% endif %}>Back up now</button>
+  </form>
+  <span class="muted">Test = proves a backup works, never changes anything. Restore = brings data back.</span>
+</div>
+{% if v.running %}<div class="bk-note" style="margin-bottom:14px">⏳ The {{ 'backup' if v.running.kind == 'backup' else 'monthly test' }} started at {{ uk(v.running.since, '%H:%M') }} is running (about 4 minutes).</div>{% endif %}
+
+<div id="bkJob"></div>
+<div id="bkUndo"></div>
+
+<div class="bk-sec">
+  <h3 class="bk-h">📦 Backups (newest first)</h3>
+  {% if v.snaps %}
+  <div class="bk-tbl"><table>
+    <thead><tr><th>Backup (UK)</th><th>Type</th><th>Size</th><th>Tested</th><th></th></tr></thead>
+    <tbody>
+    {% set tested = {} %}
+    {% for t in v.tests %}{% set _ = tested.setdefault(((t.snapshot or '').split(' ')[0]), t) %}{% endfor %}
+    {% for s in v.snaps %}
+      <tr>
+        <td style="white-space:nowrap"><b>{{ uk(s.time) }}</b></td>
+        <td>{{ s.kind }}</td>
+        <td class="n">{{ s.total }}</td>
+        <td>{% set t = tested.get(s.id) %}{% if t %}<span class="bk-pill {{ 'p-ok' if t.ok else 'p-bad' }}" style="margin:0">{{ '✓ Passed' if t.ok else '⚠ Failed' }} {{ uk(t.at_uk, '%-d %b') }}</span>{% else %}<span class="bk-pill p-no" style="margin:0">Not tested</span>{% endif %}</td>
+        <td class="bk-rowact">
+          <button class="bk-btn bk-line bk-sm" type="button" data-inside="{{ s.id }}">What's inside</button>
+          <button class="bk-btn bk-line bk-sm" type="button" data-test="{{ s.id }}">Test</button>
+          <button class="bk-btn bk-line bk-sm" type="button" data-restore="{{ s.id }}">Restore…</button>
+        </td>
+      </tr>
+      <tr class="inside bk-hide" id="in-{{ s.id }}" hidden><td colspan="5"><div class="bk-sub">Loading…</div></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<div class="bk-note">No backups yet.</div>{% endif %}
+</div>
+
+<div class="bk-sec">
+  <h3 class="bk-h">🕘 Tests and restores</h3>
+  <div class="bk-tbl"><table>
+    <thead><tr><th>When (UK)</th><th>Job</th><th>Backup</th><th>What</th><th>By</th><th>Result</th></tr></thead>
+    <tbody id="bkHist">
+    {% for j in st.history %}
+      <tr><td style="white-space:nowrap">{{ j.created_uk }}</td><td>{{ {'test':'Test','files':'Download'}.get(j.kind, 'Restore') }}</td><td style="white-space:nowrap">{{ j.snap_label }}</td>
+        <td>{{ j.target_label }}</td><td>{{ j.by }}</td><td><span class="bk-pill {{ {'done':'p-ok','failed':'p-bad','stopped':'p-stop','cancelled':'p-no','undone':'p-no'}.get(j.state, 'p-run') }}" style="margin:0">{{ j.state_label }}</span> <span class="bk-sub">{{ j.message }}</span></td></tr>
+    {% endfor %}
+    {% for t in v.tests %}{% if not t.get('from_jobs') and loop.index <= 6 and t.at_uk and t.at_uk.strftime('%Y-%m-%d') < '2026-11-14' %}
+      <tr><td style="white-space:nowrap">{{ uk(t.at_uk) }}</td><td>Test</td><td>{{ t.snap_label }}</td><td>Portal database (test only)</td><td>—</td>
+        <td><span class="bk-pill {{ 'p-ok' if t.ok else 'p-bad' }}" style="margin:0">{{ 'Passed' if t.ok else 'Failed' }}</span></td></tr>
+    {% endif %}{% endfor %}
+    {% if not st.history and not v.tests %}<tr><td colspan="6" class="bk-sub">No tests or restores yet.</td></tr>{% endif %}
+    </tbody>
+  </table></div>
 </div>
 
 <div class="bk-sec" id="disk">
@@ -93,55 +170,261 @@
   </div>
 </div>
 
-<div class="bk-sec">
-  <h3 class="bk-h">📦 Backups (newest first)</h3>
-  {% if v.snaps %}
-  <div class="table-wrap" style="background:#fff">
-    <table>
-      <thead><tr><th>Date / time (UK)</th><th>Kind</th><th>New data</th><th>Total backed up</th><th>Files</th><th>Took</th><th>Result</th></tr></thead>
-      <tbody>
-      {% for s in v.snaps %}
-        <tr>
-          <td style="white-space:nowrap"><b>{{ uk(s.time) }}</b></td>
-          <td><span class="bk-tag">{{ s.kind }}</span></td>
-          <td>{{ s.added }}</td>
-          <td>{{ s.total }}</td>
-          <td>{{ '{:,}'.format(s.files) if s.files else '—' }}</td>
-          <td>{{ (s.mins|string + ' min') if s.mins is not none else '—' }}</td>
-          <td>✅</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
+{# ── Test a backup ── #}
+<div class="bk-stage" id="bkTestStage" hidden>
+  <div class="bk-modal" role="dialog" aria-modal="true" aria-labelledby="bkTestT">
+    <h3 id="bkTestT">Test a backup</h3>
+    <label class="bk-f" for="bkTestSnap">Which backup
+      <select class="bk-in" id="bkTestSnap">{% for s in v.snaps %}<option value="{{ s.id }}">{{ uk(s.time) }} ({{ s.kind|lower }}{{ ', newest' if loop.first }})</option>{% endfor %}</select></label>
+    <div class="bk-note"><b>What happens:</b> the PhiXtra portal database from this backup is loaded into a separate test copy, its records are counted and compared with live, then the test copy is deleted.<br><b>Your live portal is never touched.</b> Takes about 3–4 minutes. You can stop it at any time. The result is emailed.</div>
+    <div class="bk-err" id="bkTestErr"></div>
+    <div class="bk-actions" style="margin:0"><button class="bk-btn bk-green" type="button" id="bkTestGo">Start test</button><button class="bk-btn bk-line" type="button" data-close>Cancel</button></div>
   </div>
-  <p class="muted" style="font-size:12px;margin-top:8px">"New data" is what changed since the backup before (after compression). Failed runs don't create a backup — they show in the box at the top and by email.</p>
-  {% else %}<div class="bk-empty">No backups yet.</div>{% endif %}
 </div>
 
-<div class="bk-sec">
-  <h3 class="bk-h">🧪 Restore tests — main portal database loaded from the backup and compared with live</h3>
-  {% if v.tests %}
-  <div class="table-wrap" style="background:#fff">
-    <table>
-      <thead><tr><th>Date (UK)</th><th>Result</th><th>Backup tested</th><th>Counts (restored / live)</th></tr></thead>
-      <tbody>
-      {% for t in v.tests %}
-        <tr>
-          <td style="white-space:nowrap"><b>{{ uk(t.at_uk) }}</b></td>
-          <td>{{ '✅ Passed' if t.ok else '⚠ Failed' }}</td>
-          <td style="white-space:nowrap">{{ t.snap_label }}</td>
-          <td class="bk-counts">
-            {% set names = {'tenants':'businesses','customers':'customers','team_members':'team','merchant_pipeline_leads':'pipeline leads','wa_contacts':'WhatsApp contacts','chat_messages':'chat messages','quote_requests':'quote requests'} %}
-            {% for k, c in t.counts.items() %}{{ names.get(k, k) }} {{ c.restored }}/{{ c.live }}{{ ' · ' if not loop.last }}{% endfor %}
-          </td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
+{# ── Restore from a backup ── #}
+<div class="bk-stage" id="bkResStage" hidden>
+  <div class="bk-modal" role="dialog" aria-modal="true" aria-labelledby="bkResT" style="max-width:720px">
+    <h3 id="bkResT">Restore from a backup</h3>
+    <label class="bk-f" for="bkResSnap">1 · Which backup
+      <select class="bk-in" id="bkResSnap">{% for s in v.snaps %}<option value="{{ s.id }}">{{ uk(s.time) }} ({{ s.kind|lower }}{{ ', newest' if loop.first }})</option>{% endfor %}</select></label>
+    <div class="bk-danger" id="bkResWarn"></div>
+    <div class="bk-f">2 · What do you want to bring back?
+      <div class="bk-choice">
+        <label class="bk-opt"><input type="radio" name="bkWhat" value="db"><span><b>Whole portal database</b>All businesses back to the backup time. PhiXtra is unavailable for about 15 seconds while it switches.</span></label>
+        <label class="bk-opt"><input type="radio" name="bkWhat" value="site"><span><b>A website</b>Its files and database. Other websites untouched.
+          <select class="bk-in" id="bkSite" style="margin-top:6px">{% for s in sites %}<option>{{ s }}</option>{% endfor %}</select></span></label>
+        <label class="bk-opt"><input type="radio" name="bkWhat" value="mail"><span><b>An email mailbox</b>Added as a new folder "Restored &lt;date&gt;". Nothing is overwritten.
+          <select class="bk-in" id="bkMail" style="margin-top:6px">{% for m in mailboxes %}<option>{{ m }}</option>{% endfor %}</select></span></label>
+        <label class="bk-opt"><input type="radio" name="bkWhat" value="files"><span><b>Files or folders → download</b>Pick them and download a zip. Nothing live changes.</span></label>
+      </div>
+    </div>
+    <div class="bk-hide" id="bkFilesBox" hidden>
+      <div class="bk-crumb" id="bkCrumb">/</div>
+      <div class="bk-browse" id="bkBrowse"></div>
+      <div class="bk-sub" id="bkPicked">Nothing chosen yet.</div>
+    </div>
+    <div class="bk-note">Nothing changes live yet. Next, PhiXtra makes a <b>safe copy</b> from the backup and shows you exactly what would change. You confirm (or cancel) after that.</div>
+    <div class="bk-err" id="bkResErr"></div>
+    <div class="bk-actions" style="margin:0"><button class="bk-btn bk-dark" type="button" id="bkResGo">Next: make a safe copy</button><button class="bk-btn bk-line" type="button" data-close>Cancel</button></div>
   </div>
-  {% else %}<div class="bk-empty">No restore tests yet.</div>{% endif %}
 </div>
 
-<p class="muted" style="font-size:12px">Putting data back from a backup is never done from this page — it overwrites live data, so it is done carefully with Claude.
-  Failures email philip@phixtra.com.</p>
+<script>
+(function(){
+  var BASE = {{ url_for('portal_admin.backups')|tojson }};
+  var state = {{ st|tojson }};
+  var $ = function(id){ return document.getElementById(id); };
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function post(url, body){ return fetch(url, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{})}).then(function(r){ return r.json().catch(function(){ return {ok:false, error:'Something went wrong.'}; }); }); }
+  function mmss(s){ s = s||0; var m = Math.floor(s/60); return (m ? m + ' min ' : '') + (s%60) + ' s'; }
+
+  // ── the job panel ──
+  var stopAsk = false, confirmErr = '', undoAsk = false;
+  function pillClass(st){ return {running:'p-run',queued:'p-run',stopping:'p-stop',switching:'p-run',undoing:'p-run',awaiting_confirm:'p-wait',done:'p-ok',failed:'p-bad',stopped:'p-stop',cancelled:'p-no',undone:'p-no'}[st] || 'p-no'; }
+  var lastJobId = null;
+  function render(){
+    var j = state.active, box = $('bkJob');
+    renderUndo();
+    if((j && j.id) !== lastJobId){ stopAsk = false; undoAsk = false; confirmErr = ''; lastJobId = j && j.id; }   // fix 16
+    var f = document.activeElement;                                    // fix 10: don't redraw under the typing
+    if(f && box.contains(f) && f.tagName === 'INPUT' && j && j.state === 'awaiting_confirm') return;
+    if(!j){ box.innerHTML = ''; return; }
+    var live = ['queued','running','stopping','switching','undoing','awaiting_confirm'].indexOf(j.state) > -1;
+    var title = {test:'🧪 Testing', db:'↩ Restoring', site:'↩ Restoring', mail:'↩ Restoring', files:'⬇ Preparing download:'}[j.kind];
+    var h = '<div class="bk-panel ' + (j.state === 'awaiting_confirm' ? 'wait' : (live ? 'run' : '')) + '"><div class="bk-ph"><h4>' + title + ' ' + esc(j.target_label) + ' <span class="bk-sub">from the ' + esc(j.snap_label) + ' backup</span>'
+      + '<span class="bk-pill ' + pillClass(j.state) + '">' + esc(j.state_label) + (live && j.state !== 'awaiting_confirm' ? ' · ' + mmss(j.elapsed) : '') + '</span></h4><div>';
+    if((j.state === 'running' || j.state === 'queued') && j.stoppable && !stopAsk) h += '<button class="bk-btn bk-red bk-sm" type="button" data-act="ask-stop">■ Stop</button>';
+    if(j.state === 'stopping' || j.state === 'switching' || j.state === 'undoing' || ((j.state === 'running') && !j.stoppable)) h += '<button class="bk-btn bk-sm" type="button" disabled style="background:#e5e7eb;color:#6b7280">■ Stop</button>';
+    if(!live) h += '<button class="bk-btn bk-line bk-sm" type="button" data-act="hide">Close</button>';
+    h += '</div></div>';
+    if(stopAsk) h += '<div class="bk-confirm">' + (j.kind === 'test' ? 'Stop the test? The test copy is deleted and nothing is recorded.' : 'Stop? Nothing live has changed; the safe copy is deleted.')
+      + ' <button class="bk-btn bk-red bk-sm" type="button" data-act="stop">Yes, stop</button><button class="bk-btn bk-line bk-sm" type="button" data-act="keep">Keep going</button></div>';
+    if(j.state === 'switching' || j.state === 'undoing') h += '<div class="bk-sub">Switching… Stop is not possible during this step (it takes seconds). If it fails, everything is put back automatically.</div>';
+    if(j.note) h += '<div class="bk-sub">' + esc(j.note) + '</div>';
+    h += '<ol class="bk-steps">';
+    (j.steps||[]).forEach(function(s, i){
+      var cls = {done:'d-done', now:'d-now', stopped:'d-stopped', failed:'d-failed'}[s.state] || 'd-wait';
+      var mark = s.state === 'done' ? '✓' : (s.state === 'failed' ? '!' : (s.state === 'stopped' ? '■' : (s.state === 'now' ? (i+1) : '')));
+      var right = s.state === 'now' ? (s.pct != null ? s.pct + '%' : 'working…') : (s.state === 'wait' ? 'waiting' : s.state);
+      h += '<li><span class="bk-dot ' + cls + '">' + mark + '</span><span>' + esc(s.label) + (s.note ? ' <span class="bk-sub">(' + esc(s.note) + ')</span>' : '')
+        + (s.state === 'now' && s.pct != null ? '<div class="bk-prog"><i style="width:' + s.pct + '%"></i></div>' : '') + '</span><span class="bk-sub">' + esc(right) + '</span></li>';
+    });
+    h += '</ol>';
+    if(j.compare && j.compare.length){
+      h += '<div class="bk-tbl"><table class="bk-cmp"><thead><tr><th>' + (j.kind === 'mail' ? 'Folder' : 'What') + '</th><th>Now (live)</th><th>In the backup</th><th>' + (j.kind === 'test' ? 'Difference' : 'After restore') + '</th></tr></thead><tbody>';
+      j.compare.forEach(function(r){
+        var d = r.diff, txt = d == null ? '' : (d === 0 ? 'no change' : (d > 0 ? '+' + d.toLocaleString() + ' in the backup' : d.toLocaleString() + ' (newer than the backup)'));
+        if(j.kind === 'mail') txt = r.backup != null ? r.backup.toLocaleString() + ' emails added in the new folder' : '';
+        h += '<tr><td>' + esc(r.label) + '</td><td class="n">' + esc(r.live == null ? '—' : r.live.toLocaleString ? r.live.toLocaleString() : r.live) + '</td><td class="n">' + esc(r.backup == null ? '—' : r.backup.toLocaleString ? r.backup.toLocaleString() : r.backup) + '</td><td class="' + (d > 0 ? 'up' : (d < 0 ? 'down' : '')) + '">' + esc(txt) + '</td></tr>';
+      });
+      h += '</tbody></table></div>';
+    }
+    if(j.state === 'awaiting_confirm'){
+      var want = j.kind === 'db' ? 'portal database' : j.target;
+      var what = {db:'<b>The whole PhiXtra portal database</b> is replaced with the checked safe copy. Everything changed after the backup time is replaced. PhiXtra is unavailable for about 15 seconds while it switches and restarts. The current database is kept, so you can Undo for 7 days.',
+                  site:'<b>' + esc(j.target) + '</b>: its files and database are replaced with the checked safe copy. Other websites are untouched. The current version is kept, so you can Undo for 7 days.',
+                  mail:'The backup\'s emails are added to <b>' + esc(j.target) + '</b> as a new folder. Nothing in the mailbox is overwritten or deleted. Undo removes the folder.'}[j.kind];
+      h += '<div class="' + (j.kind === 'mail' ? 'bk-note' : 'bk-danger') + '">' + what + '</div>'
+        + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">'
+        + '<label class="bk-f" for="bkTyped">Type <code>' + esc(want) + '</code> to confirm<input class="bk-in" id="bkTyped" autocomplete="off"></label>'
+        + '<label class="bk-f" for="bkCode">Your 2-step code<input class="bk-in" id="bkCode" inputmode="numeric" autocomplete="one-time-code" placeholder="6 digits"></label></div>'
+        + (confirmErr ? '<div class="bk-err">' + esc(confirmErr) + '</div>' : '')
+        + '<div class="bk-actions" style="margin:0"><button class="bk-btn bk-red" type="button" data-act="confirm">Restore now</button><button class="bk-btn bk-line" type="button" data-act="cancel">Cancel and delete the safe copy</button></div>';
+    }
+    if(!live && j.message) h += '<div class="' + (j.state === 'done' ? 'bk-note' : (j.state === 'failed' ? 'bk-danger' : 'bk-sub')) + '">' + esc(j.message) + '</div>';
+    if(j.state === 'done' && j.download_ready) h += '<div class="bk-actions" style="margin:0"><a class="bk-btn bk-green" href="' + BASE + '/download/' + esc(j.id) + '">⬇ Download the zip</a><span class="bk-sub">kept for 24 hours, then deleted</span></div>';
+    if(j.state === 'done' && (state.undoable||[]).some(function(u){ return u.id === j.id; })) h += '<div class="bk-sub">You can undo this restore in the <b>Undo a restore</b> box below.</div>';
+    h += '</div>';
+    var typed = $('bkTyped') && $('bkTyped').value, code = $('bkCode') && $('bkCode').value;
+    box.innerHTML = h;
+    if(typed && $('bkTyped')) $('bkTyped').value = typed;
+    if(code && $('bkCode')) $('bkCode').value = code;
+    var busy = state.busy;
+    ['bkTestBtn','bkRestoreBtn'].forEach(function(id){ $(id).disabled = busy; });
+    document.querySelectorAll('[data-test],[data-restore]').forEach(function(b){ b.disabled = busy; });
+  }
+  // ── Undo a restore (fix 5, 18 Nov): every restore that can still be undone, for its whole 7 days ──
+  var undoOpen = null, undoErr = '';
+  function renderUndo(){
+    var box = $('bkUndo'), list = state.undoable || [];
+    var f = document.activeElement;
+    if(f && box.contains(f) && f.tagName === 'INPUT') return;          // fix 10
+    if(!list.length){ box.innerHTML = ''; return; }
+    var h = '<div class="bk-panel"><div class="bk-ph"><h4>↶ Undo a restore</h4></div>'
+      + '<div class="bk-sub">Undo puts back what was there just before the restore. <b>Anything changed since the restore is replaced too.</b> Only the newest restore of each item can be undone.</div>';
+    list.forEach(function(u){
+      var what = {db:'the portal database', site: esc(u.target), mail: esc(u.target)}[u.kind];
+      h += '<div style="border-top:1px solid var(--line);padding-top:10px"><b>' + esc(u.target_label) + '</b> <span class="bk-sub">restored to the ' + esc(u.snap_label) + ' backup on ' + esc(u.finished_uk) + ' by ' + esc(u.confirmed_by || u.by) + ' · Undo until ' + esc(u.undo_until_uk) + '</span>';
+      if(undoOpen === u.id){
+        h += '<div class="' + (u.kind === 'mail' ? 'bk-note' : 'bk-danger') + '" style="margin-top:8px">' + (u.kind === 'mail' ? 'Removes the restored folder from ' + what + '. Other emails are not touched.' : 'Puts ' + what + ' back to how it was just before the restore. Everything changed since the restore (' + esc(u.finished_uk) + ') is replaced.') + '</div>'
+          + '<div class="bk-actions" style="margin:6px 0 0"><label class="bk-f" for="bkUndoCode">Your 2-step code<input class="bk-in" id="bkUndoCode" inputmode="numeric" autocomplete="one-time-code" placeholder="6 digits" style="max-width:160px"></label>'
+          + '<button class="bk-btn bk-red" type="button" data-undo-go="' + esc(u.id) + '"' + (state.busy ? ' disabled' : '') + '>Undo this restore</button><button class="bk-btn bk-line" type="button" data-undo-no>Keep it</button></div>'
+          + (undoErr ? '<div class="bk-err">' + esc(undoErr) + '</div>' : '') + (state.busy ? '<div class="bk-sub">Another job is running. Undo when it has finished.</div>' : '');
+      } else {
+        h += ' <button class="bk-btn bk-line bk-sm" type="button" data-undo-ask="' + esc(u.id) + '">↶ Undo…</button>';
+      }
+      h += '</div>';
+    });
+    box.innerHTML = h + '</div>';
+  }
+  $('bkUndo').addEventListener('click', function(e){
+    var a = e.target.closest('[data-undo-ask]'), n = e.target.closest('[data-undo-no]'), g = e.target.closest('[data-undo-go]');
+    if(a){ undoOpen = a.dataset.undoAsk; undoErr = ''; renderUndo(); return; }
+    if(n){ undoOpen = null; undoErr = ''; renderUndo(); return; }
+    if(g && !g.disabled){
+      g.disabled = true;
+      post(BASE + '/job/' + encodeURIComponent(g.dataset.undoGo) + '/undo', {code: $('bkUndoCode').value}).then(function(r){
+        undoErr = r.ok ? '' : (r.error || 'Not done.'); if(r.ok) undoOpen = null;
+        document.activeElement && document.activeElement.blur(); poll(true);
+      });
+    }
+  });
+  var hidden = null;
+  $('bkJob').addEventListener('click', function(e){
+    var b = e.target.closest('[data-act]'); if(!b || b.disabled) return;
+    var j = state.active, a = b.dataset.act;
+    if(a === 'ask-stop'){ stopAsk = true; render(); return; }
+    if(a === 'keep'){ stopAsk = false; render(); return; }
+    if(a === 'hide'){ hidden = j.id; state.active = null; render(); return; }
+    var body = {}, act = a;
+    if(a === 'confirm'){ body = {typed: $('bkTyped').value, code: $('bkCode').value}; }
+    b.disabled = true;
+    post(BASE + '/job/' + encodeURIComponent(j.id) + '/' + act, body).then(function(r){
+      stopAsk = false; confirmErr = r.ok ? '' : (r.error || 'Not done.');
+      if(document.activeElement) document.activeElement.blur();
+      poll(true);
+    });
+  });
+  function poll(now){
+    fetch(BASE + '/state', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(s){
+      if(hidden && s.active && s.active.id === hidden && ['done','failed','stopped','cancelled','undone'].indexOf(s.active.state) > -1) s.active = null;
+      state = s; render(); renderHist();
+    }).catch(function(){});
+  }
+  function renderHist(){
+    var rows = (state.history||[]).map(function(j){
+      return '<tr><td style="white-space:nowrap">' + esc(j.created_uk) + '</td><td>' + ({test:'Test', files:'Download'}[j.kind] || 'Restore') + '</td><td style="white-space:nowrap">' + esc(j.snap_label) + '</td><td>' + esc(j.target_label) + '</td><td>' + esc(j.by) + '</td><td><span class="bk-pill ' + pillClass(j.state) + '" style="margin:0">' + esc(j.state_label) + '</span> <span class="bk-sub">' + esc(j.message) + '</span></td></tr>';
+    });
+    if(rows.length){ var t = $('bkHist'); var keep = Array.prototype.slice.call(t.querySelectorAll('tr.old')); t.innerHTML = rows.join(''); keep.forEach(function(r){ t.appendChild(r); }); }
+  }
+  document.querySelectorAll('#bkHist tr').forEach(function(r, i){ if(i >= (state.history||[]).length) r.classList.add('old'); });
+  (function loop(){ setTimeout(function(){ poll(); loop(); }, state.busy ? 2000 : 8000); })();
+  render();
+
+  // ── what's inside ──
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-inside]'); if(!b) return;
+    var row = $('in-' + b.dataset.inside); row.hidden = !row.hidden; if(row.hidden || row.dataset.loaded) return;
+    fetch(BASE + '/inside/' + encodeURIComponent(b.dataset.inside), {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
+      row.dataset.loaded = 1;
+      var g = function(t, items){ return '<div class="bk-grp"><b>' + t + '</b><ul>' + (items.length ? items.join('') : '<li class="bk-sub">—</li>') + '</ul></div>'; };
+      var portal = Object.keys(d.portal||{}).map(function(k){ return '<li>' + esc(d.portal[k].toLocaleString()) + ' ' + esc(k.indexOf('WhatsApp') === 0 ? k : k.charAt(0).toLowerCase() + k.slice(1)) + '</li>'; });
+      var dbs = (d.databases||[]).map(function(x){ return '<li>' + esc(x.name) + ' <span class="bk-sub">' + esc(x.kind) + ' · ' + esc(x.size) + '</span></li>'; });
+      var sites = (d.sites||[]).map(function(x){ return '<li>' + esc(x.site) + ' <span class="bk-sub">' + esc(x.size) + '</span></li>'; });
+      var mails = (d.mailboxes||[]).map(function(x){ return '<li>' + esc(x.box) + ' <span class="bk-sub">' + esc(x.size) + '</span></li>'; });
+      var other = (d.other||[]).map(function(x){ return '<li>' + esc(x.label) + ' <span class="bk-sub">' + esc(x.size) + '</span></li>'; });
+      row.firstElementChild.innerHTML = '<div class="bk-inside">' + (portal.length ? g('🗄 PhiXtra portal database', portal) : '') + g('🌐 Websites (files + database)', sites)
+        + g('✉ Email mailboxes', mails) + g('🗃 Databases', dbs) + (other.length ? g('⚙ App + settings', other) : g('⚙ App + settings', ['<li>PhiXtra app, server settings, scheduled jobs, uploaded media</li>'])) + '</div>'
+        + (d.recorded ? '' : '<div class="bk-sub" style="margin-top:6px">Record counts and sizes are written with each backup from 14 Nov 2026 onwards; for this older backup the databases are read from the backup itself.</div>');
+    }).catch(function(){ row.firstElementChild.innerHTML = '<div class="bk-err">Could not read this backup.</div>'; });
+  });
+
+  // ── dialogs ──
+  function openStage(id){ $(id).hidden = false; document.documentElement.style.overflow = 'hidden'; }
+  function closeStages(){ document.querySelectorAll('.bk-stage').forEach(function(s){ s.hidden = true; }); document.documentElement.style.overflow = ''; }
+  document.querySelectorAll('.bk-stage').forEach(function(s){
+    s.addEventListener('mousedown', function(e){ if(e.target === s) closeStages(); });
+    s.querySelectorAll('[data-close]').forEach(function(b){ b.addEventListener('click', closeStages); });
+  });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeStages(); });
+  $('bkTestBtn').addEventListener('click', function(){ $('bkTestErr').textContent = ''; openStage('bkTestStage'); });
+  document.addEventListener('click', function(e){
+    var t = e.target.closest('[data-test]'); if(t && !t.disabled){ $('bkTestSnap').value = t.dataset.test; $('bkTestErr').textContent = ''; openStage('bkTestStage'); }
+    var r = e.target.closest('[data-restore]'); if(r && !r.disabled){ $('bkResSnap').value = r.dataset.restore; resetRes(); openStage('bkResStage'); }
+  });
+  $('bkTestGo').addEventListener('click', function(){
+    var b = this; b.disabled = true;
+    post(BASE + '/start', {kind:'test', snap: $('bkTestSnap').value}).then(function(r){ b.disabled = false;
+      if(!r.ok){ $('bkTestErr').textContent = r.error || 'Not started.'; return; }
+      closeStages(); state.busy = true; poll(true); setTimeout(poll, 2500); });
+  });
+  function warn(){ var o = $('bkResSnap').selectedOptions[0]; $('bkResWarn').innerHTML = 'Anything created or changed <b>after ' + esc(o ? o.textContent.replace(/ \(.*\)$/, '') : '') + '</b> in what you restore will be replaced by the backup\'s version (mailboxes: added as a new folder instead).'; }
+  function resetRes(){ $('bkResErr').textContent = ''; warn(); picked = {}; showPicked(); }
+  $('bkResSnap').addEventListener('change', function(){ warn(); if(what() === 'files') browse('/'); });
+  $('bkRestoreBtn').addEventListener('click', function(){ resetRes(); openStage('bkResStage'); });
+  function what(){ var c = document.querySelector('input[name=bkWhat]:checked'); return c ? c.value : ''; }
+  document.querySelectorAll('input[name=bkWhat]').forEach(function(r){ r.addEventListener('change', function(){ $('bkFilesBox').hidden = what() !== 'files'; if(what() === 'files') browse('/'); }); });
+  var picked = {};
+  function showPicked(){ var k = Object.keys(picked); $('bkPicked').textContent = k.length ? 'Chosen (' + k.length + '): ' + k.join(', ') : 'Nothing chosen yet. Tick files or folders.'; }
+  function browse(path){
+    $('bkBrowse').innerHTML = '<div class="bk-sub">Reading the backup…</div>';
+    fetch(BASE + '/browse?snap=' + encodeURIComponent($('bkResSnap').value) + '&path=' + encodeURIComponent(path), {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
+      if(d.error){ $('bkBrowse').innerHTML = '<div class="bk-err">' + esc(d.error) + '</div>'; return; }
+      var up = d.path === '/' ? '' : d.path.replace(/\/[^\/]+$/, '') || '/';
+      $('bkCrumb').innerHTML = 'Folder: <b>' + esc(d.path) + '</b>' + (d.path !== '/' ? ' · <a data-go="' + esc(up) + '" style="cursor:pointer;color:#2563eb">↑ up</a>' : '');
+      $('bkBrowse').innerHTML = (d.items||[]).map(function(x){
+        return '<div>' + (d.path === '/' ? '' : '<input type="checkbox" data-pick="' + esc(x.path) + '"' + (picked[x.path] ? ' checked' : '') + ' aria-label="Choose ' + esc(x.name) + '">')
+          + (x.type === 'dir' ? '📁 <a data-go="' + esc(x.path) + '">' + esc(x.name) + '</a>' : '📄 ' + esc(x.name)) + ' <span class="bk-sub">' + esc(x.size || '') + '</span></div>';
+      }).join('') + (d.more ? '<div class="bk-sub">Showing the first 800 items.</div>' : '') || '<div class="bk-sub">Empty folder.</div>';
+    }).catch(function(){ $('bkBrowse').innerHTML = '<div class="bk-err">Could not read this backup.</div>'; });
+  }
+  $('bkFilesBox').addEventListener('click', function(e){ var g = e.target.closest('[data-go]'); if(g){ e.preventDefault(); browse(g.dataset.go); } });
+  $('bkFilesBox').addEventListener('change', function(e){ var p = e.target.dataset.pick; if(!p) return; if(e.target.checked) picked[p] = 1; else delete picked[p]; showPicked(); });
+  $('bkResGo').addEventListener('click', function(){
+    var k = what(), body = {kind: k, snap: $('bkResSnap').value};
+    if(!k){ $('bkResErr').textContent = 'Choose what to bring back.'; return; }
+    if(k === 'site') body.target = $('bkSite').value;
+    if(k === 'mail') body.target = $('bkMail').value;
+    if(k === 'files'){ body.target = Object.keys(picked); if(!body.target.length){ $('bkResErr').textContent = 'Tick the files or folders to download.'; return; } }
+    var b = this; b.disabled = true;
+    post(BASE + '/start', body).then(function(r){ b.disabled = false;
+      if(!r.ok){ $('bkResErr').textContent = r.error || 'Not started.'; return; }
+      closeStages(); state.busy = true; poll(true); setTimeout(poll, 2500); window.scrollTo({top: 0, behavior: 'smooth'}); });
+  });
+  window.bkAskKey = function(form){
+    var b = $('bkKeyBtn'); if(b.dataset.ask){ window.bkKeySure = true; form.submit(); return; }
+    b.dataset.ask = 1; b.textContent = 'Yes, the key is in my password manager'; };
+})();
+</script>
 {% endblock %}
