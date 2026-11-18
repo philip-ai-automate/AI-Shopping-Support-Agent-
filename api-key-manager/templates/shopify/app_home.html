@@ -57,6 +57,14 @@
  .steps .t .more{display:block;color:#616161;font-size:13px;margin-top:6px}
  .lnk2{background:none;border:0;padding:0;color:#005bd3;font:inherit;cursor:pointer;text-decoration:underline}
  .hide{display:none!important}
+ .howto{margin-top:6px;font-size:13px}
+ .howto summary{cursor:pointer;color:#005bd3;font-weight:550;list-style:none}
+ .howto summary::-webkit-details-marker{display:none}
+ .howto summary::after{content:" \25BE"}.howto[open] summary::after{content:" \25B4"}
+ .howto .hbox{margin-top:8px;background:#f7f7f7;border:1px solid #ebebeb;border-radius:8px;padding:12px 14px;color:#303030}
+ .howto .hbox b{display:block;margin-top:2px}
+ .howto .hbox ol{margin:4px 0 10px;padding-left:20px}.howto .hbox li{display:list-item;border:0;padding:2px 0}
+ .howto .hbox p{margin:0;color:#616161}
 </style>
 </head>
 <body>
@@ -148,7 +156,20 @@
       <span class="more hide" id="h-off"></span>
       <span class="more hide" id="h-pages"></span></div>
       <div id="h-pact"><span class="pill" id="h-pill">Reading</span></div></li>
-    <li><div class="n">2</div><div class="t"><b>Chat on your store</b><span id="h-chat">Let buyers chat with your AI Agent on every page of your store. Press Turn on, then Save in the theme editor.</span></div><div id="h-cact"><button class="btn sec" id="b-chat">Turn on</button></div></li>
+    <li style="align-items:flex-start"><div class="n">2</div><div class="t"><b>Chat on your store</b><span id="h-chat">Let buyers chat with your AI Agent on every page of your store. Press Turn on, then Save in the theme editor.</span>
+      <details class="howto"><summary>Show me how</summary><div class="hbox">
+       <b>The quick way</b>
+       <ol><li>Press Turn on. Your theme editor opens with PhiXtra chat already switched on.</li>
+        <li>Press Save at the top right.</li>
+        <li>Open your store. The chat button now shows on every page.</li></ol>
+       <b>If you'd rather do it yourself</b>
+       <ol><li>In Shopify admin, go to Online Store › Themes.</li>
+        <li>On your live theme, press Customize.</li>
+        <li>On the left, click App embeds.</li>
+        <li>Find PhiXtra chat and switch it on.</li>
+        <li>Press Save.</li></ol>
+       <p>To turn the chat off, go to the same place, switch PhiXtra chat off and press Save.</p>
+      </div></details></div><div id="h-cact"><button class="btn sec" id="b-chat">Turn on</button></div></li>
     <li id="h-quotes" class="hide"><div class="n">3</div><div class="t"><b>Quotations <span class="tag">B2B</span></b><span id="h-qtext">Quote requests from your buyers arrive in Quotations › Requests.</span><span class="more hide" id="h-qerr" style="color:#8e1f0b"></span><span class="more hide" id="h-buyers"></span></div><div id="h-qact"><button class="btn sec" data-open="/quotations/requests">Open</button></div></li>
     <li><div class="n" id="h-wa-n">3</div><div class="t"><b>WhatsApp and email</b><span>Connect your WhatsApp number and email in your PhiXtra account.</span></div><button class="btn sec" data-open="/dashboard">Open PhiXtra</button></li>
    </ul>
