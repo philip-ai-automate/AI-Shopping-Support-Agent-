@@ -356,20 +356,6 @@
   {% endif %}
 </div>
 
-{% if not connections %}
-<!-- Help link -->
-<div style="margin-bottom:20px;padding:14px 18px;border:1px solid var(--line);border-radius:14px;
-            background:rgba(3,12,24,.02);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-  <div style="display:flex;align-items:center;gap:10px">
-    <span style="font-size:20px">📚</span>
-    <div>
-      <div style="font-size:13px;font-weight:700">New to WhatsApp Business API?</div>
-      <div class="muted" style="font-size:12px">Follow our step-by-step guide to create your Meta account and get your credentials.</div>
-    </div>
-  </div>
-  <a href="{{ url_for('portal.tutorials') }}" class="btn btn-sm">View Setup Guide →</a>
-</div>
-{% endif %}
 
 {% if staff_can_open('portal.whatsapp_save_connection') %}
 <!-- ── Connect Section ───────────────────────────────────────────────────── -->

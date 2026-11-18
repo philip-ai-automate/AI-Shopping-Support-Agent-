@@ -31,12 +31,10 @@
     <div>Your website's {% if result.kind == 'cloudflare' %}Cloudflare protection{% else %}firewall or security settings{% endif %} may be blocking us. Allow these two in it, then click Connect again:</div>
     <div class="ws-allow-row"><span class="ws-allow-k">Our server address (IP)</span><code id="ws_ip">{{ reader_ip }}</code><button type="button" class="btn btn-sm ws-copy" data-copy="{{ reader_ip }}">Copy</button></div>
     <div class="ws-allow-row"><span class="ws-allow-k">Our reader's name</span><code id="ws_name">{{ reader_name }}</code><button type="button" class="btn btn-sm ws-copy" data-copy="{{ reader_name }}">Copy</button></div>
-    <a href="{{ url_for('portal.tutorials') }}?topic=website#{{ 'web-cloudflare' if result.kind == 'cloudflare' else 'web-allow' }}" target="_blank" rel="noopener" style="font-weight:700">📘 Show me how →</a>
   </div>
   {% elif result.kind == 'robots' %}
   <div class="ws-allow">
     <div>Your website's robots.txt file can allow just PhiXtra and keep other readers out.</div>
-    <a href="{{ url_for('portal.tutorials') }}?topic=website#web-robots" target="_blank" rel="noopener" style="font-weight:700">📘 Show me how →</a>
   </div>
   {% endif %}
   <div style="margin-top:6px">Nothing was saved. Fix the problem, then try again.</div>
@@ -63,7 +61,7 @@
 <form method="POST" class="ws-card" id="ws_form">
   <label class="ws-lbl" for="ws_url">Your website address</label>
   <input class="ws-input" type="text" id="ws_url" name="url" value="{{ form_url }}" placeholder="example.com" required/>
-  <div class="ws-help">Works with any website: Wix, Shopify, Squarespace, WordPress or a custom site. Website has a firewall or Cloudflare? <a href="{{ url_for('portal.tutorials') }}?topic=website#web-allow" target="_blank" rel="noopener">Let PhiXtra in first</a>.</div>
+  <div class="ws-help">Works with any website: Wix, Shopify, Squarespace, WordPress or a custom site. Website has a firewall or Cloudflare? Let PhiXtra in first.</div>
 
   <div class="ws-info" style="margin-top:18px">
     <div><strong style="display:block;margin-bottom:2px">What we read (after Sync now)</strong>Public pages on your website: about, services, delivery, prices, policies, FAQs, contact. Up to 100 pages.</div>

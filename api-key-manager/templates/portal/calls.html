@@ -41,7 +41,6 @@
     <p>Every WhatsApp call: answered, missed and made. A missed call waits under <b>Missed</b> until someone presses <b>I'll call back</b>.</p>
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
-    <a class="cl-btn" href="{{ url_for('portal.tutorials', topic='calls') }}">How calls work</a>
     {% if staff_can_open('calls.calls_report') %}<a class="cl-btn" href="{{ url_for('calls.calls_report') }}">Calls report</a>{% endif %}
   </div>
 </div>

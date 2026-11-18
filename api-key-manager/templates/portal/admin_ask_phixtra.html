@@ -1,0 +1,68 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Ask PhiXtra — PhiXtra Admin{% endblock %}
+{% block content %}
+{# Admin › Ask PhiXtra (18 Nov 2026): only the questions Ask PhiXtra could not answer,
+   or that the person marked Not helpful — so the team sees where the portal is unclear.
+   Nothing here is written or approved: Ask PhiXtra reads the live portal itself. #}
+<style>
+  .apa{display:flex;flex-direction:column;gap:16px}
+  .apa-crumb{font-size:12px;color:var(--muted)}
+  .apa-intro{font-size:14px;color:var(--muted);line-height:1.55;max-width:860px}
+  .apa-tabs{display:flex;gap:8px;flex-wrap:wrap}
+  .apa-tab{border:1px solid var(--line);border-radius:8px;padding:8px 14px;font-weight:700;font-size:14px;color:var(--ink);text-decoration:none;background:#fff}
+  .apa-tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .apa-box{background:#fff;border:1px solid var(--line);border-radius:12px;overflow-x:auto}
+  .apa-box table{width:100%;border-collapse:collapse;font-size:14px;min-width:760px}
+  .apa-box th{background:#F1F5F9;text-align:left;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:10px 14px}
+  .apa-box td{padding:12px 14px;border-top:1px solid var(--line);vertical-align:top}
+  .apa-why{font-weight:600} .apa-why.no{color:#B45309} .apa-why.bad{color:#B91C1C}
+  .apa-act{display:flex;gap:8px;flex-wrap:wrap}
+  .apa-act a,.apa-act button{border:1px solid var(--line);border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;background:#fff;color:var(--ink);cursor:pointer;text-decoration:none}
+  .apa-act a.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .apa-empty{padding:28px;text-align:center;color:var(--muted)}
+  .apa-foot{font-size:13px;color:var(--muted)}
+</style>
+<div class="apa">
+  <div class="apa-crumb">Admin › Ask PhiXtra</div>
+  <h1 class="section-title" style="margin:0">Ask PhiXtra</h1>
+  <div class="apa-intro">Ask PhiXtra answers businesses by <b>reading the live portal</b>: menus, pages, buttons, settings and plans, always up to date after every change ({{ map_size }} pages mapped now). This page only lists the questions it <b>could not answer</b>, or that the person marked <b>Not helpful</b>, so you can see where the portal is unclear. Nothing here is written or approved.</div>
+
+  <div class="apa-tabs">
+    <a class="apa-tab {% if show != 'dismissed' %}on{% endif %}" href="{{ url_for('askphx.admin_page') }}">Unanswered{% if show != 'dismissed' %} ({{ rows|length }}){% endif %}</a>
+    <a class="apa-tab {% if show == 'dismissed' %}on{% endif %}" href="{{ url_for('askphx.admin_page', show='dismissed') }}">Dismissed</a>
+  </div>
+
+  <div class="apa-box">
+    {% if rows %}
+    <table>
+      <thead><tr><th style="width:38%">Question</th><th>Business</th><th>Page</th><th>Why</th><th>Asked</th><th>Last asked</th><th></th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td>{{ r.question }}{% if r.emailed %}<div class="apa-foot">Emailed to Support</div>{% endif %}</td>
+          <td>{{ r.business }}</td>
+          <td>{{ r.where or '—' }}</td>
+          <td>{% if r.no_answer %}<span class="apa-why no">No answer</span>{% else %}<span class="apa-why bad">Not helpful</span>{% endif %}</td>
+          <td>{{ r.asked }}</td>
+          <td>{{ r.last_at.strftime('%d %b %Y, %H:%M') if r.last_at else '' }}</td>
+          <td>
+            <div class="apa-act">
+              {% if r.page %}<a class="pri" href="{{ r.page }}" target="_blank" rel="noopener">Open page</a>{% endif %}
+              <form method="post" action="{{ url_for('askphx.admin_dismiss') }}" style="margin:0">
+                <input type="hidden" name="ids" value="{{ r.ids|join(',') }}">
+                {% if show == 'dismissed' %}<input type="hidden" name="undo" value="1"><button type="submit">Bring back</button>
+                {% else %}<button type="submit">Dismiss</button>{% endif %}
+              </form>
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <div class="apa-empty">{% if show == 'dismissed' %}Nothing dismissed.{% else %}No unanswered questions. Ask PhiXtra has answered everything so far.{% endif %}</div>
+    {% endif %}
+  </div>
+  <div class="apa-foot">PhiXtra admin only. Businesses never see this page. "Open page" opens the page the person was on (you see it as admin). A question is also emailed to support@phixtra.com when the person pressed Email PhiXtra Support.</div>
+</div>
+{% endblock %}

@@ -1633,31 +1633,7 @@
       </div>
     </div>
 
-    <!-- Help & Tutorials — open to every team member (user 2026-09-28);
-         Video Tutorials merged in as a sub-menu item. -->
-    {% set _help_group = request.endpoint in ('portal.tutorials', 'portal.video_tutorials') %}
-    <div class="sb-group">
-      <div class="sb-group-toggle {% if _help_group %}open{% endif %}" onclick="sbToggle(this)">
-        <span class="sb-gtitle">
-          <span class="sb-icon">📚</span> Help &amp; Tutorials
-        </span>
-        <span class="sb-arrow">▾</span>
-      </div>
-      <div class="sb-sub {% if _help_group %}open{% endif %}">
-        <a href="{{ url_for('portal.tutorials') }}"
-           class="{% if request.endpoint == 'portal.tutorials' %}active{% endif %}">
-          How-To Guides
-          {% if 'help.tutorials' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-        </a>
-{% if VIDEO_TUTORIALS_ON %}
-        <a href="{{ url_for('portal.video_tutorials') }}"
-           class="{% if request.endpoint == 'portal.video_tutorials' %}active{% endif %}">
-          Video Tutorials
-          {% if 'help.videos' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-        </a>
-        {% endif %}
-      </div>
-    </div>
+    {# Help & Tutorials menu removed 18 Nov 2026: Ask PhiXtra (bottom right) answers instead. Guide pages still exist at /tutorials. #}
 
     {% if session.get('portal_admin_logged_in') %}
     {% if staff_can_open('portal_admin.customers') %}
@@ -1819,95 +1795,6 @@
       {% endif %}
     {% endwith %}
 
-    {# "How to use this page": CRM, Social Media, Team, Leads, Email and AI Instruction pages open their guide at their own part #}
-    {% set _help_anchor = {
-         'portal.whatsapp_contacts': 'crm-contacts',
-         'portal.whatsapp_contact_detail': 'crm-profile',
-         'portal.crm_companies': 'crm-companies',
-         'portal.crm_company_detail': 'crm-companies',
-         'portal.crm_merge_review': 'crm-merge',
-         'portal.report_pipeline_overview': 'crm-overview',
-         'portal.daily_targets': 'crm-targets',
-         'portal.lead_qual_dashboard': 'lead-aiq-dashboard',
-         'portal.sales_pipeline': 'crm-board',
-         'portal.opportunity_detail': 'crm-board',
-         'portal.lead_scoring_explainer': 'lead-score',
-         'portal.shopify_store': 'shp-page',
-         'portal.lead_detail': 'lead-lead',
-         'portal.follow_ups_page': 'lead-fu-page',
-         'portal.leads_page': 'lead-page',
-         'portal.leads_overview': 'lead-overview',
-         'portal.team_performance': 'lead-team',
-         'portal.team_performance_person': 'lead-team',
-         'portal.report_leads_sources': 'lead-report',
-         'portal.report_not_a_fit': 'lead-r-naf',
-         'portal.crm_import_start': 'lead-import',
-         'portal.crm_import_match': 'lead-i-steps',
-         'portal.crm_import_options': 'lead-i-steps',
-         'portal.crm_import_check': 'lead-i-steps',
-         'portal.crm_import_result': 'lead-i-after',
-         'portal.whatsapp_segments': 'crm-s-crm',
-         'portal.whatsapp_segment_detail': 'crm-s-crm',
-         'portal.whatsapp_campaign_segments_page': 'crm-s-wa',
-         'portal.email_campaign_segments_page': 'crm-s-email',
-         'portal.lead_labels_page': 'crm-labels',
-         'portal.lead_labels_import_bounces': 'crm-labels',
-         'portal.sales_pipeline_settings': 'crm-settings',
-         'buffer.connect': 'soc-connect',
-         'socialcal.overview': 'soc-overview',
-         'social.new_post': 'soc-n-start',
-         'social.pick': 'soc-n-pick',
-         'social.again': 'soc-n-again',
-         'social.finish': 'soc-n-finish',
-         'upload.start': 'soc-u-start',
-         'upload.check': 'soc-u-check',
-         'upload.fix': 'soc-u-fix',
-         'upload.post': 'soc-u-post',
-         'upload.size_guide': 'soc-u-guide',
-         'socialcal.calendar': 'soc-calendar',
-         'socialcal.calendar_plan': 'soc-calendar',
-         'socialcal.plan_month': 'soc-plan',
-         'socialcal.plan_review': 'soc-plan',
-         'socialcal.make_picture': 'soc-plan',
-         'buffer.posts': 'soc-content',
-         'socialcal.post_view': 'soc-p-view',
-         'socialcal.approval': 'soc-approval',
-         'buffer.published': 'soc-published',
-         'socialcal.analytics': 'soc-analytics',
-         'social.brand_kit': 'soc-brand',
-         'social.usage': 'soc-usage',
-         'portal.email_campaigns': 'eml-camp',
-         'portal.email_campaign_report': 'eml-camp-report',
-         'portal.email_campaigns_reports': 'eml-camp-report',
-         'portal.email_new': 'eml-new',
-         'portal.email_saved_email_edit': 'eml-new',
-         'portal.email_saved_emails': 'eml-saved',
-         'portal.email_sequences': 'eml-seq',
-         'portal.email_sequence_detail': 'eml-seq-people',
-         'mailbox.page': 'eml-outlook',
-         'portal.ai_instruction_whatsapp': 'aig-wa',
-         'portal.ai_instruction_website': 'aig-web',
-         'portal.team_page': 'team-members',
-         'portal.team_create': 'team-add',
-         'portal.team_edit': 'team-edit',
-         'portal.team_roles_page': 'team-r-list',
-         'portal.team_role_new': 'team-r-new',
-         'portal.team_role_edit': 'team-r-edit',
-         'portal.team_departments_page': 'team-depts',
-         'portal.team_department_new': 'team-depts',
-         'portal.team_department_edit': 'team-depts',
-         'portal.team_positions_page': 'team-depts',
-         'portal.team_position_new': 'team-depts',
-         'portal.team_position_edit': 'team-depts',
-       }.get(request.endpoint) %}
-    {% if _help_anchor %}
-    <div style="display:flex;justify-content:flex-end;margin:0 0 8px">
-      <a href="{{ url_for('portal.tutorials', topic=('social' if _help_anchor.startswith('soc-') else 'team' if _help_anchor.startswith('team-') else 'leads' if _help_anchor.startswith('lead-') else 'shopify' if _help_anchor.startswith('shp-') else 'email' if _help_anchor.startswith('eml-') else 'ai' if _help_anchor.startswith('aig-') else 'crm')) }}#{{ _help_anchor }}"
-         style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--ink);padding:5px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;text-decoration:none">
-        📚 How to use this page
-      </a>
-    </div>
-    {% endif %}
 
     {% block content %}{% endblock %}
 
@@ -2008,7 +1895,8 @@
 
 
 {% if _logged_in %}
-{% include "portal/_support_help.html" %}
+{# Ask PhiXtra replaces the WhatsApp "Need help?" button (18 Nov 2026) #}
+{% include "portal/_ask_phixtra.html" %}
 {% endif %}
 
 {% if _logged_in %}
@@ -2296,14 +2184,11 @@
     { icon:'📋', title:'Subscription Plans',     desc:'View and manage your subscription',            url:'{{ url_for("portal.billing_plans") }}',          tags:'subscription plan monthly upgrade downgrade' },
     {% if not shopify_billed() %}{ icon:'💳', title:'Buy AI Credit',          desc:'Top up your AI credit balance',               url:'{{ url_for("portal.billing") }}',                    tags:'credits buy top up balance tokens recharge ai designs' },{% endif %}
     { icon:'🧾', title:'Invoices',               desc:'Download your billing receipts',               url:'{{ url_for("portal.invoices") }}',                   tags:'invoice receipt billing history download pdf payment' },
-    { icon:'📚', title:'How-To Guides',          desc:'Help & Tutorials: step-by-step guides, e.g. the full CRM guide',         url:'{{ url_for("portal.tutorials") }}',                  tags:'help guide tutorial support how to faq learn' },
 {% if VIDEO_TUTORIALS_ON %}
-    { icon:'🎬', title:'Video Tutorials',        desc:'Help & Tutorials: short walkthrough videos',    url:'{{ url_for("portal.video_tutorials") }}',            tags:'video tutorial watch walkthrough demo guide' },
     {% endif %}
     { icon:'⚙️', title:'Account Settings',       desc:'Update profile, password and preferences',    url:'{{ url_for("portal.settings") }}',                   tags:'settings account profile password email notification preferences' },
     {% if _store_platform == 'shopify' %}
     { icon:'🛍️', title:'Shopify Store',          desc:'Your Shopify store: products, chat box, buyers, quote orders', url:'{{ url_for("portal.shopify_store") }}', tags:'shopify store products sync chat box theme buyers b2b companies draft order' },
-    { icon:'📘', title:'Shopify Guide',          desc:'Help & Tutorials: how PhiXtra works with Shopify', url:'{{ url_for("portal.tutorials", topic="shopify") }}', tags:'shopify help guide tutorial how to' },
     {% endif %}
     {% if _has_woocommerce %}
     { icon:'🔄', title:'WooCommerce Sync',       desc:'Sync products from your WordPress store',     url:'{{ url_for("portal.woo_sync") }}',                   tags:'woocommerce sync wordpress products import plugin' },

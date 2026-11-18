@@ -276,6 +276,8 @@
          class="{% if _am_ep.startswith('portal_admin.inactive_accounts') %}active{% endif %}">Inactive accounts</a>
       <a href="{{ url_for('portal_admin.whos_online') }}"
          class="{% if _am_ep.startswith('portal_admin.whos_online') %}active{% endif %}">Who's online</a>
+      <a href="{{ url_for('askphx.admin_page') }}"
+         class="{% if request.endpoint and request.endpoint.startswith('askphx.') %}active{% endif %}">Ask PhiXtra questions</a>
       <a href="{{ url_for('portal_admin.setup_requests_page') }}" style="display:flex;justify-content:space-between;align-items:center"
          class="{% if _am_ep.startswith('portal_admin.setup_requests') %}active{% endif %}">Set-up requests{% if _sr_new %}<span style="background:#F04438;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;margin-left:6px">{{ _sr_new }}</span>{% endif %}</a>
       <a href="{{ url_for('portal_admin.am_settings') }}"

@@ -51,6 +51,8 @@ def create_app():
     flask_app.register_blueprint(upload_bp)
     flask_app.register_blueprint(socialcal_bp)
     flask_app.register_blueprint(mailbox_bp)
+    from ask_phixtra import ask_bp            # Ask PhiXtra help panel (2026-11-18)
+    flask_app.register_blueprint(ask_bp)
     from xero_routes import xero_bp           # Integration › Xero (2026-11-10)
     flask_app.register_blueprint(xero_bp)
     from qbo_routes import qbo_bp             # Integration › QuickBooks (2026-11-10)

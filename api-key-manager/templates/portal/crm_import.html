@@ -96,7 +96,6 @@
     <a class="btn btn-sm ci-xl" style="text-decoration:none" href="{{ url_for('portal.crm_import_template', fmt='xlsx', target=target) }}">⤓ Download template (Excel)</a>
     <a class="btn btn-sm" style="text-decoration:none" href="{{ url_for('portal.crm_import_template', fmt='csv', target=target) }}">⤓ Download template (CSV)</a>
     <p class="ci-help">Already have a list? Upload it as it is. You match your own column names in the next step.</p>
-    {% if staff_can_open('portal.tutorials') %}<a href="{{ url_for('portal.tutorials', topic='leads') }}#lead-import" style="font-size:13px;font-weight:700;color:#1d4ed8">Read the full guide →</a>{% endif %}
   </div>
 </div>
 <div class="ci-panel">

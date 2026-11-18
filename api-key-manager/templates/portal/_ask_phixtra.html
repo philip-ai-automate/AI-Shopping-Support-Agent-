@@ -1,0 +1,198 @@
+{# Ask PhiXtra (18 Nov 2026) — help panel on every logged-in portal page.
+   Replaces the Help & Tutorials menu and the green WhatsApp "Need help?" button.
+   Approved mock-up: https://claude.ai/artifact/CQzpZv56Fv8v86CotpCbML
+   Answers come from ask_phixtra.py (portal map + this person's plan, role and
+   set-up status). It never changes anything: it explains and links. #}
+<style>
+  .apx-btn{position:fixed; right:20px; bottom:20px; z-index:8000; display:flex; align-items:center; gap:8px;
+    background:#0B1A33; color:#fff; border:1px solid #0B1A33; border-radius:999px; padding:9px 16px 9px 9px;
+    font:700 14px/1 inherit; cursor:pointer; box-shadow:0 6px 20px rgba(15,23,42,.18)}
+  .apx-btn:hover{background:#13294D; border-color:#13294D}
+  .apx-btn img{width:26px; height:26px; border-radius:999px; background:#fff; border:1px solid #E2E8F0; object-fit:contain; padding:2px; box-sizing:border-box}
+  .apx-panel{position:fixed; top:0; right:0; bottom:0; width:400px; max-width:100vw; z-index:8001; background:#fff;
+    border-left:1px solid #E2E8F0; box-shadow:-10px 0 30px rgba(15,23,42,.10); display:none; flex-direction:column; color:#0F172A}
+  .apx-panel.open{display:flex}
+  .apx-head{display:flex; align-items:center; gap:10px; padding:14px 16px; background:#0B1A33; border-bottom:1px solid #0B1A33}
+  .apx-head img{width:34px; height:34px; border-radius:999px; border:1px solid #E2E8F0; object-fit:contain; padding:3px; box-sizing:border-box; background:#fff}
+  .apx-title{font-weight:800; font-size:16px; color:#fff}
+  .apx-sub{font-size:12.5px; color:#CBD5E1}
+  .apx-icon{width:36px; height:36px; border:1px solid rgba(255,255,255,.28); background:transparent; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#fff}
+  .apx-icon:hover{background:rgba(255,255,255,.10); border-color:rgba(255,255,255,.5)}
+  .apx-body{flex:1; overflow-y:auto; padding:16px; background:#F8FAFC; display:flex; flex-direction:column; gap:12px}
+  .apx-bot{align-self:flex-start; max-width:94%; background:#fff; border:1px solid #E2E8F0; border-radius:14px 14px 14px 4px;
+    padding:12px 14px; font-size:14.5px; line-height:1.55; display:flex; flex-direction:column; gap:8px}
+  .apx-bot ol{margin:0; padding-left:20px; display:flex; flex-direction:column; gap:4px}
+  .apx-bot p{margin:0}
+  .apx-me{align-self:flex-end; max-width:85%; background:#0B1A33; color:#fff; border-radius:14px 14px 4px 14px; padding:9px 13px; font-size:14.5px; line-height:1.45; white-space:pre-wrap; word-wrap:break-word}
+  .apx-chips{display:flex; flex-direction:column; gap:8px}
+  .apx-chip{border:1px solid #CBD5E1; background:#fff; border-radius:10px; padding:10px 12px; font:inherit; font-size:14px; text-align:left; cursor:pointer; color:#0B1A33}
+  .apx-chip:hover{border-color:#0B1A33}
+  .apx-go{font-weight:700; font-size:14px; color:#1D4ED8; text-decoration:none}
+  .apx-go:hover{color:#1E3A8A; text-decoration:underline}
+  .apx-fb{display:flex; align-items:center; gap:8px; border-top:1px solid #F1F5F9; padding-top:8px; font-size:12.5px; color:#475569}
+  .apx-fb button{border:1px solid #E2E8F0; background:#fff; border-radius:8px; width:32px; height:32px; cursor:pointer; color:#0B1A33; display:flex; align-items:center; justify-content:center}
+  .apx-fb button.on{background:#0B1A33; color:#fff; border-color:#0B1A33}
+  .apx-mail{background:#0B1A33; color:#fff; border:0; border-radius:8px; padding:11px; font:inherit; font-weight:700; font-size:14px; cursor:pointer}
+  .apx-mail:disabled{opacity:.6; cursor:default}
+  .apx-note{font-size:12.5px; color:#475569}
+  .apx-foot{padding:12px 16px; border-top:1px solid #E2E8F0; display:flex; gap:8px; align-items:flex-end}
+  .apx-foot label{flex:1; display:flex; flex-direction:column; gap:4px; font-size:12px; color:#475569}
+  .apx-foot textarea{border:1px solid #CBD5E1; border-radius:10px; padding:10px 12px; font:inherit; font-size:14.5px; color:#0F172A; resize:none; min-height:44px; max-height:120px}
+  .apx-send{width:46px; height:46px; border:0; border-radius:10px; background:#0B1A33; cursor:pointer; display:flex; align-items:center; justify-content:center; flex:0 0 auto}
+  .apx-send:disabled{opacity:.5; cursor:default}
+  .apx-typing{font-size:13.5px; color:#475569}
+  /* Wide screens: the panel is a column beside the page, not on top of it */
+  @media (min-width:1100px){ body.apx-on{padding-right:400px} body.apx-on .apx-panel{box-shadow:none} }
+  @media (max-width:640px){
+    .apx-btn{right:12px; bottom:12px; padding:8px}
+    .apx-btn span{display:none}
+    .apx-panel{width:100vw}
+  }
+</style>
+
+<button type="button" class="apx-btn" id="apxBtn" aria-controls="apxPanel" aria-expanded="false">
+  <img src="{{ url_for('static', filename='portal/phixtra-icon.png') }}" alt="">
+  <span>Ask PhiXtra</span>
+</button>
+
+<aside class="apx-panel" id="apxPanel" aria-label="Ask PhiXtra">
+  <div class="apx-head">
+    <img src="{{ url_for('static', filename='portal/phixtra-icon.png') }}" alt="PhiXtra">
+    <div style="flex:1">
+      <div class="apx-title">Ask PhiXtra</div>
+      <div class="apx-sub">Answers from your PhiXtra portal</div>
+    </div>
+    <button type="button" class="apx-icon" id="apxNew" aria-label="Start a new question" title="New question">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+    </button>
+    <button type="button" class="apx-icon" id="apxClose" aria-label="Close Ask PhiXtra" title="Close">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="apx-body" id="apxBody" aria-live="polite"></div>
+  <form class="apx-foot" id="apxForm">
+    <label>Ask PhiXtra
+      <textarea id="apxQ" rows="1" maxlength="500" placeholder="Ask how to do something in PhiXtra…"></textarea>
+    </label>
+    <button type="submit" class="apx-send" id="apxSend" aria-label="Send question">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+    </button>
+  </form>
+</aside>
+
+<script>
+(function(){
+  var btn = document.getElementById('apxBtn'), panel = document.getElementById('apxPanel'),
+      body = document.getElementById('apxBody'), form = document.getElementById('apxForm'),
+      q = document.getElementById('apxQ'), send = document.getElementById('apxSend');
+  var ENDPOINT = {{ (request.endpoint or '')|tojson }}, PAGE = {{ request.path|tojson }};
+  var NAME = {{ ((_portal_customer.first_name if _portal_customer is defined and _portal_customer and _portal_customer.first_name else ''))|tojson }};
+  var SUGGEST = {{ ask_phixtra_suggestions()|tojson }};
+  var busy = false;
+
+  function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function inline(s){ return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>'); }
+  // Answer text → paragraphs + one numbered list (lines starting "1.", "2." …)
+  function format(text){
+    var out = [], list = [];
+    String(text || '').split(/\n+/).forEach(function(line){
+      line = line.trim(); if (!line) return;
+      var m = line.match(/^\d+[.)]\s+(.*)$/);
+      if (m){ list.push('<li>' + inline(m[1]) + '</li>'); return; }
+      if (list.length){ out.push('<ol>' + list.join('') + '</ol>'); list = []; }
+      out.push('<p>' + inline(line.replace(/^[-•]\s+/, '')) + '</p>');
+    });
+    if (list.length) out.push('<ol>' + list.join('') + '</ol>');
+    return out.join('');
+  }
+  function add(html, cls){ var d = document.createElement('div'); d.className = cls; d.innerHTML = html; body.appendChild(d); body.scrollTop = body.scrollHeight; return d; }
+  function post(url, data){
+    return fetch(url, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)})
+      .then(function(r){ return r.json().catch(function(){ return {ok:false}; }); });
+  }
+
+  function welcome(){
+    body.innerHTML = '';
+    var d = add('<p>' + (NAME ? 'Hi ' + esc(NAME) + '. ' : 'Hi. ') + 'I can show you how to do anything in PhiXtra, step by step. Ask me, or pick one for this page:</p>', 'apx-bot');
+    var chips = document.createElement('div'); chips.className = 'apx-chips';
+    SUGGEST.forEach(function(s){
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'apx-chip'; b.textContent = s;
+      b.onclick = function(){ ask(s); }; chips.appendChild(b);
+    });
+    body.appendChild(chips);
+  }
+
+  function emailBox(container, id, question){
+    var mb = document.createElement('button'); mb.type = 'button'; mb.className = 'apx-mail'; mb.textContent = 'Email PhiXtra Support';
+    var note = document.createElement('div'); note.className = 'apx-note'; note.textContent = 'Sends your question and this page to support@phixtra.com.';
+    mb.onclick = function(){
+      mb.disabled = true; mb.textContent = 'Sending…';
+      post('{{ url_for("askphx.email_support") }}', {id: id, question: question, page: PAGE}).then(function(r){
+        if (r.ok){ mb.textContent = 'Sent'; note.textContent = r.message; }
+        else { mb.disabled = false; mb.textContent = 'Email PhiXtra Support'; note.textContent = r.error || 'The email didn\'t send. Please try again.'; }
+      });
+    };
+    container.appendChild(mb); container.appendChild(note);
+  }
+
+  function ask(text){
+    text = (text || '').trim();
+    if (!text || busy) return;
+    busy = true; send.disabled = true;
+    add(esc(text), 'apx-me');
+    q.value = ''; q.style.height = '';
+    var wait = add('<span class="apx-typing">Looking through your portal…</span>', 'apx-bot');
+    post('{{ url_for("askphx.ask") }}', {question: text, endpoint: ENDPOINT, page: PAGE}).then(function(r){
+      wait.remove();
+      if (!r.ok){ add('<p>' + esc(r.error || 'Something went wrong. Please try again.') + '</p>', 'apx-bot'); return; }
+      var d = add(format(r.answer), 'apx-bot');
+      if (r.answered){
+        if (r.link){
+          var a = document.createElement('a'); a.className = 'apx-go'; a.href = r.link.url; a.textContent = 'Take me there ›';
+          d.appendChild(a);
+        }
+        var fb = document.createElement('div'); fb.className = 'apx-fb';
+        fb.innerHTML = 'Was this helpful?'
+          + '<button type="button" aria-label="Helpful" data-v="1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 10v11M15 5.9 14 10h5.8a2 2 0 0 1 2 2.3l-1.4 7A2 2 0 0 1 18.5 21H7V10l4-8a3 3 0 0 1 4 3.9Z"/></svg></button>'
+          + '<button type="button" aria-label="Not helpful" data-v="-1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 14V3M9 18.1 10 14H4.2a2 2 0 0 1-2-2.3l1.4-7A2 2 0 0 1 5.5 3H17v11l-4 8a3 3 0 0 1-4-3.9Z"/></svg></button>';
+        d.appendChild(fb);
+        fb.querySelectorAll('button').forEach(function(b){
+          b.onclick = function(){
+            fb.querySelectorAll('button').forEach(function(x){ x.classList.remove('on'); });
+            b.classList.add('on');
+            post('{{ url_for("askphx.feedback") }}', {id: r.id, helpful: b.getAttribute('data-v')});
+            if (b.getAttribute('data-v') === '-1' && !d.querySelector('.apx-mail')){
+              var p = document.createElement('p'); p.className = 'apx-note'; p.textContent = 'Sorry about that. The PhiXtra team can help:';
+              d.appendChild(p); emailBox(d, r.id, text);
+            }
+          };
+        });
+      } else {
+        emailBox(d, r.id, text);
+      }
+    }).catch(function(){
+      wait.remove(); add('<p>Something went wrong. Please try again.</p>', 'apx-bot');
+    }).then(function(){ busy = false; send.disabled = false; });
+  }
+
+  function open(){
+    panel.classList.add('open'); document.body.classList.add('apx-on'); btn.style.display = 'none'; btn.setAttribute('aria-expanded', 'true');
+    if (!body.children.length) welcome();
+    try { sessionStorage.setItem('apxOpen', '1'); } catch(e){}
+    setTimeout(function(){ q.focus(); }, 50);
+  }
+  function close(){
+    panel.classList.remove('open'); document.body.classList.remove('apx-on'); btn.style.display = ''; btn.setAttribute('aria-expanded', 'false');
+    try { sessionStorage.removeItem('apxOpen'); } catch(e){}
+    btn.focus();
+  }
+  btn.onclick = open;
+  document.getElementById('apxClose').onclick = close;
+  document.getElementById('apxNew').onclick = function(){ welcome(); q.focus(); };
+  panel.addEventListener('keydown', function(e){ if (e.key === 'Escape') close(); });
+  form.onsubmit = function(e){ e.preventDefault(); ask(q.value); };
+  q.addEventListener('keydown', function(e){ if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); ask(q.value); } });
+  q.addEventListener('input', function(){ q.style.height = ''; q.style.height = Math.min(q.scrollHeight, 120) + 'px'; });
+  try { if (sessionStorage.getItem('apxOpen') === '1') open(); } catch(e){}
+})();
+</script>
