@@ -1,0 +1,504 @@
+{% extends "portal/base.html" %}
+{% import "portal/_report_chart.html" as rc %}
+{% import "portal/_report_share.html" as rs %}
+{# ask: A report page reads as a sentence, for example "Show the total quote value of won quotes, split by team member, for this quarter, compared with the period before." Click any blue underlined part of the sentence to change it: what to count (number, total value, average…), which records (e.g. All quotes, Won, Lost, Waiting for an answer), split by (team member, month, status, where it came from…, "More ways to split", or Nothing for one number), the time (this month, last quarter, this year, all time…, or "Use these dates" for your own dates), and the comparison (period before, same time last year, or none). Changes show straight away.
+"+ Only show … where" adds a condition (Field, Rule, Value, Add); remove one with its ×. "More options" has "And also split by" (for a stacked chart, heatmap or pivot table), "Count by date" (which date puts a record in the period) and Folder.
+Two tabs: "Chart and totals" (the chart, the totals and a totals table) and "List of …" (every record; "Choose columns" picks and orders the columns; click a heading to sort).
+"Show as" buttons: Bar, Pie, Line, Table, Big number, and "More ▾" for Donut, Horizontal bar, Stacked bar, Area, Bar + line, Funnel, Heatmap and Pivot. ★ marks the suggested one. A greyed one says why when you point at it (most charts need a split; Stacked bar, Heatmap and Pivot need "And also split by"; Pie, Donut and Funnel need a number or a total, not an average).
+Example, pie chart of quotes won by each team member: Reports › All reports › + New report, pick Quotes, then "Who wins the most quotes?" or Start from blank: What to count = Total quote value, Which quotes = Won, Split it by = Team member, Show it as = Pie, Create report.
+Example, pivot table of quote value by person and month: split by Team member, More options › And also split by Month (requested on), Show as › More › Pivot.
+Click any number, slice, bar or pivot cell to see the records behind it in a side panel ("Export these (Excel)", "Open as a report").
+"Save report" keeps it (the name is at the top of the page; Folder is under More options). "Save as new" keeps your own copy of someone else's report. "Export ▾" gives Excel, CSV or PDF. "Add to dashboard ▾" puts a saved report on a dashboard.
+"Share" (on a saved report you made): Who can open it = Only me, Chosen team members or roles, or Everyone in the business; What numbers they see = Follow each person's access (a sales rep who only sees their own deals sees only their own numbers) or Everyone sees the whole business. Tick "Others can edit it". Press "Save sharing". Only the person who saved a report can share or delete it ("Delete report" under the name).
+Quotes have Invoice columns read from Xero, QuickBooks or Sage: Invoice status (Not invoiced yet, Draft, Awaiting payment, Paid, Overdue), Invoiced amount, Paid so far, Invoice due on, Days overdue — PhiXtra only reads them, it never chases payment. Ready-made "Revenue from won quotes" and "Overdue invoices from won quotes" show them. #}
+{% block title %}{{ saved.name if saved else (suggest_name or 'New report') }} — Reports — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  /* Report page (19 Nov 2026) — approved mock-up EPpwZTeFt5iccD8SH155P1 screens 9 + 10 */
+  .rv{--navy:#0B1F3A;--blue:#1D4ED8;--soft:#E8EEFC;--sub:#5B6675;--edge:#E3E7ED;font-variant-numeric:tabular-nums;display:flex;flex-direction:column;gap:16px}
+  .rv .crumb{font-size:13px;color:var(--sub)}
+  .rv .crumb a{color:var(--sub)}
+  .rv-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-family:inherit;font-size:14px;font-weight:600;
+    border-radius:10px;padding:0 14px;min-height:42px;border:1px solid #D5DBE3;background:#fff;color:var(--navy);cursor:pointer;text-decoration:none}
+  .rv-btn:hover{border-color:var(--navy);text-decoration:none}
+  .rv-btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+  .rv-btn.sm{min-height:34px;font-size:13px;padding:0 10px}
+  .rv-card{background:#fff;border:1px solid var(--edge);border-radius:14px;padding:18px 20px;min-width:0}
+  .rv-name{font-family:inherit;font-size:24px;font-weight:800;color:var(--navy);border:1px solid transparent;border-radius:8px;padding:4px 6px;background:transparent;
+    width:100%;max-width:620px;box-sizing:border-box}
+  .rv-name:hover,.rv-name:focus{border-color:#D5DBE3;background:#fff}
+  .rv-label{font-size:12px;color:var(--sub);font-weight:700;letter-spacing:.04em}
+  .rv-sentence{margin:8px 0 0;font-size:20px;line-height:2.1;color:var(--navy)}
+  .rv-pick{font:inherit;border:0;padding:0 8px;margin:0 1px;border-radius:8px;cursor:pointer;color:var(--blue);font-weight:700;background:transparent;
+    text-decoration:underline;text-decoration-color:rgba(29,78,216,.35);text-underline-offset:5px}
+  .rv-pick:hover,.rv-pick[aria-expanded=true]{background:var(--soft)}
+  .rv-menu{display:none;flex-wrap:wrap;gap:8px;align-items:center;padding:12px;background:#F5F7FA;border-radius:10px;margin-top:8px}
+  .rv-menu.open{display:flex}
+  .rv-menu .t{font-size:12px;font-weight:700;color:var(--sub);width:100%}
+  .rv-opt{display:inline-flex;align-items:center;min-height:38px;padding:0 14px;border-radius:19px;border:1px solid #D5DBE3;background:#fff;color:#1F2A37;font-size:14px;text-decoration:none}
+  .rv-opt:hover{border-color:var(--blue);text-decoration:none}
+  .rv-opt.on{border:2px solid var(--blue);color:#1E3A8A;font-weight:700;padding:0 13px}
+  .rv-sel{font-family:inherit;font-size:14px;min-height:38px;border:1px solid #D5DBE3;border-radius:8px;padding:0 10px;background:#fff;color:var(--ink);max-width:100%}
+  .rv-in{font-family:inherit;font-size:14px;min-height:38px;border:1px solid #D5DBE3;border-radius:8px;padding:0 10px;box-sizing:border-box}
+  .rv-chip{display:inline-flex;align-items:center;gap:4px;min-height:34px;padding:0 4px 0 12px;background:var(--soft);color:#1E3A8A;border-radius:17px;font-size:13px}
+  .rv-chip a{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;color:#1E3A8A;text-decoration:none;border-radius:14px;font-size:16px}
+  .rv-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .rv-lbl{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--sub)}
+  .rv-more summary{cursor:pointer;color:var(--sub);font-size:13px;padding:6px 0}
+  .rv-more .box{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;padding:12px;background:#F5F7FA;border-radius:10px;align-items:flex-end}
+  .rv-addf{display:none;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:8px;padding:12px;border:1px dashed #AEB8C5;border-radius:10px}
+  .rv-addf.open{display:flex}
+  .rv-tabs{display:inline-flex;background:#EEF1F5;border-radius:10px;padding:3px}
+  .rv-tabs a{display:inline-flex;align-items:center;min-height:38px;padding:0 16px;border-radius:8px;font-size:14px;color:var(--sub);text-decoration:none}
+  .rv-tabs a.on{background:#fff;color:var(--navy);font-weight:700}
+  .rv-showas{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .rv-ic{display:inline-flex;align-items:center;justify-content:center;min-width:40px;height:38px;padding:0 10px;border-radius:8px;border:1px solid #D5DBE3;background:#fff;color:#1F2A37;font-size:13px;text-decoration:none;font-family:inherit}
+  .rv-ic:hover{border-color:var(--blue);text-decoration:none}
+  .rv-ic.on{border:2px solid var(--blue);background:var(--soft);color:#1E3A8A;font-weight:700}
+  .rv-ic.off{opacity:.45;cursor:not-allowed}
+  .rv-menu2{position:relative}
+  .rv-menu2 .list{display:none;position:absolute;right:0;top:calc(100% + 4px);background:#fff;border:1px solid var(--edge);border-radius:10px;
+    box-shadow:0 10px 30px rgba(11,31,58,.12);z-index:30;min-width:220px;padding:6px}
+  .rv-menu2.open .list{display:block}
+  .rv-menu2 .list a,.rv-menu2 .list span{display:block;padding:9px 12px;border-radius:6px;font-size:14px;color:var(--navy);text-decoration:none}
+  .rv-menu2 .list a:hover{background:#F5F7FA}
+  .rv-menu2 .list span{opacity:.5}
+  .rv-menu2 .list small{display:block;font-size:11.5px;color:var(--sub)}
+  .rv-tbl{width:100%;border-collapse:collapse;font-size:13px}
+  .rv-tbl th{color:var(--sub);font-weight:600;text-align:left;padding:9px 8px;border-bottom:1px solid var(--edge);white-space:nowrap}
+  .rv-tbl th a{color:var(--sub);text-decoration:none}
+  .rv-tbl td{padding:9px 8px;border-bottom:1px solid #F0F2F5;vertical-align:top}
+  .rv-tbl .num{text-align:right}
+  .rv-tbl tr.total td{font-weight:700;border-top:1px solid var(--edge)}
+  .rb-scroll{overflow-x:auto}.rb-note{font-size:12.5px;color:var(--sub)}
+  .rb-err{background:#FBE4E4;color:#991B1B;border-radius:8px;padding:10px 14px;font-size:14px}
+  .rb-sumbtn{font-family:inherit;font-size:inherit;border:0;background:none;padding:0;color:#1D4ED8;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+  /* Choose columns (mock-up screen 10) */
+  .cc-dlg{border:0;border-radius:16px;padding:0;width:min(920px,calc(100% - 24px));box-shadow:0 20px 50px rgba(11,31,58,.3);color:#1F2A37}
+  .cc-dlg::backdrop{background:rgba(11,31,58,.45)}
+  .cc-body{display:flex;flex-wrap:wrap}
+  .cc-left{flex:1 1 380px;min-width:0;padding:16px 22px;border-right:1px solid var(--edge,#E3E7ED);display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto}
+  .cc-right{flex:1 1 300px;min-width:0;padding:16px 22px;background:#F8FAFC;display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto}
+  .cc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}
+  @media (max-width:640px){.cc-grid{grid-template-columns:minmax(0,1fr)}}
+  .cc-ck{display:flex;gap:10px;align-items:center;padding:8px 6px;font-size:14px;border-radius:8px;cursor:pointer}
+  .cc-ck input{width:18px;height:18px;accent-color:#1D4ED8;flex-shrink:0}
+  .cc-grp summary{cursor:pointer;padding:11px 6px;border-top:1px solid #F0F2F5;font-size:14px;font-weight:700;color:#0B1F3A}
+  .cc-sel{display:grid;grid-template-columns:20px 1fr auto auto auto;gap:4px;align-items:center;padding:7px 8px;border:1px solid #E3E7ED;border-radius:10px;background:#fff;font-size:14px}
+  .cc-sel button{border:0;background:none;color:#5B6675;width:32px;height:32px;border-radius:6px;cursor:pointer;font-size:15px}
+  .cc-sel button:hover{background:#F0F2F5}
+  .cc-sel.drag{opacity:.4}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rv">
+  <div class="rv-row" style="justify-content:space-between;align-items:flex-end">
+    <div style="flex:1 1 360px;min-width:0">
+      <div class="crumb"><a href="{{ url_for('reports.library') }}">Reports</a> › {{ saved.name if saved else 'New report' }}</div>
+      <label style="display:block">
+        <span style="position:absolute;left:-9999px">Report name</span>
+        <input class="rv-name" name="name" form="saveForm" value="{{ saved.name if saved else suggest_name }}" maxlength="120" placeholder="Name this report">
+      </label>
+    </div>
+    <div class="rv-row">
+      <div class="rv-menu2" data-menu>
+        <button type="button" class="rv-btn" aria-haspopup="true" aria-expanded="false">Export ▾</button>
+        <div class="list" role="menu">
+          {% set nm = (saved.name if saved else '') | urlencode %}
+          <a role="menuitem" href="{{ url_for('reports.export', fmt='xlsx') }}?{{ export_qs }}&name={{ nm }}">Excel (.xlsx)</a>
+          <a role="menuitem" href="{{ url_for('reports.export', fmt='csv') }}?{{ export_qs }}&name={{ nm }}">CSV</a>
+          <a role="menuitem" href="{{ url_for('reports.export', fmt='pdf') }}?{{ export_qs }}&name={{ nm }}">PDF</a>
+        </div>
+      </div>
+      {% if saved %}
+        {% if can_manage %}<button type="button" class="rv-btn" data-open-share>Share</button>{% endif %}
+        <div class="rv-menu2" data-menu>
+          <button type="button" class="rv-btn" aria-haspopup="true" aria-expanded="false">Add to dashboard ▾</button>
+          <div class="list" style="min-width:280px;padding:12px">
+            <form method="POST" action="{{ url_for('reports.add_to_dashboard', report_id=saved.id) }}" style="display:flex;flex-direction:column;gap:8px">
+              <label class="rv-lbl">Dashboard
+                <select class="rv-sel" name="dash_id" id="dashPick">
+                  {% for dsh in dashboards %}<option value="{{ dsh.id }}">{{ dsh.name }}</option>{% endfor %}
+                  <option value="">+ New dashboard…</option>
+                </select>
+              </label>
+              <label class="rv-lbl" id="dashNewWrap" style="{{ '' if not dashboards else 'display:none' }}">New dashboard name
+                <input class="rv-in" name="new_name" maxlength="80" placeholder="e.g. Sales overview">
+              </label>
+              <button type="submit" class="rv-btn primary sm">Add</button>
+            </form>
+          </div>
+        </div>
+      {% endif %}
+      <form method="POST" action="{{ url_for('reports.save') }}" id="saveForm" class="rv-row">
+        {% for k, val in RB.config_of(cfg).items() %}
+          {% if val is string %}<input type="hidden" name="{{ k }}" value="{{ val }}">
+          {% else %}{% for item in val %}<input type="hidden" name="{{ k }}" value="{{ item }}">{% endfor %}{% endif %}
+        {% endfor %}
+        {% if saved %}<input type="hidden" name="id" value="{{ saved.id }}">{% endif %}
+        <input type="hidden" name="as_new" value="0" id="asNew">
+        {% if saved %}<button type="submit" class="rv-btn {{ '' if can_edit else 'primary' }}" onclick="document.getElementById('asNew').value='1'">Save as new</button>{% endif %}
+        {% if can_edit %}<button type="submit" class="rv-btn primary">{{ 'Save changes' if saved else 'Save report' }}</button>{% endif %}
+      </form>
+    </div>
+  </div>
+
+  {% if saved %}
+    <div class="rb-note">
+      Saved by {{ saved.created_by or 'someone in your business' }}{% if saved.folder %} · Folder: {{ saved.folder }}{% endif %} · Who can open it: {{ RA.sharing_label(saved) }}
+      {% if not can_edit %} · You can change what it shows and press <b>Save as new</b> to keep your own copy.{% endif %}
+      {% if can_manage %} · <form method="POST" action="{{ url_for('reports.delete', report_id=saved.id) }}" style="display:inline"
+            data-msg="Delete the saved report “{{ saved.name }}”?{% if used_in %} It is also taken off these dashboards: {{ used_in|join(', ') }}.{% endif %} Only the report is removed — no data changes." onsubmit="return confirm(this.dataset.msg)"><button type="submit" style="border:0;background:none;padding:0;color:#B91C1C;font:inherit;cursor:pointer;text-decoration:underline">Delete report</button></form>{% endif %}
+    </div>
+    {% if whole %}<div class="rb-note" style="background:#E8EEFC;color:#1E3A8A;border-radius:8px;padding:8px 12px">Showing the whole business’s numbers, as shared by the owner.</div>{% endif %}
+    {% if whole_lost %}<div class="rb-note" style="background:#FDF0DA;color:#92400E;border-radius:8px;padding:8px 12px">You changed this report, so it now shows only the records you can see. <a href="{{ url_for('reports.builder', id=saved.id) }}">Back to the report as shared</a>.</div>{% endif %}
+  {% endif %}
+
+  <section class="rv-card" aria-label="What this report shows">
+    <div class="rv-label">THIS REPORT SHOWS — CLICK ANY BLUE PART TO CHANGE IT</div>
+    <p class="rv-sentence">{% for p in sentence %}{% if p.t is defined %}{{ p.t }}{% else %}<button type="button" class="rv-pick" data-pick="{{ p.pick }}" aria-expanded="false" aria-controls="menu-{{ p.pick }}">{{ p.text }} ▾</button>{% endif %}{% endfor %}</p>
+    {% for p in sentence if p.pick is defined %}
+      <div class="rv-menu" id="menu-{{ p.pick }}" role="group" aria-label="{{ p.label }}">
+        <span class="t">{{ p.label }}</span>
+        {% for o in p.options %}<a class="rv-opt {{ 'on' if o.on }}" href="{{ o.url }}" {% if o.on %}aria-current="true"{% endif %}>{{ o.label }}</a>{% endfor %}
+        {% if p.more %}
+          <label class="rv-lbl" style="margin-left:4px">More ways to split
+            <select class="rv-sel" data-go>
+              <option value="">Choose…</option>
+              {% for o in p.more %}<option value="{{ o.url }}" {{ 'selected' if o.on }}>{{ o.label }}</option>{% endfor %}
+            </select>
+          </label>
+        {% endif %}
+        {% if p.custom %}
+          <form method="get" action="{{ url_for('reports.builder') }}" class="rv-row" style="margin-left:4px" data-custom-dates>
+            <label class="rv-lbl">From<input class="rv-in" type="date" name="date_from" value="{{ cfg.date_from.isoformat() if cfg.date_from and cfg.period == 'custom' else '' }}" required></label>
+            <label class="rv-lbl">To<input class="rv-in" type="date" name="date_to" value="{{ cfg.date_to.isoformat() if cfg.date_to and cfg.period == 'custom' else '' }}" required></label>
+            <button type="submit" class="rv-btn sm" style="align-self:flex-end">Use these dates</button>
+          </form>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    <div class="rv-row" style="margin-top:10px">
+      {% for c in other_filters %}<span class="rv-chip">{{ c.label }}<a href="{{ c.remove }}" aria-label="Remove condition {{ c.label }}">×</a></span>{% endfor %}
+      <button type="button" class="rv-btn sm" id="addFilterBtn" style="border-style:dashed;color:var(--blue);border-radius:17px">+ Only show {{ subj.noun }} where…</button>
+    </div>
+    <div class="rv-addf" id="addFilter">
+      <label class="rv-lbl">Field<select class="rv-sel" id="ffField"></select></label>
+      <label class="rv-lbl">Rule<select class="rv-sel" id="ffOp"></select></label>
+      <label class="rv-lbl" id="ffValWrap">Value<span id="ffValSlot"></span></label>
+      <button type="button" class="rv-btn primary sm" id="ffAdd">Add</button>
+      <button type="button" class="rv-btn sm" id="ffCancel">Cancel</button>
+    </div>
+
+    <details class="rv-more" {{ 'open' if cfg.g2 }}>
+      <summary>More options</summary>
+      <div class="box">
+        {% if cfg.g1 %}
+        <label class="rv-lbl">And also split by (for a stacked chart, heatmap or pivot)
+          <select class="rv-sel" data-go>
+            <option value="{{ g2_url('') }}">Nothing</option>
+            {% for v_, l_ in g2_options %}<option value="{{ g2_url(v_) }}" {{ 'selected' if v_ == cfg.g2 }}>{{ l_ }}</option>{% endfor %}
+          </select>
+        </label>
+        {% endif %}
+        {% if cfg.period != 'all' %}
+        <label class="rv-lbl">Count by date
+          <select class="rv-sel" data-go>
+            {% for k, l, _ in subj.dates %}<option value="{{ datef_url(k) }}" {{ 'selected' if k == cfg.datef }}>{{ l }}</option>{% endfor %}
+          </select>
+        </label>
+        {% endif %}
+        <label class="rv-lbl">Folder
+          <select class="rv-sel" name="folder" form="saveForm" id="folderSel">
+            <option value="">No folder</option>
+            {% for fo in folders %}<option value="{{ fo }}" {{ 'selected' if saved and saved.folder == fo }}>{{ fo }}</option>{% endfor %}
+            <option value="__new__">+ New folder…</option>
+          </select>
+        </label>
+        <label class="rv-lbl" id="newFolderWrap" style="display:none">New folder name
+          <input class="rv-in" name="new_folder" form="saveForm" id="newFolder" maxlength="{{ RA.MAX_FOLDER }}" placeholder="e.g. Management">
+        </label>
+      </div>
+    </details>
+  </section>
+
+  <section class="rv-card" style="display:flex;flex-direction:column;gap:14px">
+    <div class="rv-row" style="justify-content:space-between">
+      <div class="rv-tabs" role="tablist" aria-label="View">
+        <a role="tab" href="{{ chart_tab_url }}" class="{{ 'on' if tab == 'chart' }}" aria-selected="{{ 'true' if tab == 'chart' else 'false' }}">Chart and totals</a>
+        <a role="tab" href="{{ list_tab_url }}" class="{{ 'on' if tab == 'list' }}" aria-selected="{{ 'true' if tab == 'list' else 'false' }}">List of {{ subj.noun }}{% if tab == 'list' and d.total is defined %} ({{ '{:,}'.format(d.total) }}){% endif %}</a>
+      </div>
+      {% if tab == 'chart' %}
+      <div class="rv-showas" role="group" aria-label="Show as">
+        <span class="rb-note">Show as</span>
+        {% for k in main_charts %}
+          {% set lab = 'Table' if k == 'table' else (RB.CHARTS | selectattr(0, 'equalto', k) | first)[1] %}
+          {% if chart_rules[k] %}<span class="rv-ic off" title="{{ chart_rules[k] }}" aria-disabled="true">{{ lab }}</span>
+          {% else %}<a class="rv-ic {{ 'on' if shown_chart == k }}" href="{{ chart_link(k) }}" aria-pressed="{{ 'true' if shown_chart == k else 'false' }}" {% if k == suggested %}title="Suggested"{% endif %}>{{ lab }}{% if k == suggested %} ★{% endif %}</a>{% endif %}
+        {% endfor %}
+        <div class="rv-menu2" data-menu>
+          <button type="button" class="rv-ic" aria-haspopup="true" aria-expanded="false" style="color:var(--blue);cursor:pointer">More ▾</button>
+          <div class="list" role="menu">
+            {% for k, l in RB.CHARTS if k not in main_charts %}
+              {% if chart_rules[k] %}<span aria-disabled="true">{{ l }}<small>{{ chart_rules[k] }}</small></span>
+              {% else %}<a role="menuitem" href="{{ chart_link(k) }}">{{ l }}{% if shown_chart == k %} ✓{% endif %}{% if k == suggested %} ★{% endif %}</a>{% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      {% else %}
+        <button type="button" class="rv-btn sm" id="openCols">Choose columns ({{ cfg.col|length }})</button>
+      {% endif %}
+    </div>
+
+    {% if d.error %}
+      <div class="rb-err">{{ d.error }}</div>
+    {% elif tab == 'chart' %}
+      {% if headline %}<div class="rb-note" style="font-size:14px">{{ headline }}</div>{% endif %}
+      {% if chart.kind != 'table' %}{{ rc.chart_block(chart, 'rbChart', cfg.period_label, compare_label, drill_base) }}{% endif %}
+      {% if d.summary is defined %}
+        {% set s = d.summary %}
+        <div class="rb-scroll" data-drill-base="{{ drill_base }}">
+          <table class="rv-tbl">
+            <thead><tr>{% for h in s.headers %}<th class="{{ 'num' if loop.index > s.ngroups }}">{{ h }}</th>{% endfor %}</tr></thead>
+            <tbody>
+              {% for r in s.rows %}
+                <tr>{% for l in r.labels %}<td>{{ l }}</td>{% endfor %}{% for c in r.cells %}<td class="num">{% if loop.first %}<button type="button" class="rb-sumbtn" data-drill='{{ r.rk|tojson }}' aria-label="See the {{ c }} records for {{ r.labels|join(' · ') }}">{{ c }}</button>{% else %}{{ c }}{% endif %}</td>{% endfor %}</tr>
+              {% else %}
+                <tr><td colspan="{{ s.headers|length }}" class="rb-note">Nothing matches this time and these conditions.</td></tr>
+              {% endfor %}
+              {% if s.rows %}<tr class="total">{% for l in s.total_row.labels %}<td>{{ l }}</td>{% endfor %}{% for c in s.total_row.cells %}<td class="num">{{ c }}</td>{% endfor %}</tr>{% endif %}
+            </tbody>
+          </table>
+        </div>
+        {% if s.truncated %}<div class="rb-note">Showing the first {{ RB.MAX_GROUP_ROWS }} groups. Add a condition to narrow it down.</div>{% endif %}
+      {% endif %}
+    {% else %}
+      {% if not cfg.col %}
+        <div class="rb-note">Press <b>Choose columns</b> to pick what the list shows.</div>
+      {% else %}
+      <div class="rb-scroll">
+        <table class="rv-tbl">
+          <thead><tr>
+            {% for k in cfg.col %}{% set c = subj.columns[k] %}
+              <th class="{{ 'num' if c.fmt in ('money','money_own','int') }}" aria-sort="{{ ('ascending' if cfg.dir == 'asc' else 'descending') if cfg.sort == k else 'none' }}"><a href="{{ sort_link(k) }}">{{ c.label }}{% if cfg.sort == k %} {{ '▲' if cfg.dir == 'asc' else '▼' }}{% endif %}</a></th>
+            {% endfor %}
+          </tr></thead>
+          <tbody>
+            {% for r in d.rows %}
+              <tr>{% for cell in r.cells %}{% set c = subj.columns[cfg.col[loop.index0]] %}<td class="{{ 'num' if c.fmt in ('money','money_own','int') }}">{{ cell }}</td>{% endfor %}</tr>
+            {% else %}
+              <tr><td colspan="{{ cfg.col|length }}" class="rb-note">Nothing matches this time and these conditions.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="rv-row" style="justify-content:space-between">
+        <span class="rb-note">Page {{ page }} of {{ total_pages }} · {{ RB.PER_PAGE }} per page · click a heading to sort · Export gives every row</span>
+        <span class="rv-row">
+          {% if prev_url %}<a class="rv-btn sm" href="{{ prev_url }}">‹ Previous</a>{% endif %}
+          {% if next_url %}<a class="rv-btn sm" href="{{ next_url }}">Next ›</a>{% endif %}
+        </span>
+      </div>
+      {% endif %}
+    {% endif %}
+  </section>
+</div>
+
+<dialog class="cc-dlg" id="colsDlg" aria-labelledby="ccTitle">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid #E3E7ED">
+    <div>
+      <h2 id="ccTitle" style="margin:0;font-size:19px;color:#0B1F3A">What should the list show?</h2>
+      <div style="font-size:13px;color:#5B6675;margin-top:2px">Tick what you need. Drag the list on the right, or use ↑ ↓, to change the order.</div>
+    </div>
+    <button type="button" aria-label="Close" style="width:44px;height:44px;border:0;background:none;font-size:24px;color:#5B6675;cursor:pointer" onclick="document.getElementById('colsDlg').close()">×</button>
+  </div>
+  <div class="cc-body">
+    <div class="cc-left">
+      <label class="rv-lbl">Find a column<input class="rv-in" type="search" id="ccSearch" placeholder="e.g. phone, invoice, country"></label>
+      <div id="ccLists"></div>
+    </div>
+    <div class="cc-right">
+      <div class="rv-label" id="ccCount">IN YOUR LIST</div>
+      <div id="ccChosen" style="display:flex;flex-direction:column;gap:6px"></div>
+      <button type="button" id="ccReset" style="align-self:flex-start;border:0;background:none;color:#1D4ED8;font-size:13px;padding:6px 0;cursor:pointer">Back to the usual columns</button>
+    </div>
+  </div>
+  <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 22px;border-top:1px solid #E3E7ED">
+    <button type="button" class="rv-btn" onclick="document.getElementById('colsDlg').close()">Cancel</button>
+    <button type="button" class="rv-btn primary" id="ccDone">Done</button>
+  </div>
+</dialog>
+
+{{ rc.chart_assets() }}
+{% if saved and can_manage %}{{ rs.share_dialog(url_for('reports.share', report_id=saved.id), saved, saved.name, share_people, share_roles, viewer, RA) }}{% endif %}
+<script>
+(function () {
+  var BUILDER = '{{ url_for("reports.builder") }}', BASE = {{ base_qs|tojson }};
+  function go(extra) { window.location = BUILDER + '?' + BASE + (extra ? '&' + extra : ''); }
+
+  document.querySelectorAll('.rv-pick').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var m = document.getElementById('menu-' + b.getAttribute('data-pick')), open = !m.classList.contains('open');
+      document.querySelectorAll('.rv-menu.open').forEach(function (x) { x.classList.remove('open'); });
+      document.querySelectorAll('.rv-pick').forEach(function (x) { x.setAttribute('aria-expanded', 'false'); });
+      if (open) { m.classList.add('open'); b.setAttribute('aria-expanded', 'true'); }
+    });
+  });
+  document.querySelectorAll('select[data-go]').forEach(function (s) {
+    s.addEventListener('change', function () { if (s.value) window.location = s.value; });
+  });
+  document.querySelectorAll('form[data-custom-dates]').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var a = f.querySelector('[name=date_from]').value, b = f.querySelector('[name=date_to]').value;
+      var q = BASE.replace(/(^|&)(period|date_from|date_to)=[^&]*/g, '');
+      window.location = BUILDER + '?' + q + '&period=custom&date_from=' + a + '&date_to=' + b;
+    });
+  });
+
+  document.querySelectorAll('[data-menu]').forEach(function (m) {
+    var b = m.querySelector('button');
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var open = !m.classList.contains('open');
+      document.querySelectorAll('[data-menu].open').forEach(function (x) { x.classList.remove('open'); });
+      if (open) m.classList.add('open');
+      b.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  });
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('[data-menu] .list')) return;
+    document.querySelectorAll('[data-menu].open').forEach(function (x) { x.classList.remove('open'); });
+  });
+  var pick = document.getElementById('dashPick');
+  if (pick) pick.addEventListener('change', function () { document.getElementById('dashNewWrap').style.display = pick.value ? 'none' : ''; });
+  var fs = document.getElementById('folderSel');
+  fs.addEventListener('change', function () {
+    var n = fs.value === '__new__'; document.getElementById('newFolderWrap').style.display = n ? '' : 'none';
+    if (n) document.getElementById('newFolder').focus();
+  });
+  document.getElementById('saveForm').addEventListener('submit', function () { if (fs.value === '__new__') fs.value = ''; });
+
+  var FIELDS = {{ filter_fields_json | safe }}, OPS = {{ filter_ops_json | safe }};
+  var box = document.getElementById('addFilter'), fField = document.getElementById('ffField'), fOp = document.getElementById('ffOp');
+  var slot = document.getElementById('ffValSlot'), valWrap = document.getElementById('ffValWrap');
+  var lastGroup = null, og = null;
+  FIELDS.forEach(function (f, i) {
+    if (f.group !== lastGroup) { og = document.createElement('optgroup'); og.label = f.group; fField.appendChild(og); lastGroup = f.group; }
+    var o = document.createElement('option'); o.value = i; o.textContent = f.label; og.appendChild(o);
+  });
+  function current() { return FIELDS[parseInt(fField.value, 10)]; }
+  function fillValue() {
+    var f = current(); slot.innerHTML = '';
+    valWrap.style.display = (fOp.value === 'empty' || fOp.value === 'set') ? 'none' : '';
+    var el;
+    if (f.type === 'choice' && f.options.length) {
+      el = document.createElement('select');
+      f.options.forEach(function (p) { var o = document.createElement('option'); o.value = p[0]; o.textContent = p[1]; el.appendChild(o); });
+    } else {
+      el = document.createElement('input');
+      el.type = f.type === 'num' ? 'number' : (f.type === 'date' ? 'date' : 'text');
+      if (f.type === 'num') el.step = 'any';
+    }
+    el.className = f.type === 'choice' ? 'rv-sel' : 'rv-in'; el.id = 'ffVal'; el.setAttribute('aria-label', 'Value');
+    slot.appendChild(el);
+  }
+  function fillOps() {
+    var f = current(); fOp.innerHTML = '';
+    OPS[f.type].forEach(function (p) { var o = document.createElement('option'); o.value = p[0]; o.textContent = p[1]; fOp.appendChild(o); });
+    fillValue();
+  }
+  fField.addEventListener('change', fillOps); fOp.addEventListener('change', fillValue);
+  document.getElementById('addFilterBtn').addEventListener('click', function () { box.classList.add('open'); if (!fOp.options.length) fillOps(); fField.focus(); });
+  document.getElementById('ffCancel').addEventListener('click', function () { box.classList.remove('open'); });
+  document.getElementById('ffAdd').addEventListener('click', function () {
+    var f = current(), op = fOp.value, v = '';
+    if (op !== 'empty' && op !== 'set') {
+      v = (document.getElementById('ffVal').value || '').trim();
+      if (!v) { document.getElementById('ffVal').focus(); return; }
+    }
+    go('f=' + encodeURIComponent(f.key + '|' + op + '|' + v.replace(/\|/g, ' ')));
+  });
+
+  RBC.draw('rbChart');
+
+  var openCols = document.getElementById('openCols');
+  if (openCols) {
+    var COLS = {{ columns_json | safe }}, DEF = {{ default_cols_json | safe }}, chosen = {{ chosen_cols_json | safe }}.slice();
+    var byKey = {}; COLS.forEach(function (c) { byKey[c.key] = c; });
+    var dlg = document.getElementById('colsDlg'), lists = document.getElementById('ccLists'), right = document.getElementById('ccChosen');
+    function ck(c) {
+      var l = document.createElement('label'); l.className = 'cc-ck'; l.setAttribute('data-key', c.key); l.setAttribute('data-label', c.label.toLowerCase());
+      var i = document.createElement('input'); i.type = 'checkbox'; i.checked = chosen.indexOf(c.key) !== -1;
+      i.addEventListener('change', function () {
+        if (i.checked && chosen.indexOf(c.key) === -1) chosen.push(c.key);
+        if (!i.checked) chosen = chosen.filter(function (k) { return k !== c.key; });
+        draw();
+      });
+      l.appendChild(i); l.appendChild(document.createTextNode(c.label)); return l;
+    }
+    function buildLeft() {
+      lists.innerHTML = '';
+      var mu = document.createElement('div'); mu.className = 'rv-label'; mu.style.margin = '6px 0 2px'; mu.textContent = 'MOST USED';
+      lists.appendChild(mu);
+      var g = document.createElement('div'); g.className = 'cc-grid';
+      DEF.forEach(function (k) { if (byKey[k]) g.appendChild(ck(byKey[k])); }); lists.appendChild(g);
+      var groups = []; COLS.forEach(function (c) { if (groups.indexOf(c.group) === -1) groups.push(c.group); });
+      groups.forEach(function (name) {
+        var items = COLS.filter(function (c) { return c.group === name && DEF.indexOf(c.key) === -1; });
+        if (!items.length) return;
+        var d = document.createElement('details'); d.className = 'cc-grp';
+        var s = document.createElement('summary'); s.textContent = name + '  · ' + items.length; d.appendChild(s);
+        var gg = document.createElement('div'); gg.className = 'cc-grid'; items.forEach(function (c) { gg.appendChild(ck(c)); });
+        d.appendChild(gg); lists.appendChild(d);
+      });
+    }
+    function syncTicks() {
+      lists.querySelectorAll('.cc-ck').forEach(function (l) { l.querySelector('input').checked = chosen.indexOf(l.getAttribute('data-key')) !== -1; });
+    }
+    var dragKey = null;
+    function draw() {
+      right.innerHTML = '';
+      document.getElementById('ccCount').textContent = 'IN YOUR LIST (' + chosen.length + ') — LEFT TO RIGHT';
+      chosen.forEach(function (k, i) {
+        var c = byKey[k]; if (!c) return;
+        var row = document.createElement('div'); row.className = 'cc-sel'; row.draggable = true;
+        row.innerHTML = '<span aria-hidden="true" style="color:#AEB8C5;cursor:grab">⠿</span><span></span>' +
+          '<button type="button">↑</button><button type="button">↓</button><button type="button">×</button>';
+        row.children[1].textContent = c.label;
+        var b = row.querySelectorAll('button');
+        b[0].setAttribute('aria-label', 'Move ' + c.label + ' up'); b[1].setAttribute('aria-label', 'Move ' + c.label + ' down'); b[2].setAttribute('aria-label', 'Remove ' + c.label);
+        b[0].onclick = function () { if (i > 0) { chosen.splice(i - 1, 0, chosen.splice(i, 1)[0]); draw(); } };
+        b[1].onclick = function () { if (i < chosen.length - 1) { chosen.splice(i + 1, 0, chosen.splice(i, 1)[0]); draw(); } };
+        b[2].onclick = function () { chosen.splice(i, 1); draw(); };
+        row.addEventListener('dragstart', function () { dragKey = k; row.classList.add('drag'); });
+        row.addEventListener('dragend', function () { row.classList.remove('drag'); });
+        row.addEventListener('dragover', function (e) { e.preventDefault(); });
+        row.addEventListener('drop', function (e) {
+          e.preventDefault(); if (!dragKey || dragKey === k) return;
+          var from = chosen.indexOf(dragKey); chosen.splice(from, 1);
+          chosen.splice(chosen.indexOf(k) + (from < i ? 1 : 0), 0, dragKey); draw();
+        });
+        right.appendChild(row);
+      });
+      syncTicks();
+    }
+    document.getElementById('ccSearch').addEventListener('input', function () {
+      var q = this.value.trim().toLowerCase();
+      lists.querySelectorAll('.cc-ck').forEach(function (l) { l.style.display = !q || l.getAttribute('data-label').indexOf(q) !== -1 ? '' : 'none'; });
+      if (q) lists.querySelectorAll('details').forEach(function (d) { d.open = true; });
+    });
+    document.getElementById('ccReset').addEventListener('click', function () { chosen = DEF.slice(); draw(); });
+    document.getElementById('ccDone').addEventListener('click', function () {
+      var q = BASE.replace(/(^|&)(col|cols_set|view)=[^&]*/g, '');
+      window.location = BUILDER + '?' + q + '&cols_set=1&view=detailed' + chosen.map(function (k) { return '&col=' + encodeURIComponent(k); }).join('');
+    });
+    openCols.addEventListener('click', function () { buildLeft(); draw(); dlg.showModal(); });
+  }
+})();
+</script>
+{% endblock %}

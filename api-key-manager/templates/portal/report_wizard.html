@@ -1,0 +1,409 @@
+{% extends "portal/base.html" %}
+{% import "portal/_report_chart.html" as rc %}
+{# ask: Reports › All reports › "+ New report" opens "Create a report". Step 1 "What do you want to know?": pick what the report is about (Quotes, Deals, Enquiries & leads, Contacts & companies, Conversations, Calls, Campaign messages, Email sequences, Follow-ups & tasks, Team activity, AI Agent usage, Orders, Products sold, Discount codes, Cart recovery — only the ones your business uses), then click a ready question (for example "Who wins the most quotes?", "Won, lost or still waiting?", "Which invoices are overdue?", "Where do our enquiries come from?") to go straight to "Show it as", or "+ Start from blank" for four short steps: "What should we count?" (Number of …, Total …, Average …, and Which: e.g. All quotes, Won, Lost, Waiting for an answer), "Split it by" (Team member, Month, Status, Where it came from, Buyer company…, or Don't split for one number; "And also split by" for a stacked chart or pivot), "Which time, and anything to leave out?" (This month, This quarter, This year, Last 12 months…, which date counts, "Compare with the period before", "Only show … where…" conditions), and "Show it as" (Bar, Pie, Line, Table, Big number, plus More chart types: Donut, Horizontal bar, Stacked bar, Area, Bar + line, Funnel, Heatmap, Pivot). A live Preview on the right shows your real numbers as you choose. "Create report" opens the report; press "Save report" there to keep it. #}
+{% block title %}Create a report — Reports — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  /* Create a report wizard (19 Nov 2026) — approved mock-up EPpwZTeFt5iccD8SH155P1 screen 8 */
+  .wz{--navy:#0B1F3A;--blue:#1D4ED8;--soft:#E8EEFC;--sub:#5B6675;--edge:#E3E7ED;display:flex;flex-direction:column;gap:16px}
+  .wz h1{margin:0;font-size:26px;font-weight:800;color:var(--navy)}
+  .wz h2{margin:0;font-size:20px;color:var(--navy)}
+  .wz-steps{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+  .wz-steps li{display:flex;align-items:center;gap:8px;padding:7px 14px 7px 7px;border-radius:20px;font-size:13px;background:#fff;color:var(--sub);border:1px solid var(--edge)}
+  .wz-steps li i{width:24px;height:24px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-size:12px;font-weight:700;background:#EEF1F5;color:var(--sub)}
+  .wz-steps li.on{background:var(--navy);color:#fff;font-weight:700;border-color:var(--navy)}
+  .wz-steps li.on i{background:#fff;color:var(--navy)}
+  .wz-steps li.done{background:var(--soft);color:#1E3A8A;border-color:var(--soft)}
+  .wz-steps li.done i{background:var(--blue);color:#fff}
+  .wz-layout{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start}
+  .wz-main{flex:999 1 560px;min-width:0;background:#fff;border:1px solid var(--edge);border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:16px}
+  .wz-side{flex:1 1 340px;max-width:440px;background:#fff;border:1px solid var(--edge);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+  .wz-sub{margin:0;font-size:14px;color:var(--sub)}
+  .wz-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .wz-opts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .wz-charts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+  @media (max-width:1100px){.wz-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.wz-charts{grid-template-columns:repeat(3,minmax(0,1fr))}}
+  @media (max-width:640px){.wz-cards,.wz-opts{grid-template-columns:minmax(0,1fr)}.wz-charts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .wz-card{text-align:left;padding:14px;border-radius:12px;cursor:pointer;display:flex;flex-direction:column;gap:4px;font-family:inherit;font-size:14px;
+    background:#fff;border:1px solid var(--edge);color:var(--ink);min-height:64px}
+  .wz-card:hover{border-color:var(--blue)}
+  .wz-card b{font-size:15px;color:var(--navy)}
+  .wz-card span{font-size:12.5px;color:var(--sub)}
+  .wz-card.on{background:var(--soft);border:2px solid var(--blue);padding:13px}
+  .wz-card.blank{border:2px dashed #AEB8C5;background:#F8FAFC}
+  .wz-card.blank b{color:var(--blue)}
+  .wz-card.off{opacity:.45;cursor:not-allowed}
+  .wz-pill{min-height:40px;padding:0 14px;border-radius:20px;border:1px solid #D5DBE3;background:#fff;color:#1F2A37;font-family:inherit;font-size:14px;cursor:pointer}
+  .wz-pill.on{border:2px solid var(--blue);background:var(--soft);color:#1E3A8A;font-weight:700;padding:0 13px}
+  .wz-pill.off{opacity:.45;cursor:not-allowed}
+  .wz-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .wz-lbl{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--sub)}
+  .wz-sel,.wz-in{font-family:inherit;font-size:14px;min-height:42px;border:1px solid #D5DBE3;border-radius:10px;padding:0 10px;background:#fff;color:var(--ink);box-sizing:border-box;max-width:100%}
+  .wz-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 20px;border-radius:10px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;
+    border:1px solid #D5DBE3;background:#fff;color:var(--navy);text-decoration:none}
+  .wz-btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+  .wz-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid #F0F2F5;padding-top:14px;flex-wrap:wrap}
+  .wz-sent{background:#F5F7FA;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px}
+  .wz-sent b{font-size:12px;color:var(--sub);letter-spacing:.04em}
+  .wz-sent p{margin:0;font-size:16px;color:var(--navy);line-height:1.5}
+  .wz-cond{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .wz-chip{display:inline-flex;align-items:center;gap:4px;min-height:34px;padding:0 4px 0 12px;background:var(--soft);color:#1E3A8A;border-radius:17px;font-size:13px}
+  .wz-chip button{width:28px;height:28px;border:0;background:none;color:#1E3A8A;font-size:16px;cursor:pointer;border-radius:14px}
+  .wz-empty{height:260px;border:1px dashed #D5DBE3;border-radius:12px;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;font-size:14px;color:var(--sub)}
+  .rb-err{background:#FBE4E4;color:#991B1B;border-radius:8px;padding:10px 14px;font-size:14px}
+  [hidden]{display:none!important}
+  .wz h2[tabindex="-1"]:focus{outline:none}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="wz">
+  <div class="wz-row" style="justify-content:space-between">
+    <div>
+      <div style="font-size:13px;color:var(--sub)"><a href="{{ url_for('reports.library') }}" style="color:var(--sub)">Reports</a> › New report</div>
+      <h1>Create a report</h1>
+    </div>
+  </div>
+  <ol class="wz-steps" id="wzSteps" aria-label="Steps"></ol>
+
+  <div class="wz-layout">
+    <section class="wz-main" aria-live="polite">
+      <div data-step="1">
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+          <h2>What do you want to know?</h2>
+          <p class="wz-sub">Pick a question and we set everything up. You can change any part afterwards.</p>
+        </div>
+        <div role="tablist" aria-label="Report about" class="wz-row" id="wzSubjects" style="margin-bottom:12px"></div>
+        <div class="wz-cards" id="wzQuestions"></div>
+      </div>
+
+      <div data-step="2" hidden>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+          <h2>What should we count?</h2>
+          <p class="wz-sub">About: <b id="wzAbout"></b> · <button type="button" data-goto="1" style="border:0;background:none;color:var(--blue);padding:0;font-size:14px;cursor:pointer;font-family:inherit">change</button></p>
+        </div>
+        <div class="wz-opts" role="radiogroup" aria-label="What to count" id="wzMeasures"></div>
+        <div style="font-size:14px;font-weight:700;color:var(--navy);margin:16px 0 8px" id="wzWhichTitle">Which?</div>
+        <div class="wz-row" role="radiogroup" aria-labelledby="wzWhichTitle" id="wzWhich"></div>
+      </div>
+
+      <div data-step="3" hidden>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+          <h2>Split it by</h2>
+          <p class="wz-sub">One bar, slice or row for each…</p>
+        </div>
+        <div class="wz-opts" role="radiogroup" aria-label="Split by" id="wzSplits"></div>
+        <div class="wz-row" style="margin-top:14px;gap:16px;align-items:flex-end">
+          <label class="wz-lbl">Or another way to split
+            <select class="wz-sel" id="wzMoreSplit"></select>
+          </label>
+          <label class="wz-lbl">And also split by (optional, for a stacked chart or pivot table)
+            <select class="wz-sel" id="wzSplit2"></select>
+          </label>
+        </div>
+      </div>
+
+      <div data-step="4" hidden>
+        <h2 style="margin-bottom:14px">Which time, and anything to leave out?</h2>
+        <div class="wz-row" role="radiogroup" aria-label="Time" id="wzPeriods"></div>
+        <div class="wz-row" style="margin-top:14px;gap:16px;align-items:flex-end">
+          <label class="wz-lbl">Count a record in the period by
+            <select class="wz-sel" id="wzDatef"></select>
+          </label>
+        </div>
+        <label style="display:flex;gap:10px;align-items:center;font-size:14px;padding:12px;border:1px solid var(--edge);border-radius:10px;margin-top:14px;cursor:pointer">
+          <input type="checkbox" id="wzCompare" style="width:20px;height:20px;accent-color:#1D4ED8">
+          <span><b style="font-weight:600">Compare with the period before</b><br><span style="font-size:12.5px;color:var(--sub)">Shows the change, e.g. +14% vs last quarter</span></span>
+        </label>
+        <div style="font-size:14px;font-weight:700;color:var(--navy);margin:16px 0 8px">Only show <span id="wzNoun2"></span> where… <span style="font-weight:400;color:var(--sub)">(optional)</span></div>
+        <div class="wz-row" id="wzConds" style="margin-bottom:8px"></div>
+        <div class="wz-cond">
+          <select class="wz-sel" id="wzF" aria-label="Field"></select>
+          <select class="wz-sel" id="wzOp" aria-label="Rule"></select>
+          <span id="wzValSlot"></span>
+          <button type="button" class="wz-btn" id="wzAddCond" style="min-height:42px;font-size:14px">+ Add</button>
+        </div>
+      </div>
+
+      <div data-step="5" hidden>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+          <h2>Show it as</h2>
+          <p class="wz-sub">We picked the best fit (★). Click another to try it — the preview changes.</p>
+        </div>
+        <div class="wz-charts" role="radiogroup" aria-label="Show as" id="wzCharts"></div>
+        <details style="font-size:14px;margin-top:12px">
+          <summary style="cursor:pointer;color:var(--blue);padding:6px 0">More chart types</summary>
+          <div class="wz-row" id="wzMoreCharts" style="margin-top:8px"></div>
+        </details>
+        <div class="wz-sent" style="margin-top:14px"><b>YOUR REPORT IN ONE SENTENCE</b><p id="wzSentence"></p></div>
+      </div>
+
+      <div class="wz-foot">
+        <button type="button" class="wz-btn" id="wzBack" hidden>‹ Back</button>
+        <span id="wzReady" style="font-size:13px;color:var(--sub)">Or open a <a href="{{ url_for('reports.library') }}">ready-made report</a></span>
+        <span style="display:flex;gap:16px;align-items:center"><span id="wzStepText" style="font-size:13px;color:var(--sub)"></span><a href="{{ url_for('reports.library') }}" style="font-size:14px;color:var(--sub)">Cancel</a></span>
+        <button type="button" class="wz-btn primary" id="wzNext" hidden>Next ›</button>
+        <a class="wz-btn primary" id="wzCreate" href="#" hidden>Create report</a>
+      </div>
+    </section>
+
+    <aside class="wz-side" aria-label="Preview">
+      <div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="font-size:15px">Preview</h2><span style="font-size:12px;color:var(--sub)">your real numbers</span></div>
+      <div id="wzPrevTitle" style="font-size:13px;font-weight:600;color:#1F2A37"></div>
+      <div id="wzPreview"><div class="wz-empty">Pick a question or start from blank — the preview appears here and changes with every choice.</div></div>
+    </aside>
+  </div>
+</div>
+
+{{ rc.chart_assets() }}
+<script>
+(function () {
+  var SPEC = {{ spec | tojson }}, START = {{ start | tojson }};
+  var PREVIEW = '{{ url_for("reports.preview") }}', BUILDER = '{{ url_for("reports.builder") }}';
+  var STEP_NAMES = {1: 'What do you want to know?', 2: 'What to count', 3: 'Split it by', 4: 'Time and filters', 5: 'Show it as'};
+  var PIE_SPLITS = ['qstatus', 'outcome', 'source', 'vch', 'kres', 'cstatus', 'ost', 'dused', 'fstatus', 'ivst', 'mch', 'sst', 'ktype', 'isdeal', 'vhanded', 'vwait', 'csource'];
+  var S = {step: 1, path: '', subj: null, m: 'count', which: 'all', g1: '', g2: '', period: 'this_quarter', datef: '', cmp: false,
+           conds: [], chart: '', q: null};
+  function subj() { return SPEC.subjects.filter(function (x) { return x.key === S.subj; })[0]; }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+  function measure() { var s = subj(); return s.measures.filter(function (m) { return m.key === S.m; })[0] || s.measures[0]; }
+  function whichOpt() { var s = subj(); return s.which.filter(function (w) { return w.key === S.which; })[0] || s.which[0]; }
+
+  // The settings as the report page understands them
+  function params() {
+    var p = [];
+    if (S.path === 'q' && S.q) {
+      var c = S.q.cfg;
+      Object.keys(c).forEach(function (k) {
+        if (k === 'chart') return;
+        (Array.isArray(c[k]) ? c[k] : [c[k]]).forEach(function (v) { p.push([k, v]); });
+      });
+      p.push(['chart', S.chart || c.chart || 'auto']);
+      return p;
+    }
+    var w = whichOpt();
+    p.push(['subject', S.subj], ['m', S.m], ['period', S.period], ['chart', S.chart || 'auto']);
+    if (S.datef) p.push(['datef', S.datef]);
+    if (S.g1) { p.push(['g1', S.g1], ['view', 'summary']); if (S.g2) p.push(['g2', S.g2]); }
+    if (S.cmp && S.period !== 'all') p.push(['cmp', 'prev']);
+    ((w && w.f) || []).concat(S.conds.map(function (c) { return c.raw; })).forEach(function (f) { p.push(['f', f]); });
+    return p;
+  }
+  function qs(p) { return p.map(function (x) { return encodeURIComponent(x[0]) + '=' + encodeURIComponent(x[1]); }).join('&'); }
+  function cur() {   // g1, g2, m of what is being built
+    if (S.path === 'q' && S.q) return {g1: S.q.cfg.g1 || '', g2: S.q.cfg.g2 || '', m: S.q.cfg.m || 'count'};
+    return {g1: S.g1, g2: S.g2, m: S.m};
+  }
+  function ruleFor(k) {
+    var c = cur(), s = subj(), mm = s.measures.filter(function (m) { return m.key === c.m; })[0] || s.measures[0];
+    if (k !== 'table' && k !== 'number' && !c.g1) return 'Needs a split (step 3)';
+    if ((k === 'stacked' || k === 'heatmap' || k === 'pivot') && !c.g2) return 'Needs “And also split by”';
+    if ((k === 'pie' || k === 'donut' || k === 'funnel') && !mm.additive) return 'Needs a number or a total, not an average';
+    if (k === 'combo' && mm.key === 'count') return 'Needs a total or an average to count';
+    return '';
+  }
+  function suggested() {
+    var c = cur();
+    if (!c.g1) return 'number';
+    if (c.g2) return 'stacked';
+    if (c.g1.indexOf('@') !== -1) return 'line';
+    if (PIE_SPLITS.indexOf(c.g1) !== -1 && !ruleFor('pie')) return 'pie';
+    return 'bar';
+  }
+  function sentence() {
+    if (S.path === 'q' && S.q) return S.q.q;
+    var s = subj(), mm = measure(), w = whichOpt(), sp = '';
+    if (S.g1) {
+      var o = s.splits.concat(s.more_splits).filter(function (x) { return x.key === S.g1; })[0];
+      sp = ', split by ' + (o ? o.label.toLowerCase() : S.g1);
+      if (S.g2) { var o2 = s.more_splits.filter(function (x) { return x.key === S.g2; })[0]; sp += ' and ' + (o2 ? o2.label.toLowerCase() : S.g2); }
+    } else { sp = ', as one number'; }
+    var conds = S.conds.length ? ', only where ' + S.conds.map(function (c) { return c.label; }).join(' and ') : '';
+    return 'Show ' + mm.words + ' ' + w.words + sp + ', for ' + SPEC.period_words[S.period] + (S.cmp && S.period !== 'all' ? ', compared with the period before' : '') + conds + '.';
+  }
+  function name() {
+    if (S.path === 'q' && S.q) return S.q.label;
+    var s = subj(), mm = measure(), w = whichOpt(), n = mm.label + (w.key !== 'all' ? ' — ' + w.label.toLowerCase() : '');
+    if (S.g1) { var o = s.splits.concat(s.more_splits).filter(function (x) { return x.key === S.g1; })[0]; n += ' by ' + (o ? o.label.toLowerCase() : ''); }
+    return n.charAt(0).toUpperCase() + n.slice(1);
+  }
+
+  var timer = null, seq = 0;
+  function preview() {
+    var box = document.getElementById('wzPreview');
+    if (S.step === 1 && S.path !== 'q') {
+      box.innerHTML = '<div class="wz-empty">Pick a question or start from blank — the preview appears here and changes with every choice.</div>';
+      document.getElementById('wzPrevTitle').textContent = ''; return;
+    }
+    document.getElementById('wzPrevTitle').textContent = sentence();
+    clearTimeout(timer);
+    timer = setTimeout(function () {
+      var my = ++seq;
+      box.style.opacity = '.5';
+      fetch(PREVIEW + '?' + qs(params()), {credentials: 'same-origin'}).then(function (r) {
+        if (!r.ok) throw new Error(r.status); return r.text();
+      }).then(function (html) {
+        if (my !== seq) return;
+        box.innerHTML = html; box.style.opacity = '';
+        if (document.getElementById('wzChart')) RBC.draw('wzChart');
+      }).catch(function () { if (my === seq) { box.innerHTML = '<div class="rb-err">The preview could not be loaded.</div>'; box.style.opacity = ''; } });
+    }, 250);
+  }
+
+  function radioCards(container, items, isOn, onPick, cls) {
+    container.innerHTML = '';
+    items.forEach(function (it) {
+      var b = el('button', (cls || 'wz-card') + (isOn(it) ? ' on' : '') + (it.off ? ' off' : ''));
+      b.type = 'button'; b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', isOn(it) ? 'true' : 'false');
+      if (it.off) { b.setAttribute('aria-disabled', 'true'); b.title = it.off; }
+      if (cls === 'wz-pill') { b.textContent = it.label; }
+      else { b.appendChild(el('b', '', it.label)); if (it.help) b.appendChild(el('span', '', it.help)); }
+      b.addEventListener('click', function () { if (!it.off) onPick(it); });
+      container.appendChild(b);
+    });
+  }
+
+  function renderSteps() {
+    var order = S.path === 'q' ? [1, 5] : [1, 2, 3, 4, 5], ol = document.getElementById('wzSteps');
+    ol.innerHTML = '';
+    order.forEach(function (n, i) {
+      var li = el('li', n === S.step ? 'on' : (order.indexOf(S.step) > i ? 'done' : ''));
+      var dot = el('i', '', String(i + 1)); li.appendChild(dot); li.appendChild(document.createTextNode(STEP_NAMES[n]));
+      if (n === S.step) li.setAttribute('aria-current', 'step');
+      ol.appendChild(li);
+    });
+    document.querySelectorAll('[data-step]').forEach(function (d) { d.hidden = +d.getAttribute('data-step') !== S.step; });
+    document.getElementById('wzBack').hidden = S.step === 1;
+    document.getElementById('wzNext').hidden = S.step === 1 || S.step === 5;
+    document.getElementById('wzCreate').hidden = S.step !== 5;
+    document.getElementById('wzReady').hidden = S.step !== 1;
+    document.getElementById('wzStepText').textContent = 'Step ' + (order.indexOf(S.step) + 1) + ' of ' + order.length;
+  }
+
+  function step1() {
+    var tabs = document.getElementById('wzSubjects'); tabs.innerHTML = '';
+    SPEC.subjects.forEach(function (s) {
+      var b = el('button', 'wz-pill' + (s.key === S.subj ? ' on' : ''), s.label); b.type = 'button';
+      b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', s.key === S.subj ? 'true' : 'false');
+      b.addEventListener('click', function () { setSubject(s.key); step1(); });
+      tabs.appendChild(b);
+    });
+    var qbox = document.getElementById('wzQuestions'); qbox.innerHTML = '';
+    subj().questions.forEach(function (q) {
+      var b = el('button', 'wz-card'); b.type = 'button';
+      b.appendChild(el('b', '', q.q)); b.appendChild(el('span', '', q.how));
+      b.addEventListener('click', function () { S.path = 'q'; S.q = q; S.chart = ''; go(5); });
+      qbox.appendChild(b);
+    });
+    var bl = el('button', 'wz-card blank'); bl.type = 'button';
+    bl.appendChild(el('b', '', '+ Start from blank')); bl.appendChild(el('span', '', 'Build your own in 4 short steps'));
+    bl.addEventListener('click', function () { S.path = 'blank'; S.q = null; S.chart = ''; go(2); });
+    qbox.appendChild(bl);
+  }
+  function step2() {
+    var s = subj();
+    document.getElementById('wzAbout').textContent = s.label;
+    radioCards(document.getElementById('wzMeasures'), s.measures, function (m) { return m.key === S.m; }, function (m) { S.m = m.key; S.chart = ''; step2(); preview(); });
+    document.getElementById('wzWhichTitle').textContent = 'Which ' + s.noun + '?';
+    radioCards(document.getElementById('wzWhich'), s.which, function (w) { return w.key === S.which; }, function (w) { S.which = w.key; step2(); preview(); }, 'wz-pill');
+  }
+  function step3() {
+    var s = subj();
+    var items = s.splits.concat([{key: '', label: "Don't split", help: 'Just one number'}]);
+    radioCards(document.getElementById('wzSplits'), items, function (x) { return x.key === S.g1; }, function (x) { S.g1 = x.key; if (!S.g1) S.g2 = ''; S.chart = ''; step3(); preview(); });
+    var more = document.getElementById('wzMoreSplit'); more.innerHTML = '';
+    var o0 = el('option', '', 'Choose…'); o0.value = ''; more.appendChild(o0);
+    s.more_splits.forEach(function (x) { var o = el('option', '', x.label); o.value = x.key; if (x.key === S.g1 && !s.splits.some(function (y) { return y.key === x.key; })) o.selected = true; more.appendChild(o); });
+    more.onchange = function () { if (more.value) { S.g1 = more.value; S.chart = ''; step3(); preview(); } };
+    var s2 = document.getElementById('wzSplit2'); s2.innerHTML = ''; s2.disabled = !S.g1;
+    var n0 = el('option', '', 'Nothing'); n0.value = ''; s2.appendChild(n0);
+    s.more_splits.forEach(function (x) { if (x.key === S.g1) return; var o = el('option', '', x.label); o.value = x.key; o.selected = x.key === S.g2; s2.appendChild(o); });
+    s2.onchange = function () { S.g2 = s2.value; S.chart = ''; preview(); };
+  }
+  function step4() {
+    var s = subj();
+    radioCards(document.getElementById('wzPeriods'), SPEC.periods, function (p) { return p.key === S.period; }, function (p) { S.period = p.key; step4(); preview(); }, 'wz-pill');
+    var d = document.getElementById('wzDatef'); d.innerHTML = '';
+    s.dates.forEach(function (x) { var o = el('option', '', x.label); o.value = x.key; o.selected = x.key === (S.datef || s.date_default); d.appendChild(o); });
+    d.disabled = S.period === 'all';
+    d.onchange = function () { S.datef = d.value; preview(); };
+    var c = document.getElementById('wzCompare'); c.checked = S.cmp; c.disabled = S.period === 'all';
+    c.onchange = function () { S.cmp = c.checked; preview(); };
+    document.getElementById('wzNoun2').textContent = s.noun;
+    var cs = document.getElementById('wzConds'); cs.innerHTML = '';
+    S.conds.forEach(function (cd, i) {
+      var chip = el('span', 'wz-chip', cd.label), x = el('button', '', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Remove ' + cd.label);
+      x.onclick = function () { S.conds.splice(i, 1); step4(); preview(); }; chip.appendChild(x); cs.appendChild(chip);
+    });
+    var F = document.getElementById('wzF');
+    if (F.getAttribute('data-subj') !== S.subj) {
+      F.innerHTML = ''; F.setAttribute('data-subj', S.subj);
+      var lastG = null, og = null;
+      s.fields.forEach(function (f, i) {
+        if (f.group !== lastG) { og = el('optgroup'); og.label = f.group; F.appendChild(og); lastG = f.group; }
+        var o = el('option', '', f.label); o.value = i; og.appendChild(o);
+      });
+      fillOps();
+    }
+  }
+  function field() { return subj().fields[+document.getElementById('wzF').value]; }
+  function fillOps() {
+    var f = field(), op = document.getElementById('wzOp'); op.innerHTML = '';
+    SPEC.ops[f.type].forEach(function (p) { var o = el('option', '', p[1]); o.value = p[0]; op.appendChild(o); });
+    fillVal();
+  }
+  function fillVal() {
+    var f = field(), op = document.getElementById('wzOp').value, slot = document.getElementById('wzValSlot'); slot.innerHTML = '';
+    if (op === 'empty' || op === 'set') return;
+    var v;
+    if (f.type === 'choice' && f.options.length) { v = el('select', 'wz-sel'); f.options.forEach(function (p) { var o = el('option', '', p[1]); o.value = p[0]; v.appendChild(o); }); }
+    else { v = el('input', 'wz-in'); v.type = f.type === 'num' ? 'number' : (f.type === 'date' ? 'date' : 'text'); if (f.type === 'num') v.step = 'any'; }
+    v.id = 'wzVal'; v.setAttribute('aria-label', 'Value'); slot.appendChild(v);
+  }
+  document.getElementById('wzF').addEventListener('change', fillOps);
+  document.getElementById('wzOp').addEventListener('change', fillVal);
+  document.getElementById('wzAddCond').addEventListener('click', function () {
+    var f = field(), opEl = document.getElementById('wzOp'), op = opEl.value, vEl = document.getElementById('wzVal'), v = '', shown = '';
+    if (vEl) {
+      v = (vEl.value || '').trim(); if (!v) { vEl.focus(); return; }
+      shown = vEl.tagName === 'SELECT' ? vEl.options[vEl.selectedIndex].text : v;
+    }
+    S.conds.push({raw: f.key + '|' + op + '|' + v.replace(/\|/g, ' '), label: f.label + ' ' + opEl.options[opEl.selectedIndex].text + (shown ? ' ' + shown : '')});
+    step4(); preview();
+  });
+  function step5() {
+    var sug = suggested(), chosen = S.chart || (S.path === 'q' && S.q ? S.q.cfg.chart : '') || sug;
+    if (ruleFor(chosen)) chosen = sug;
+    var main = ['bar', 'pie', 'line', 'table', 'number'].map(function (k) {
+      var lab = {bar: 'Bar', pie: 'Pie', line: 'Line', table: 'Table', number: 'Big number'}[k];
+      return {key: k, label: lab + (k === sug ? ' ★' : ''), help: k === sug ? 'suggested' : '', off: ruleFor(k)};
+    });
+    radioCards(document.getElementById('wzCharts'), main, function (x) { return x.key === chosen; }, function (x) { S.chart = x.key; step5(); preview(); });
+    var more = SPEC.charts.filter(function (c) { return ['bar', 'pie', 'line', 'table', 'number'].indexOf(c.key) === -1; })
+      .map(function (c) { return {key: c.key, label: c.label + (c.key === sug ? ' ★' : ''), off: ruleFor(c.key)}; });
+    radioCards(document.getElementById('wzMoreCharts'), more, function (x) { return x.key === chosen; }, function (x) { S.chart = x.key; step5(); preview(); }, 'wz-pill');
+    document.getElementById('wzSentence').textContent = sentence();
+    document.getElementById('wzCreate').href = BUILDER + '?' + qs(params()) + '&name=' + encodeURIComponent(name());
+  }
+  function setSubject(k) {
+    S.subj = k; var s = subj();
+    S.m = 'count'; S.which = (s.which[0] || {}).key || 'all'; S.g1 = ''; S.g2 = ''; S.datef = ''; S.conds = []; S.chart = '';
+    document.getElementById('wzF').removeAttribute('data-subj');
+  }
+  function go(n) {
+    S.step = n;
+    if (n === 1) step1(); if (n === 2) step2(); if (n === 3) step3(); if (n === 4) step4(); if (n === 5) step5();
+    renderSteps(); preview();
+    var h = document.querySelector('[data-step="' + n + '"] h2'); if (h) { h.setAttribute('tabindex', '-1'); h.focus({preventScroll: true}); }
+  }
+  document.getElementById('wzNext').addEventListener('click', function () { go(S.step + 1); });
+  document.getElementById('wzBack').addEventListener('click', function () { go(S.path === 'q' || S.step === 2 ? 1 : S.step - 1); });
+  document.querySelectorAll('[data-goto]').forEach(function (b) { b.addEventListener('click', function () { go(+b.getAttribute('data-goto')); }); });
+
+  if (!SPEC.subjects.length) { document.querySelector('.wz-main').innerHTML = '<p>There is nothing to report on yet.</p>'; return; }
+  setSubject(START || SPEC.subjects[0].key);
+  go(1);
+})();
+</script>
+{% endblock %}

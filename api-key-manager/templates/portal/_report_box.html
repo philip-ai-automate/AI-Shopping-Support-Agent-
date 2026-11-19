@@ -1,0 +1,41 @@
+{% import "portal/_report_chart.html" as rc %}
+<div class="db-boxhead">
+  <div style="min-width:0">
+    <h2 class="db-boxtitle">{% if open_url %}<a href="{{ open_url }}">{{ box.report_name }}</a>{% else %}{{ box.report_name }}{% endif %}</h2>
+    <div class="db-boxsub">{{ subj.label }} · {{ cfg.period_label }}{% if headline and chart.kind != 'number' %} · {{ headline }}{% endif %}</div>
+  </div>
+  {% if open_url %}<a class="db-open" href="{{ open_url }}" aria-label="Open the report {{ box.report_name }}">Open</a>{% endif %}
+</div>
+{% if d.error %}
+  <div class="rb-err">{{ d.error }}</div>
+{% elif chart.kind != 'table' %}
+  {{ rc.chart_block(chart, cid, cfg.period_label, compare_label, drill_base, 240) }}
+{% elif d.summary is defined %}
+  {% set s = d.summary %}
+  <div class="rb-scroll" data-drill-base="{{ drill_base }}">
+    <table class="db-mini">
+      <thead><tr>{% for h in s.headers[:s.ngroups + 2] %}<th class="{{ 'num' if loop.index > s.ngroups }}">{{ h }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for r in s.rows[:8] %}
+          <tr>{% for l in r.labels %}<td>{{ l }}</td>{% endfor %}
+            {% for c in r.cells[:2] %}<td class="num">{% if loop.first %}<button type="button" class="rb-sumbtn" data-drill='{{ r.rk|tojson }}'>{{ c }}</button>{% else %}{{ c }}{% endif %}</td>{% endfor %}</tr>
+        {% else %}
+          <tr><td colspan="{{ s.ngroups + 2 }}" class="rb-note">Nothing in this period.</td></tr>
+        {% endfor %}
+        {% if s.rows %}<tr class="total">{% for l in s.total_row.labels %}<td>{{ l }}</td>{% endfor %}{% for c in s.total_row.cells[:2] %}<td class="num">{{ c }}</td>{% endfor %}</tr>{% endif %}
+      </tbody>
+    </table>
+  </div>
+  {% if s.rows|length > 8 and open_url %}<a class="db-more" href="{{ open_url }}">See all {{ s.rows|length }} rows</a>{% endif %}
+{% else %}
+  <div class="rb-scroll">
+    <table class="db-mini">
+      <thead><tr>{% for k in cfg.col[:5] %}<th>{{ subj.columns[k].label }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for r in d.rows[:8] %}<tr>{% for c in r.cells[:5] %}<td>{{ c }}</td>{% endfor %}</tr>
+        {% else %}<tr><td colspan="5" class="rb-note">Nothing in this period.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if d.total > 8 and open_url %}<a class="db-more" href="{{ open_url }}">See all {{ '{:,}'.format(d.total) }}</a>{% endif %}
+{% endif %}

@@ -1133,7 +1133,6 @@ document.getElementById('scqForm').addEventListener('submit', function(e){
     <div class="card" style="border-top:none;border-radius:0 0 18px 18px;border-color:rgba(3,12,24,.10);padding-top:4px;margin-top:-4px">
       <p style="font-size:14px;color:var(--muted);margin-bottom:16px">Install the PhiXtra AI chat widget on your WooCommerce store. Your WhatsApp AI continues to work — this adds a second channel.</p>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <a href="{{ url_for('portal.onboarding') }}" class="btn btn-sm" style="background:#030C18;color:#fff;border-color:#030C18">View plugin setup guide →</a>
         <form method="POST" action="{{ url_for('portal.onboarding_dismiss_website') }}" style="display:inline">
           <button type="submit" class="btn btn-ghost muted btn-sm" onclick="return confirm('Hide this card?')">Dismiss ✕</button>
         </form>
@@ -1150,53 +1149,12 @@ document.getElementById('scqForm').addEventListener('submit', function(e){
   {% endif %}
 
 {% else %}
-  {% if not onboarding.wizard_dismissed and not onboarding.complete %}
-  <div class="card" style="border-color:rgba(37,99,235,.25);background:rgba(37,99,235,.03);margin-bottom:20px">
-    <div class="card-title" style="color:#2563EB">Getting started</div>
-    <p style="font-size:14px;margin-bottom:14px">Complete all steps below to get your AI assistant live.</p>
-    <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:14px">
-      {% set steps = [(onboarding.account_verified,"Email verified"),(onboarding.key_active,"Trial API key active"),(onboarding.ai_plugin_confirmed,"PhiXtra AI Sales Agent plugin installed & configured"),(onboarding.synced,"Products synced"),(onboarding.kb_configured,"Knowledge base setup by PhiXtra team"),(onboarding.ai_live,"AI assistant verified live")] %}
-      {% for done, label in steps %}
-      <div style="display:flex;align-items:center;gap:10px;font-size:14px">
-        {% if done %}<span style="color:var(--good);font-size:16px;flex-shrink:0">✓</span>{% else %}<span style="width:16px;height:16px;border-radius:50%;border:2px solid var(--line);display:inline-block;flex-shrink:0"></span>{% endif %}
-        <span style="{% if done %}color:var(--muted);text-decoration:line-through{% endif %}">{{ label }}</span>
-      </div>
-      {% endfor %}
-    </div>
-    <a href="{{ url_for('portal.onboarding') }}" class="btn btn-sm" style="background:#2563EB;color:#fff;border-color:#2563EB">View setup guide →</a>
-  </div>
-  {% endif %}
+  {# Old "Getting started" checklist (API key / WordPress plugin / knowledge base steps) hidden 19 Nov 2026 at the
+     user's request, with its "View setup guide" link — guide links went on 18 Nov (Ask PhiXtra). #}
 {% endif %}
 
-<div class="section-hd"><span class="section-hd-icon">🔑</span><span class="section-hd-title">Developer</span><span class="section-hd-line"></span></div>
-{# ═══════════════════════════════════════════════════════════════
-   API KEYS TABLE
-═══════════════════════════════════════════════════════════════ #}
-<div class="card">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
-    <div class="card-title" style="margin:0">API keys</div>
-    <a href="{{ url_for('portal.api_keys') }}" class="btn btn-sm">Manage all keys</a>
-  </div>
-  {% if keys %}
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Website</th><th>Type</th><th>Status</th><th>Created</th></tr></thead>
-      <tbody>
-        {% for k in keys[:5] %}
-        <tr>
-          <td>{{ k.website }}</td>
-          <td><span class="pill">{{ k.key_type }}</span></td>
-          <td>{% if k.is_active %}<span class="pill pill-green"><span class="dot dot-green"></span>Active</span>{% else %}<span class="pill pill-red"><span class="dot dot-red"></span>Revoked</span>{% endif %}</td>
-          <td class="muted">{{ k.created_at.strftime('%Y-%m-%d') if k.created_at else '—' }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <p class="muted">No API keys yet. <a href="{{ url_for('portal.api_keys') }}">Create one →</a></p>
-  {% endif %}
-</div>
+{# "Developer › API keys" box removed from the dashboard 19 Nov 2026 (user): keys only matter to the WordPress
+   plugin, which sets its own key up ("Connect to PhiXtra"). They stay on the API Keys page. #}
 
 {% endif %}{# end: always-show dashboard #}
 {% endblock %}

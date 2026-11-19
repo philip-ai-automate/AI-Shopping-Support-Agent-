@@ -155,6 +155,9 @@ def _page_text(tpl: str) -> str:
         s = open(path, encoding="utf-8").read()
     except OSError:
         return ""
+    # "{# ask: … #}" notes: how a page works where its controls are drawn by code
+    # (chart types, pop-ups). Never shown to customers; read here first (19 Nov 2026).
+    notes = [" ".join(n.split()) for n in re.findall(r"\{#\s*ask:(.*?)#\}", s, flags=re.S)]
     s = re.sub(r"\{#.*?#\}", " ", s, flags=re.S)
     s = re.sub(r"<script\b.*?</script>", " ", s, flags=re.S | re.I)
     s = re.sub(r"<style\b.*?</style>", " ", s, flags=re.S | re.I)
@@ -169,7 +172,7 @@ def _page_text(tpl: str) -> str:
                 break
         return res
 
-    parts = []
+    parts = ["How it works: " + " ".join(notes)] if notes else []
     for name, pat, lim in (("Headings", r"<h[1-4][^>]*>(.*?)</h[1-4]>", 14),
                            ("Buttons", r"<button[^>]*>(.*?)</button>", 18),
                            ("Links", r"<a[^>]*class=\"[^\"]*btn[^\"]*\"[^>]*>(.*?)</a>", 12),
@@ -178,7 +181,7 @@ def _page_text(tpl: str) -> str:
         got = grab(pat, lim)
         if got:
             parts.append(f"{name}: " + " | ".join(got))
-    return "\n".join(parts)[:1600]
+    return "\n".join(parts)[:3200 if notes else 1600]
 
 
 def _title_of(tpl: str) -> str:

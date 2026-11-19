@@ -1,0 +1,21 @@
+{% import "portal/_report_chart.html" as rc %}
+{% if d.error %}
+  <div class="rb-err">{{ d.error }}</div>
+{% else %}
+  {% if headline %}<div style="font-size:13px;color:#5B6675;margin-bottom:6px">{{ headline }}</div>{% endif %}
+  {% if chart.kind not in ('table', None) %}
+    {{ rc.chart_block(chart, 'wzChart', cfg.period_label, compare_label, '', 240) }}
+  {% elif d.summary is defined %}
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      {% for r in d.summary.rows[:8] %}<tr><td style="padding:7px 4px;border-bottom:1px solid #F0F2F5">{{ r.labels|join(' · ') }}</td><td style="padding:7px 4px;border-bottom:1px solid #F0F2F5;text-align:right">{{ r.cells[1] if r.cells|length > 1 and d.summary.headers|length > d.summary.ngroups + 1 and RB.measure_of(cfg)[2] else r.cells[0] }}</td></tr>
+      {% else %}<tr><td style="padding:12px 4px;color:#5B6675">Nothing in this time yet.</td></tr>{% endfor %}
+    </table>
+  {% else %}
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <tr>{% for k in cfg.col[:4] %}<th style="text-align:left;color:#5B6675;font-weight:600;padding:6px 4px;border-bottom:1px solid #E3E7ED">{{ subj.columns[k].label }}</th>{% endfor %}</tr>
+      {% for r in d.rows[:8] %}<tr>{% for c in r.cells[:4] %}<td style="padding:6px 4px;border-bottom:1px solid #F0F2F5">{{ c }}</td>{% endfor %}</tr>
+      {% else %}<tr><td colspan="4" style="padding:12px 4px;color:#5B6675">Nothing in this time yet.</td></tr>{% endfor %}
+    </table>
+    {% if d.total is defined and d.total > 8 %}<div style="font-size:12px;color:#5B6675;margin-top:6px">…and {{ '{:,}'.format(d.total - 8) }} more</div>{% endif %}
+  {% endif %}
+{% endif %}

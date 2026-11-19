@@ -1,0 +1,144 @@
+{% extends "portal/base.html" %}
+{# ask: Reports › All reports is Reports home. Left side: Dashboards, All reports, My reports (ones you saved), Shared with me, and Folders.
+"Ready-made reports" are ready to open: for example Quotes won and lost, Quotes won by team member, Quotes waiting on the buyer, Revenue from won quotes, Overdue invoices from won quotes, Quotes by team member and month (pivot), Deals by stage, Where enquiries come from, Not a fit, Missed and slow replies, AI Agent hand-overs, First reply time, Calls, Email & WhatsApp campaigns, Email sequences, Follow-ups by status, Team activity, and for online shops Orders by week, Orders by status, Top products sold, Discount codes from chats, Cart recovery. Open one, change anything, then "Save report" to keep your own copy.
+"Start a new report about…" or "+ New report" opens the report builder. The Saved reports table shows each report's folder, who saved it and who can open it; search it with the search box. #}
+{% block title %}All reports — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  /* Reports home R1/R4 (19 Nov 2026) — approved mock-up EPpwZTeFt5iccD8SH155P1 screen 3 */
+  .rl{--navy:#0B1F3A;--blue:#1D4ED8;--sub:#5B6675;--edge:#E3E7ED;display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+  .rl-nav{flex:1 1 200px;max-width:220px;background:#fff;border:1px solid var(--edge);border-radius:12px;padding:14px 10px;display:flex;flex-direction:column;gap:2px;font-size:14px;box-sizing:border-box}
+  .rl-nav a{padding:9px 10px;border-radius:8px;color:var(--ink);text-decoration:none}
+  .rl-nav a.on{background:#E8EEFC;color:#1E3A8A;font-weight:700}
+  .rl-nav a:hover{background:#F5F7FA;text-decoration:none}
+  .rl-nav .sub{font-size:11.5px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.04em;padding:14px 10px 4px}
+  .rl-main{flex:999 1 560px;min-width:0}
+  .rl-head{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between}
+  .rl-title{font-size:24px;font-weight:800;color:var(--navy);margin:0}
+  .rl-btn{display:inline-flex;align-items:center;min-height:40px;padding:0 16px;border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;
+    background:var(--blue);color:#fff;border:1px solid var(--blue)}
+  .rl-btn.ghost{background:#fff;color:var(--navy);border-color:#D5DBE3}
+  .rl-btn:hover{text-decoration:none;opacity:.92}
+  .rl-card{background:#fff;border:1px solid var(--edge);border-radius:12px;padding:16px 18px;margin-top:18px;min-width:0}
+  .rl-start{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:10px}
+  .rl-start a{display:block;border:1px solid var(--edge);border-radius:10px;padding:14px;text-decoration:none;color:var(--navy)}
+  .rl-start a:hover{border-color:var(--blue)}
+  .rl-start b{display:block;font-size:15px}
+  .rl-start span{display:block;font-size:12.5px;color:var(--sub);margin-top:4px}
+  .rl-tbl{width:100%;border-collapse:collapse;font-size:13.5px;min-width:720px}
+  .rl-tbl th{color:var(--sub);font-weight:600;text-align:left;padding:10px 8px;border-bottom:1px solid var(--edge)}
+  .rl-tbl td{padding:11px 8px;border-bottom:1px solid #F0F2F5}
+  .rl-search{font-family:inherit;font-size:14px;min-height:40px;border:1px solid #D5DBE3;border-radius:8px;padding:0 12px;width:100%;max-width:380px;box-sizing:border-box}
+  .rl-dash{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:10px}
+  .rl-dash a{display:block;border:1px solid var(--edge);border-radius:10px;padding:14px;text-decoration:none;color:var(--navy)}
+  .rl-dash a:hover{border-color:var(--blue)}
+  .rl-dash small{display:block;color:var(--sub);font-size:12px;margin-top:4px}
+  .rl-tag{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:10px;background:#EEF1F5;color:#374151}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rl">
+  <nav class="rl-nav" aria-label="Reports sections">
+    <a href="{{ url_for('reports.dashboards') }}">Dashboards</a>
+    <a href="{{ url_for('reports.library') }}" class="{{ 'on' if show == 'all' and not folder }}">All reports</a>
+    <a href="{{ url_for('reports.library', show='mine') }}" class="{{ 'on' if show == 'mine' and not folder }}">My reports</a>
+    <a href="{{ url_for('reports.library', show='shared') }}" class="{{ 'on' if show == 'shared' and not folder }}">Shared with me</a>
+    {% if folders %}
+      <div class="sub">Folders</div>
+      {% for fo in folders %}<a href="{{ url_for('reports.library', folder=fo) }}" class="{{ 'on' if folder == fo }}">{{ fo }}</a>{% endfor %}
+    {% endif %}
+  </nav>
+
+  <div class="rl-main">
+    <div class="rl-head">
+      <div>
+        <div style="font-size:13px;color:var(--sub)">Reports</div>
+        <h1 class="rl-title">{{ folder if folder else {'mine': 'My reports', 'shared': 'Shared with me'}.get(show, 'All reports') }}</h1>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="rl-btn ghost" href="{{ url_for('reports.dashboards') }}">Dashboards</a>
+        <a class="rl-btn" href="{{ url_for('reports.wizard') }}">+ New report</a>
+      </div>
+    </div>
+
+    {% if show == 'all' and not folder %}
+    {% if dashboards %}
+    <div class="rl-card">
+      <h2 style="margin:0;font-size:16px;color:var(--navy)">Dashboards</h2>
+      <div class="rl-dash">
+        {% for d in dashboards %}<a href="{{ url_for('reports.dashboard', dash_id=d.id) }}"><b>{{ d.name }}</b><small>{{ d.boxes }} box{{ 'es' if d.boxes != 1 }} · {{ RA.sharing_label(d) }}</small></a>{% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% if ready %}
+    <div class="rl-card">
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:baseline">
+        <h2 style="margin:0;font-size:16px;color:var(--navy)">Ready-made reports</h2>
+        <span style="font-size:12.5px;color:var(--sub)">Open one, change anything, then <b>Save report</b> to keep your own copy</span>
+      </div>
+      {% for set_key, set_label in [('b2b', 'For B2B sales'), ('b2c', 'For your online shop'), ('both', 'For every business')] %}
+        {% set items = ready | selectattr('set', 'equalto', set_key) | list %}
+        {% if items %}
+          {% if (is_b2b and is_b2c) or set_key == 'both' %}<div style="font-size:11.5px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 0">{{ set_label }}</div>{% endif %}
+          <div class="rl-start">
+            {% for r in items %}<a href="{{ r.url }}"><b>{{ r.label }}</b><span>{{ r.desc }}</span></a>{% endfor %}
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+    <div class="rl-card">
+      <h2 style="margin:0;font-size:16px;color:var(--navy)">Start a new report about…</h2>
+      <div class="rl-start">
+        {% for k, s in subjects %}
+          <a href="{{ url_for('reports.wizard', subject=k) }}"><b>{{ s.label }}</b><span>{{ s.hint }}</span></a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="rl-card">
+      <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center">
+        <h2 style="margin:0;font-size:16px;color:var(--navy)">Saved reports</h2>
+        {% if reports %}<input class="rl-search" type="search" id="rlSearch" placeholder="Search saved reports…" aria-label="Search saved reports">{% endif %}
+      </div>
+      {% if reports %}
+      <div style="overflow-x:auto;margin-top:10px">
+        <table class="rl-tbl">
+          <thead><tr><th>Name</th><th>About</th><th>Shown as</th><th>Folder</th><th>Saved by</th><th>Who can open it</th><th>Last opened</th></tr></thead>
+          <tbody id="rlRows">
+            {% for r in reports %}
+              <tr data-name="{{ r.name|lower }}">
+                <td><a href="{{ url_for('reports.builder', id=r.id) }}">{{ r.name }}</a>{% if r.data_scope == 'all' %} <span class="rl-tag">whole business</span>{% endif %}</td>
+                <td>{{ r.subject_label }}</td>
+                <td>{{ r.shown_as }}</td>
+                <td>{% if r.folder %}<a href="{{ url_for('reports.library', folder=r.folder) }}">{{ r.folder }}</a>{% else %}—{% endif %}</td>
+                <td>{{ 'You' if r.mine else (r.created_by or '—') }}</td>
+                <td>{{ r.sharing }}</td>
+                <td>{{ (r.last_opened_at or r.updated_at).strftime('%d %b %Y') }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <p style="color:var(--sub);font-size:14px;margin:10px 0 0">
+          {% if show == 'shared' %}Nothing has been shared with you yet.{% elif folder %}This folder is empty.{% else %}No saved reports yet. Build one above and press <b>Save report</b>.{% endif %}
+        </p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% if reports %}
+<script>
+document.getElementById('rlSearch').addEventListener('input', function () {
+  var q = this.value.trim().toLowerCase();
+  document.querySelectorAll('#rlRows tr').forEach(function (tr) {
+    tr.style.display = !q || tr.getAttribute('data-name').indexOf(q) !== -1 ? '' : 'none';
+  });
+});
+</script>
+{% endif %}
+{% endblock %}

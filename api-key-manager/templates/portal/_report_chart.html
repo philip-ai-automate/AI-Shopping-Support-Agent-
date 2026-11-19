@@ -1,0 +1,208 @@
+{# Shared by the report builder, dashboard boxes and drill-down (R2/R3, 19 Nov 2026). #}
+
+{% macro chart_block(chart, cid, period_label, compare_label, drill_base='', h=320) %}
+<div class="rb-chartwrap" data-drill-base="{{ drill_base }}">
+  {% if chart.error %}
+    <div class="rb-err" style="margin-top:12px">The chart could not be drawn. The table is still correct.</div>
+  {% elif chart.kind == 'number' %}
+    <div class="rb-big">
+      {% if drill_base %}<button type="button" class="v rb-linkbtn" data-drill="[]" aria-label="See the records behind {{ chart.value }}">{{ chart.value }}</button>
+      {% else %}<span class="v">{{ chart.value }}</span>{% endif %}
+      <span class="rb-note">{{ chart.label }} · {{ period_label }}</span>
+      {% if chart.change %}<span class="{{ 'up' if chart.up else 'down' }}">{{ '▲' if chart.up else '▼' }} {{ chart.change }} vs {{ compare_label|lower }} ({{ chart.prev }})</span>{% endif %}
+    </div>
+  {% elif chart.kind in ('pie', 'donut') %}
+    <div class="rb-pie">
+      <div class="rb-canvas" style="max-width:{{ h - 20 }}px;height:{{ h - 20 }}px;flex-basis:{{ h - 20 }}px"><canvas id="{{ cid }}" role="img" aria-label="{{ chart.kind|title }} chart of {{ chart.measure_label|lower }}"></canvas></div>
+      <ul class="rb-legend">
+        {% for p in chart.legend %}
+          <li>{% if drill_base and chart['keys'][loop.index0] is not none %}<button type="button" class="rb-legbtn" data-drill='{{ chart["keys"][loop.index0]|tojson }}'>{% else %}<span class="rb-legbtn">{% endif %}<i style="background:{{ p.color }}"></i><span>{{ p.label }}</span><b>{{ p.v }}</b><em>{{ p.pct }}</em>{% if drill_base and chart['keys'][loop.index0] is not none %}</button>{% else %}</span>{% endif %}</li>
+        {% endfor %}
+        <li class="tot"><span class="rb-legbtn"><i></i><span>Total</span><b>{{ chart.centre }}</b><em></em></span></li>
+      </ul>
+    </div>
+  {% elif chart.kind == 'funnel' %}
+    <div class="rb-funnel">
+      {% for s in chart.steps %}
+        <div class="st"><span class="l">{{ s.label }}</span><span class="bar"><i style="width:{{ s.w }}%"></i></span>
+          <span class="n">{% if drill_base %}<button type="button" class="rb-linkbtn" data-drill='{{ s["keys"]|tojson }}'>{{ s.v }}</button>{% else %}{{ s.v }}{% endif %}{% if s.carried %} · <small>{{ s.carried }} of the step above</small>{% endif %}</span></div>
+      {% endfor %}
+    </div>
+  {% elif chart.kind == 'heatmap' %}
+    <div class="rb-scroll">
+      <table class="rb-heat">
+        <thead><tr><th></th>{% for c in chart.cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for r in chart.rows %}<tr><th>{{ r.label }}</th>{% for c in r.cells %}<td style="background:rgba(29,78,216,{{ c.a }});color:{{ '#fff' if c.a > 0.55 else '#0B1F3A' }}">{% if drill_base and c['keys'] %}<button type="button" class="rb-heatbtn" data-drill='{{ c["keys"]|tojson }}'>{{ c.v }}</button>{% else %}{{ c.v }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  {% elif chart.kind == 'pivot' %}
+    <div class="rb-scroll rb-pivwrap">
+      <table class="rb-piv">
+        <caption>{{ chart.measure_label }} · rows: {{ chart.row_label }} · columns: {{ chart.col_label }}</caption>
+        <thead><tr><th scope="col">{{ chart.row_label }}</th>{% for c in chart.cols %}<th scope="col" class="num">{{ c }}</th>{% endfor %}<th scope="col" class="num tot">Total</th></tr></thead>
+        <tbody>
+          {% for r in chart.rows %}
+            <tr><th scope="row">{{ r.label }}</th>
+              {% for c in r.cells %}<td class="num">{% if c.v and drill_base and c['keys'] %}<button type="button" class="rb-pivbtn" data-drill='{{ c["keys"]|tojson }}'>{{ c.v }}</button>{% else %}{{ c.v }}{% endif %}</td>{% endfor %}
+              <td class="num tot">{% if drill_base %}<button type="button" class="rb-pivbtn" data-drill='{{ r["keys"]|tojson }}'>{{ r.total }}</button>{% else %}{{ r.total }}{% endif %}</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot><tr><th scope="row">Total</th>
+          {% for c in chart.col_totals %}<td class="num">{% if drill_base and c['keys'] %}<button type="button" class="rb-pivbtn" data-drill='{{ c["keys"]|tojson }}'>{{ c.v }}</button>{% else %}{{ c.v }}{% endif %}</td>{% endfor %}
+          <td class="num tot">{% if drill_base %}<button type="button" class="rb-pivbtn" data-drill="[]">{{ chart.grand }}</button>{% else %}{{ chart.grand }}{% endif %}</td></tr></tfoot>
+      </table>
+    </div>
+    {% if chart.truncated %}<div class="rb-note" style="margin-top:6px">Some groups are left out. Add a filter to narrow it down.</div>{% endif %}
+  {% elif chart.kind not in ('table', None) and chart.labels is defined %}
+    <div class="rb-canvas" style="height:{{ [h, 40 + 28 * chart.labels|length]|max if chart.kind == 'hbar' else h }}px"><canvas id="{{ cid }}" role="img" aria-label="{{ chart.kind }} chart of {{ chart.measure_label|lower }}"></canvas></div>
+  {% endif %}
+  {% if chart.datasets is defined and chart.kind not in ('number', 'funnel', 'heatmap', 'table') %}
+    <script type="application/json" data-chart-for="{{ cid }}">{{ chart|tojson }}</script>
+  {% endif %}
+</div>
+{% endmacro %}
+
+
+{% macro chart_assets() %}
+<style>
+  .rb-charts{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:12px}
+  .rb-cchip{display:inline-flex;align-items:center;gap:4px;min-height:36px;padding:0 12px;border-radius:8px;border:1px solid #D5DBE3;background:#fff;
+    color:#0B1F3A;font-size:13px;text-decoration:none}
+  .rb-cchip:hover{border-color:#1D4ED8;text-decoration:none}
+  .rb-cchip.on{border:2px solid #1D4ED8;background:#E8EEFC;color:#1E3A8A;font-weight:700;padding:0 11px}
+  .rb-cchip.off{opacity:.45;cursor:not-allowed}
+  .rb-cchip small{font-weight:400;color:#5B6675}
+  .rb-canvas{position:relative;width:100%;margin-top:14px}
+  .rb-big{display:flex;flex-direction:column;align-items:center;gap:6px;padding:22px 0 8px;text-align:center}
+  .rb-big .v{font-size:44px;font-weight:800;color:#0B1F3A;line-height:1.1}
+  .rb-big .up{color:#15803D;font-size:14px}.rb-big .down{color:#B91C1C;font-size:14px}
+  .rb-linkbtn{font-family:inherit;border:0;background:none;padding:0;color:inherit;font-weight:inherit;font-size:inherit;cursor:pointer;
+    text-decoration:underline;text-decoration-color:rgba(29,78,216,.35);text-underline-offset:3px}
+  .rb-linkbtn:hover{color:#1D4ED8}
+  .rb-pie{display:flex;flex-wrap:wrap;gap:24px;align-items:center;justify-content:center;margin-top:8px}
+  .rb-legend{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:13.5px;min-width:220px;flex:1 1 220px;max-width:380px}
+  .rb-legbtn{width:100%;display:grid;grid-template-columns:12px 1fr auto 44px;gap:8px;align-items:center;font-family:inherit;font-size:inherit;
+    color:inherit;background:none;border:0;padding:5px 4px;border-radius:6px;text-align:left}
+  button.rb-legbtn{cursor:pointer}button.rb-legbtn:hover{background:#F5F7FA}
+  .rb-legend i{width:12px;height:12px;border-radius:2px;display:block}
+  .rb-legend b{font-weight:600;text-align:right}.rb-legend em{font-style:normal;color:#5B6675;text-align:right}
+  .rb-legend li.tot{border-top:1px solid #E3E7ED;margin-top:4px;padding-top:4px}
+  .rb-funnel{display:flex;flex-direction:column;gap:8px;margin-top:14px;font-size:13px}
+  .rb-funnel .st{display:grid;grid-template-columns:minmax(110px,200px) 1fr minmax(120px,auto);gap:10px;align-items:center}
+  .rb-funnel .bar{height:26px;background:#F0F2F5;border-radius:4px;overflow:hidden}
+  .rb-funnel .bar i{display:block;height:100%;background:#1D4ED8;border-radius:4px}
+  .rb-funnel small{color:#5B6675}
+  .rb-heat{border-collapse:separate;border-spacing:3px;font-size:12px;margin-top:12px}
+  .rb-heat th{font-weight:600;color:#5B6675;padding:4px 8px;text-align:left;white-space:nowrap}
+  .rb-heat td{min-width:64px;height:30px;text-align:center;border-radius:4px;padding:0}
+  .rb-heatbtn{width:100%;height:30px;border:0;background:none;color:inherit;font:inherit;cursor:pointer;border-radius:4px}
+  .rb-heatbtn:hover{outline:2px solid #0B1F3A}
+  .rb-pivwrap{margin-top:14px}
+  .rb-piv{border-collapse:collapse;font-size:13px;min-width:100%}
+  .rb-piv caption{text-align:left;font-size:12.5px;color:#5B6675;padding-bottom:6px;caption-side:top}
+  .rb-piv th,.rb-piv td{padding:8px 10px;border-bottom:1px solid #F0F2F5;white-space:nowrap}
+  .rb-piv thead th{color:#5B6675;font-weight:600;border-bottom:1px solid #E3E7ED;background:#F8FAFC;position:sticky;top:0}
+  .rb-piv tbody th{text-align:left;font-weight:600;color:#0B1F3A;position:sticky;left:0;background:#fff}
+  .rb-piv .num{text-align:right}.rb-piv .tot{font-weight:700;background:#F8FAFC}
+  .rb-piv tfoot th,.rb-piv tfoot td{font-weight:700;border-top:2px solid #E3E7ED;background:#F8FAFC}
+  .rb-pivbtn{font:inherit;border:0;background:none;padding:0;color:#1D4ED8;cursor:pointer}
+  .rb-pivbtn:hover{text-decoration:underline}
+  .rb-drawer{border:0;padding:0;margin:0 0 0 auto;height:100%;max-height:100%;width:min(880px,100%);max-width:100%;
+    box-shadow:-10px 0 30px rgba(11,31,58,.2);background:#fff;color:#1F2A37}
+  .rb-drawer::backdrop{background:rgba(11,31,58,.45)}
+  .rb-drawer .in{padding:22px 24px 30px;display:flex;flex-direction:column;gap:14px}
+  .rb-drawer .x{position:absolute;top:12px;right:14px;width:44px;height:44px;border:0;background:none;font-size:24px;color:#5B6675;cursor:pointer;border-radius:8px}
+  @media (max-width:640px){.rb-drawer .in{padding:18px 16px 26px}}
+</style>
+
+<dialog class="rb-drawer" id="rbDrill" aria-label="Records behind the number">
+  <button type="button" class="x" aria-label="Close" onclick="document.getElementById('rbDrill').close()">×</button>
+  <div class="in" id="rbDrillBody"></div>
+</dialog>
+
+<script>
+window.RBC = window.RBC || (function () {
+  var libPromise = null;
+  function lib() {
+    if (window.Chart) return Promise.resolve();
+    if (!libPromise) libPromise = new Promise(function (res, rej) {
+      var s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+      s.onload = res; s.onerror = rej; document.head.appendChild(s);
+    });
+    return libPromise;
+  }
+  function openDrill(url) {
+    var dlg = document.getElementById('rbDrill'), body = document.getElementById('rbDrillBody');
+    body.innerHTML = '<p style="color:#5B6675;margin:30px 0">Loading the records…</p>';
+    if (!dlg.open) dlg.showModal();
+    fetch(url, {credentials: 'same-origin'}).then(function (r) {
+      if (!r.ok) throw new Error(r.status); return r.text();
+    }).then(function (html) { body.innerHTML = html; })
+      .catch(function () { body.innerHTML = '<p style="color:#991B1B;margin:30px 0">The records could not be loaded. Please try again.</p>'; });
+  }
+  function drillUrl(base, keys) {
+    var u = base;
+    if (keys && keys.length > 0 && keys[0] !== null) u += '&k1=' + encodeURIComponent(keys[0]);
+    if (keys && keys.length > 1 && keys[1] !== null) u += '&k2=' + encodeURIComponent(keys[1]);
+    return u;
+  }
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest('[data-drill]');
+    if (!el) return;
+    var wrap = el.closest('[data-drill-base]');
+    if (!wrap || !wrap.getAttribute('data-drill-base')) return;
+    e.preventDefault();
+    openDrill(drillUrl(wrap.getAttribute('data-drill-base'), JSON.parse(el.getAttribute('data-drill') || '[]')));
+  });
+  function draw(cid) {
+    var canvas = document.getElementById(cid);
+    var src = document.querySelector('script[data-chart-for="' + cid + '"]');
+    if (!canvas || !src) return;
+    var CH = JSON.parse(src.textContent);
+    var base = (canvas.closest('[data-drill-base]') || {}).getAttribute ? canvas.closest('[data-drill-base]').getAttribute('data-drill-base') : '';
+    lib().then(function () {
+      var nf = new Intl.NumberFormat(undefined, {maximumFractionDigits: CH.money ? 0 : 1});
+      var tick = function (v) { return nf.format(v); };
+      Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+      Chart.defaults.color = '#5B6675';
+      var k = CH.kind, type = {pie: 'pie', donut: 'doughnut', bar: 'bar', hbar: 'bar', stacked: 'bar',
+                               line: 'line', area: 'line', combo: 'bar'}[k] || 'bar';
+      var ds = CH.datasets.map(function (d) {
+        var o = Object.assign({}, d);
+        if (k === 'line' || k === 'area') { o.cubicInterpolationMode = 'monotone'; o.pointRadius = 3; o.borderWidth = 2.5; o.fill = k === 'area'; if (k === 'area') o.backgroundColor = 'rgba(29,78,216,.15)'; }
+        if (k === 'bar' || k === 'hbar' || k === 'stacked') { o.borderRadius = 4; o.maxBarThickness = 48; }
+        if (o.type === 'line') { o.cubicInterpolationMode = 'monotone'; o.borderWidth = 2.5; }
+        if (k === 'pie' || k === 'donut') { o.borderColor = '#fff'; o.borderWidth = 2; }
+        return o;
+      });
+      var round = (k === 'pie' || k === 'donut');
+      var opts = {responsive: true, maintainAspectRatio: false,
+        plugins: {legend: {display: !round && ds.length > 1, position: 'bottom'},
+                  tooltip: {callbacks: {label: function (c) { var v = c.parsed && typeof c.parsed === 'object' ? (k === 'hbar' ? c.parsed.x : c.parsed.y) : c.parsed; return (c.dataset.label ? c.dataset.label + ': ' : (c.label ? c.label + ': ' : '')) + nf.format(v); }}}}};
+      if (!round) {
+        var vAxis = {beginAtZero: true, ticks: {callback: tick}, grid: {color: '#EEF1F5'}};
+        var cAxis = {grid: {display: false}};
+        opts.scales = k === 'hbar' ? {x: vAxis, y: cAxis} : {x: cAxis, y: vAxis};
+        if (k === 'hbar') opts.indexAxis = 'y';
+        if (k === 'stacked') { opts.scales.x.stacked = true; opts.scales.y.stacked = true; }
+        if (k === 'combo') { opts.scales.y1 = {beginAtZero: true, position: 'right', grid: {display: false}, ticks: {callback: tick}}; opts.plugins.legend.display = true; }
+      } else if (k === 'donut') { opts.cutout = '58%'; }
+      if (base && CH.keys) {
+        opts.onHover = function (e, els) { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; };
+        opts.onClick = function (e, els) {
+          if (!els.length) return;
+          var i = els[0].index, keys = CH.keys[i];
+          if (!keys) return;                       // "Other"
+          if (k === 'stacked') { var sk = (CH.series_keys || [])[els[0].datasetIndex]; if (sk === undefined || sk === null) return; keys = [keys[0], sk]; }
+          if (CH.datasets[els[0].datasetIndex] && CH.datasets.length > 1 && k !== 'stacked' && k !== 'combo' && els[0].datasetIndex > 0) return;   // the compared period
+          openDrill(drillUrl(base, keys));
+        };
+      }
+      new Chart(canvas, {type: type, data: {labels: CH.labels, datasets: ds}, options: opts});
+    });
+  }
+  return {draw: draw, openDrill: openDrill};
+})();
+</script>
+{% endmacro %}

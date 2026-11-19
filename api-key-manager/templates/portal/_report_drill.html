@@ -1,0 +1,33 @@
+<div style="display:flex;flex-direction:column;gap:4px;padding-right:44px">
+  <div style="font-size:13px;color:#5B6675">{{ subj.label }} · {{ cfg.period_label }}</div>
+  <h2 style="margin:0;font-size:22px;color:#0B1F3A">{{ headline or subj.label }}</h2>
+</div>
+{% if chips %}
+  <div style="display:flex;flex-wrap:wrap;gap:6px">
+    {% for c in chips %}<span style="display:inline-flex;align-items:center;min-height:30px;padding:0 12px;background:#E8EEFC;color:#1E3A8A;border-radius:15px;font-size:12.5px">{{ c }}</span>{% endfor %}
+  </div>
+{% endif %}
+{% if d.error %}
+  <div class="rb-err">{{ d.error }}</div>
+{% else %}
+  <div style="overflow-x:auto">
+    <table class="rb-tbl" style="width:100%;border-collapse:collapse;font-size:13px;min-width:560px">
+      <thead><tr>{% for k in cfg.col %}<th style="color:#5B6675;font-weight:600;text-align:left;padding:9px 8px;border-bottom:1px solid #E3E7ED;white-space:nowrap">{{ subj.columns[k].label }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for r in d.rows %}
+          <tr>{% for c in r.cells %}<td style="padding:9px 8px;border-bottom:1px solid #F0F2F5">{{ c }}</td>{% endfor %}</tr>
+        {% else %}
+          <tr><td colspan="{{ cfg.col|length }}" style="padding:14px 8px;color:#5B6675">No records.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if whole %}<div style="font-size:12.5px;color:#5B6675;background:#F5F7FA;border-radius:8px;padding:8px 12px">This was shared with the whole business’s numbers. Opening it as a report of your own shows only the records you can see.</div>{% endif %}
+  <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center">
+    <span style="font-size:12.5px;color:#5B6675">{% if d.total > d.rows|length %}Showing {{ d.rows|length }} of {{ '{:,}'.format(d.total) }} · open as a report to see them all{% else %}{{ '{:,}'.format(d.total) }} in all{% endif %}</span>
+    <span style="display:flex;gap:8px;flex-wrap:wrap">
+      <a href="{{ export_url }}" style="display:inline-flex;align-items:center;min-height:40px;padding:0 14px;border:1px solid #D5DBE3;border-radius:8px;color:#0B1F3A;text-decoration:none;font-size:14px;font-weight:600">Export these (Excel)</a>
+      <a href="{{ open_url }}" style="display:inline-flex;align-items:center;min-height:40px;padding:0 16px;background:#1D4ED8;border-radius:8px;color:#fff;text-decoration:none;font-size:14px;font-weight:600">Open as a report</a>
+    </span>
+  </div>
+{% endif %}

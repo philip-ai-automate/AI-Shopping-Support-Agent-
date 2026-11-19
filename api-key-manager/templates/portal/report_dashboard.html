@@ -1,0 +1,176 @@
+{% extends "portal/base.html" %}
+{% import "portal/_report_chart.html" as rc %}
+{% import "portal/_report_share.html" as rs %}
+{# ask: Reports › Dashboards shows saved reports side by side as boxes. Make one with "+ New dashboard" (or "Create dashboard" the first time), or from a saved report with "Add to dashboard ▾".
+"Edit dashboard": "Add a box" lists your saved reports (Add), "+ Build a new report", "+ Text note (heading or explanation)". Drag boxes to move them, or use Earlier / Later. Each box has a size: Small, Medium, Large, Full width, and "Use dashboard filters". "Dashboard filters" choose which filters viewers get at the top: Period, Team member, Compare with. Press Save.
+On the dashboard, change Period, Team member or Compare with at the top and every box that uses dashboard filters follows. Click any number, slice, bar or cell in a box to see the records behind it. "Open" on a box opens its report. "Print or save as PDF" prints the dashboard.
+"Share" (dashboard you made): Who can open it = Only me, Chosen team members or roles, Everyone in the business; What numbers they see = Follow each person's access, or Everyone sees the whole business; "Others can edit it". People a dashboard is shared with see its boxes even if the report behind a box isn't shared with them. Only the person who made a dashboard can share or delete it ("Delete this dashboard" in Edit dashboard; its reports are kept). #}
+{% block title %}{{ dash.name if dash else 'Dashboards' }} — Reports — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  /* Dashboards R3 (19 Nov 2026) — approved mock-up EPpwZTeFt5iccD8SH155P1 screens 1 + 6 */
+  .db{--navy:#0B1F3A;--blue:#1D4ED8;--sub:#5B6675;--edge:#E3E7ED;font-variant-numeric:tabular-nums}
+  .db-head{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between}
+  .db-title{font-size:26px;font-weight:800;color:var(--navy);margin:0}
+  .db-btn{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border-radius:8px;font-size:14px;font-weight:600;
+    border:1px solid #D5DBE3;background:#fff;color:var(--navy);text-decoration:none;cursor:pointer;font-family:inherit}
+  .db-btn:hover{border-color:var(--navy);text-decoration:none}
+  .db-btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+  .db-tabs{display:flex;flex-wrap:wrap;gap:2px;border-bottom:1px solid var(--edge);margin-top:14px;align-items:flex-end}
+  .db-tabs a{padding:10px 14px;font-size:14px;color:var(--sub);text-decoration:none;border-bottom:2px solid transparent}
+  .db-tabs a.on{color:var(--blue);font-weight:700;border-bottom-color:var(--blue)}
+  .db-tabs button{padding:10px 14px;font-size:14px;color:var(--blue);border:0;background:none;cursor:pointer;font-family:inherit}
+  .db-filters{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:14px 0 16px}
+  .db-lbl{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--sub)}
+  .db-sel{font-family:inherit;font-size:14px;min-height:38px;border:1px solid #D5DBE3;border-radius:8px;padding:0 10px;background:#fff;color:var(--ink);max-width:100%}
+  .db-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:16px}
+  .db-box{background:#fff;border:1px solid var(--edge);border-radius:12px;padding:16px 18px;min-width:0;min-height:120px;display:flex;flex-direction:column;gap:8px}
+  .db-s{grid-column:span 3}.db-m{grid-column:span 6}.db-l{grid-column:span 9}.db-w{grid-column:span 12}
+  @media (max-width:1100px){.db-s{grid-column:span 6}.db-m,.db-l,.db-w{grid-column:span 12}}
+  @media (max-width:640px){.db-s{grid-column:span 12}}
+  .db-boxhead{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+  .db-boxtitle{margin:0;font-size:15.5px;line-height:1.3}
+  .db-boxtitle a{color:var(--navy);text-decoration:none}.db-boxtitle a:hover{text-decoration:underline}
+  .db-boxsub{font-size:12px;color:var(--sub);margin-top:2px}
+  .db-open{font-size:12.5px;color:var(--blue);white-space:nowrap;padding:4px 2px}
+  .db-s .rb-big .v{font-size:30px}.db-s .rb-big{padding:10px 0 4px}
+  .db-mini{width:100%;border-collapse:collapse;font-size:13px}
+  .db-mini th{color:var(--sub);font-weight:600;text-align:left;padding:7px 6px;border-bottom:1px solid var(--edge);white-space:nowrap}
+  .db-mini td{padding:7px 6px;border-bottom:1px solid #F0F2F5}
+  .db-mini .num{text-align:right}.db-mini tr.total td{font-weight:700}
+  .db-more{font-size:13px;font-weight:600}
+  .db-note{white-space:pre-line;font-size:14px;color:var(--ink);line-height:1.5}
+  .db-load{color:var(--sub);font-size:13px;margin:auto}
+  .rb-scroll{overflow-x:auto}.rb-note{font-size:12.5px;color:var(--sub)}
+  .rb-err{background:#FBE4E4;color:#991B1B;border-radius:8px;padding:10px 14px;font-size:14px}
+  .rb-sumbtn{font-family:inherit;font-size:inherit;border:0;background:none;padding:0;color:#1D4ED8;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+  .db-empty{background:#fff;border:1px dashed #AEB8C5;border-radius:12px;padding:30px;text-align:center;color:var(--sub);font-size:14px}
+  .db-newform{display:none;gap:8px;align-items:center;margin-left:8px}
+  .db-newform.open{display:inline-flex}
+  @media print{.db-filters,.db-tabs,.db-head .db-actions,.db-open,.sidebar,nav,header{display:none!important}.db-box{break-inside:avoid}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="db">
+  <div class="db-head">
+    <div>
+      <div style="font-size:13px;color:var(--sub)"><a href="{{ url_for('reports.library') }}" style="color:var(--sub)">Reports</a> › Dashboards</div>
+      <h1 class="db-title">{{ dash.name if dash else 'Dashboards' }}</h1>
+      {% if dash %}<div style="font-size:12.5px;color:var(--sub);margin-top:4px">Made by {{ dash.created_by or 'someone in your business' }} · Who can open it: {{ RA.sharing_label(dash) }}{% if dash.data_scope == 'all' %} · Shows the whole business’s numbers{% endif %}</div>{% endif %}
+    </div>
+    {% if dash %}
+    <div class="db-actions" style="display:flex;flex-wrap:wrap;gap:8px">
+      <button type="button" class="db-btn" onclick="window.print()">Print or save as PDF</button>
+      <a class="db-btn" href="{{ url_for('reports.library') }}">All reports</a>
+      {% if can_manage %}<button type="button" class="db-btn" data-open-share>Share</button>{% endif %}
+      {% if can_edit %}<a class="db-btn primary" href="{{ url_for('reports.dashboard_edit', dash_id=dash.id) }}">Edit dashboard</a>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if not dash %}
+    <div class="db-empty" style="margin-top:20px">
+      <p style="margin:0 0 6px;font-size:17px;color:var(--navy);font-weight:700">Make your first dashboard</p>
+      <p style="margin:0 0 16px">A dashboard puts your saved reports side by side as boxes, with one set of filters for all of them.</p>
+      <form method="POST" action="{{ url_for('reports.dashboard_new') }}" style="display:inline-flex;flex-wrap:wrap;gap:8px;justify-content:center">
+        <label class="db-lbl" style="text-align:left">Dashboard name<input class="db-sel" name="name" maxlength="80" placeholder="e.g. Sales overview" required></label>
+        <button type="submit" class="db-btn primary" style="align-self:flex-end">Create dashboard</button>
+      </form>
+    </div>
+  {% else %}
+    <nav class="db-tabs" aria-label="Dashboards">
+      {% for x in dashboards %}<a href="{{ url_for('reports.dashboard', dash_id=x.id) }}" class="{{ 'on' if x.id == dash.id }}" {% if x.id == dash.id %}aria-current="page"{% endif %}>{{ x.name }}</a>{% endfor %}
+      <button type="button" id="newDashBtn" aria-expanded="false">+ New dashboard</button>
+      <form method="POST" action="{{ url_for('reports.dashboard_new') }}" class="db-newform" id="newDashForm">
+        <input class="db-sel" name="name" maxlength="80" placeholder="Dashboard name" aria-label="New dashboard name" required>
+        <button type="submit" class="db-btn primary">Create</button>
+      </form>
+    </nav>
+
+    {% set active = dash.filters or [] %}
+    {% if active %}
+    <form method="get" class="db-filters" id="dbFilters">
+      {% if 'period' in active %}
+      <label class="db-lbl">Period
+        <select class="db-sel" name="period" id="dbPeriod">
+          <option value="">Each box's own period</option>
+          {% for k, l in RB.PERIODS %}<option value="{{ k }}" {{ 'selected' if flt.period == k }}>{{ l }}</option>{% endfor %}
+        </select>
+      </label>
+      <span id="dbCustom" style="display:{{ 'inline-flex' if flt.period == 'custom' else 'none' }};gap:8px;align-items:flex-end">
+        <label class="db-lbl">From<input class="db-sel" type="date" name="date_from" value="{{ flt.date_from.isoformat() if flt.date_from else '' }}"></label>
+        <label class="db-lbl">To<input class="db-sel" type="date" name="date_to" value="{{ flt.date_to.isoformat() if flt.date_to else '' }}"></label>
+        <button type="submit" class="db-btn">Apply</button>
+      </span>
+      {% endif %}
+      {% if 'member' in active %}
+      <label class="db-lbl">Team member
+        <select class="db-sel" name="member">
+          <option value="">Everyone</option>
+          {% for p in people %}<option value="{{ p.key }}" {{ 'selected' if flt.member == p.key }}>{{ p.display }}</option>{% endfor %}
+          <option value="__none__" {{ 'selected' if flt.member == '__none__' }}>Unassigned</option>
+        </select>
+      </label>
+      {% endif %}
+      {% if 'cmp' in active %}
+      <label class="db-lbl">Compare with
+        <select class="db-sel" name="cmp">
+          <option value="">Each box's own setting</option>
+          <option value="prev" {{ 'selected' if flt.cmp == 'prev' }}>Previous period</option>
+          <option value="year" {{ 'selected' if flt.cmp == 'year' }}>Same period last year</option>
+          <option value="none" {{ 'selected' if flt.cmp == 'none' }}>No compare</option>
+        </select>
+      </label>
+      {% endif %}
+      <span class="rb-note" style="margin-left:auto;padding-bottom:10px">These filters apply to every box that uses them</span>
+    </form>
+    {% else %}<div style="height:16px"></div>{% endif %}
+
+    {% if boxes %}
+    <div class="db-grid">
+      {% for b in boxes %}
+        <section class="db-box db-{{ b.size }}" id="box-{{ b.id }}"
+                 {% if b.report_id %}data-src="{{ url_for('reports.dashboard_box', dash_id=dash.id, box_id=b.id) }}{{ '?' + filter_qs if filter_qs }}"{% endif %}
+                 aria-label="{{ b.report_name or 'Note' }}">
+          {% if b.report_id %}<div class="db-load">Loading {{ b.report_name }}…</div>
+          {% else %}<div class="db-note">{{ b.note }}</div>{% endif %}
+        </section>
+      {% endfor %}
+    </div>
+    {% else %}
+      <div class="db-empty">This dashboard is empty.{% if can_edit %} <a href="{{ url_for('reports.dashboard_edit', dash_id=dash.id) }}">Edit dashboard</a> to add your saved reports.{% endif %}</div>
+    {% endif %}
+  {% endif %}
+</div>
+
+{{ rc.chart_assets() }}
+{% if dash and can_manage %}{{ rs.share_dialog(url_for('reports.dashboard_share', dash_id=dash.id), dash, dash.name, share_people, share_roles, viewer, RA) }}{% endif %}
+<script>
+(function () {
+  var f = document.getElementById('dbFilters');
+  if (f) f.querySelectorAll('select').forEach(function (s) {
+    s.addEventListener('change', function () {
+      if (s.id === 'dbPeriod') { var c = s.value === 'custom'; document.getElementById('dbCustom').style.display = c ? 'inline-flex' : 'none'; if (c) return; }
+      f.submit();
+    });
+  });
+  var nb = document.getElementById('newDashBtn');
+  if (nb) nb.addEventListener('click', function () {
+    var fm = document.getElementById('newDashForm'); var open = fm.classList.toggle('open');
+    nb.setAttribute('aria-expanded', open ? 'true' : 'false'); if (open) fm.querySelector('input').focus();
+  });
+  document.querySelectorAll('.db-box[data-src]').forEach(function (box) {
+    fetch(box.getAttribute('data-src'), {credentials: 'same-origin'}).then(function (r) {
+      if (!r.ok) throw new Error(r.status); return r.text();
+    }).then(function (html) {
+      box.innerHTML = html;
+      box.querySelectorAll('canvas[id]').forEach(function (c) { RBC.draw(c.id); });
+    }).catch(function () {
+      box.innerHTML = '<div class="rb-err">This box could not be loaded. Reload the page to try again.</div>';
+    });
+  });
+})();
+</script>
+{% endblock %}

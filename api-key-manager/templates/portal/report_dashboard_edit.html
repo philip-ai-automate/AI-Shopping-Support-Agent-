@@ -1,0 +1,178 @@
+{% extends "portal/base.html" %}
+{# ask: Reports › Dashboards shows saved reports side by side as boxes. Make one with "+ New dashboard" (or "Create dashboard" the first time), or from a saved report with "Add to dashboard ▾".
+"Edit dashboard": "Add a box" lists your saved reports (Add), "+ Build a new report", "+ Text note (heading or explanation)". Drag boxes to move them, or use Earlier / Later. Each box has a size: Small, Medium, Large, Full width, and "Use dashboard filters". "Dashboard filters" choose which filters viewers get at the top: Period, Team member, Compare with. Press Save.
+On the dashboard, change Period, Team member or Compare with at the top and every box that uses dashboard filters follows. Click any number, slice, bar or cell in a box to see the records behind it. "Open" on a box opens its report. "Print or save as PDF" prints the dashboard.
+"Share" (dashboard you made): Who can open it = Only me, Chosen team members or roles, Everyone in the business; What numbers they see = Follow each person's access, or Everyone sees the whole business; "Others can edit it". People a dashboard is shared with see its boxes even if the report behind a box isn't shared with them. Only the person who made a dashboard can share or delete it ("Delete this dashboard" in Edit dashboard; its reports are kept). #}
+{% block title %}Edit {{ dash.name }} — Reports — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  /* Edit dashboard R3 (19 Nov 2026) — approved mock-up EPpwZTeFt5iccD8SH155P1 screen 4 */
+  .de{--navy:#0B1F3A;--blue:#1D4ED8;--sub:#5B6675;--edge:#E3E7ED}
+  .de-bar{background:var(--navy);color:#fff;border-radius:12px;padding:12px 18px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+  .de-bar span{font-size:13px;color:#C9D3E0}
+  .de-btn{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border-radius:8px;font-size:14px;font-weight:600;
+    border:1px solid #D5DBE3;background:#fff;color:var(--navy);text-decoration:none;cursor:pointer;font-family:inherit}
+  .de-btn.ghost{background:transparent;color:#fff;border-color:#5B7090}
+  .de-btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+  .de-btn.sm{min-height:32px;font-size:13px;padding:0 10px}
+  .de-layout{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;margin-top:18px}
+  .de-canvas{flex:999 1 560px;min-width:0;background-image:radial-gradient(#D5DBE3 1px,transparent 1px);background-size:16px 16px;padding:12px;border-radius:12px}
+  .de-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px}
+  .de-box{background:#fff;border:1px dashed #AEB8C5;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+  .de-box.dragging{opacity:.4}.de-box.over{outline:3px solid var(--blue)}
+  .de-s{grid-column:span 3}.de-m{grid-column:span 6}.de-l{grid-column:span 9}.de-w{grid-column:span 12}
+  @media (max-width:1100px){.de-s{grid-column:span 6}.de-m,.de-l,.de-w{grid-column:span 12}}
+  @media (max-width:640px){.de-s{grid-column:span 12}}
+  .de-handle{cursor:grab;font-weight:700;color:var(--navy);font-size:14px;display:flex;gap:6px;align-items:flex-start}
+  .de-meta{font-size:12px;color:var(--sub)}
+  .de-ctrl{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .de-sel{font-family:inherit;font-size:13px;min-height:32px;border:1px solid #D5DBE3;border-radius:6px;padding:0 8px;background:#fff}
+  .de-ctrl label{font-size:12.5px;display:inline-flex;gap:6px;align-items:center}
+  .de-x{border:0;background:none;color:#B91C1C;font-family:inherit;font-size:13px;cursor:pointer;padding:6px 2px}
+  .de-side{flex:1 1 320px;max-width:380px;display:flex;flex-direction:column;gap:16px}
+  .de-card{background:#fff;border:1px solid var(--edge);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px}
+  .de-card h2{margin:0;font-size:15px;color:var(--navy)}
+  .de-lib{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--edge);border-radius:8px;font-size:13px}
+  .de-lib small{display:block;color:var(--sub);font-size:12px}
+  .de-in{font-family:inherit;font-size:14px;min-height:38px;border:1px solid #D5DBE3;border-radius:8px;padding:0 10px;box-sizing:border-box;width:100%}
+  .de-note{width:100%;min-height:70px;font-family:inherit;font-size:13.5px;border:1px solid #D5DBE3;border-radius:8px;padding:8px;box-sizing:border-box;resize:vertical}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="de">
+  <div class="de-bar">
+    <div><b>Editing “{{ dash.name }}”</b> <span>· drag boxes to move them, or use Earlier / Later · press Save when done</span></div>
+    <div style="display:flex;gap:8px">
+      <a class="de-btn ghost" href="{{ url_for('reports.dashboard', dash_id=dash.id) }}">Cancel</a>
+      <button type="button" class="de-btn" id="deSave">Save</button>
+    </div>
+  </div>
+  <div id="deMsg" role="status" aria-live="polite" style="font-size:13px;color:#991B1B;margin-top:8px"></div>
+
+  <div class="de-layout">
+    <section class="de-canvas" aria-label="Dashboard layout">
+      {% if not dash.boxes %}<p style="background:#fff;border-radius:10px;padding:20px;margin:0;color:var(--sub);text-align:center">No boxes yet. Add a saved report from the right.</p>{% endif %}
+      <div class="de-grid" id="deGrid">
+        {% for b in dash.boxes %}
+          <div class="de-box de-{{ b.size }}" draggable="true" data-id="{{ b.id }}" id="box-{{ b.id }}" data-note="{{ '1' if not b.report_id else '' }}">
+            <div class="de-handle"><span aria-hidden="true">⠿</span><span>{{ b.report_name if b.report_id else 'Text note' }}</span></div>
+            {% if b.report_id %}
+              {% set c = b.config or {} %}
+              <div class="de-meta">{{ RB.SUBJECTS[b.subject].label if b.subject in RB.SUBJECTS else '' }} · {{ chart_names.get(c.get('chart')) or 'Suggested chart' }}</div>
+            {% else %}
+              <textarea class="de-note" aria-label="Note text" maxlength="2000">{{ b.note }}</textarea>
+            {% endif %}
+            <div class="de-ctrl">
+              <select class="de-sel" aria-label="Box size" data-size>
+                {% for k, l in sizes %}<option value="{{ k }}" {{ 'selected' if b.size == k }}>{{ l }}</option>{% endfor %}
+              </select>
+              <button type="button" class="de-btn sm" data-move="-1" aria-label="Move earlier">Earlier</button>
+              <button type="button" class="de-btn sm" data-move="1" aria-label="Move later">Later</button>
+              {% if b.report_id %}<label><input type="checkbox" data-usef {{ 'checked' if b.use_filters }}> Use dashboard filters</label>{% endif %}
+              <button type="button" class="de-x" data-remove>Remove</button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <aside class="de-side">
+      <div class="de-card">
+        <h2>Dashboard name</h2>
+        <input class="de-in" id="deName" value="{{ dash.name }}" maxlength="80" aria-label="Dashboard name">
+      </div>
+      <div class="de-card">
+        <h2>Add a box</h2>
+        {% if reports|length > 6 %}<input class="de-in" type="search" id="deSearch" placeholder="Search saved reports…" aria-label="Search saved reports">{% endif %}
+        <div id="deLib" style="display:flex;flex-direction:column;gap:6px;max-height:420px;overflow-y:auto">
+          {% for r in reports %}
+            <form method="POST" action="{{ url_for('reports.dashboard_add', dash_id=dash.id) }}" class="de-lib" data-name="{{ r.name|lower }}">
+              <input type="hidden" name="report_id" value="{{ r.id }}">
+              <span>{{ r.name }}<small>{{ r.subject_label }}</small></span>
+              <button type="submit" class="de-btn sm">Add</button>
+            </form>
+          {% else %}
+            <p style="margin:0;font-size:13px;color:var(--sub)">No saved reports yet.</p>
+          {% endfor %}
+        </div>
+        <a class="de-btn" href="{{ url_for('reports.wizard') }}">+ Build a new report</a>
+        <form method="POST" action="{{ url_for('reports.dashboard_add', dash_id=dash.id) }}">
+          <input type="hidden" name="note" value="Write a heading or explanation here">
+          <button type="submit" class="de-btn" style="width:100%">+ Text note (heading or explanation)</button>
+        </form>
+        <p style="margin:0;font-size:12px;color:var(--sub)">Unsaved moves are lost when you add a box. Save first if you moved things.</p>
+      </div>
+      <div class="de-card">
+        <h2>Dashboard filters</h2>
+        <p style="margin:0;font-size:13px;color:var(--sub)">Shown at the top for viewers. Each box can opt out.</p>
+        {% for k, l in dash_filters %}
+          <label style="display:flex;gap:10px;align-items:center;font-size:14px"><input type="checkbox" data-filter="{{ k }}" {{ 'checked' if k in (dash.filters or []) }} style="width:18px;height:18px">{{ l }}</label>
+        {% endfor %}
+      </div>
+      {% if can_manage %}
+      <form method="POST" action="{{ url_for('reports.dashboard_delete', dash_id=dash.id) }}" class="de-card"
+            data-msg="Delete the dashboard “{{ dash.name }}”? The reports in it are kept in All reports." onsubmit="return confirm(this.dataset.msg)">
+        <button type="submit" class="de-btn" style="color:#B91C1C">Delete this dashboard</button>
+      </form>
+      {% endif %}
+    </aside>
+  </div>
+</div>
+
+<script>
+(function () {
+  var grid = document.getElementById('deGrid'), dragged = null;
+  grid.addEventListener('dragstart', function (e) { dragged = e.target.closest('.de-box'); if (dragged) dragged.classList.add('dragging'); });
+  grid.addEventListener('dragend', function () { if (dragged) dragged.classList.remove('dragging'); grid.querySelectorAll('.over').forEach(function (x) { x.classList.remove('over'); }); dragged = null; });
+  grid.addEventListener('dragover', function (e) {
+    var t = e.target.closest('.de-box'); if (!t || !dragged || t === dragged) return;
+    e.preventDefault(); grid.querySelectorAll('.over').forEach(function (x) { x.classList.remove('over'); }); t.classList.add('over');
+  });
+  grid.addEventListener('drop', function (e) {
+    var t = e.target.closest('.de-box'); if (!t || !dragged || t === dragged) return;
+    e.preventDefault();
+    var boxes = Array.prototype.slice.call(grid.children);
+    if (boxes.indexOf(dragged) < boxes.indexOf(t)) t.after(dragged); else t.before(dragged);
+  });
+  grid.addEventListener('click', function (e) {
+    var box = e.target.closest('.de-box'); if (!box) return;
+    var mv = e.target.closest('[data-move]');
+    if (mv) {
+      if (mv.getAttribute('data-move') === '-1' && box.previousElementSibling) box.previousElementSibling.before(box);
+      if (mv.getAttribute('data-move') === '1' && box.nextElementSibling) box.nextElementSibling.after(box);
+      mv.focus();
+    }
+    if (e.target.closest('[data-remove]')) box.remove();
+  });
+  grid.addEventListener('change', function (e) {
+    var s = e.target.closest('[data-size]'); if (!s) return;
+    var box = s.closest('.de-box'); box.className = box.className.replace(/de-[smlw]\b/, 'de-' + s.value);
+  });
+  var search = document.getElementById('deSearch');
+  if (search) search.addEventListener('input', function () {
+    var q = search.value.trim().toLowerCase();
+    document.querySelectorAll('#deLib [data-name]').forEach(function (f) { f.style.display = !q || f.getAttribute('data-name').indexOf(q) !== -1 ? '' : 'none'; });
+  });
+  document.getElementById('deSave').addEventListener('click', function () {
+    var btn = this; btn.disabled = true;
+    var body = {
+      name: document.getElementById('deName').value,
+      filters: Array.prototype.map.call(document.querySelectorAll('[data-filter]:checked'), function (c) { return c.getAttribute('data-filter'); }),
+      boxes: Array.prototype.map.call(grid.querySelectorAll('.de-box'), function (b) {
+        var o = {id: b.getAttribute('data-id'), size: b.querySelector('[data-size]').value};
+        var u = b.querySelector('[data-usef]'); o.use_filters = u ? u.checked : true;
+        var n = b.querySelector('.de-note'); if (n) o.note = n.value;
+        return o;
+      })
+    };
+    fetch('{{ url_for("reports.dashboard_layout", dash_id=dash.id) }}', {method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
+      .then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); })
+      .then(function (x) { if (x[0] && x[1].url) { window.location = x[1].url; } else { throw new Error(x[1].error || 'save'); } })
+      .catch(function (err) { btn.disabled = false; document.getElementById('deMsg').textContent = 'Could not save the dashboard. ' + (err.message !== 'save' ? err.message : 'Please try again.'); });
+  });
+})();
+</script>
+{% endblock %}
