@@ -1417,7 +1417,7 @@
          other report — including Leads Report, moved here from the Leads
          menu — is consolidated here so there's exactly one place to look
          for any report. ── -->
-    {% set _rep_group = request.endpoint in ('portal.reports', 'portal.report_usage', 'portal.report_cart', 'portal.report_billing', 'portal.report_ai_performance', 'portal.report_custom_picker', 'portal.report_custom_entity', 'portal.report_leads_sources', 'portal.report_not_a_fit', 'portal.email_campaigns_reports', 'portal.email_campaign_report', 'calls.calls_report', 'portal.analytics', 'portal.reports_page', 'portal.whatsapp_reports') %}
+    {% set _rep_group = request.endpoint in ('portal.reports', 'portal.report_usage', 'portal.report_cart', 'portal.report_billing', 'portal.report_ai_performance', 'portal.report_custom_picker', 'portal.report_custom_entity', 'portal.report_leads_sources', 'portal.report_not_a_fit', 'portal.email_campaigns_reports', 'portal.email_campaign_report', 'calls.calls_report', 'portal.analytics', 'portal.reports_page', 'portal.whatsapp_reports') or (request.endpoint or '').startswith('reports.') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _rep_group %}open{% endif %}"
            data-tour="nav-reports" onclick="sbToggle(this)">
@@ -1427,6 +1427,15 @@
         <span class="sb-arrow">▾</span>
       </div>
       <div class="sb-sub {% if _rep_group %}open{% endif %}">
+        {# Reports & Dashboards (2026-11-19, step 1): every plan; old report pages stay below until retired. #}
+        {% if staff_can_open('reports.dashboards') %}
+        <a href="{{ url_for('reports.dashboards') }}"
+           class="{% if (request.endpoint or '').startswith('reports.dashboard') %}active{% endif %}">Dashboards</a>
+        {% endif %}
+        {% if staff_can_open('reports.library') %}
+        <a href="{{ url_for('reports.library') }}"
+           class="{% if request.endpoint in ('reports.library', 'reports.builder') %}active{% endif %}">All reports</a>
+        {% endif %}
         {# WhatsApp reports (2026-10-24, from the WhatsApp menu): every business, as before. #}
         {% if staff_can_open('portal.reports_page') %}
         <a href="{{ url_for('portal.reports_page') }}"
@@ -2162,6 +2171,8 @@
     { icon:'🧾', title:'Orders',                 desc:'View all orders and purchase history',          url:'{{ url_for("portal.orders") }}',                     tags:'sales purchases transactions history' },
     { icon:'📱', title:'WhatsApp Connect',       desc:'Connect or manage your WhatsApp number',       url:'{{ url_for("portal.whatsapp_connect") }}',           tags:'connect phone qr code number link setup' },
     { icon:'📊', title:'Handoff Reports',        desc:'Response times, missed handoffs, performance',  url:'{{ url_for("portal.whatsapp_reports") }}',           tags:'handoff response time missed reports analytics' },
+    { icon:'📊', title:'Dashboards',             desc:'Your saved reports side by side, with one set of filters', url:'{{ url_for("reports.dashboards") }}', tags:'dashboard reports kpi overview charts sales numbers' },
+    { icon:'📈', title:'All reports',            desc:'Build, save and share reports — ready-made or your own',  url:'{{ url_for("reports.library") }}',    tags:'report builder custom reports charts pie export excel pdf quotes deals leads' },
     { icon:'📈', title:'WhatsApp Report',        desc:'Usage stats for your WhatsApp channel',        url:'{{ url_for("portal.reports_page") }}',               tags:'usage stats messages sent received analytics' },
     { icon:'📋', title:'Plan',                   desc:'View or upgrade your plan',                    url:'{{ url_for("portal.billing_plans") }}',              tags:'plan upgrade subscription quota limit whatsapp' },
     { icon:'🏪', title:'My Products & Services', desc:'Add, edit and manage your products and services',           url:'{{ url_for("portal.products") }}',                   tags:'products inventory catalogue stock add edit' },
