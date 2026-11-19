@@ -701,6 +701,113 @@ html, body { overflow: hidden; height: 100%; }
 .dc-dialog h4{margin:0;font-size:17px}
 .dc-dialog ul{margin:0;padding-left:18px}
 .dc-row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+
+/* ══ New Inbox design (17 Nov 2026) — only with .ui2 (?ui=new) ══════════════ */
+.ui2 .inbox-body { flex-direction: column }
+.ui2 .channel-rail { width: auto; border-right: 0; border-bottom: 1px solid var(--line); flex-direction: row;
+  overflow-x: auto; overflow-y: hidden; flex-shrink: 0 }
+.ui2 .rail-label, .ui2 .rail-foot, .ui2 .rail-divider, .ui2 .rail-meta { display: none }
+.ui2 .rail-items { flex-direction: row; padding: 8px 10px; gap: 4px }
+.ui2 .rail-item { width: auto; padding: 8px 12px; gap: 8px; border-radius: 9px }
+.ui2 .rail-item.active { background: #E7EEF9; box-shadow: inset 0 -3px 0 var(--ink) }
+.ui2 .rail-item.locked.active { box-shadow: inset 0 -3px 0 var(--muted) }
+.ui2 .rail-icon { width: 22px; height: 22px; border-radius: 6px }
+.ui2 .rail-name { white-space: nowrap; font-size: 14px }
+.ui2 .channel-view { flex: 1; min-height: 0 }
+.ui2 #realChannelView { flex-direction: column }
+.ui2 #realChannelView > .inbox-grid { flex: 1; min-height: 0 }
+.ui2 #agentTabs { display: none }
+.ui2 .conv-row1 .agent-dot { display: none }
+
+.num-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 9px 12px;
+  background: #F8FAFC; border-bottom: 1px solid var(--line); flex-shrink: 0 }
+.num-bar-label { font-size: 11.5px; font-weight: 800; color: #475569; letter-spacing: .05em; text-transform: uppercase; margin-right: 2px }
+.agent-tab.num-btn { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #CBD5E1; background: #fff; border-radius: 10px;
+  padding: 6px 11px; font: inherit; font-size: 13.5px; cursor: pointer; text-align: left; color: var(--ink); min-height: 40px;
+  max-width: 260px; overflow: visible }
+.agent-tab.num-btn .num-txt { min-width: 0; overflow: hidden }
+.agent-tab.num-btn .num-name, .agent-tab.num-btn .num-no { white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.agent-tab.num-btn:hover { border-color: #94A3B8 }
+.agent-tab.num-btn.active { background: #0B1A33; border-color: #0B1A33; color: #fff }
+.num-btn.active .num-no { color: #CBD5E1 }
+.num-all { font-size: 13.5px; font-weight: 700 }
+.num-sw { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0 }
+.num-txt { display: flex; flex-direction: column; line-height: 1.2 }
+.num-name { font-size: 13.5px; font-weight: 700 }
+.num-no { font-size: 12px; color: #475569 }
+.num-wait { background: #FEE2E2; color: #991B1B; border-radius: 999px; font-size: 12px; font-weight: 800; padding: 1px 8px; margin-left: 2px }
+.num-btn.active .num-wait { background: #F04438; color: #fff }
+.num-more { position: relative }
+.num-more summary { list-style: none; cursor: pointer; border: 1px dashed #94A3B8; border-radius: 10px; padding: 9px 12px;
+  font-size: 13.5px; font-weight: 600; background: #fff; min-height: 40px; box-sizing: border-box }
+.num-more summary::-webkit-details-marker { display: none }
+.num-more summary::after { content: " ▾" }
+.num-more-list { position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; background: #fff; border: 1px solid #E2E8F0;
+  border-radius: 12px; box-shadow: 0 12px 30px rgba(15,23,42,.14); padding: 6px; display: flex; flex-direction: column; gap: 4px; min-width: 240px }
+.num-more-list .num-btn { border-color: transparent; width: 100% }
+.num-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; color: #0B1A33;
+  background: #EEF2F7; border-radius: 6px; padding: 2px 7px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis }
+.num-tag i, .reply-from i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; flex-shrink: 0 }
+.conv-row3 { display: flex; gap: 6px; margin-top: 4px; min-width: 0 }
+.reply-from { margin-left: auto; font-size: 12.5px; color: #334155; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.reply-from b { display: inline-flex; align-items: center; gap: 5px; color: #0B1A33 }
+
+/* customer panel */
+.ui2 .inbox-grid:has(> .cust-panel) { grid-template-columns: 340px minmax(0,1fr) 320px }
+.cust-panel { border-left: 1px solid var(--line); background: #fff; overflow-y: auto; min-width: 0; display: flex; flex-direction: column }
+.cp-head { padding: 14px 16px; display: grid; grid-template-columns: 36px minmax(0,1fr); column-gap: 10px; row-gap: 2px; align-items: center; border-bottom: 1px solid #F1F5F9 }
+.cp-head > :not(.cp-av) { grid-column: 2 }
+.cp-av { width: 36px; height: 36px; border-radius: 999px; background: #1E3A8A; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; grid-row: 1 / span 2 }
+.cp-name { font-weight: 800; font-size: 16.5px; color: var(--ink); overflow-wrap: anywhere }
+.cp-co { font-size: 13.5px; color: #334155 }
+.cp-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px }
+.ui2 .conv-avatar { width: 38px; height: 38px; font-size: 12px }
+.ui2 .chat-avatar { width: 36px; height: 36px; font-size: 12.5px }
+.cp-tag { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 3px 9px; background: #EEF2F7; color: #0B1A33; display: inline-flex; align-items: center; gap: 5px }
+.cp-tag i { width: 8px; height: 8px; border-radius: 999px; display: inline-block }
+.cp-tiles { padding: 14px 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; border-bottom: 1px solid #F1F5F9 }
+.cp-tile { background: #F8FAFC; border-radius: 10px; padding: 10px }
+.cp-tile span { display: block; font-size: 11.5px; color: #475569 }
+.cp-tile b { font-size: 16px; color: var(--ink) }
+.cp-sec { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; border-bottom: 1px solid #F1F5F9 }
+.cp-sec h4 { margin: 0; font-size: 11.5px; font-weight: 800; letter-spacing: .06em; color: #475569; text-transform: uppercase }
+.cp-row { display: flex; justify-content: space-between; gap: 10px }
+.cp-row > span:first-child { color: #475569; flex-shrink: 0 }
+.cp-row > span:last-child { text-align: right; overflow-wrap: anywhere }
+.cp-recent { display: flex; gap: 8px } .cp-recent span:first-child { color: #475569; width: 52px; flex-shrink: 0 }
+.cp-note { background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 10px; padding: 10px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere }
+.cp-links { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 16px }
+.cp-links a { flex: 1 1 120px; text-align: center; text-decoration: none; border: 1px solid #CBD5E1; border-radius: 10px; padding: 10px; font-size: 13.5px; font-weight: 700; color: #0B1A33 }
+.cp-links a.primary { background: #0B1A33; border-color: #0B1A33; color: #fff }
+.cp-empty { padding: 18px 16px; color: #475569; font-size: 13.5px; line-height: 1.5 }
+.cp-close { display: none }
+.cp-toggle { display: none }
+@media (max-width: 1439px) {
+  .ui2 .inbox-grid:has(> .cust-panel) { grid-template-columns: 320px minmax(0,1fr) }
+  .ui2 .cust-panel { display: none }
+  .ui2 .cp-toggle { display: inline-flex }
+  .ui2 .inbox-grid.cp-open > .cust-panel { display: flex; position: fixed; top: 0; right: 0; bottom: 0; width: min(360px, 100vw);
+    z-index: 900; box-shadow: -12px 0 32px rgba(15,23,42,.18) }
+  .ui2 .inbox-grid.cp-open .cp-close { display: inline-flex; align-self: flex-end; margin: 10px 10px -6px 0 }
+}
+@media (max-width: 640px) { .ui2 .inbox-grid:has(> .cust-panel) { grid-template-columns: 1fr } }
+.cp-toggle, .cp-close { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; color: var(--ink) }
+
+/* Conversation filter as a table-like menu with counts (17 Nov 2026) */
+.fmenu { position: relative; flex: 1.6; min-width: 0 }
+.fmenu-native { display: none !important }
+.fmenu-btn { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 6px; font: inherit; font-size: 13px;
+  border: 1px solid var(--line); background: #fafafa; border-radius: 8px; padding: 7px 10px; cursor: pointer; color: var(--ink); text-align: left }
+.fmenu-btn span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.fmenu-btn.active-filter { border-color: var(--ink); background: #f0f0f2 }
+.fmenu-list { position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; min-width: 100%; width: max-content; max-width: 300px;
+  background: #fff; border: 1px solid #CBD5E1; border-radius: 12px; box-shadow: 0 12px 30px rgba(15,23,42,.14); overflow: hidden }
+.fmenu-opt { display: flex; justify-content: space-between; align-items: center; gap: 18px; width: 100%; border: 0; border-bottom: 1px solid #E2E8F0;
+  background: #fff; padding: 10px 14px; font: inherit; font-size: 13.5px; color: var(--ink); cursor: pointer; text-align: left }
+.fmenu-opt:last-child { border-bottom: 0 }
+.fmenu-opt:hover, .fmenu-opt:focus-visible { background: #F8FAFC; outline: none }
+.fmenu-opt[aria-selected="true"] { background: #E7EEF9; font-weight: 700 }
+.fmenu-opt .n { color: #475569; font-variant-numeric: tabular-nums }
 </style>
 {% endblock %}
 
@@ -713,7 +820,7 @@ html, body { overflow: hidden; height: 100%; }
 <div class="rt-toast" id="rtToast"></div>
 <div class="nt-stack" id="ntStack"></div>
 
-<div class="inbox-app">
+<div class="inbox-app{% if inbox_ui2 %} ui2{% endif %}">
 
   {# ── Top bar ──────────────────────────────────────────────────────────── #}
   <div class="inbox-topbar">
@@ -756,7 +863,7 @@ html, body { overflow: hidden; height: 100%; }
       <div class="rail-label">Channels</div>
       <div class="rail-items">
 
-        <button type="button" class="rail-item {% if not is_messenger_active %}active{% endif %}" id="railAll" onclick="selectChannel('all')">
+        <button type="button" class="rail-item {% if not is_messenger_active and not is_webchat_active %}active{% endif %}" id="railAll" onclick="selectChannel('all')">
           <div class="rail-icon" style="background:var(--ink)">
             <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           </div>
@@ -819,6 +926,20 @@ html, body { overflow: hidden; height: 100%; }
 
   {% else %}
   {# ── Main two-panel grid ────────────────────────────────────────────── #}
+  {% if inbox_ui2 and multi_number %}{# New Inbox (17 Nov 2026): one row for all WhatsApp numbers #}
+  <div class="num-bar" role="group" aria-label="Your WhatsApp numbers">
+    <span class="num-bar-label">Your numbers</span>
+    {% set _wall = conversations|selectattr('needs_reply')|list|length %}
+    <button type="button" class="agent-tab num-btn num-all active" data-wa-number-id="" onclick="setAgentTab(this)">All numbers{% if _wall %}<span class="num-wait">{{ _wall }}</span>{% endif %}</button>
+    {% macro _numbtn(t) %}{% set _w = conversations|selectattr('needs_reply')|selectattr('last_phone_number_id','equalto',t.phone_number_id)|list|length %}<button type="button" class="agent-tab num-btn" data-wa-number-id="{{ t.phone_number_id }}" onclick="setAgentTab(this)"><span class="num-sw" style="background:{{ t.color }}"></span><span class="num-txt"><span class="num-name">{{ t.label }}</span>{% if t.number and t.number != t.label %}<span class="num-no">{{ t.number|with_plus }}</span>{% endif %}</span>{% if _w %}<span class="num-wait">{{ _w }}</span>{% endif %}</button>{% endmacro %}
+    {% for t in agent_tabs[:4] %}{{ _numbtn(t) }}{% endfor %}
+    {% if agent_tabs|length > 4 %}
+    <details class="num-more"><summary>{{ agent_tabs|length - 4 }} more</summary>
+      <div class="num-more-list">{% for t in agent_tabs[4:] %}{{ _numbtn(t) }}{% endfor %}</div>
+    </details>
+    {% endif %}
+  </div>
+  {% endif %}
   <div class="inbox-grid {% if active_phone %}mobile-chat{% endif %}" id="inboxGrid">
 
     {# ── LEFT: conversation list ──────────────────────────────────────── #}
@@ -837,14 +958,18 @@ html, body { overflow: hidden; height: 100%; }
       <div class="inbox-controls">
         <input type="text" id="phoneSearch" placeholder="🔍  Search by name or number…" oninput="applyAll()"/>
         <div class="ctrl-row">
-          <select id="filterSel" onchange="applyAll()">
+          <div class="fmenu" id="fMenu">
+            <button type="button" class="fmenu-btn" id="fMenuBtn" aria-haspopup="listbox" aria-expanded="false"><span id="fMenuLabel">All conversations</span><span aria-hidden="true">▾</span></button>
+            <div class="fmenu-list" id="fMenuList" role="listbox" aria-label="Show conversations" hidden></div>
+          </div>
+          <select id="filterSel" onchange="applyAll()" class="fmenu-native" aria-hidden="true" tabindex="-1">
             <option value="all">All conversations</option>
-            {% if ai_enabled %}<option value="needs_agent">🔴 Needs agent</option>{% endif %}
             <option value="unread">Waiting for your reply</option>
+            {% if ai_enabled %}<option value="needs_agent">Needs agent</option>{% endif %}
             <option value="replied">Replied</option>
-            <option value="leads">🔥 Leads only</option>
+            <option value="leads">Leads only</option>
             {% if has_team %}
-            <option value="assigned_me">🙋 Assigned to me</option>
+            <option value="assigned_me">Assigned to me</option>
             <option value="unassigned">Unclaimed</option>
             {% endif %}
           </select>
@@ -921,6 +1046,9 @@ html, body { overflow: hidden; height: 100%; }
               <span class="conv-badge" title="Awaiting reply">●</span>
               {% endif %}
             </div>
+            {% if inbox_ui2 and multi_number and c.agent_color %}
+            <div class="conv-row3"><span class="num-tag"><i style="background:{{ c.agent_color }}"></i>{{ c.conv_agent_name or (c.conv_wa_number|with_plus if c.conv_wa_number else '') }}</span></div>
+            {% endif %}
           </div>
         </a>
         {% endfor %}
@@ -963,7 +1091,11 @@ html, body { overflow: hidden; height: 100%; }
               <span class="ch-chip">WhatsApp</span>
               <span>{% if active_name %}+{{ active_phone }} · {% endif %}<span id="msgCountLabel">{{ messages|length }} message{{ 's' if messages|length != 1 }}</span></span>
               {% if multi_number and active_conv and active_conv.agent_color %}
+              {% if inbox_ui2 %}
+              · to <span class="num-tag"><i style="background:{{ active_conv.agent_color }}"></i>{{ active_conv.conv_agent_name or '' }}{% if active_conv.conv_wa_number %} {{ active_conv.conv_wa_number|with_plus }}{% endif %}</span>
+              {% else %}
               · <span class="chat-agent-dot" style="background:{{ active_conv.agent_color }}"></span><span>{{ active_conv.conv_agent_name or (active_conv.conv_wa_number|with_plus if active_conv.conv_wa_number else '') }}</span>
+              {% endif %}
               {% endif %}
             </div>
           </div>
@@ -1146,6 +1278,9 @@ html, body { overflow: hidden; height: 100%; }
                 <div class="reply-toolbar">
                   <button type="button" class="emoji-trigger" id="emojiBtn" onclick="togglePicker(event)" title="Emoji">😊</button>
                   <span class="reply-to-label">Message +{{ active_phone }}</span>
+                  {% if inbox_ui2 and multi_number and active_conv and active_conv.agent_color %}
+                  <span class="reply-from">Replying from <b><i style="background:{{ active_conv.agent_color }}"></i>{{ active_conv.conv_agent_name or '' }}{% if active_conv.conv_wa_number %} · {{ active_conv.conv_wa_number|with_plus }}{% endif %}</b></span>
+                  {% endif %}
                 </div>
                 <div class="reply-textarea-wrap">
                   <textarea name="reply" id="replyBox" rows="3"
@@ -1165,6 +1300,7 @@ html, body { overflow: hidden; height: 100%; }
       {% endif %}
     </div>
 
+    {% if inbox_ui2 and active_phone and not is_messenger_active and not is_webchat_active %}<aside class="cust-panel" data-key="{{ active_phone }}" aria-label="About this customer"></aside>{% endif %}
   </div>{# end .inbox-grid #}
   {% endif %}
     </div>{# end #realChannelView #}
@@ -1299,6 +1435,7 @@ html, body { overflow: hidden; height: 100%; }
         </div>
         {% endif %}
       </div>
+      {% if inbox_ui2 and is_messenger_active and active_phone %}<aside class="cust-panel" data-key="{{ active_phone }}" aria-label="About this customer"></aside>{% endif %}
       </div>{# end #messengerGrid #}
       {% endif %}
     </div>
@@ -1579,6 +1716,7 @@ html, body { overflow: hidden; height: 100%; }
         </div>
         {% endif %}
       </div>
+      {% if inbox_ui2 and is_webchat_active and active_phone %}<aside class="cust-panel" data-key="{{ active_phone }}" aria-label="About this customer"></aside>{% endif %}
       </div>{# end #webchatGrid #}
     </div>
 
@@ -2112,6 +2250,7 @@ function rtBuildConvItem(c){
     +'<div class="conv-row1"><span class="conv-name">'+statusDot+escHtml(name)+'</span>'
     +'<span style="display:flex;align-items:center;gap:6px;flex-shrink:0">'+agentDot+'<span class="conv-time">'+fmtTime(c.last_message_at)+'</span></span></div>'
     +'<div class="conv-row2"><span class="conv-preview">'+escHtml(arrow+' '+preview)+'</span>'+claimTag+badge+'</div>'
+    +((window.INBOX_UI2&&RT.multiNumber&&c.agent_color&&agentTitle)?'<div class="conv-row3"><span class="num-tag"><i style="background:'+escHtml(c.agent_color)+'"></i>'+escHtml(agentTitle)+'</span></div>':'')
     +'</div>';
   return a;
 }
@@ -2391,6 +2530,102 @@ document.addEventListener('DOMContentLoaded', function(){
 {% include "portal/_fix_answer_modal.html" %}
 {% if chat_tr %}{% include "portal/_inbox_translate.html" %}{% endif %}
 {% if staff_can('inbox.send_new') %}{% include 'portal/_send_one_wa.html' %}{% endif %}
+<script>
+// Conversation filter menu: table rows with counts (17 Nov 2026). The hidden
+// <select id="filterSel"> still drives applyAll(), so nothing else changes.
+(function(){
+  var sel=document.getElementById('filterSel'), btn=document.getElementById('fMenuBtn'),
+      list=document.getElementById('fMenuList'), lab=document.getElementById('fMenuLabel');
+  if(!sel||!btn||!list) return;
+  function matches(el, f){
+    var dir=el.getAttribute('data-last-dir')||'inbound', nr=el.getAttribute('data-needs-reply')==='true',
+        tier=el.getAttribute('data-lead-tier')||'', st=el.getAttribute('data-status')||'',
+        num=el.getAttribute('data-wa-number-id')||'', ak=el.getAttribute('data-assigned-key')||'',
+        q=((document.getElementById('phoneSearch')||{}).value||'').toLowerCase().trim(),
+        ph=(el.getAttribute('data-phone')||'').toLowerCase(), nm=(el.getAttribute('data-name')||'').toLowerCase();
+    if(q && ph.indexOf(q)<0 && nm.indexOf(q)<0) return false;
+    if(typeof _agentFilter!=='undefined' && _agentFilter && num!==_agentFilter) return false;
+    if(f==='needs_agent') return st==='needs_agent';
+    if(f==='unread') return nr;
+    if(f==='replied') return dir==='outbound';
+    if(f==='leads') return !!tier;
+    if(f==='assigned_me') return ak===(window.RT&&RT.currentActorKey);
+    if(f==='unassigned') return !ak;
+    return true;
+  }
+  function render(){
+    var items=Array.from(document.querySelectorAll('#convList .inbox-item'));
+    list.innerHTML='';
+    Array.from(sel.options).forEach(function(o){
+      var b=document.createElement('button'); b.type='button'; b.className='fmenu-opt'; b.setAttribute('role','option');
+      b.setAttribute('aria-selected', o.value===sel.value?'true':'false');
+      var t=document.createElement('span'); t.textContent=o.text;
+      var n=document.createElement('span'); n.className='n'; n.textContent=items.filter(function(el){return matches(el,o.value);}).length;
+      b.appendChild(t); b.appendChild(n);
+      b.addEventListener('click',function(){ sel.value=o.value; close(); applyAll(); btn.focus(); });
+      list.appendChild(b);
+    });
+  }
+  function sync(){ var o=sel.options[sel.selectedIndex]; lab.textContent=o?o.text:''; btn.classList.toggle('active-filter', sel.value!=='all'); }
+  function close(){ list.hidden=true; btn.setAttribute('aria-expanded','false'); }
+  btn.addEventListener('click',function(e){ e.stopPropagation();
+    if(list.hidden){ render(); list.hidden=false; btn.setAttribute('aria-expanded','true'); var s=list.querySelector('[aria-selected="true"]'); if(s) s.focus(); }
+    else close(); });
+  document.addEventListener('click',function(e){ if(!list.hidden && !e.target.closest('#fMenu')) close(); });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape' && !list.hidden){ close(); btn.focus(); } });
+  list.addEventListener('keydown',function(e){
+    if(e.key!=='ArrowDown'&&e.key!=='ArrowUp') return; e.preventDefault();
+    var bs=Array.from(list.querySelectorAll('.fmenu-opt')), i=bs.indexOf(document.activeElement);
+    var j=e.key==='ArrowDown'?Math.min(bs.length-1,i+1):Math.max(0,i-1); bs[j].focus(); });
+  var _orig=window.applyAll;
+  if(typeof _orig==='function'){ window.applyAll=function(){ var r=_orig.apply(this,arguments); sync(); return r; }; }
+  sync();
+})();
+</script>
+{% if inbox_ui2 %}
+<script>
+// New Inbox (17 Nov 2026): the customer panel — who this chat is with.
+window.INBOX_UI2 = true;
+(function(){
+  var API = "{{ url_for('portal.inbox_customer_panel') }}";
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function initials(n){ n=String(n||'').trim(); if(!n) return '?'; var w=n.split(/\s+/); return (w.length>1?w[0][0]+w[1][0]:n.slice(0,2)).toUpperCase(); }
+  function rows(list){ return list.map(function(r){
+      var v=r[1]; var val=(v&&typeof v==='object')?(v.url?'<a href="'+esc(v.url)+'">'+esc(v.text)+'</a>':esc(v.text)):esc(v);
+      return '<div class="cp-row"><span>'+esc(r[0])+'</span><span>'+val+'</span></div>'; }).join(''); }
+  function render(p, d){
+    var h='<button type="button" class="cp-close" aria-label="Close customer details">Close</button>';
+    h+='<div class="cp-head"><div class="cp-av" aria-hidden="true">'+esc(initials(d.name||d.company))+'</div>'
+      +'<div class="cp-name">'+esc(d.name||'Unknown customer')+'</div>'
+      +(d.company?'<div class="cp-co">'+esc(d.company)+'</div>':'')
+      +(d.tags&&d.tags.length?'<div class="cp-tags">'+d.tags.map(function(t){return '<span class="cp-tag"><i style="background:'+esc(t.colour)+'"></i>'+esc(t.name)+'</span>';}).join('')+'</div>':'')
+      +'</div>';
+    if(!d.known){
+      h+='<div class="cp-empty">No saved details for this customer yet. When they become a lead or a contact, their details show here.</div>';
+    }
+    if(d.tiles&&d.tiles.length) h+='<div class="cp-tiles">'+d.tiles.map(function(t){return '<div class="cp-tile"><span>'+esc(t[0])+'</span><b>'+esc(t[1])+'</b></div>';}).join('')+'</div>';
+    if(d.contact&&d.contact.length) h+='<div class="cp-sec"><h4>Contact</h4>'+rows(d.contact)+'</div>';
+    if(d.sales&&d.sales.length) h+='<div class="cp-sec"><h4>Sales</h4>'+rows(d.sales)+'</div>';
+    if(d.recent&&d.recent.length) h+='<div class="cp-sec"><h4>Recent</h4>'+d.recent.map(function(r){return '<div class="cp-recent"><span>'+esc(r[0])+'</span><span>'+esc(r[1])+'</span></div>';}).join('')+'</div>';
+    if(d.note) h+='<div class="cp-sec"><h4>Note for the team</h4><div class="cp-note">'+esc(d.note)+'</div></div>';
+    if(d.links&&d.links.length) h+='<div class="cp-links">'+d.links.map(function(l){return '<a href="'+esc(l.url)+'"'+(l.primary?' class="primary"':'')+'>'+esc(l.text)+'</a>';}).join('')+'</div>';
+    p.innerHTML=h;
+    var c=p.querySelector('.cp-close'); if(c) c.addEventListener('click',function(){ p.parentNode.classList.remove('cp-open'); });
+  }
+  document.querySelectorAll('.cust-panel').forEach(function(p){
+    var grid=p.parentNode;
+    var acts=grid.querySelector('.inbox-chat .chat-actions');
+    if(acts){ var b=document.createElement('button'); b.type='button'; b.className='cp-toggle'; b.textContent='Customer';
+      b.addEventListener('click',function(){ grid.classList.toggle('cp-open'); }); acts.insertBefore(b, acts.firstChild); }
+    p.innerHTML='<div class="cp-empty">Loading customer details…</div>';
+    fetch(API+'?key='+encodeURIComponent(p.getAttribute('data-key')||''),{credentials:'same-origin'})
+      .then(function(r){ if(!r.ok) throw r.status; return r.json(); })
+      .then(function(d){ render(p,d); })
+      .catch(function(){ p.innerHTML='<div class="cp-empty">Customer details could not load. Refresh the page to try again.</div>'; });
+  });
+})();
+</script>
+{% endif %}
 <script>
 // Full "number · messages · PhiXtra number" text on hover, since laptops cut it with "…" (2026-10-25)
 document.querySelectorAll('.chat-header .chat-sub').forEach(function(el){

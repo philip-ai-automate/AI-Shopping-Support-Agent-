@@ -16504,6 +16504,7 @@ def _get_inbox_agent_tabs(tenant_id: int) -> list:
         tabs.append({
             "phone_number_id": c["phone_number_id"],
             "label": c.get("agent_name") or (c.get("display_phone_number") or c["phone_number_id"]),
+            "number": c.get("display_phone_number") or "",   # shown under the name in the new Inbox (17 Nov 2026)
             "color": _agent_color_for_index(i),
         })
     return tabs
@@ -36763,6 +36764,13 @@ def my_inbox():
     r3 = _require_team_permission("inbox.page")
     if r3: return r3
     ai_enabled = True
+    # New Inbox design (17 Nov 2026): ?ui=new / ?ui=old, remembered for this
+    # login. INBOX_UI2_FOR_ALL switches it on for everyone once tested.
+    if request.args.get("ui") in ("new", "old"):
+        session["inbox_ui"] = request.args.get("ui")
+    inbox_ui2 = INBOX_UI2_FOR_ALL or session.get("inbox_ui") == "new"
+    if session.get("inbox_ui") == "old":
+        inbox_ui2 = False
     connection = _get_wa_connection(tenant_id)
     # Only worth showing per-number filter tabs / color dots when 2+ numbers
     # are connected — single-number tenants (the common case) see no change.
@@ -36912,7 +36920,49 @@ def my_inbox():
         chat_tr=_chat_tr_inbox_ctx(tenant_id),   # Chat Translation, B2B (2026-10-29)
         disc=_disc_inbox_ctx(tenant_id, active_phone) if is_webchat_active else None,   # Discounts in Chat (11 Nov 2026)
         web_taken_over=_web_chat_is_taken_over(tenant_id, active_phone) if is_webchat_active else False,
+        inbox_ui2=inbox_ui2,
     )
+
+
+INBOX_UI2_FOR_ALL = False   # new Inbox design for every business (17 Nov 2026) — flip after the owner's test
+
+
+@portal_bp.route("/inbox/api/customer")
+@team_feature("inbox.page")
+def inbox_customer_panel():
+    """The new Inbox's customer panel (17 Nov 2026): who this chat is with."""
+    r = _require_login()
+    if r: return jsonify({"error": "login"}), 401
+    if _require_team_permission("inbox.page"):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    key = (request.args.get("key") or "").strip()
+    if not key or len(key) > 200:
+        return jsonify({"error": "key"}), 400
+    numbers, emails, name = _inbox_chat_identity(tenant_id, key)
+    if not _inbox_can_see(tenant_id, key, numbers, emails):
+        return jsonify({"error": "forbidden"}), 403
+    try:
+        card = {}
+        if not key.startswith("fb:"):
+            try:
+                import shopify_b2b as _sb2b
+                card = _sb2b.inbox_card(tenant_id, key, {"visitor_email": (emails or [None])[0],
+                                                         "whatsapp_number": (numbers or [None])[0]}) or {}
+            except Exception:
+                card = {}
+        import inbox_customer
+        data = inbox_customer.build(
+            tenant_id, key, numbers, emails, name,
+            can_sales=_team_member_has_permission("leads.page"),
+            lead_url=(lambda i: url_for("portal.lead_detail", lead_id=i)) if _team_member_has_permission("leads.page") else None,
+            quote_url=lambda i: url_for("portal.quotes_request_detail", request_id=i),
+            shopify_card=card)
+        return jsonify(data)
+    except Exception as e:
+        print("⚠️ inbox customer panel:", e)
+        return jsonify({"error": "unavailable"}), 503
 
 
 @portal_bp.route("/inbox/<path:phone>/reply", methods=["POST"])
