@@ -58,6 +58,30 @@ def _guard():
     return customer, None
 
 
+# Old report pages retired 19 Nov 2026 (user): their links and bookmarks open the matching
+# ready-made report (or Create a report). Their Excel/PDF downloads and the per-campaign
+# email report are left as they were.
+RETIRED = {
+    "portal.reports_page": "new_wa_customers",          # WhatsApp Report (user 19 Nov: retire, drop products browsed)
+    "portal.whatsapp_reports": "handovers", "portal.report_usage": "ai_usage",
+    "portal.report_leads_sources": "where_enquiries", "portal.report_not_a_fit": "not_a_fit",
+    "calls.calls_report": "calls", "portal.report_cart": "cart_recovery",
+    "portal.email_campaigns_reports": "campaigns",
+    "portal.report_custom_picker": None, "portal.report_custom_entity": None, "portal.report_crm": None,
+}
+
+
+@reports_bp.before_app_request
+def _retired_reports():
+    if request.method != "GET" or request.endpoint not in RETIRED:
+        return None
+    key = RETIRED[request.endpoint]
+    r = RS.READY_BY_KEY.get(key) if key else None
+    if not r:
+        return redirect(url_for("reports.wizard"))
+    return redirect(url_for("reports.builder") + "?" + urlencode(dict(r["cfg"], ready=key), doseq=True))
+
+
 def _setup():
     """(customer, ctx, allowed_subjects, quote_scope, None) or (…, response)."""
     customer, err = _guard()
@@ -283,14 +307,17 @@ def _share_choices(ctx):
 @reports_bp.route("/reports/all")
 @team_feature("reports.custom")
 def library():
+    """Reports home (approved mock-up screen 11): dashboards, your reports first, ready-made questions."""
     customer, ctx, b2b, _scope, err = _setup()
     if err:
         return err
     v = ctx["viewer"]
-    show = request.args.get("show") or "all"
+    show = request.args.get("show") if request.args.get("show") in ("mine", "shared") else "all"
     folder = (request.args.get("folder") or "").strip()[:RA.MAX_FOLDER]
     every = _visible_reports(ctx, b2b)
     folders = sorted({r["folder"] for r in every if r.get("folder")}, key=str.lower)
+    counts = {"all": len(every), "mine": sum(1 for r in every if RA.is_mine(r, v))}
+    counts["shared"] = counts["all"] - counts["mine"]
     reports = []
     for r in every:
         if show == "mine" and not RA.is_mine(r, v):
@@ -299,20 +326,34 @@ def library():
             continue
         if folder and r.get("folder") != folder:
             continue
-        cfg = r["config"] or {}
-        reports.append({**r, "subject_label": RB.SUBJECTS[r["subject"]]["label"],
-                        "shown_as": dict(RB.CHARTS).get(cfg.get("chart")) or
-                                    ("Summary" if cfg.get("view") == "summary" else "Detailed"),
+        try:
+            rcfg = RB.read_config(_args_from_saved(r), b2b)
+            sentence = RP.plain_sentence(rcfg)
+            kind = (r["config"] or {}).get("chart") or ("auto" if rcfg["g1"] else "number")
+        except Exception:
+            sentence, kind = RB.SUBJECTS[r["subject"]]["label"], "auto"
+        reports.append({**r, "sentence": sentence, "icon": RP.CHART_ICON.get(kind, "▮▮"),
                         "sharing": RA.sharing_label(r), "mine": RA.is_mine(r, v)})
     dashboards = [d for d in RD.list_dashboards(ctx["tenant_id"]) if RA.can_view(d, v)]
     is_b2b = "quotes" in b2b
     is_b2c = bool({"orders", "discounts", "carts"} & b2b)
-    ready = [dict(r, url=url_for("reports.builder") + "?" + urlencode(dict(r["cfg"], ready=r["key"]), doseq=True))
-             for r in RS.ready_for(b2b, is_b2b, is_b2c)]
-    return render_template("portal/report_library.html", customer=customer, reports=reports, ready=ready,
-                           is_b2b=is_b2b, is_b2c=is_b2c,
-                           subjects=RB.subjects_for(b2b), show=show if show in ("all", "mine", "shared") else "all",
-                           folder=folder, folders=folders, dashboards=dashboards, RA=RA)
+    offered = {r["key"]: r for r in RS.ready_for(b2b, is_b2b, is_b2c)}
+    topics = []
+    for key, label, keys in RP.TOPICS:
+        items = []
+        for k in keys:
+            r = offered.get(k)
+            if not r:
+                continue
+            items.append({"key": k, "q": RP.QUESTIONS.get(k, r["label"]), "label": r["label"],
+                          "how": RP.CHART_WORD.get(r["cfg"].get("chart", "auto"), "Chart") + " · " + r["desc"],
+                          "icon": RP.CHART_ICON.get(r["cfg"].get("chart", "auto"), "▮▮"),
+                          "url": url_for("reports.builder") + "?" + urlencode(dict(r["cfg"], ready=k), doseq=True)})
+        if items:
+            topics.append({"key": key, "label": label, "qs": items})
+    return render_template("portal/report_home.html", customer=customer, reports=reports, topics=topics,
+                           show=show, folder=folder, folders=folders, counts=counts, dashboards=dashboards, RA=RA,
+                           can_new_dashboard=True)
 
 
 @reports_bp.route("/reports/new")

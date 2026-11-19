@@ -1427,7 +1427,7 @@
         <span class="sb-arrow">▾</span>
       </div>
       <div class="sb-sub {% if _rep_group %}open{% endif %}">
-        {# Reports & Dashboards (2026-11-19, step 1): every plan; old report pages stay below until retired. #}
+        {# Reports & Dashboards (2026-11-19): every plan. Old report pages retired 19 Nov (step 2): their links open the matching new report. #}
         {% if staff_can_open('reports.dashboards') %}
         <a href="{{ url_for('reports.dashboards') }}"
            class="{% if (request.endpoint or '').startswith('reports.dashboard') %}active{% endif %}">Dashboards</a>
@@ -1435,21 +1435,6 @@
         {% if staff_can_open('reports.library') %}
         <a href="{{ url_for('reports.library') }}"
            class="{% if request.endpoint in ('reports.library', 'reports.builder') %}active{% endif %}">All reports</a>
-        {% endif %}
-        {# WhatsApp reports (2026-10-24, from the WhatsApp menu): every business, as before. #}
-        {% if staff_can_open('portal.reports_page') %}
-        <a href="{{ url_for('portal.reports_page') }}"
-           class="{% if request.endpoint == 'portal.reports_page' %}active{% endif %}">
-          WhatsApp Report
-          {% if 'wa.report' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-        </a>
-        {% endif %}
-        {% if staff_can_open('portal.whatsapp_reports') %}
-        <a href="{{ url_for('portal.whatsapp_reports') }}"
-           class="{% if request.endpoint == 'portal.whatsapp_reports' %}active{% endif %}">
-          Handoff Reports
-          {% if 'wa.handoff_reports_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-        </a>
         {% endif %}
         {# The other reports: any business with a website (2026-11-06 _has_site; Analytics and Cart Recovery Report WooCommerce shops only). #}
         {% if _has_site %}
@@ -1461,60 +1446,11 @@
           {% if 'analytics.page' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
-        {% if staff_can_open('portal.report_usage') %}
-        <a href="{{ url_for('portal.report_usage') }}"
-           class="{% if request.endpoint == 'portal.report_usage' %}active{% endif %}">
-          AI Usage Report
-          {% if 'reports.usage' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-        </a>
-        {% endif %}
-        {% if staff_can_open('portal.report_leads_sources') %}
-        <a href="{{ url_for('portal.report_leads_sources') }}"
-           class="{% if request.endpoint == 'portal.report_leads_sources' %}active{% endif %}">
-          Leads Report
-          {% if 'reports.leads_sources' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-        </a>
-        {% endif %}
-        {% if staff_can_open('portal.report_not_a_fit') %}
-        <a href="{{ url_for('portal.report_not_a_fit') }}"
-           class="{% if request.endpoint == 'portal.report_not_a_fit' %}active{% endif %}">
-          Not a Fit Report
-          {% if 'reports.leads_sources' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-        </a>
-        {% endif %}
-        {% if staff_can_open('calls.calls_report') %}
-        <a href="{{ url_for('calls.calls_report') }}"
-           class="{% if request.endpoint == 'calls.calls_report' %}active{% endif %}">
-          Calls Report
-          {% if 'calls.report' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-        </a>
-        {% endif %}
-        {% if _has_woocommerce and staff_can_open('portal.report_cart') %}
-        <a href="{{ url_for('portal.report_cart') }}"
-           class="{% if request.endpoint == 'portal.report_cart' %}active{% endif %}">
-          Cart Recovery Report
-          {% if 'reports.cart' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-        </a>
-        {% endif %}
-        {% if staff_can_open('portal.email_campaigns_reports') %}
-        <a href="{{ url_for('portal.email_campaigns_reports') }}"
-           class="{% if request.endpoint in ('portal.email_campaigns_reports','portal.email_campaign_report') %}active{% endif %}">
-          Email Campaign Report
-          {% if 'campaigns_email.reports_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-        </a>
-        {% endif %}
         {% if staff_can_open('portal.report_billing') %}
         <a href="{{ url_for('portal.report_billing') }}"
            class="{% if request.endpoint == 'portal.report_billing' %}active{% endif %}">
           Billing Summary
           {% if 'reports.billing' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-        </a>
-        {% endif %}
-        {% if staff_can_open('portal.report_custom_picker') %}
-        <a href="{{ url_for('portal.report_custom_picker') }}"
-           class="{% if request.endpoint in ('portal.report_custom_picker', 'portal.report_custom_entity') %}active{% endif %}">
-          Custom Report
-          {% if 'reports.custom' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
         {% endif %}
@@ -2167,13 +2103,10 @@
     { icon:'📋', title:'SMS Segments',            desc:'Saved groups of Sales Pipeline contacts for SMS', url:'{{ url_for("portal.sms_campaigns", view="segments") }}', tags:'sms segment audience group campaign' },
     {% endif %}
     { icon:'✉️', title:'Email Campaigns',        desc:'Compose and send bulk email to your contacts', url:'{{ url_for("portal.email_campaigns") }}',            tags:'email campaign newsletter bulk send marketing zeptomail' },
-    { icon:'📊', title:'Email Campaign Reports', desc:'See how your email campaigns performed',       url:'{{ url_for("portal.email_campaigns_reports") }}',    tags:'email campaign analytics results delivery' },
     { icon:'🧾', title:'Orders',                 desc:'View all orders and purchase history',          url:'{{ url_for("portal.orders") }}',                     tags:'sales purchases transactions history' },
     { icon:'📱', title:'WhatsApp Connect',       desc:'Connect or manage your WhatsApp number',       url:'{{ url_for("portal.whatsapp_connect") }}',           tags:'connect phone qr code number link setup' },
-    { icon:'📊', title:'Handoff Reports',        desc:'Response times, missed handoffs, performance',  url:'{{ url_for("portal.whatsapp_reports") }}',           tags:'handoff response time missed reports analytics' },
     { icon:'📊', title:'Dashboards',             desc:'Your saved reports side by side, with one set of filters', url:'{{ url_for("reports.dashboards") }}', tags:'dashboard reports kpi overview charts sales numbers' },
     { icon:'📈', title:'All reports',            desc:'Build, save and share reports — ready-made or your own',  url:'{{ url_for("reports.library") }}',    tags:'report builder custom reports charts pie export excel pdf quotes deals leads' },
-    { icon:'📈', title:'WhatsApp Report',        desc:'Usage stats for your WhatsApp channel',        url:'{{ url_for("portal.reports_page") }}',               tags:'usage stats messages sent received analytics' },
     { icon:'📋', title:'Plan',                   desc:'View or upgrade your plan',                    url:'{{ url_for("portal.billing_plans") }}',              tags:'plan upgrade subscription quota limit whatsapp' },
     { icon:'🏪', title:'My Products & Services', desc:'Add, edit and manage your products and services',           url:'{{ url_for("portal.products") }}',                   tags:'products inventory catalogue stock add edit' },
     { icon:'👤', title:'My Customers',           desc:'View your customer list and profiles',         url:'{{ url_for("portal.customers") }}',                  tags:'customers buyers profiles crm list' },
@@ -2210,10 +2143,8 @@
     { icon:'🛒', title:'Cart Recovery',          desc:'Recover abandoned shopping carts',             url:'{{ url_for("portal.cart_recovery_dashboard") }}',    tags:'abandoned cart recovery settings whatsapp' },
     { icon:'✉️', title:'Cart Email Templates',   desc:'Email messages sent for cart recovery',       url:'{{ url_for("portal.cart_recovery_email_template") }}',tags:'email template cart recovery message' },
     { icon:'📈', title:'Analytics',              desc:'Sales and performance analytics',              url:'{{ url_for("portal.analytics") }}',                  tags:'analytics performance charts graphs data sales' },
-    { icon:'🛒', title:'Cart Recovery Report',   desc:'How many carts were recovered',               url:'{{ url_for("portal.report_cart") }}',                tags:'cart recovery report results conversions' },
     {% endif %}
     {% if _has_site %}
-    { icon:'📊', title:'AI Usage Report',        desc:'How many AI credits you have used',           url:'{{ url_for("portal.report_usage") }}',               tags:'usage report ai tokens credits consumption' },
     { icon:'💰', title:'Billing Summary',        desc:'Revenue and billing history report',           url:'{{ url_for("portal.report_billing") }}',             tags:'billing summary revenue report' },
     { icon:'💬', title:'Chat Archive',           desc:'Browse all past AI conversations',             url:'{{ url_for("portal.chat_archive") }}',               tags:'chat archive history past conversations log' },
     {% endif %}

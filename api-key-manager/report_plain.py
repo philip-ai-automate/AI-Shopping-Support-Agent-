@@ -93,7 +93,39 @@ QUESTIONS = {
     "orders_week": "How many orders do we get each week?", "orders_status": "Where are our orders up to?",
     "top_products": "Which products sell most?", "discount_codes": "Do buyers use the discount codes we give?",
     "cart_recovery": "What happens to carts left behind?",
+    "new_wa_customers": "How many new customers message us on WhatsApp?",
 }
+
+# Reports home: the ready-made questions in topic tabs (approved mock-up screen 11)
+TOPICS = [("sales", "Sales & quotes", ["quotes_by_member", "quotes_wonlost", "quotes_waiting", "quote_revenue",
+                                        "overdue_invoices", "quotes_pivot", "deal_funnel"]),
+          ("chats", "Enquiries & chats", ["where_enquiries", "missed_replies", "new_wa_customers", "handovers",
+                                          "first_reply", "not_a_fit"]),
+          ("team", "Team", ["team_activity", "followups", "calls"]),
+          ("marketing", "Marketing", ["campaigns", "sequences", "ai_usage"]),
+          ("shop", "Online shop", ["orders_week", "orders_status", "top_products", "discount_codes", "cart_recovery"])]
+CHART_ICON = {"bar": "▮▮", "hbar": "▬", "stacked": "▮▮", "line": "⟋", "area": "⟋", "combo": "▮⟋", "pie": "◔",
+              "donut": "◔", "funnel": "▤", "number": "#", "heatmap": "▦", "pivot": "⊞", "table": "☰", "auto": "▮▮"}
+CHART_WORD = {"bar": "Bar", "hbar": "Bar", "stacked": "Stacked bar", "line": "Line", "area": "Area", "combo": "Bar + line",
+              "pie": "Pie", "donut": "Donut", "funnel": "Funnel", "number": "One number", "heatmap": "Heatmap",
+              "pivot": "Pivot table", "table": "List", "auto": "Chart"}
+
+
+def plain_sentence(cfg) -> str:
+    """The report's sentence as plain text (Reports home list)."""
+    subj = RB.SUBJECTS[cfg["subject"]]
+    m = RB.measure_of(cfg)
+    which, rest = which_of(cfg)
+    s = measure_words(cfg["subject"], m) + " " + which[2]
+    s = s[0].upper() + s[1:]
+    if cfg["g1"]:
+        s += ", split by " + split_words(cfg, cfg["g1"]) + (" and " + split_words(cfg, cfg["g2"]) if cfg["g2"] else "")
+    s += ", " + period_words(cfg)
+    if cfg.get("cmp") and cfg["period"] != "all":
+        s += ", " + dict(COMPARE_WORDS)[cfg["cmp"]]
+    if rest:
+        s += f" ({len(rest)} condition{'s' if len(rest) > 1 else ''})"
+    return s
 
 PERIOD_WORDS = {"this_month": "this month", "last_month": "last month", "this_quarter": "this quarter",
                 "last_quarter": "last quarter", "this_year": "this year", "last_year": "last year", "7": "the last 7 days",
