@@ -163,11 +163,6 @@
           <b style="font-size:15px;color:#0B1D40">Time</b>
           <div>{{ dp.trigger('wzTime') }}</div>
         </div>
-        <div class="wz-row" style="margin-top:14px;gap:16px;align-items:flex-end">
-          <label class="wz-lbl">Count a record in the time by
-            <select class="wz-sel" id="wzDatef"></select>
-          </label>
-        </div>
         <div class="wz-row" id="wzConds" style="margin:16px 0 8px"></div>
         <button type="button" class="wz-btn" id="wzShowCond" style="min-height:40px;font-size:14px;border-style:dashed;color:var(--blue);border-radius:20px">+ Only show <span id="wzNoun2"></span> where…</button>
         <div class="wz-cond" id="wzCondBox" hidden>
@@ -490,10 +485,6 @@
         step4(); preview();
       }});
     };
-    var d = document.getElementById('wzDatef'); d.innerHTML = '';
-    s.dates.forEach(function (x) { var o = el('option', '', x.label); o.value = x.key; o.selected = x.key === (S.datef || s.date_default); d.appendChild(o); });
-    d.disabled = S.period === 'all';
-    d.onchange = function () { S.datef = d.value; preview(); };
     document.getElementById('wzNoun2').textContent = '\u00a0' + s.noun + '\u00a0';
     var cs = document.getElementById('wzConds'); cs.innerHTML = '';
     S.conds.forEach(function (cd, i) {
