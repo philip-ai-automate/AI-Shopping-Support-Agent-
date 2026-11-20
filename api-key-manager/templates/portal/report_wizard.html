@@ -42,11 +42,6 @@
   .wz-pill.on{border:2px solid var(--blue);background:var(--soft);color:#1E3A8A;font-weight:700;padding:0 13px}
   .wz-pill.off{opacity:.45;cursor:not-allowed}
   .wz-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-  .wz-cmp{flex:1 1 200px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:52px;padding:10px 14px;border:1px solid #D5DBE3;border-radius:10px;
-    background:#fff;font-family:inherit;font-size:14px;color:#1F2A37;cursor:pointer;text-align:left}
-  .wz-cmp b{font-weight:600}
-  .wz-cmp span{font-size:12.5px;color:#5B6675}
-  .wz-cmp.on{border:2px solid var(--blue);background:var(--soft);padding:9px 13px}
   .wz-lbl{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--sub)}
   .wz-sel,.wz-in{font-family:inherit;font-size:14px;min-height:42px;border:1px solid #D5DBE3;border-radius:10px;padding:0 10px;background:#fff;color:var(--ink);box-sizing:border-box;max-width:100%}
   .wz-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 20px;border-radius:10px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;
@@ -167,10 +162,6 @@
         <div style="display:flex;flex-direction:column;gap:8px">
           <b style="font-size:15px;color:#0B1D40">Time</b>
           <div>{{ dp.trigger('wzTime') }}</div>
-        </div>
-        <div id="wzCmpBox" style="display:flex;flex-direction:column;gap:8px;margin-top:16px">
-          <b style="font-size:15px;color:#0B1D40">Compare with</b>
-          <div class="wz-row" role="radiogroup" aria-label="Compare with" id="wzCmp" style="gap:10px"></div>
         </div>
         <div class="wz-row" style="margin-top:14px;gap:16px;align-items:flex-end">
           <label class="wz-lbl">Count a record in the time by
@@ -506,16 +497,6 @@
     s.dates.forEach(function (x) { var o = el('option', '', x.label); o.value = x.key; o.selected = x.key === (S.datef || s.date_default); d.appendChild(o); });
     d.disabled = S.period === 'all';
     d.onchange = function () { S.datef = d.value; preview(); };
-    var cb = document.getElementById('wzCmp'); cb.innerHTML = '';
-    document.getElementById('wzCmpBox').hidden = S.period === 'all';
-    [['', 'No comparison'], ['prev', 'The period before'], ['year', 'Same time last year']].forEach(function (c) {
-      var r = PXDate.compare(tv(), c[0], SPEC.picker), on = (S.cmp || '') === c[0];
-      var b = el('button', 'wz-cmp' + (on ? ' on' : '')); b.type = 'button'; b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', on ? 'true' : 'false');
-      b.appendChild(el('b', '', c[1]));
-      if (r) b.appendChild(el('span', '', PXDate.span(r.from, r.to)));
-      b.onclick = function () { S.cmp = c[0]; step4(); preview(); };
-      cb.appendChild(b);
-    });
     document.getElementById('wzNoun2').textContent = '\u00a0' + s.noun + '\u00a0';
     var cs = document.getElementById('wzConds'); cs.innerHTML = '';
     S.conds.forEach(function (cd, i) {
