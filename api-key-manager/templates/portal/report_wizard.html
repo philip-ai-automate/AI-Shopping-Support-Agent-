@@ -1,10 +1,13 @@
 {% extends "portal/base.html" %}
 {% import "portal/_report_chart.html" as rc %}
-{# ask: Reports › All reports › "+ New report" opens "Create a report". Step 1 "What do you want to know?": pick what the report is about (Quotes, Deals, Enquiries & leads, Contacts & companies, Conversations, Calls, Campaign messages, Email sequences, Follow-ups & tasks, Team activity, AI Agent usage, Orders, Products sold, Discount codes, Cart recovery — only the ones your business uses), then click a ready question (for example "Who wins the most quotes?", "Won, lost or still waiting?", "Which invoices are overdue?", "Where do our enquiries come from?") to go straight to "Show it as", or "+ Start from blank" for four short steps: "What should we count?" (Number of …, Total …, Average …, and Which: e.g. All quotes, Won, Lost, Waiting for an answer), "Split it by" (Team member, Month, Status, Where it came from, Buyer company…, or Don't split for one number; "And also split by" for a stacked chart or pivot), "Which time, and anything to leave out?" (This month, This quarter, This year, Last 12 months…, which date counts, "Compare with the period before", "Only show … where…" conditions), and "Show it as" (Bar, Pie, Line, Table, Big number, plus More chart types: Donut, Horizontal bar, Stacked bar, Area, Bar + line, Funnel, Heatmap, Pivot). A live Preview on the right shows your real numbers as you choose. "Create report" opens the report; press "Save report" there to keep it. #}
+{# ask: Reports › All reports › "+ New report" opens "Create a report". First pick what the report is about (Quotes, Deals, Enquiries & leads, Contacts & companies, Conversations, Calls, Campaign messages, Email sequences, Follow-ups & tasks, Team activity, AI Agent usage, Orders, Products sold, Discount codes, Cart recovery — only the ones your business uses), then "How do you want to see it?": "A list" (every record as a row; next step "Which columns do you want?" — tick columns under Most used or open a group, search with "Find a column", drag or use ↑ ↓ on the right to order them; then "Time and filters"; press "Create list") or "A chart or totals" (steps: "What should we count?", "Split it by", "Which time, and anything to leave out?" with "+ Only show … where…" for conditions, and "Show it as" — Bar, Pie, Line, Table, Big number or More chart types; press "Create report"). Or click a ready-made question to go straight to "Show it as". The Preview on the right shows your real rows or chart from step 2 on. On the report page press "Save report" to keep it. #}
 {% block title %}Create a report — Reports — PhiXtra Portal{% endblock %}
 
 {% block head %}
 <style>
+  /* Reports pages: a strip at the top for the Ask PhiXtra button, so it never covers the page's buttons (20 Nov 2026) */
+  .wz{padding-top:52px}
+  @media (max-width:640px){.wz{padding-top:40px}}
   /* Create a report wizard (19 Nov 2026) — approved mock-up EPpwZTeFt5iccD8SH155P1 screen 8 */
   .wz{--navy:#0B1F3A;--blue:#1D4ED8;--soft:#E8EEFC;--sub:#5B6675;--edge:#E3E7ED;display:flex;flex-direction:column;gap:16px}
   .wz h1{margin:0;font-size:26px;font-weight:800;color:var(--navy)}
@@ -53,6 +56,35 @@
   .wz-empty{height:260px;border:1px dashed #D5DBE3;border-radius:12px;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;font-size:14px;color:var(--sub)}
   .rb-err{background:#FBE4E4;color:#991B1B;border-radius:8px;padding:10px 14px;font-size:14px}
   [hidden]{display:none!important}
+  .wz-kinds{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  @media (max-width:760px){.wz-kinds{grid-template-columns:minmax(0,1fr)}}
+  .wz-kind{text-align:left;padding:16px;border-radius:14px;cursor:pointer;display:flex;flex-direction:column;gap:10px;font-family:inherit;background:#fff;border:1px solid #D5DBE3;color:#1F2A37}
+  .wz-kind:hover{border-color:#2563EB}
+  .wz-kind.on{border:2px solid #2563EB;background:#EFF6FF;padding:15px}
+  .wz-kind .hd{display:flex;gap:12px;align-items:center}
+  .wz-kind .ic{width:42px;height:42px;border-radius:10px;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .wz-kind b{font-size:17px;color:#0B1D40;display:block}
+  .wz-kind span.s{font-size:13.5px;color:#475569}
+  .wz-kind small{font-size:13px;font-weight:700;color:#1E40AF}
+  .wz-q{display:flex;flex-wrap:wrap;gap:8px}
+  .wz-q button{font-family:inherit;font-size:14px;background:#F1F5F9;border:1px solid transparent;border-radius:10px;padding:10px 12px;cursor:pointer;color:#0F172A;text-align:left}
+  .wz-q button:hover{border-color:#2563EB;background:#fff}
+  .wz-cols{display:flex;flex-wrap:wrap;border:1px solid var(--edge);border-radius:12px;overflow:hidden}
+  .wz-cl{flex:1 1 280px;min-width:0;padding:14px 16px;display:flex;flex-direction:column;gap:8px;max-height:460px;overflow-y:auto}
+  .wz-cr{flex:1 1 240px;min-width:0;padding:14px 16px;background:#F8FAFC;border-left:1px solid var(--edge);display:flex;flex-direction:column;gap:6px;max-height:460px;overflow-y:auto}
+  .wz-cgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 10px}
+  @media (max-width:640px){.wz-cgrid{grid-template-columns:minmax(0,1fr)}}
+  .wz-ck{display:flex;gap:10px;align-items:center;padding:8px 6px;font-size:14px;border-radius:8px;cursor:pointer}
+  .wz-ck input{width:18px;height:18px;accent-color:#2563EB;flex-shrink:0}
+  .wz-grp summary{cursor:pointer;padding:10px 6px;border-top:1px solid #F0F2F5;font-size:14px;font-weight:700;color:#0B1F3A}
+  .wz-sel2{display:grid;grid-template-columns:20px 1fr auto auto auto;gap:4px;align-items:center;padding:7px 8px;border:1px solid #E3E7ED;border-radius:10px;background:#fff;font-size:14px}
+  .wz-sel2 button{border:0;background:none;color:#5B6675;width:32px;height:32px;border-radius:6px;cursor:pointer;font-size:15px}
+  .wz-sel2 button:hover{background:#F0F2F5}
+  .wz-sel2.drag{opacity:.4}
+  .wz-cap{font-size:11.5px;font-weight:800;letter-spacing:.06em;color:var(--sub)}
+  .wz-loading{height:180px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:14px;color:var(--sub)}
+  .wz-loading i{width:18px;height:18px;border-radius:50%;border:3px solid #DBEAFE;border-top-color:#2563EB;animation:wzspin .8s linear infinite}
+  @keyframes wzspin{to{transform:rotate(360deg)}}
   .wz h2[tabindex="-1"]:focus{outline:none}
 </style>
 {% endblock %}
@@ -61,7 +93,7 @@
 <div class="wz">
   <div class="wz-row" style="justify-content:space-between">
     <div>
-      <div style="font-size:13px;color:var(--sub)"><a href="{{ url_for('reports.library') }}" style="color:var(--sub)">Reports</a> › New report</div>
+      <div style="font-size:13px;color:var(--sub)"><a href="{{ url_for('reports.library') }}" style="color:var(--sub)">Reports</a> › {% if dash %}<a href="{{ dash.back }}" style="color:var(--sub)">{{ dash.name }}</a> › {% endif %}New report</div>
       <h1>Create a report</h1>
     </div>
   </div>
@@ -70,12 +102,32 @@
   <div class="wz-layout">
     <section class="wz-main" aria-live="polite">
       <div data-step="1">
-        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
-          <h2>What do you want to know?</h2>
-          <p class="wz-sub">Pick a question and we set everything up. You can change any part afterwards.</p>
+        <h2 style="margin-bottom:10px">1. What is it about?</h2>
+        <div role="tablist" aria-label="Report about" class="wz-row" id="wzSubjects" style="margin-bottom:20px"></div>
+        <h2 style="margin-bottom:10px;font-size:18px">2. How do you want to see it?</h2>
+        <div class="wz-kinds" role="radiogroup" aria-label="How to see it" id="wzKinds"></div>
+        <div style="border-top:1px solid #F0F2F5;margin-top:20px;padding-top:16px">
+          <div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:10px">Or start from a ready-made question</div>
+          <div class="wz-q" id="wzQuestions"></div>
         </div>
-        <div role="tablist" aria-label="Report about" class="wz-row" id="wzSubjects" style="margin-bottom:12px"></div>
-        <div class="wz-cards" id="wzQuestions"></div>
+      </div>
+
+      <div data-step="6" hidden>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+          <h2>Which columns do you want?</h2>
+          <p class="wz-sub">Tick what you need. Drag on the right, or use ↑ ↓, to change the order.</p>
+        </div>
+        <div class="wz-cols">
+          <div class="wz-cl">
+            <label class="wz-lbl">Find a column<input class="wz-in" type="search" id="wzColSearch" placeholder="e.g. phone, country, owner"></label>
+            <div id="wzColLists"></div>
+          </div>
+          <div class="wz-cr">
+            <div class="wz-cap" id="wzColCount">IN YOUR LIST</div>
+            <div id="wzColChosen" style="display:flex;flex-direction:column;gap:6px"></div>
+            <button type="button" id="wzColReset" style="align-self:flex-start;border:0;background:none;color:#1D4ED8;font-size:13px;padding:6px 0;cursor:pointer;font-family:inherit">Back to the usual columns</button>
+          </div>
+        </div>
       </div>
 
       <div data-step="2" hidden>
@@ -116,13 +168,14 @@
           <input type="checkbox" id="wzCompare" style="width:20px;height:20px;accent-color:#1D4ED8">
           <span><b style="font-weight:600">Compare with the period before</b><br><span style="font-size:12.5px;color:var(--sub)">Shows the change, e.g. +14% vs last quarter</span></span>
         </label>
-        <div style="font-size:14px;font-weight:700;color:var(--navy);margin:16px 0 8px">Only show <span id="wzNoun2"></span> where… <span style="font-weight:400;color:var(--sub)">(optional)</span></div>
-        <div class="wz-row" id="wzConds" style="margin-bottom:8px"></div>
-        <div class="wz-cond">
+        <div class="wz-row" id="wzConds" style="margin:16px 0 8px"></div>
+        <button type="button" class="wz-btn" id="wzShowCond" style="min-height:40px;font-size:14px;border-style:dashed;color:var(--blue);border-radius:20px">+ Only show <span id="wzNoun2"></span> where…</button>
+        <div class="wz-cond" id="wzCondBox" hidden>
           <select class="wz-sel" id="wzF" aria-label="Field"></select>
           <select class="wz-sel" id="wzOp" aria-label="Rule"></select>
           <span id="wzValSlot"></span>
-          <button type="button" class="wz-btn" id="wzAddCond" style="min-height:42px;font-size:14px">+ Add</button>
+          <button type="button" class="wz-btn primary" id="wzAddCond" style="min-height:42px;font-size:14px">Add</button>
+          <button type="button" class="wz-btn" id="wzCancelCond" style="min-height:42px;font-size:14px">Cancel</button>
         </div>
       </div>
 
@@ -141,7 +194,7 @@
 
       <div class="wz-foot">
         <button type="button" class="wz-btn" id="wzBack" hidden>‹ Back</button>
-        <span id="wzReady" style="font-size:13px;color:var(--sub)">Or open a <a href="{{ url_for('reports.library') }}">ready-made report</a></span>
+        <span id="wzReady" style="font-size:13px;color:var(--sub)"></span>
         <span style="display:flex;gap:16px;align-items:center"><span id="wzStepText" style="font-size:13px;color:var(--sub)"></span><a href="{{ url_for('reports.library') }}" style="font-size:14px;color:var(--sub)">Cancel</a></span>
         <button type="button" class="wz-btn primary" id="wzNext" hidden>Next ›</button>
         <a class="wz-btn primary" id="wzCreate" href="#" hidden>Create report</a>
@@ -151,7 +204,7 @@
     <aside class="wz-side" aria-label="Preview">
       <div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="font-size:15px">Preview</h2><span style="font-size:12px;color:var(--sub)">your real numbers</span></div>
       <div id="wzPrevTitle" style="font-size:13px;font-weight:600;color:#1F2A37"></div>
-      <div id="wzPreview"><div class="wz-empty">Pick a question or start from blank — the preview appears here and changes with every choice.</div></div>
+      <div id="wzPreview"><div class="wz-empty">Your real numbers appear here from the next step, and change with every choice.</div></div>
     </aside>
   </div>
 </div>
@@ -160,11 +213,12 @@
 <script>
 (function () {
   var SPEC = {{ spec | tojson }}, START = {{ start | tojson }};
-  var PREVIEW = '{{ url_for("reports.preview") }}', BUILDER = '{{ url_for("reports.builder") }}';
-  var STEP_NAMES = {1: 'What do you want to know?', 2: 'What to count', 3: 'Split it by', 4: 'Time and filters', 5: 'Show it as'};
+  var PREVIEW = '{{ url_for("reports.preview") }}', BUILDER = '{{ url_for("reports.builder") }}', DASH = {{ dash | tojson }};
+  var STEP_NAMES = {1: 'What and how', 6: 'Choose columns', 2: 'What to count', 3: 'Split it by', 4: 'Time and filters', 5: 'Show it as'};
   var PIE_SPLITS = ['qstatus', 'outcome', 'source', 'vch', 'kres', 'cstatus', 'ost', 'dused', 'fstatus', 'ivst', 'mch', 'sst', 'ktype', 'isdeal', 'vhanded', 'vwait', 'csource'];
-  var S = {step: 1, path: '', subj: null, m: 'count', which: 'all', g1: '', g2: '', period: 'this_quarter', datef: '', cmp: false,
-           conds: [], chart: '', q: null};
+  var S = {step: 1, path: 'list', subj: null, m: 'count', which: 'all', g1: '', g2: '', period: 'this_quarter', datef: '', cmp: false,
+           conds: [], chart: '', q: null, cols: []};
+  function order() { return S.path === 'q' ? [1, 5] : (S.path === 'list' ? [1, 6, 4] : [1, 2, 3, 4, 5]); }
   function subj() { return SPEC.subjects.filter(function (x) { return x.key === S.subj; })[0]; }
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
   function measure() { var s = subj(); return s.measures.filter(function (m) { return m.key === S.m; })[0] || s.measures[0]; }
@@ -179,11 +233,19 @@
         if (k === 'chart') return;
         (Array.isArray(c[k]) ? c[k] : [c[k]]).forEach(function (v) { p.push([k, v]); });
       });
-      p.push(['chart', S.chart || c.chart || 'auto']);
+      p.push(['chart', chosenChart()]);
+      return p;
+    }
+    if (S.path === 'list') {
+      p.push(['subject', S.subj], ['period', S.period], ['view', 'detailed'], ['chart', 'table'], ['cols_set', '1']);
+      S.cols.forEach(function (k) { p.push(['col', k]); });
+      if (S.datef) p.push(['datef', S.datef]);
+      if (S.cmp && S.period !== 'all') p.push(['cmp', 'prev']);
+      S.conds.forEach(function (c) { p.push(['f', c.raw]); });
       return p;
     }
     var w = whichOpt();
-    p.push(['subject', S.subj], ['m', S.m], ['period', S.period], ['chart', S.chart || 'auto']);
+    p.push(['subject', S.subj], ['m', S.m], ['period', S.period], ['chart', S.step === 5 ? chosenChart() : (S.chart || 'auto')]);
     if (S.datef) p.push(['datef', S.datef]);
     if (S.g1) { p.push(['g1', S.g1], ['view', 'summary']); if (S.g2) p.push(['g2', S.g2]); }
     if (S.cmp && S.period !== 'all') p.push(['cmp', 'prev']);
@@ -211,7 +273,17 @@
     if (PIE_SPLITS.indexOf(c.g1) !== -1 && !ruleFor('pie')) return 'pie';
     return 'bar';
   }
+  function chosenChart() {   // what the user sees highlighted is what the report opens as
+    var sug = suggested(), c = S.chart || (S.path === 'q' && S.q ? S.q.cfg.chart : '') || sug;
+    if (!c || c === 'auto' || ruleFor(c)) c = sug;
+    return c;
+  }
   function sentence() {
+    if (S.path === 'list') {
+      var s0 = subj(), n0 = S.cols.length;
+      return 'A list of ' + s0.noun + ' with ' + n0 + ' column' + (n0 === 1 ? '' : 's') + ', for ' + SPEC.period_words[S.period] +
+             (S.conds.length ? ', only where ' + S.conds.map(function (c) { return c.label; }).join(' and ') : '') + '.';
+    }
     if (S.path === 'q' && S.q) return S.q.q;
     var s = subj(), mm = measure(), w = whichOpt(), sp = '';
     if (S.g1) {
@@ -224,6 +296,7 @@
   }
   function name() {
     if (S.path === 'q' && S.q) return S.q.label;
+    if (S.path === 'list') { var sl = subj(); return 'List of ' + sl.noun; }
     var s = subj(), mm = measure(), w = whichOpt(), n = mm.label + (w.key !== 'all' ? ' — ' + w.label.toLowerCase() : '');
     if (S.g1) { var o = s.splits.concat(s.more_splits).filter(function (x) { return x.key === S.g1; })[0]; n += ' by ' + (o ? o.label.toLowerCase() : ''); }
     return n.charAt(0).toUpperCase() + n.slice(1);
@@ -232,15 +305,20 @@
   var timer = null, seq = 0;
   function preview() {
     var box = document.getElementById('wzPreview');
-    if (S.step === 1 && S.path !== 'q') {
-      box.innerHTML = '<div class="wz-empty">Pick a question or start from blank — the preview appears here and changes with every choice.</div>';
+    if (S.step === 1) {
+      box.innerHTML = '<div class="wz-empty">Your real numbers appear here from the next step, and change with every choice.</div>';
+      document.getElementById('wzPrevTitle').textContent = ''; return;
+    }
+    if (S.path === 'list' && !S.cols.length) {
+      box.innerHTML = '<div class="wz-empty">Tick at least one column to see your list.</div>';
       document.getElementById('wzPrevTitle').textContent = ''; return;
     }
     document.getElementById('wzPrevTitle').textContent = sentence();
     clearTimeout(timer);
+    if (box.querySelector('.wz-empty') || !box.children.length) box.innerHTML = '<div class="wz-loading"><i></i>Loading your numbers…</div>';
     timer = setTimeout(function () {
       var my = ++seq;
-      box.style.opacity = '.5';
+      if (!box.querySelector('.wz-loading')) box.style.opacity = '.5';
       fetch(PREVIEW + '?' + qs(params()), {credentials: 'same-origin'}).then(function (r) {
         if (!r.ok) throw new Error(r.status); return r.text();
       }).then(function (html) {
@@ -265,20 +343,25 @@
   }
 
   function renderSteps() {
-    var order = S.path === 'q' ? [1, 5] : [1, 2, 3, 4, 5], ol = document.getElementById('wzSteps');
+    var ord = order(), ol = document.getElementById('wzSteps');
     ol.innerHTML = '';
-    order.forEach(function (n, i) {
-      var li = el('li', n === S.step ? 'on' : (order.indexOf(S.step) > i ? 'done' : ''));
+    ord.forEach(function (n, i) {
+      var li = el('li', n === S.step ? 'on' : (ord.indexOf(S.step) > i ? 'done' : ''));
       var dot = el('i', '', String(i + 1)); li.appendChild(dot); li.appendChild(document.createTextNode(STEP_NAMES[n]));
       if (n === S.step) li.setAttribute('aria-current', 'step');
       ol.appendChild(li);
     });
     document.querySelectorAll('[data-step]').forEach(function (d) { d.hidden = +d.getAttribute('data-step') !== S.step; });
+    var last = ord[ord.length - 1], nx = document.getElementById('wzNext');
     document.getElementById('wzBack').hidden = S.step === 1;
-    document.getElementById('wzNext').hidden = S.step === 1 || S.step === 5;
-    document.getElementById('wzCreate').hidden = S.step !== 5;
-    document.getElementById('wzReady').hidden = S.step !== 1;
-    document.getElementById('wzStepText').textContent = 'Step ' + (order.indexOf(S.step) + 1) + ' of ' + order.length;
+    nx.hidden = S.step === last;
+    nx.textContent = S.step === 1 ? (S.path === 'list' ? 'Next: choose columns ›' : 'Next: what to count ›') : 'Next ›';
+    nx.disabled = S.step === 6 && !S.cols.length;
+    var cr = document.getElementById('wzCreate'); cr.hidden = S.step !== last;
+    cr.textContent = DASH ? 'Create and add to “' + DASH.name + '”' : (S.path === 'list' ? 'Create list' : 'Create report');
+    if (S.step === last) cr.href = BUILDER + '?' + qs(params()) + '&name=' + encodeURIComponent(name());
+    document.getElementById('wzReady').hidden = true;
+    document.getElementById('wzStepText').textContent = 'Step ' + (ord.indexOf(S.step) + 1) + ' of ' + ord.length;
   }
 
   function step1() {
@@ -289,17 +372,84 @@
       b.addEventListener('click', function () { setSubject(s.key); step1(); });
       tabs.appendChild(b);
     });
+    var kinds = document.getElementById('wzKinds'); kinds.innerHTML = '';
+    var sj = subj();
+    [{key: 'list', title: 'A list', sub: 'Every ' + sj.noun.replace(/s$/, '') + ' as a row. You choose the columns.', next: 'Next: choose your columns', bg: '#2563EB',
+      icon: '<path d="M3 6h18M3 12h18M3 18h18M9 6v12"/>'},
+     {key: 'chart', title: 'A chart or totals', sub: 'Count or add up, split by person, month or channel.', next: 'Next: what to count, split, time, chart', bg: '#16A34A',
+      icon: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'}].forEach(function (k) {
+      var b = el('button', 'wz-kind' + (S.path === k.key ? ' on' : '')); b.type = 'button';
+      b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', S.path === k.key ? 'true' : 'false');
+      b.innerHTML = '<span class="hd"><span class="ic" style="background:' + k.bg + '"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">' + k.icon + '</svg></span><span><b></b><span class="s"></span></span></span><small></small>';
+      b.querySelector('b').textContent = k.title; b.querySelector('.s').textContent = k.sub; b.querySelector('small').textContent = k.next + ' →';
+      b.addEventListener('click', function () { S.path = k.key; S.q = null; S.chart = ''; step1(); renderSteps(); });
+      b.addEventListener('dblclick', function () { S.path = k.key; go(k.key === 'list' ? 6 : 2); });
+      kinds.appendChild(b);
+    });
     var qbox = document.getElementById('wzQuestions'); qbox.innerHTML = '';
-    subj().questions.forEach(function (q) {
-      var b = el('button', 'wz-card'); b.type = 'button';
-      b.appendChild(el('b', '', q.q)); b.appendChild(el('span', '', q.how));
+    sj.questions.forEach(function (q) {
+      var b = el('button', ''); b.type = 'button'; b.textContent = q.q; b.title = q.how;
       b.addEventListener('click', function () { S.path = 'q'; S.q = q; S.chart = ''; go(5); });
       qbox.appendChild(b);
     });
-    var bl = el('button', 'wz-card blank'); bl.type = 'button';
-    bl.appendChild(el('b', '', '+ Start from blank')); bl.appendChild(el('span', '', 'Build your own in 4 short steps'));
-    bl.addEventListener('click', function () { S.path = 'blank'; S.q = null; S.chart = ''; go(2); });
-    qbox.appendChild(bl);
+    if (!sj.questions.length) qbox.parentNode.hidden = true; else qbox.parentNode.hidden = false;
+  }
+  var dragKey = null;
+  function step6() {
+    var sj = subj(), byKey = {}, lists = document.getElementById('wzColLists'), right = document.getElementById('wzColChosen');
+    sj.columns.forEach(function (c) { byKey[c.key] = c; });
+    function ck(c) {
+      var l = el('label', 'wz-ck'); l.setAttribute('data-key', c.key); l.setAttribute('data-label', c.label.toLowerCase());
+      var i = el('input'); i.type = 'checkbox'; i.checked = S.cols.indexOf(c.key) !== -1;
+      i.addEventListener('change', function () {
+        if (i.checked && S.cols.indexOf(c.key) === -1) S.cols.push(c.key);
+        if (!i.checked) S.cols = S.cols.filter(function (k) { return k !== c.key; });
+        draw(); renderSteps(); preview();
+      });
+      l.appendChild(i); l.appendChild(document.createTextNode(c.label)); return l;
+    }
+    lists.innerHTML = '';
+    lists.appendChild(el('div', 'wz-cap', 'MOST USED'));
+    var g = el('div', 'wz-cgrid'); sj.default_cols.forEach(function (k) { if (byKey[k]) g.appendChild(ck(byKey[k])); }); lists.appendChild(g);
+    var groups = []; sj.columns.forEach(function (c) { if (groups.indexOf(c.group) === -1) groups.push(c.group); });
+    groups.forEach(function (nm) {
+      var items = sj.columns.filter(function (c) { return c.group === nm && sj.default_cols.indexOf(c.key) === -1; });
+      if (!items.length) return;
+      var d = el('details', 'wz-grp'), su = el('summary', '', nm + '  · ' + items.length); d.appendChild(su);
+      var gg = el('div', 'wz-cgrid'); items.forEach(function (c) { gg.appendChild(ck(c)); }); d.appendChild(gg); lists.appendChild(d);
+    });
+    function draw() {
+      right.innerHTML = '';
+      document.getElementById('wzColCount').textContent = 'IN YOUR LIST (' + S.cols.length + ') · LEFT TO RIGHT';
+      S.cols.forEach(function (k, i) {
+        var c = byKey[k]; if (!c) return;
+        var row = el('div', 'wz-sel2'); row.draggable = true;
+        row.innerHTML = '<span aria-hidden="true" style="color:#AEB8C5;cursor:grab">⠿</span><span></span><button type="button">↑</button><button type="button">↓</button><button type="button">×</button>';
+        row.children[1].textContent = c.label;
+        var b = row.querySelectorAll('button');
+        b[0].setAttribute('aria-label', 'Move ' + c.label + ' up'); b[1].setAttribute('aria-label', 'Move ' + c.label + ' down'); b[2].setAttribute('aria-label', 'Remove ' + c.label);
+        b[0].onclick = function () { if (i > 0) { S.cols.splice(i - 1, 0, S.cols.splice(i, 1)[0]); draw(); preview(); } };
+        b[1].onclick = function () { if (i < S.cols.length - 1) { S.cols.splice(i + 1, 0, S.cols.splice(i, 1)[0]); draw(); preview(); } };
+        b[2].onclick = function () { S.cols.splice(i, 1); draw(); renderSteps(); preview(); };
+        row.addEventListener('dragstart', function () { dragKey = k; row.classList.add('drag'); });
+        row.addEventListener('dragend', function () { row.classList.remove('drag'); });
+        row.addEventListener('dragover', function (e) { e.preventDefault(); });
+        row.addEventListener('drop', function (e) {
+          e.preventDefault(); if (!dragKey || dragKey === k) return;
+          var from = S.cols.indexOf(dragKey); S.cols.splice(from, 1);
+          S.cols.splice(S.cols.indexOf(k) + (from < i ? 1 : 0), 0, dragKey); draw(); preview();
+        });
+        right.appendChild(row);
+      });
+      lists.querySelectorAll('.wz-ck').forEach(function (l) { l.querySelector('input').checked = S.cols.indexOf(l.getAttribute('data-key')) !== -1; });
+    }
+    document.getElementById('wzColSearch').oninput = function () {
+      var q = this.value.trim().toLowerCase();
+      lists.querySelectorAll('.wz-ck').forEach(function (l) { l.style.display = !q || l.getAttribute('data-label').indexOf(q) !== -1 ? '' : 'none'; });
+      if (q) lists.querySelectorAll('details').forEach(function (d) { d.open = true; });
+    };
+    document.getElementById('wzColReset').onclick = function () { S.cols = sj.default_cols.slice(); draw(); renderSteps(); preview(); };
+    draw();
   }
   function step2() {
     var s = subj();
@@ -363,6 +513,8 @@
   }
   document.getElementById('wzF').addEventListener('change', fillOps);
   document.getElementById('wzOp').addEventListener('change', fillVal);
+  document.getElementById('wzShowCond').addEventListener('click', function () { document.getElementById('wzCondBox').hidden = false; this.hidden = true; });
+  document.getElementById('wzCancelCond').addEventListener('click', function () { document.getElementById('wzCondBox').hidden = true; document.getElementById('wzShowCond').hidden = false; });
   document.getElementById('wzAddCond').addEventListener('click', function () {
     var f = field(), opEl = document.getElementById('wzOp'), op = opEl.value, vEl = document.getElementById('wzVal'), v = '', shown = '';
     if (vEl) {
@@ -370,35 +522,44 @@
       shown = vEl.tagName === 'SELECT' ? vEl.options[vEl.selectedIndex].text : v;
     }
     S.conds.push({raw: f.key + '|' + op + '|' + v.replace(/\|/g, ' '), label: f.label + ' ' + opEl.options[opEl.selectedIndex].text + (shown ? ' ' + shown : '')});
-    step4(); preview();
+    document.getElementById('wzCondBox').hidden = true; document.getElementById('wzShowCond').hidden = false;
+    step4(); renderSteps(); preview();
   });
   function step5() {
-    var sug = suggested(), chosen = S.chart || (S.path === 'q' && S.q ? S.q.cfg.chart : '') || sug;
-    if (ruleFor(chosen)) chosen = sug;
+    var sug = suggested(), chosen = chosenChart();
     var main = ['bar', 'pie', 'line', 'table', 'number'].map(function (k) {
       var lab = {bar: 'Bar', pie: 'Pie', line: 'Line', table: 'Table', number: 'Big number'}[k];
       return {key: k, label: lab + (k === sug ? ' ★' : ''), help: k === sug ? 'suggested' : '', off: ruleFor(k)};
     });
-    radioCards(document.getElementById('wzCharts'), main, function (x) { return x.key === chosen; }, function (x) { S.chart = x.key; step5(); preview(); });
+    radioCards(document.getElementById('wzCharts'), main, function (x) { return x.key === chosen; }, function (x) { S.chart = x.key; step5(); renderSteps(); preview(); });
     var more = SPEC.charts.filter(function (c) { return ['bar', 'pie', 'line', 'table', 'number'].indexOf(c.key) === -1; })
       .map(function (c) { return {key: c.key, label: c.label + (c.key === sug ? ' ★' : ''), off: ruleFor(c.key)}; });
-    radioCards(document.getElementById('wzMoreCharts'), more, function (x) { return x.key === chosen; }, function (x) { S.chart = x.key; step5(); preview(); }, 'wz-pill');
+    radioCards(document.getElementById('wzMoreCharts'), more, function (x) { return x.key === chosen; }, function (x) { S.chart = x.key; step5(); renderSteps(); preview(); }, 'wz-pill');
     document.getElementById('wzSentence').textContent = sentence();
-    document.getElementById('wzCreate').href = BUILDER + '?' + qs(params()) + '&name=' + encodeURIComponent(name());
   }
   function setSubject(k) {
     S.subj = k; var s = subj();
     S.m = 'count'; S.which = (s.which[0] || {}).key || 'all'; S.g1 = ''; S.g2 = ''; S.datef = ''; S.conds = []; S.chart = '';
+    S.cols = (s.default_cols || []).slice();
     document.getElementById('wzF').removeAttribute('data-subj');
   }
   function go(n) {
+    if (n === 1 && S.path === 'q') { S.path = 'list'; S.q = null; }
     S.step = n;
-    if (n === 1) step1(); if (n === 2) step2(); if (n === 3) step3(); if (n === 4) step4(); if (n === 5) step5();
+    if (n === 1) step1(); if (n === 6) step6(); if (n === 2) step2(); if (n === 3) step3(); if (n === 4) step4(); if (n === 5) step5();
     renderSteps(); preview();
     var h = document.querySelector('[data-step="' + n + '"] h2'); if (h) { h.setAttribute('tabindex', '-1'); h.focus({preventScroll: true}); }
   }
-  document.getElementById('wzNext').addEventListener('click', function () { go(S.step + 1); });
-  document.getElementById('wzBack').addEventListener('click', function () { go(S.path === 'q' || S.step === 2 ? 1 : S.step - 1); });
+  document.getElementById('wzCreate').addEventListener('click', function (e) {
+    if (!DASH) return;
+    e.preventDefault();
+    var f = document.createElement('form'); f.method = 'POST'; f.action = DASH.url;
+    params().concat([['name', name()]]).forEach(function (x) { var i = document.createElement('input'); i.type = 'hidden'; i.name = x[0]; i.value = x[1]; f.appendChild(i); });
+    var csrf = document.querySelector('meta[name="csrf-token"]'); if (csrf) { var c = document.createElement('input'); c.type = 'hidden'; c.name = 'csrf_token'; c.value = csrf.content; f.appendChild(c); }
+    document.body.appendChild(f); f.submit();
+  });
+  document.getElementById('wzNext').addEventListener('click', function () { var o = order(); go(o[o.indexOf(S.step) + 1]); });
+  document.getElementById('wzBack').addEventListener('click', function () { var o = order(); go(o[Math.max(0, o.indexOf(S.step) - 1)]); });
   document.querySelectorAll('[data-goto]').forEach(function (b) { b.addEventListener('click', function () { go(+b.getAttribute('data-goto')); }); });
 
   if (!SPEC.subjects.length) { document.querySelector('.wz-main').innerHTML = '<p>There is nothing to report on yet.</p>'; return; }

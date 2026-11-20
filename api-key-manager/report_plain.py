@@ -233,6 +233,8 @@ def wizard_spec(allowed: set, ctx) -> dict:
                         "options": RB.choice_options(k, c["key"], ctx) if c["filter"] == "choice" else []}
                        for g, cols in S["groups"] for c in cols if c["filter"]],
             "questions": [],
+            "columns": [{"key": c["key"], "label": c["label"], "group": g} for g, cols in S["groups"] for c in cols],
+            "default_cols": list(S["default_cols"]),
         })
     by = {s["key"]: s for s in subjects}
     for r in RB.READY:

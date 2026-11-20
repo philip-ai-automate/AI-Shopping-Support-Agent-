@@ -144,7 +144,8 @@ def add_box(tenant_id: int, dash_id: int, report_id: int = None, note: str = Non
             if not r:
                 return None
             cfg = r["config"] or {}
-            size = size or ("s" if cfg.get("chart") == "number" or not cfg.get("g1") else "m")
+            size = size or ("w" if cfg.get("chart") == "table" else
+                            ("s" if cfg.get("chart") == "number" or not cfg.get("g1") else "m"))
         cur.execute("SELECT COUNT(*) AS n, COALESCE(MAX(position),0) AS p FROM report_dashboard_boxes WHERE dashboard_id=%s",
                     (dash_id,))
         row = cur.fetchone()

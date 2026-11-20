@@ -8,7 +8,7 @@
     <div class="rb-big">
       {% if drill_base %}<button type="button" class="v rb-linkbtn" data-drill="[]" aria-label="See the records behind {{ chart.value }}">{{ chart.value }}</button>
       {% else %}<span class="v">{{ chart.value }}</span>{% endif %}
-      <span class="rb-note">{{ chart.label }} · {{ period_label }}</span>
+      {% if period_label %}<span class="rb-note">{{ chart.label }} · {{ period_label }}</span>{% endif %}
       {% if chart.change %}<span class="{{ 'up' if chart.up else 'down' }}">{{ '▲' if chart.up else '▼' }} {{ chart.change }} vs {{ compare_label|lower }} ({{ chart.prev }})</span>{% endif %}
     </div>
   {% elif chart.kind in ('pie', 'donut') %}
@@ -90,7 +90,8 @@
   .rb-funnel{display:flex;flex-direction:column;gap:8px;margin-top:14px;font-size:13px}
   .rb-funnel .st{display:grid;grid-template-columns:minmax(110px,200px) 1fr minmax(120px,auto);gap:10px;align-items:center}
   .rb-funnel .bar{height:26px;background:#F0F2F5;border-radius:4px;overflow:hidden}
-  .rb-funnel .bar i{display:block;height:100%;background:#1D4ED8;border-radius:4px}
+  .rb-funnel .bar i{display:block;height:100%;background:#2563EB;border-radius:4px}
+  .rb-funnel .st:nth-child(2) .bar i{background:#7C3AED}.rb-funnel .st:nth-child(3) .bar i{background:#F59E0B}.rb-funnel .st:nth-child(4) .bar i{background:#0D9488}.rb-funnel .st:last-child .bar i{background:#16A34A}
   .rb-funnel small{color:#5B6675}
   .rb-heat{border-collapse:separate;border-spacing:3px;font-size:12px;margin-top:12px}
   .rb-heat th{font-weight:600;color:#5B6675;padding:4px 8px;text-align:left;white-space:nowrap}
@@ -163,7 +164,8 @@ window.RBC = window.RBC || (function () {
     var base = (canvas.closest('[data-drill-base]') || {}).getAttribute ? canvas.closest('[data-drill-base]').getAttribute('data-drill-base') : '';
     lib().then(function () {
       var nf = new Intl.NumberFormat(undefined, {maximumFractionDigits: CH.money ? 0 : 1});
-      var tick = function (v) { return nf.format(v); };
+      var cur = CH.money ? (CH.cur || "") : "";
+      var tick = function (v) { return cur + nf.format(v); };
       Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
       Chart.defaults.color = '#5B6675';
       var k = CH.kind, type = {pie: 'pie', donut: 'doughnut', bar: 'bar', hbar: 'bar', stacked: 'bar',
@@ -179,7 +181,7 @@ window.RBC = window.RBC || (function () {
       var round = (k === 'pie' || k === 'donut');
       var opts = {responsive: true, maintainAspectRatio: false,
         plugins: {legend: {display: !round && ds.length > 1, position: 'bottom'},
-                  tooltip: {callbacks: {label: function (c) { var v = c.parsed && typeof c.parsed === 'object' ? (k === 'hbar' ? c.parsed.x : c.parsed.y) : c.parsed; return (c.dataset.label ? c.dataset.label + ': ' : (c.label ? c.label + ': ' : '')) + nf.format(v); }}}}};
+                  tooltip: {callbacks: {label: function (c) { var v = c.parsed && typeof c.parsed === 'object' ? (k === 'hbar' ? c.parsed.x : c.parsed.y) : c.parsed; return (c.dataset.label ? c.dataset.label + ': ' : (c.label ? c.label + ': ' : '')) + cur + nf.format(v); }}}}};
       if (!round) {
         var vAxis = {beginAtZero: true, ticks: {callback: tick}, grid: {color: '#EEF1F5'}};
         var cAxis = {grid: {display: false}};

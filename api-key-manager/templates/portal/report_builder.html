@@ -3,8 +3,8 @@
 {% import "portal/_report_share.html" as rs %}
 {# ask: A report page reads as a sentence, for example "Show the total quote value of won quotes, split by team member, for this quarter, compared with the period before." Click any blue underlined part of the sentence to change it: what to count (number, total value, average…), which records (e.g. All quotes, Won, Lost, Waiting for an answer), split by (team member, month, status, where it came from…, "More ways to split", or Nothing for one number), the time (this month, last quarter, this year, all time…, or "Use these dates" for your own dates), and the comparison (period before, same time last year, or none). Changes show straight away.
 "+ Only show … where" adds a condition (Field, Rule, Value, Add); remove one with its ×. "More options" has "And also split by" (for a stacked chart, heatmap or pivot table), "Count by date" (which date puts a record in the period) and Folder.
-Two tabs: "Chart and totals" (the chart, the totals and a totals table) and "List of …" (every record; "Choose columns" picks and orders the columns; click a heading to sort).
-"Show as" buttons: Bar, Pie, Line, Table, Big number, and "More ▾" for Donut, Horizontal bar, Stacked bar, Area, Bar + line, Funnel, Heatmap and Pivot. ★ marks the suggested one. A greyed one says why when you point at it (most charts need a split; Stacked bar, Heatmap and Pivot need "And also split by"; Pie, Donut and Funnel need a number or a total, not an average).
+Two tabs: "List" (every record; the blue "Columns (n)" button picks and orders the columns — tick what you need, drag to reorder, then the green "Use these columns" button; click a heading to sort) and "Chart and totals" (the chart, the totals and a totals table). The "Columns" button is also shown on the Chart tab and opens the list with the column chooser.
+"Show as" buttons: Bar, Pie, Line, Table, Big number, and "More ▾" for Donut, Horizontal bar, Stacked bar, Area, Bar + line, Funnel, Heatmap and Pivot. The chart you chose is highlighted. A greyed one says why when you point at it (most charts need a split; Stacked bar, Heatmap and Pivot need "And also split by"; Pie, Donut and Funnel need a number or a total, not an average).
 Example, pie chart of quotes won by each team member: Reports › All reports › + New report, pick Quotes, then "Who wins the most quotes?" or Start from blank: What to count = Total quote value, Which quotes = Won, Split it by = Team member, Show it as = Pie, Create report.
 Example, pivot table of quote value by person and month: split by Team member, More options › And also split by Month (requested on), Show as › More › Pivot.
 Click any number, slice, bar or pivot cell to see the records behind it in a side panel ("Export these (Excel)", "Open as a report").
@@ -15,6 +15,9 @@ Quotes have Invoice columns read from Xero, QuickBooks or Sage: Invoice status (
 
 {% block head %}
 <style>
+  /* Reports pages: a strip at the top for the Ask PhiXtra button, so it never covers the page's buttons (20 Nov 2026) */
+  .rv{padding-top:52px}
+  @media (max-width:640px){.rv{padding-top:40px}}
   /* Report page (19 Nov 2026) — approved mock-up EPpwZTeFt5iccD8SH155P1 screens 9 + 10 */
   .rv{--navy:#0B1F3A;--blue:#1D4ED8;--soft:#E8EEFC;--sub:#5B6675;--edge:#E3E7ED;font-variant-numeric:tabular-nums;display:flex;flex-direction:column;gap:16px}
   .rv .crumb{font-size:13px;color:var(--sub)}
@@ -26,7 +29,7 @@ Quotes have Invoice columns read from Xero, QuickBooks or Sage: Invoice status (
   .rv-btn.sm{min-height:34px;font-size:13px;padding:0 10px}
   .rv-card{background:#fff;border:1px solid var(--edge);border-radius:14px;padding:18px 20px;min-width:0}
   .rv-name{font-family:inherit;font-size:24px;font-weight:800;color:var(--navy);border:1px solid transparent;border-radius:8px;padding:4px 6px;background:transparent;
-    width:100%;max-width:620px;box-sizing:border-box}
+    width:100%;max-width:900px;box-sizing:border-box}
   .rv-name:hover,.rv-name:focus{border-color:#D5DBE3;background:#fff}
   .rv-label{font-size:12px;color:var(--sub);font-weight:700;letter-spacing:.04em}
   .rv-sentence{margin:8px 0 0;font-size:20px;line-height:2.1;color:var(--navy)}
@@ -75,7 +78,13 @@ Quotes have Invoice columns read from Xero, QuickBooks or Sage: Invoice status (
   .rb-err{background:#FBE4E4;color:#991B1B;border-radius:8px;padding:10px 14px;font-size:14px}
   .rb-sumbtn{font-family:inherit;font-size:inherit;border:0;background:none;padding:0;color:#1D4ED8;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
   /* Choose columns (mock-up screen 10) */
-  .cc-dlg{border:0;border-radius:16px;padding:0;width:min(920px,calc(100% - 24px));box-shadow:0 20px 50px rgba(11,31,58,.3);color:#1F2A37}
+  .cc-dlg{border:0;border-radius:16px;padding:0;margin:auto;width:min(920px,calc(100% - 24px));max-height:calc(100vh - 40px);box-shadow:0 20px 50px rgba(11,31,58,.3);color:#1F2A37}
+  .cc-dlg .rv-btn{display:inline-flex;align-items:center;justify-content:center;font-family:inherit;font-size:14px;font-weight:700;border-radius:10px;padding:0 16px;min-height:44px;border:1px solid #D5DBE3;background:#fff;color:#0B1F3A;cursor:pointer}
+  .cc-dlg .rv-btn.go{background:#16A34A;border-color:#16A34A;color:#fff}
+  .rv-btn.save{background:#16A34A;border-color:#16A34A;color:#fff}
+  .rv-colsbtn{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:0 14px;border-radius:10px;border:2px solid #2563EB;background:#EFF6FF;color:#1E40AF;font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;text-decoration:none}
+  .rv-colsbtn:hover{background:#DBEAFE;text-decoration:none}
+  textarea.rv-name{resize:none;overflow:hidden;line-height:1.25;display:block}
   .cc-dlg::backdrop{background:rgba(11,31,58,.45)}
   .cc-body{display:flex;flex-wrap:wrap}
   .cc-left{flex:1 1 380px;min-width:0;padding:16px 22px;border-right:1px solid var(--edge,#E3E7ED);display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto}
@@ -99,7 +108,7 @@ Quotes have Invoice columns read from Xero, QuickBooks or Sage: Invoice status (
       <div class="crumb"><a href="{{ url_for('reports.library') }}">Reports</a> › {{ saved.name if saved else 'New report' }}</div>
       <label style="display:block">
         <span style="position:absolute;left:-9999px">Report name</span>
-        <input class="rv-name" name="name" form="saveForm" value="{{ saved.name if saved else suggest_name }}" maxlength="120" placeholder="Name this report">
+        <textarea class="rv-name" name="name" form="saveForm" rows="1" maxlength="120" placeholder="Name this report" id="rvName">{{ saved.name if saved else suggest_name }}</textarea>
       </label>
     </div>
     <div class="rv-row">
@@ -140,7 +149,7 @@ Quotes have Invoice columns read from Xero, QuickBooks or Sage: Invoice status (
         {% if saved %}<input type="hidden" name="id" value="{{ saved.id }}">{% endif %}
         <input type="hidden" name="as_new" value="0" id="asNew">
         {% if saved %}<button type="submit" class="rv-btn {{ '' if can_edit else 'primary' }}" onclick="document.getElementById('asNew').value='1'">Save as new</button>{% endif %}
-        {% if can_edit %}<button type="submit" class="rv-btn primary">{{ 'Save changes' if saved else 'Save report' }}</button>{% endif %}
+        {% if can_edit %}<button type="submit" class="rv-btn save">{{ 'Save changes' if saved else 'Save report' }}</button>{% endif %}
       </form>
     </div>
   </div>
@@ -228,29 +237,30 @@ Quotes have Invoice columns read from Xero, QuickBooks or Sage: Invoice status (
   <section class="rv-card" style="display:flex;flex-direction:column;gap:14px">
     <div class="rv-row" style="justify-content:space-between">
       <div class="rv-tabs" role="tablist" aria-label="View">
+        <a role="tab" href="{{ list_tab_url }}" class="{{ 'on' if tab == 'list' }}" aria-selected="{{ 'true' if tab == 'list' else 'false' }}">List{% if tab == 'list' and d.total is defined %} · {{ '{:,}'.format(d.total) }} {{ subj.noun }}{% else %} of {{ subj.noun }}{% endif %}</a>
         <a role="tab" href="{{ chart_tab_url }}" class="{{ 'on' if tab == 'chart' }}" aria-selected="{{ 'true' if tab == 'chart' else 'false' }}">Chart and totals</a>
-        <a role="tab" href="{{ list_tab_url }}" class="{{ 'on' if tab == 'list' }}" aria-selected="{{ 'true' if tab == 'list' else 'false' }}">List of {{ subj.noun }}{% if tab == 'list' and d.total is defined %} ({{ '{:,}'.format(d.total) }}){% endif %}</a>
       </div>
+      {% if tab == 'chart' %}<a class="rv-colsbtn" href="{{ list_tab_url }}&opencols=1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M4 4h4v16H4zM10 4h4v16h-4zM16 4h4v16h-4z"/></svg>Columns ({{ cfg.col|length }})</a>{% endif %}
       {% if tab == 'chart' %}
       <div class="rv-showas" role="group" aria-label="Show as">
         <span class="rb-note">Show as</span>
         {% for k in main_charts %}
           {% set lab = 'Table' if k == 'table' else (RB.CHARTS | selectattr(0, 'equalto', k) | first)[1] %}
           {% if chart_rules[k] %}<span class="rv-ic off" title="{{ chart_rules[k] }}" aria-disabled="true">{{ lab }}</span>
-          {% else %}<a class="rv-ic {{ 'on' if shown_chart == k }}" href="{{ chart_link(k) }}" aria-pressed="{{ 'true' if shown_chart == k else 'false' }}" {% if k == suggested %}title="Suggested"{% endif %}>{{ lab }}{% if k == suggested %} ★{% endif %}</a>{% endif %}
+          {% else %}<a class="rv-ic {{ 'on' if shown_chart == k }}" href="{{ chart_link(k) }}" aria-pressed="{{ 'true' if shown_chart == k else 'false' }}" >{{ lab }}</a>{% endif %}
         {% endfor %}
         <div class="rv-menu2" data-menu>
           <button type="button" class="rv-ic" aria-haspopup="true" aria-expanded="false" style="color:var(--blue);cursor:pointer">More ▾</button>
           <div class="list" role="menu">
             {% for k, l in RB.CHARTS if k not in main_charts %}
               {% if chart_rules[k] %}<span aria-disabled="true">{{ l }}<small>{{ chart_rules[k] }}</small></span>
-              {% else %}<a role="menuitem" href="{{ chart_link(k) }}">{{ l }}{% if shown_chart == k %} ✓{% endif %}{% if k == suggested %} ★{% endif %}</a>{% endif %}
+              {% else %}<a role="menuitem" href="{{ chart_link(k) }}">{{ l }}{% if shown_chart == k %} ✓{% endif %}</a>{% endif %}
             {% endfor %}
           </div>
         </div>
       </div>
       {% else %}
-        <button type="button" class="rv-btn sm" id="openCols">Choose columns ({{ cfg.col|length }})</button>
+        <button type="button" class="rv-colsbtn" id="openCols"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M4 4h4v16H4zM10 4h4v16h-4zM16 4h4v16h-4z"/></svg>Columns ({{ cfg.col|length }})</button>
       {% endif %}
     </div>
 
@@ -278,7 +288,7 @@ Quotes have Invoice columns read from Xero, QuickBooks or Sage: Invoice status (
       {% endif %}
     {% else %}
       {% if not cfg.col %}
-        <div class="rb-note">Press <b>Choose columns</b> to pick what the list shows.</div>
+        <div class="rb-note">Press <b>Columns</b> to pick what the list shows.</div>
       {% else %}
       <div class="rb-scroll">
         <table class="rv-tbl">
@@ -329,7 +339,7 @@ Quotes have Invoice columns read from Xero, QuickBooks or Sage: Invoice status (
   </div>
   <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 22px;border-top:1px solid #E3E7ED">
     <button type="button" class="rv-btn" onclick="document.getElementById('colsDlg').close()">Cancel</button>
-    <button type="button" class="rv-btn primary" id="ccDone">Done</button>
+    <button type="button" class="rv-btn go" id="ccDone">Use these columns</button>
   </div>
 </dialog>
 
@@ -425,6 +435,12 @@ Quotes have Invoice columns read from Xero, QuickBooks or Sage: Invoice status (
   });
 
   RBC.draw('rbChart');
+  var nm = document.getElementById('rvName');
+  if (nm) {
+    var grow = function () { nm.style.height = 'auto'; nm.style.height = nm.scrollHeight + 'px'; };
+    nm.addEventListener('input', grow); grow();
+    nm.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); } });
+  }
 
   var openCols = document.getElementById('openCols');
   if (openCols) {
@@ -498,6 +514,7 @@ Quotes have Invoice columns read from Xero, QuickBooks or Sage: Invoice status (
       window.location = BUILDER + '?' + q + '&cols_set=1&view=detailed' + chosen.map(function (k) { return '&col=' + encodeURIComponent(k); }).join('');
     });
     openCols.addEventListener('click', function () { buildLeft(); draw(); dlg.showModal(); });
+    if (/[?&]opencols=1/.test(location.search)) { buildLeft(); draw(); dlg.showModal(); }
   }
 })();
 </script>

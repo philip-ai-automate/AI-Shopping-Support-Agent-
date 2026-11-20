@@ -9,6 +9,9 @@ On the dashboard, change Period, Team member or Compare with at the top and ever
 
 {% block head %}
 <style>
+  /* Reports pages: a strip at the top for the Ask PhiXtra button, so it never covers the page's buttons (20 Nov 2026) */
+  .db{padding-top:52px}
+  @media (max-width:640px){.db{padding-top:40px}}
   /* Dashboards R3 (19 Nov 2026) — approved mock-up EPpwZTeFt5iccD8SH155P1 screens 1 + 6 */
   .db{--navy:#0B1F3A;--blue:#1D4ED8;--sub:#5B6675;--edge:#E3E7ED;font-variant-numeric:tabular-nums}
   .db-head{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between}
@@ -140,7 +143,16 @@ On the dashboard, change Period, Team member or Compare with at the top and ever
       {% endfor %}
     </div>
     {% else %}
-      <div class="db-empty">This dashboard is empty.{% if can_edit %} <a href="{{ url_for('reports.dashboard_edit', dash_id=dash.id) }}">Edit dashboard</a> to add your saved reports.{% endif %}</div>
+      <div class="db-empty" style="display:flex;flex-direction:column;gap:12px;align-items:center">
+        <b style="font-size:16px;color:#0B1F3A">This dashboard is empty.</b>
+        {% if can_edit %}
+        <form method="POST" action="{{ url_for('reports.dashboard_fill', dash_id=dash.id) }}">
+          <button type="submit" style="min-height:46px;padding:0 22px;border:0;border-radius:10px;background:#16A34A;color:#fff;font-family:inherit;font-size:15px;font-weight:800;cursor:pointer">Fill it with the ready-made Sales overview</button>
+        </form>
+        <span>Number boxes, quotes won, where enquiries come from, quotes waiting and more. You can change anything afterwards.
+          Or <a href="{{ url_for('reports.dashboard_edit', dash_id=dash.id) }}">edit the dashboard</a> and add your own boxes.</span>
+        {% endif %}
+      </div>
     {% endif %}
   {% endif %}
 </div>

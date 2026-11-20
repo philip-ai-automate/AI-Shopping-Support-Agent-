@@ -4,6 +4,9 @@
 
 {% block head %}
 <style>
+  /* Reports pages: a strip at the top for the Ask PhiXtra button, so it never covers the page's buttons (20 Nov 2026) */
+  .rh{padding-top:52px}
+  @media (max-width:640px){.rh{padding-top:40px}}
   /* Reports home (19 Nov 2026) — approved mock-up EPpwZTeFt5iccD8SH155P1 screen 11 */
   .rh{--navy:#0B1F3A;--blue:#1D4ED8;--soft:#E8EEFC;--sub:#5B6675;--edge:#E3E7ED;display:flex;flex-direction:column;gap:22px}
   .rh h1{margin:0;font-size:28px;font-weight:800;color:var(--navy)}

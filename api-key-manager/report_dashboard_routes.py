@@ -8,7 +8,9 @@ Routes sit on reports_bp (report_builder_routes imports this module at its end).
   GET  /reports/dashboards/<id>/edit               edit mode (owner, or "others can edit")
   POST /reports/dashboards/new                     new dashboard
   POST /reports/dashboards/<id>/layout             save edit mode (order, sizes, filters, name)
-  POST /reports/dashboards/<id>/add                add a saved report or a text note
+  POST /reports/dashboards/<id>/add                add a saved report, a ready-made question or a text note
+  POST /reports/dashboards/<id>/add-new            save a report built in the wizard and add it (20 Nov fix round)
+  POST /reports/dashboards/<id>/fill               fill an empty dashboard with the ready-made Sales overview
   POST /reports/dashboards/<id>/share              who can open it / what numbers they see / others can edit
   POST /reports/dashboards/<id>/delete             delete a dashboard (owner only; reports stay)
   POST /reports/builder/<rid>/add-to-dashboard     from the report builder
@@ -26,11 +28,13 @@ from flask import flash, jsonify, redirect, render_template, request, url_for
 import report_access as RA
 import report_builder as RB
 import report_dashboards as RD
+import report_plain as RP
+import report_subjects as RS
 from db import get_db_connection
 from feature_access import team_feature
 from portal_routes import _current_actor
 from report_builder_routes import (
-    NotAllowed, _box_cfg, _chart_and_totals, _dash_filter_qs, _dash_filters, _query, _resolve, _results,
+    NotAllowed, _args_from_saved, _box_cfg, _chart_and_totals, _dash_filter_qs, _dash_filters, _query, _resolve, _results,
     _saved, _setup, _share_choices, _unscoped, reports_bp,
 )
 
@@ -60,6 +64,11 @@ def dashboards():
     if err:
         return err
     ds = _visible_dashboards(ctx)
+    if not ds and not RD.list_dashboards(ctx["tenant_id"]):
+        # First visit for this business: start with a filled-in Sales overview (20 Nov 2026 fix round)
+        did = RD.create_dashboard(ctx["tenant_id"], "Sales overview", _current_actor(customer))
+        _fill_overview(ctx, customer, b2b, did)
+        return redirect(url_for("reports.dashboard", dash_id=did))
     if ds:
         return redirect(url_for("reports.dashboard", dash_id=ds[0]["id"]))
     return render_template("portal/report_dashboard.html", customer=customer, dash=None, dashboards=[],
@@ -137,6 +146,7 @@ def dashboard_edit(dash_id: int):
     for r in reports:
         r["subject_label"] = RB.SUBJECTS[r["subject"]]["label"]
     return render_template("portal/report_dashboard_edit.html", customer=customer, dash=d, reports=reports,
+                           ready=_offer(b2b),
                            sizes=RD.SIZES, dash_filters=RD.DASH_FILTERS, RB=RB, chart_names=dict(RB.CHARTS),
                            can_manage=RA.can_manage(d, v))
 
@@ -181,7 +191,14 @@ def dashboard_add(dash_id: int):
         flash("You can't change that dashboard.", "warning")
         return redirect(url_for("reports.dashboards"))
     rid = request.form.get("report_id", type=int)
-    if rid and not RA.can_view(_saved(ctx["tenant_id"], rid), ctx["viewer"]):
+    ready = request.form.get("ready") or ""
+    if ready:
+        r = RS.READY_BY_KEY.get(ready)
+        if not r or ready not in {x["key"] for x in _offer(b2b)}:
+            flash("That ready-made report is not available for your business.", "warning")
+            return redirect(url_for("reports.dashboard_edit", dash_id=dash_id))
+        rid = _save_report(ctx, customer, b2b, r["label"], _md(r["cfg"])) or -1
+    if rid and rid != -1 and not RA.can_view(_saved(ctx["tenant_id"], rid), ctx["viewer"]):
         rid = -1
     note = (request.form.get("note") or "").strip()
     bid = None if rid == -1 else RD.add_box(ctx["tenant_id"], dash_id, report_id=rid, note=None if rid else (note or "New note"))
@@ -295,3 +312,129 @@ def drill():
                            chips=[RB.filter_label(dcfg, f, ctx) for f in dcfg["f"]],
                            open_url=url_for("reports.builder") + "?" + _query(dcfg),
                            export_url=export_url, whole=rctx is not ctx)
+
+
+# ── 20 Nov 2026 fix round: ready-made boxes, build-and-add, filled-in Sales overview ─────────────
+
+OVERVIEW_FOLDER = "Sales overview"
+
+
+def _plan_kinds(b2b):
+    return "quotes" in b2b, bool({"orders", "discounts", "carts"} & b2b)
+
+
+def _offer(b2b) -> list:
+    """The ready-made questions this business can add as a box."""
+    is_b2b, is_b2c = _plan_kinds(b2b)
+    out = []
+    for r in RS.ready_for(b2b, is_b2b, is_b2c):
+        ch = r["cfg"].get("chart", "auto")
+        out.append({"key": r["key"], "q": RP.QUESTIONS.get(r["key"], r["label"]), "label": r["label"],
+                    "how": RP.CHART_WORD.get(ch, "Chart") + " · " + r["desc"], "icon": RP.CHART_ICON.get(ch, "▮▮")})
+    return out
+
+
+def _save_report(ctx, customer, b2b, name, args, folder=None):
+    """Saves a report from report-page settings; returns its id (None if it can't be read)."""
+    try:
+        cfg = RB.read_config(args, b2b)
+    except Exception as e:
+        print("⚠️ dashboard save report:", e)
+        return None
+    actor = _current_actor(customer)
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO report_defs (tenant_id, name, subject, config, folder, created_by_key, created_by) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+                    (ctx["tenant_id"], (name or RB.SUBJECTS[cfg["subject"]]["label"])[:120], cfg["subject"],
+                     json.dumps(RB.config_of(cfg)), folder, actor["key"], actor["label"]))
+        rid = cur.fetchone()[0]
+        conn.commit()
+        return rid
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ dashboard save report:", e)
+        return None
+    finally:
+        conn.close()
+
+
+def _md(cfg: dict):
+    return _args_from_saved({"config": cfg})
+
+
+# Boxes of the ready-made Sales overview: (name, size, config). Each is skipped if the business can't use its subject.
+_KPI_B2B = [
+    ("Enquiries", "s", {"subject": "leads", "period": "this_quarter", "chart": "number", "cmp": "prev"}),
+    ("Quotes sent", "s", {"subject": "quotes", "datef": "firstsent", "period": "this_quarter", "chart": "number", "cmp": "prev"}),
+    ("Quotes won (value)", "s", {"subject": "quotes", "f": "qstatus|is|won", "m": "sum_qvalue", "datef": "qclosed",
+                                 "period": "this_quarter", "chart": "number", "cmp": "prev"}),
+]
+_KPI_B2C = [
+    ("Orders", "s", {"subject": "orders", "period": "this_quarter", "chart": "number", "cmp": "prev"}),
+    ("Sales (order value)", "s", {"subject": "orders", "m": "sum_tot", "period": "this_quarter", "chart": "number", "cmp": "prev"}),
+    ("Enquiries", "s", {"subject": "leads", "period": "this_quarter", "chart": "number", "cmp": "prev"}),
+]
+_READY_B2B = [("quotes_by_member", "m"), ("where_enquiries", "m"), ("quotes_waiting", "w"), ("deal_funnel", "m"), ("missed_replies", "m")]
+_READY_B2C = [("orders_week", "w"), ("orders_status", "m"), ("top_products", "m"), ("where_enquiries", "m"), ("cart_recovery", "m")]
+
+
+def _fill_overview(ctx, customer, b2b, dash_id) -> int:
+    is_b2b, is_b2c = _plan_kinds(b2b)
+    kpis = _KPI_B2B if is_b2b else (_KPI_B2C if is_b2c else _KPI_B2B[:1])
+    ready = _READY_B2B if is_b2b else (_READY_B2C if is_b2c else [("where_enquiries", "m"), ("missed_replies", "m")])
+    offered = {r["key"] for r in RS.ready_for(b2b, is_b2b, is_b2c)}
+    n = 0
+    for name, size, cfg in kpis:
+        if not RB.subject_ok(cfg["subject"], b2b):
+            continue
+        rid = _save_report(ctx, customer, b2b, name, _md(cfg), OVERVIEW_FOLDER)
+        if rid and RD.add_box(ctx["tenant_id"], dash_id, report_id=rid, size=size):
+            n += 1
+    for key, size in ready:
+        r = RS.READY_BY_KEY.get(key)
+        if not r or key not in offered:
+            continue
+        rid = _save_report(ctx, customer, b2b, r["label"], _md(r["cfg"]), OVERVIEW_FOLDER)
+        if rid and RD.add_box(ctx["tenant_id"], dash_id, report_id=rid, size=size):
+            n += 1
+    return n
+
+
+@reports_bp.route("/reports/dashboards/<int:dash_id>/fill", methods=["POST"])
+@team_feature("reports.custom")
+def dashboard_fill(dash_id: int):
+    customer, ctx, b2b, _scope, err = _setup()
+    if err:
+        return err
+    d = _dash(ctx, dash_id, "edit")
+    if not d:
+        flash("You can't change that dashboard.", "warning")
+        return redirect(url_for("reports.dashboards"))
+    if d["boxes"]:
+        return redirect(url_for("reports.dashboard", dash_id=dash_id))
+    n = _fill_overview(ctx, customer, b2b, dash_id)
+    flash(f"Added {n} boxes. Change anything with Edit dashboard." if n else "Nothing to add yet.", "success" if n else "warning")
+    return redirect(url_for("reports.dashboard", dash_id=dash_id))
+
+
+@reports_bp.route("/reports/dashboards/<int:dash_id>/add-new", methods=["POST"])
+@team_feature("reports.custom")
+def dashboard_add_new(dash_id: int):
+    """The wizard's "Create and add to dashboard": save the report, add it as a box, back to editing."""
+    customer, ctx, b2b, _scope, err = _setup()
+    if err:
+        return err
+    if not _dash(ctx, dash_id, "edit"):
+        flash("You can't change that dashboard.", "warning")
+        return redirect(url_for("reports.dashboards"))
+    args = request.form.copy()
+    name = " ".join((args.pop("name", "") or "").split())[:120]
+    rid = _save_report(ctx, customer, b2b, name, args)
+    bid = RD.add_box(ctx["tenant_id"], dash_id, report_id=rid) if rid else None
+    if not bid:
+        flash("Could not add that report to the dashboard. Please try again.", "warning")
+        return redirect(url_for("reports.dashboard_edit", dash_id=dash_id))
+    flash(f"“{name or 'New report'}” saved and added to the dashboard.", "success")
+    return redirect(url_for("reports.dashboard_edit", dash_id=dash_id) + f"#box-{bid}")

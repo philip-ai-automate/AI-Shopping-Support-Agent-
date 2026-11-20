@@ -2066,7 +2066,7 @@
 
   // Auto-start on dashboard for first-time visitors
   document.addEventListener('DOMContentLoaded', function() {
-    var isDash = window.location.pathname.indexOf('/dashboard') !== -1;
+    var isDash = /^\/dashboard\/?$/.test(window.location.pathname);   // only the main Dashboard, never /reports/dashboards
     var done   = false;
     try { done = !!localStorage.getItem('phixtra_tour_done'); } catch(e){}
     // Phones (2026-10-25, Android app prep): the tour card covers most of

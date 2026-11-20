@@ -7,6 +7,9 @@ On the dashboard, change Period, Team member or Compare with at the top and ever
 
 {% block head %}
 <style>
+  /* Reports pages: a strip at the top for the Ask PhiXtra button, so it never covers the page's buttons (20 Nov 2026) */
+  .de{padding-top:52px}
+  @media (max-width:640px){.de{padding-top:40px}}
   /* Edit dashboard R3 (19 Nov 2026) — approved mock-up EPpwZTeFt5iccD8SH155P1 screen 4 */
   .de{--navy:#0B1F3A;--blue:#1D4ED8;--sub:#5B6675;--edge:#E3E7ED}
   .de-bar{background:var(--navy);color:#fff;border-radius:12px;padding:12px 18px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
@@ -36,6 +39,13 @@ On the dashboard, change Period, Team member or Compare with at the top and ever
   .de-lib{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--edge);border-radius:8px;font-size:13px}
   .de-lib small{display:block;color:var(--sub);font-size:12px}
   .de-in{font-family:inherit;font-size:14px;min-height:38px;border:1px solid #D5DBE3;border-radius:8px;padding:0 10px;box-sizing:border-box;width:100%}
+  .de-tabs{display:flex;gap:4px;background:#F1F5F9;border-radius:10px;padding:4px}
+  .de-tabs button{flex:1;min-height:36px;border:0;background:none;border-radius:8px;font-family:inherit;font-size:13px;color:#475569;cursor:pointer}
+  .de-tabs button[aria-selected="true"]{background:#fff;color:#0B1F3A;font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .de-list{display:flex;flex-direction:column;gap:6px;max-height:440px;overflow-y:auto}
+  .de-ico{width:32px;height:32px;border-radius:8px;background:#DBEAFE;color:#1E40AF;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;font-size:13px}
+  .de-btn.go{background:#16A34A;border-color:#16A34A;color:#fff}
+  .de-lib{gap:10px}
   .de-note{width:100%;min-height:70px;font-family:inherit;font-size:13.5px;border:1px solid #D5DBE3;border-radius:8px;padding:8px;box-sizing:border-box;resize:vertical}
 </style>
 {% endblock %}
@@ -43,17 +53,17 @@ On the dashboard, change Period, Team member or Compare with at the top and ever
 {% block content %}
 <div class="de">
   <div class="de-bar">
-    <div><b>Editing “{{ dash.name }}”</b> <span>· drag boxes to move them, or use Earlier / Later · press Save when done</span></div>
-    <div style="display:flex;gap:8px">
-      <a class="de-btn ghost" href="{{ url_for('reports.dashboard', dash_id=dash.id) }}">Cancel</a>
-      <button type="button" class="de-btn" id="deSave">Save</button>
+    <div><b>Editing “<span id="deTitle" style="color:#fff;font-size:inherit">{{ dash.name }}</span>”</b> <span>· drag boxes to move them, or use Earlier / Later · every change saves itself</span></div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <span id="deSaved" role="status" aria-live="polite" style="font-size:13px;font-weight:700;color:#052E16;background:#4ADE80;border-radius:999px;padding:5px 12px">All changes saved</span>
+      <a class="de-btn" href="{{ url_for('reports.dashboard', dash_id=dash.id) }}" id="deDone" style="font-weight:800">Done editing</a>
     </div>
   </div>
   <div id="deMsg" role="status" aria-live="polite" style="font-size:13px;color:#991B1B;margin-top:8px"></div>
 
   <div class="de-layout">
     <section class="de-canvas" aria-label="Dashboard layout">
-      {% if not dash.boxes %}<p style="background:#fff;border-radius:10px;padding:20px;margin:0;color:var(--sub);text-align:center">No boxes yet. Add a saved report from the right.</p>{% endif %}
+      {% if not dash.boxes %}<p style="background:#fff;border-radius:10px;padding:20px;margin:0;color:var(--sub);text-align:center">No boxes yet. Add a ready-made question, one of your reports, or build a new one from the right.</p>{% endif %}
       <div class="de-grid" id="deGrid">
         {% for b in dash.boxes %}
           <div class="de-box de-{{ b.size }}" draggable="true" data-id="{{ b.id }}" id="box-{{ b.id }}" data-note="{{ '1' if not b.report_id else '' }}">
@@ -85,24 +95,43 @@ On the dashboard, change Period, Team member or Compare with at the top and ever
       </div>
       <div class="de-card">
         <h2>Add a box</h2>
-        {% if reports|length > 6 %}<input class="de-in" type="search" id="deSearch" placeholder="Search saved reports…" aria-label="Search saved reports">{% endif %}
-        <div id="deLib" style="display:flex;flex-direction:column;gap:6px;max-height:420px;overflow-y:auto">
+        <div role="tablist" aria-label="Add from" class="de-tabs">
+          <button type="button" role="tab" aria-selected="true" data-tab="ready">Ready-made</button>
+          <button type="button" role="tab" aria-selected="false" data-tab="mine">My reports ({{ reports|length }})</button>
+          <button type="button" role="tab" aria-selected="false" data-tab="new">Build new</button>
+        </div>
+        <input class="de-in" type="search" id="deSearch" placeholder="Search, e.g. overdue, WhatsApp, team" aria-label="Search boxes">
+        <div data-panel="ready" class="de-list">
+          {% for r in ready %}
+            <form method="POST" action="{{ url_for('reports.dashboard_add', dash_id=dash.id) }}" class="de-lib" data-name="{{ (r.q ~ ' ' ~ r.label)|lower }}">
+              <input type="hidden" name="ready" value="{{ r.key }}">
+              <span class="de-ico" aria-hidden="true">{{ r.icon }}</span>
+              <span style="flex:1;min-width:0">{{ r.q }}<small>{{ r.how }}</small></span>
+              <button type="submit" class="de-btn sm go">Add</button>
+            </form>
+          {% else %}
+            <p style="margin:0;font-size:13px;color:var(--sub)">No ready-made reports for your plan yet.</p>
+          {% endfor %}
+        </div>
+        <div data-panel="mine" class="de-list" hidden>
           {% for r in reports %}
             <form method="POST" action="{{ url_for('reports.dashboard_add', dash_id=dash.id) }}" class="de-lib" data-name="{{ r.name|lower }}">
               <input type="hidden" name="report_id" value="{{ r.id }}">
-              <span>{{ r.name }}<small>{{ r.subject_label }}</small></span>
-              <button type="submit" class="de-btn sm">Add</button>
+              <span style="flex:1;min-width:0">{{ r.name }}<small>{{ r.subject_label }}</small></span>
+              <button type="submit" class="de-btn sm go">Add</button>
             </form>
           {% else %}
-            <p style="margin:0;font-size:13px;color:var(--sub)">No saved reports yet.</p>
+            <p style="margin:0;font-size:13px;color:var(--sub)">No saved reports yet. Use Ready-made or Build new.</p>
           {% endfor %}
         </div>
-        <a class="de-btn" href="{{ url_for('reports.wizard') }}">+ Build a new report</a>
+        <div data-panel="new" hidden>
+          <p style="margin:0 0 10px;font-size:13.5px;color:#1F2A37;line-height:1.5">Opens the report steps. When you press <b>Create and add</b>, the report is saved, added to this dashboard, and you come straight back here.</p>
+          <a class="de-btn go" href="{{ url_for('reports.wizard') }}?dash={{ dash.id }}" style="font-weight:800;width:100%;box-sizing:border-box">Build a new report →</a>
+        </div>
         <form method="POST" action="{{ url_for('reports.dashboard_add', dash_id=dash.id) }}">
           <input type="hidden" name="note" value="Write a heading or explanation here">
-          <button type="submit" class="de-btn" style="width:100%">+ Text note (heading or explanation)</button>
+          <button type="submit" class="de-btn" style="width:100%;border-style:dashed;color:var(--blue)">+ Text note (heading or explanation)</button>
         </form>
-        <p style="margin:0;font-size:12px;color:var(--sub)">Unsaved moves are lost when you add a box. Save first if you moved things.</p>
       </div>
       <div class="de-card">
         <h2>Dashboard filters</h2>
@@ -153,11 +182,12 @@ On the dashboard, change Period, Team member or Compare with at the top and ever
   var search = document.getElementById('deSearch');
   if (search) search.addEventListener('input', function () {
     var q = search.value.trim().toLowerCase();
-    document.querySelectorAll('#deLib [data-name]').forEach(function (f) { f.style.display = !q || f.getAttribute('data-name').indexOf(q) !== -1 ? '' : 'none'; });
+    document.querySelectorAll('.de-list [data-name]').forEach(function (f) { f.style.display = !q || f.getAttribute('data-name').indexOf(q) !== -1 ? '' : 'none'; });
   });
-  document.getElementById('deSave').addEventListener('click', function () {
-    var btn = this; btn.disabled = true;
-    var body = {
+  var saved = document.getElementById('deSaved'), timer = null, pending = false, busy = false;
+  function status(t, bad) { saved.textContent = t; saved.style.background = bad ? '#FEE2E2' : (t === 'Saving…' ? '#FEF3C7' : '#4ADE80'); saved.style.color = bad ? '#991B1B' : (t === 'Saving…' ? '#78350F' : '#052E16'); }
+  function body() {
+    return {
       name: document.getElementById('deName').value,
       filters: Array.prototype.map.call(document.querySelectorAll('[data-filter]:checked'), function (c) { return c.getAttribute('data-filter'); }),
       boxes: Array.prototype.map.call(grid.querySelectorAll('.de-box'), function (b) {
@@ -167,11 +197,42 @@ On the dashboard, change Period, Team member or Compare with at the top and ever
         return o;
       })
     };
-    fetch('{{ url_for("reports.dashboard_layout", dash_id=dash.id) }}', {method: 'POST', credentials: 'same-origin',
-      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
+  }
+  function saveNow() {
+    if (busy) { pending = true; return Promise.resolve(); }
+    busy = true; status('Saving…');
+    return fetch('{{ url_for("reports.dashboard_layout", dash_id=dash.id) }}', {method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body())})
       .then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); })
-      .then(function (x) { if (x[0] && x[1].url) { window.location = x[1].url; } else { throw new Error(x[1].error || 'save'); } })
-      .catch(function (err) { btn.disabled = false; document.getElementById('deMsg').textContent = 'Could not save the dashboard. ' + (err.message !== 'save' ? err.message : 'Please try again.'); });
+      .then(function (x) { if (!x[0]) throw new Error(x[1].error || 'save'); status('Saved ✓'); })
+      .catch(function (err) { status('Not saved: ' + (err.message !== 'save' ? err.message : 'please try again'), true); })
+      .then(function () { busy = false; if (pending) { pending = false; return saveNow(); } });
+  }
+  function soon() { clearTimeout(timer); status('Saving…'); timer = setTimeout(saveNow, 500); }
+  grid.addEventListener('drop', function () { setTimeout(soon, 0); });
+  grid.addEventListener('click', function (e) { if (e.target.closest('[data-move]') || e.target.closest('[data-remove]')) soon(); });
+  grid.addEventListener('change', soon);
+  grid.addEventListener('input', function (e) { if (e.target.closest('.de-note')) soon(); });
+  document.getElementById('deName').addEventListener('input', function () { document.getElementById('deTitle').textContent = this.value; soon(); });
+  document.querySelectorAll('[data-filter]').forEach(function (c) { c.addEventListener('change', soon); });
+  // Adding a box reloads the page: save first, so nothing is lost.
+  document.querySelectorAll('.de-side form').forEach(function (f) {
+    if (f.action.indexOf('/delete') !== -1) return;
+    f.addEventListener('submit', function (e) {
+      if (f.getAttribute('data-saved') === '1') return;
+      e.preventDefault(); clearTimeout(timer); saveNow().then(function () { f.setAttribute('data-saved', '1'); f.submit(); });
+    });
+  });
+  document.getElementById('deDone').addEventListener('click', function (e) {
+    if (saved.textContent === 'Saving…') { e.preventDefault(); var href = this.href; clearTimeout(timer); saveNow().then(function () { window.location = href; }); }
+  });
+  var tabs = document.querySelectorAll('.de-tabs [data-tab]');
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      tabs.forEach(function (x) { x.setAttribute('aria-selected', x === t ? 'true' : 'false'); });
+      document.querySelectorAll('[data-panel]').forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== t.getAttribute('data-tab'); });
+      document.getElementById('deSearch').hidden = t.getAttribute('data-tab') === 'new';
+    });
   });
 })();
 </script>

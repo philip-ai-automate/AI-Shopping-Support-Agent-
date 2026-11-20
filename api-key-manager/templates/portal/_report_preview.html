@@ -11,11 +11,13 @@
       {% else %}<tr><td style="padding:12px 4px;color:#5B6675">Nothing in this time yet.</td></tr>{% endfor %}
     </table>
   {% else %}
-    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
-      <tr>{% for k in cfg.col[:4] %}<th style="text-align:left;color:#5B6675;font-weight:600;padding:6px 4px;border-bottom:1px solid #E3E7ED">{{ subj.columns[k].label }}</th>{% endfor %}</tr>
-      {% for r in d.rows[:8] %}<tr>{% for c in r.cells[:4] %}<td style="padding:6px 4px;border-bottom:1px solid #F0F2F5">{{ c }}</td>{% endfor %}</tr>
-      {% else %}<tr><td colspan="4" style="padding:12px 4px;color:#5B6675">Nothing in this time yet.</td></tr>{% endfor %}
+    <div style="overflow-x:auto;border:1px solid #EEF1F5;border-radius:10px">
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:{{ 120 * cfg.col|length }}px">
+      <tr>{% for k in cfg.col %}<th style="text-align:left;background:#2563EB;color:#fff;font-weight:600;padding:7px 8px;white-space:nowrap">{{ subj.columns[k].label }}</th>{% endfor %}</tr>
+      {% for r in d.rows[:8] %}<tr style="{{ 'background:#F8FAFC' if loop.index is even }}">{% for c in r.cells %}<td style="padding:7px 8px;border-bottom:1px solid #F0F2F5;white-space:nowrap">{{ c }}</td>{% endfor %}</tr>
+      {% else %}<tr><td colspan="{{ cfg.col|length or 1 }}" style="padding:12px 8px;color:#5B6675">Nothing in this time yet.</td></tr>{% endfor %}
     </table>
+    </div>
     {% if d.total is defined and d.total > 8 %}<div style="font-size:12px;color:#5B6675;margin-top:6px">…and {{ '{:,}'.format(d.total - 8) }} more</div>{% endif %}
   {% endif %}
 {% endif %}

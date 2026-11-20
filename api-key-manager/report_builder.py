@@ -774,7 +774,34 @@ CHARTS = [("table", "Table only"), ("pie", "Pie"), ("donut", "Donut"), ("bar", "
           ("funnel", "Funnel"), ("number", "Big number"), ("heatmap", "Heatmap"), ("pivot", "Pivot")]
 PIVOT_COLS = 12      # more columns than this: the rest become "Other" (counts and sums only)
 CHART_KEYS = {k for k, _ in CHARTS} | {"auto"}
-PALETTE = ["#1D4ED8", "#F5A524", "#0B1F3A", "#8FB0F2", "#B45309", "#94A3B8", "#15803D", "#7C3AED"]
+# Approved colour rule (20 Nov 2026): distinct colours per bar/slice; grey for Unassigned/Other.
+PALETTE = ["#2563EB", "#F59E0B", "#16A34A", "#7C3AED", "#0D9488", "#F97316", "#0B1D40", "#DC2626"]
+GREY = "#94A3B8"
+_MEANING = {"won": "#16A34A", "accepted": "#16A34A", "paid": "#16A34A", "lost": "#DC2626", "overdue": "#DC2626",
+            "declined": "#DC2626", "unassigned": GREY, "other": GREY, "not set": GREY, "no country": GREY,
+            "expired": GREY, "whatsapp": "#25D366", "email": "#2563EB", "website chat": "#F97316",
+            "website": "#F97316", "phone call": "#F59E0B", "ai agent": "#7C3AED"}
+
+
+def colours_for(labels) -> list:
+    """One colour per label: meaning colours first (Won green, Lost red, WhatsApp green…), then the palette."""
+    out, i = [], 0
+    for lab in labels:
+        c = _MEANING.get(str(lab).strip().lower())
+        if not c:
+            c = PALETTE[i % len(PALETTE)]
+            i += 1
+        out.append(c)
+    return out
+
+
+def currency_prefix(ctx) -> str:
+    """The selling-currency symbol as money cells show it, e.g. '£'."""
+    try:
+        import re as _re
+        return _re.match(r"^[^\d\-]*", str(fmt(0, "money", ctx)) or "").group(0)
+    except Exception:
+        return ""
 PIE_MAX = 6          # more slices than this are unreadable: the rest become "Other"
 SERIES_MAX = 8       # stacked bar / heatmap columns
 
@@ -946,6 +973,8 @@ def build_chart(cfg, summary, prev, ctx, total=None, prev_total=None) -> dict:
     money = m[3] == "money"
     kind = chosen_chart(cfg, len(summary["rows"]) if summary else 0)
     out = {"kind": kind, "money": money, "measure_label": m[1] if m[2] else SUBJECTS[cfg["subject"]]["measures"][0][1]}
+    if money:
+        out["cur"] = currency_prefix(ctx)
     if kind == "table":
         return out
     if kind == "number":
@@ -986,7 +1015,8 @@ def build_chart(cfg, summary, prev, ctx, total=None, prev_total=None) -> dict:
         out["labels"] = g1_labels
         out["keys"] = [[k1[g]] for g in g1_labels]
         out["series_keys"] = [k2.get(s) for s in series]
-        out["datasets"] = [{"label": s, "data": matrix[s], "backgroundColor": PALETTE[i % len(PALETTE)]}
+        scol = colours_for(series)
+        out["datasets"] = [{"label": s, "data": matrix[s], "backgroundColor": scol[i]}
                            for i, s in enumerate(series)]
         return out
     labels = [" · ".join(r["labels"]) for r in rows]
@@ -999,10 +1029,11 @@ def build_chart(cfg, summary, prev, ctx, total=None, prev_total=None) -> dict:
             pairs = pairs[:PIE_MAX - 1] + [("Other", sum(v for _, v in pairs[PIE_MAX - 1:]))]
         tot = sum(v for _, v in pairs) or 1
         out["labels"] = [p[0] for p in pairs]
-        out["datasets"] = [{"data": [p[1] for p in pairs], "backgroundColor": PALETTE[:len(pairs)]}]
+        cols = colours_for([p[0] for p in pairs])
+        out["datasets"] = [{"data": [p[1] for p in pairs], "backgroundColor": cols}]
         kmap = {" · ".join(r["labels"]): r for r in rows}
         out["keys"] = [[raw_key(k) for k in kmap[p[0]]["keys"]] if p[0] in kmap else None for p in pairs]
-        out["legend"] = [{"label": p[0], "color": PALETTE[i], "pct": _pct(p[1], tot),
+        out["legend"] = [{"label": p[0], "color": cols[i], "pct": _pct(p[1], tot),
                           "v": fmt(p[1], m[3] if m[2] else "int", ctx)} for i, p in enumerate(pairs)]
         out["centre"] = fmt(sum(v for _, v in pairs), m[3] if m[2] else "int", ctx)
         return out
@@ -1019,8 +1050,9 @@ def build_chart(cfg, summary, prev, ctx, total=None, prev_total=None) -> dict:
         return out
     out["labels"] = labels
     out["keys"] = [[raw_key(k) for k in r["keys"]] for r in rows]
-    ds = [{"label": cfg["period_label"].split(" (")[0], "data": vals, "backgroundColor": PALETTE[0],
-           "borderColor": PALETTE[0]}]
+    one = kind in ("bar", "hbar") and prev is None
+    ds = [{"label": cfg["period_label"].split(" (")[0], "data": vals,
+           "backgroundColor": colours_for(labels) if one else PALETTE[0], "borderColor": PALETTE[0]}]
     if kind == "combo":
         ds = [{"type": "bar", "label": "Number of records", "data": [float(r["n"]) for r in rows],
                "backgroundColor": PALETTE[3], "yAxisID": "y1"},

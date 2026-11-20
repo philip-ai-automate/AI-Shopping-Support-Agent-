@@ -365,7 +365,15 @@ def wizard():
         return err
     spec = RP.wizard_spec(b2b, ctx)
     start = request.args.get("subject") or ""
-    return render_template("portal/report_wizard.html", customer=customer, spec=spec,
+    dash = None
+    did = request.args.get("dash", type=int)
+    if did:   # "Build new" from a dashboard: Create saves the report and adds it there (20 Nov fix round)
+        d = RD.get_dashboard(ctx["tenant_id"], did)
+        if d and RA.can_edit(d, ctx["viewer"]):
+            dash = {"id": d["id"], "name": d["name"],
+                    "url": url_for("reports.dashboard_add_new", dash_id=d["id"]),
+                    "back": url_for("reports.dashboard_edit", dash_id=d["id"])}
+    return render_template("portal/report_wizard.html", customer=customer, spec=spec, dash=dash,
                            start=start if any(x["key"] == start for x in spec["subjects"]) else "")
 
 
