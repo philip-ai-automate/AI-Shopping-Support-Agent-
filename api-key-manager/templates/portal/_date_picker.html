@@ -1,0 +1,315 @@
+{#- The Reports date picker (approved mock-up screen 6, 20 Nov 2026).
+    One picker for the wizard's Time step, the time words in a report's sentence and a dashboard's Time filter.
+    Use: {% import "portal/_date_picker.html" as dp %} … {{ dp.assets() }}, then in JS
+      PXDate.open(button, {value: {period, from, to}, presets: [...], ownOption: "Each box's own time", onApply: fn(v)})
+      PXDate.describe(v, presets) → {main, sub}      PXDate.compare(v, 'prev'|'year', presets) → {from, to} or null
+    v.period is a quick pick key (today, this_quarter, all…), 'lastNd'/'lastNw'/'lastNm' (moves on by itself),
+    'custom' (fixed from/to, YYYY-MM-DD) or '' (dashboard: each box's own time). -#}
+{% macro assets() %}
+<style>
+  .pxd-pop{position:absolute;z-index:1200;background:#fff;border:1px solid #D5DBE3;border-radius:14px;box-shadow:0 12px 32px rgba(11,29,64,.16);
+    display:flex;flex-wrap:wrap;overflow:hidden;width:min(860px,calc(100vw - 32px));font-family:inherit;color:#1F2A37;text-align:left}
+  .pxd-side{flex:0 0 210px;border-right:1px solid #EEF1F5;padding:14px 10px;display:flex;flex-direction:column;gap:2px;background:#FAFBFC;box-sizing:border-box}
+  .pxd-h{font-size:11.5px;font-weight:700;color:#5B6675;text-transform:uppercase;letter-spacing:.04em;padding:0 12px 6px}
+  .pxd-q{text-align:left;padding:8px 12px;border:0;background:transparent;border-radius:8px;font-size:14px;font-family:inherit;color:#1F2A37;cursor:pointer;min-height:36px}
+  .pxd-q:hover{background:#EEF2F7}
+  .pxd-q.on{background:#EFF6FF;color:#1E40AF;font-weight:700}
+  .pxd-last{border-top:1px solid #E3E7ED;margin:10px 4px 0;padding:12px 8px 0;display:flex;flex-direction:column;gap:8px}
+  .pxd-last.on{background:#EFF6FF;border-radius:0 0 8px 8px;padding-bottom:10px}
+  .pxd-row{display:flex;gap:6px;align-items:center}
+  .pxd-in,.pxd-sel{height:38px;border:1px solid #D5DBE3;border-radius:8px;background:#fff;font-size:14px;font-family:inherit;color:#1F2A37;padding:0 10px;box-sizing:border-box}
+  .pxd-n{width:64px}
+  .pxd-note{font-size:12px;color:#5B6675;line-height:1.4}
+  .pxd-main{flex:1 1 520px;padding:18px 20px;display:flex;flex-direction:column;gap:14px;min-width:0;box-sizing:border-box}
+  .pxd-dates{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+  .pxd-dates label{display:flex;flex-direction:column;gap:5px;font-size:13px;color:#475569;font-weight:600}
+  .pxd-date{height:42px;width:150px;border:2px solid #CBD5E1;border-radius:8px;font-size:15px;font-weight:600;font-family:inherit;padding:0 12px;box-sizing:border-box;color:#1F2A37}
+  .pxd-date:focus,.pxd-date.on{border-color:#2563EB;outline:none}
+  .pxd-date.bad{border-color:#DC2626}
+  .pxd-tip{font-size:12.5px;color:#5B6675;padding-bottom:12px;max-width:260px}
+  .pxd-nav{display:flex;align-items:center;gap:8px}
+  .pxd-arrow{width:38px;height:38px;border:1px solid #D5DBE3;border-radius:8px;background:#fff;font-size:18px;cursor:pointer;color:#1F2A37;font-family:inherit}
+  .pxd-cals{display:flex;flex-wrap:wrap;gap:28px}
+  .pxd-mt{font-size:14px;font-weight:700;color:#0B1D40;margin-bottom:8px}
+  .pxd-grid{display:grid;grid-template-columns:repeat(7,38px);gap:2px 0;font-size:13px;text-align:center}
+  .pxd-grid .wd{color:#5B6675;font-size:11.5px;font-weight:600;padding:4px 0}
+  .pxd-d{height:36px;border:0;background:transparent;font:inherit;font-size:13px;color:#1F2A37;cursor:pointer;padding:0;border-radius:8px}
+  .pxd-d:hover{background:#EEF2F7}
+  .pxd-d.in{background:#DBEAFE;color:#1E3A8A;border-radius:0}
+  .pxd-d.s,.pxd-d.e{background:#2563EB;color:#fff;font-weight:700}
+  .pxd-d.s{border-radius:8px 0 0 8px}.pxd-d.e{border-radius:0 8px 8px 0}.pxd-d.s.e{border-radius:8px}
+  .pxd-d.t{box-shadow:inset 0 0 0 2px #F59E0B;font-weight:700}
+  .pxd-leg{display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:#5B6675;align-items:center}
+  .pxd-leg i{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-2px;margin-right:6px}
+  .pxd-foot{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center;border-top:1px solid #EEF1F5;padding-top:14px}
+  .pxd-sum{font-size:13px;color:#475569}
+  .pxd-sum b{color:#0B1D40}
+  .pxd-btn{height:42px;padding:0 18px;border:1px solid #D5DBE3;background:#fff;border-radius:10px;font-weight:600;font-size:14px;font-family:inherit;cursor:pointer;color:#1F2A37}
+  .pxd-btn.go{border:0;background:#16A34A;color:#fff;font-weight:700;padding:0 20px}
+  .pxd-btn.go:disabled{background:#94A3B8;cursor:not-allowed}
+  .pxd-trigger{display:inline-flex;align-items:center;gap:10px;min-height:44px;padding:4px 14px;border:2px solid #2563EB;border-radius:10px;font-size:15px;
+    background:#fff;cursor:pointer;font-family:inherit;color:#1F2A37;text-align:left}
+  .pxd-trigger b{font-weight:700;color:#0B1D40}
+  .pxd-trigger .sub{color:#5B6675}
+  @media (max-width:760px){
+    .pxd-pop{position:fixed;left:8px!important;right:8px;top:auto!important;bottom:8px;width:auto;max-height:calc(100vh - 16px);overflow:auto}
+    .pxd-side{flex:1 1 100%;border-right:0;border-bottom:1px solid #EEF1F5;flex-direction:row;flex-wrap:wrap}
+    .pxd-h{width:100%}
+    .pxd-last{width:100%}
+    .pxd-cals>div:first-child{display:none}
+    .pxd-grid{grid-template-columns:repeat(7,minmax(34px,1fr))}
+  }
+</style>
+<script>
+window.PXDate = (function () {
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  var UNIT = {d: ['day', 'days'], w: ['week', 'weeks'], m: ['month', 'months']}, MAXN = {d: 3660, w: 520, m: 120};
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function iso(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function parse(s) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; }
+  function addDays(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); }
+  function monthsBack(d, n) {
+    var t = d.getFullYear() * 12 + d.getMonth() - n, y = Math.floor(t / 12), m = t - y * 12;
+    var last = new Date(y, m + 1, 0).getDate();
+    return new Date(y, m, Math.min(d.getDate(), last));
+  }
+  function nice(s) { var d = parse(s); return d ? pad(d.getDate()) + ' ' + MON[d.getMonth()] + ' ' + d.getFullYear() : ''; }
+  function span(a, b) {
+    var x = parse(a), y = parse(b);
+    if (!x || !y) return '';
+    if (a === b) return nice(a);
+    if (x.getFullYear() === y.getFullYear()) return pad(x.getDate()) + ' ' + MON[x.getMonth()] + ' – ' + nice(b);
+    return nice(a) + ' – ' + nice(b);
+  }
+  function days(a, b) { var x = parse(a), y = parse(b); return x && y ? Math.round((y - x) / 864e5) + 1 : 0; }
+  function ukText(s) { var d = parse(s); return d ? pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear() : ''; }
+  function fromUk(t) {
+    var m = /^\s*(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})\s*$/.exec(t || '');
+    if (!m) return '';
+    var d = new Date(+m[3], +m[2] - 1, +m[1]);
+    return d.getDate() === +m[1] && d.getMonth() === +m[2] - 1 ? iso(d) : '';
+  }
+  function today(presets) { var p = (presets || []).filter(function (x) { return x.key === 'today'; })[0]; return p ? p.from : iso(new Date()); }
+  function roll(period) {
+    var m = /^last([1-9]\d{0,3})([dwm])$/.exec(period || '');
+    return m && +m[1] <= MAXN[m[2]] ? {n: +m[1], u: m[2]} : null;
+  }
+  // {from, to} of any value, using the server's dates for quick picks
+  function range(v, presets) {
+    if (!v) return {from: '', to: ''};
+    var p = (presets || []).filter(function (x) { return x.key === v.period; })[0];
+    if (p) return {from: p.from, to: p.to};
+    var r = roll(v.period);
+    if (r) {
+      var t = parse(today(presets)), a;
+      a = r.u === 'd' ? addDays(t, -(r.n - 1)) : r.u === 'w' ? addDays(t, -(7 * r.n - 1)) : addDays(monthsBack(t, r.n), 1);
+      return {from: iso(a), to: iso(t)};
+    }
+    return {from: v.from || '', to: v.to || ''};
+  }
+  function label(v, presets) {
+    var p = (presets || []).filter(function (x) { return x.key === v.period; })[0];
+    if (p) return p.label;
+    var r = roll(v.period);
+    if (r) return 'Last ' + r.n + ' ' + UNIT[r.u][r.n === 1 ? 0 : 1];
+    return '';
+  }
+  function describe(v, presets, ownOption) {
+    if (!v || !v.period) return {main: ownOption || 'Choose a time', sub: ''};
+    if (v.period === 'all') return {main: 'All time', sub: ''};
+    var r = range(v, presets), l = label(v, presets), n = days(r.from, r.to);
+    if (l) return {main: l, sub: span(r.from, r.to)};
+    return {main: span(r.from, r.to), sub: n ? n + (n === 1 ? ' day' : ' days') : ''};
+  }
+  function compare(v, how, presets) {
+    if (!v || v.period === 'all' || !how) return null;
+    var r = range(v, presets), a = parse(r.from), b = parse(r.to);
+    if (!a || !b) return null;
+    if (how === 'year') {
+      var back = function (d) { var x = new Date(d.getFullYear() - 1, d.getMonth(), d.getDate()); return x.getMonth() !== d.getMonth() ? new Date(d.getFullYear() - 1, d.getMonth(), 28) : x; };
+      return {from: iso(back(a)), to: iso(back(b))};
+    }
+    var n = days(r.from, r.to), pb = addDays(a, -1);
+    return {from: iso(addDays(pb, -(n - 1))), to: iso(pb)};
+  }
+
+  var pop = null, onDoc = null;
+  function close() {
+    if (!pop) return;
+    var anchor = pop._anchor;
+    pop.remove(); pop = null;
+    document.removeEventListener('mousedown', onDoc, true);
+    if (anchor) { anchor.setAttribute('aria-expanded', 'false'); anchor.focus(); }
+  }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+
+  function open(anchor, o) {
+    if (pop && pop._anchor === anchor) { close(); return; }
+    close();
+    var presets = o.presets || [], T = today(presets);
+    var sel = {period: (o.value && o.value.period) || (o.ownOption ? '' : 'this_quarter'), from: '', to: ''};
+    var r0 = range(o.value || sel, presets);
+    sel.from = r0.from; sel.to = r0.to;
+    var picking = false;
+    var rp = roll(sel.period), lastN = rp ? rp.n : 30, lastU = rp ? rp.u : 'd';
+    var anchorDate = parse(sel.to || sel.from || T) || new Date();
+    var view = new Date(anchorDate.getFullYear(), anchorDate.getMonth() - 1, 1);   // left month
+
+    pop = el('div', 'pxd-pop'); pop._anchor = anchor;
+    pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', o.title || 'Choose the time');
+    var side = el('div', 'pxd-side'), main = el('div', 'pxd-main');
+    pop.appendChild(side); pop.appendChild(main);
+
+    side.appendChild(el('span', 'pxd-h', 'Quick picks'));
+    var quick = [];
+    if (o.ownOption) quick.push({key: '', label: o.ownOption});
+    quick = quick.concat(presets);
+    var qBtns = quick.map(function (q) {
+      var b = el('button', 'pxd-q', q.label); b.type = 'button';
+      b.onclick = function () { sel.period = q.key; var r = range(sel, presets); sel.from = r.from; sel.to = r.to; picking = false; jump(); draw(); };
+      side.appendChild(b); return {b: b, key: q.key};
+    });
+    var last = el('div', 'pxd-last');
+    last.appendChild(el('span', 'pxd-h', 'The last…')); last.lastChild.style.padding = '0';
+    var lrow = el('div', 'pxd-row'), nIn = el('input', 'pxd-in pxd-n'), uSel = el('select', 'pxd-sel');
+    nIn.type = 'number'; nIn.min = '1'; nIn.max = '3660'; nIn.value = lastN; nIn.setAttribute('aria-label', 'How many');
+    [['d', 'days'], ['w', 'weeks'], ['m', 'months']].forEach(function (u) { var op = el('option', '', u[1]); op.value = u[0]; op.selected = u[0] === lastU; uSel.appendChild(op); });
+    uSel.setAttribute('aria-label', 'Days, weeks or months');
+    function useLast() {
+      var n = parseInt(nIn.value, 10), u = uSel.value;
+      if (!(n >= 1 && n <= MAXN[u])) { nIn.classList.add('bad'); return; }
+      nIn.classList.remove('bad');
+      sel.period = 'last' + n + u; var r = range(sel, presets); sel.from = r.from; sel.to = r.to; picking = false; jump(); draw();
+    }
+    nIn.oninput = useLast; uSel.onchange = useLast; nIn.onfocus = useLast;
+    lrow.appendChild(nIn); lrow.appendChild(uSel); last.appendChild(lrow);
+    last.appendChild(el('span', 'pxd-note', 'Days, weeks or months. Moves on every day, good for dashboards.'));
+    side.appendChild(last);
+
+    var dates = el('div', 'pxd-dates');
+    function dateBox(lbl) {
+      var l = el('label', '', lbl), i = el('input', 'pxd-date'); i.type = 'text'; i.inputMode = 'numeric'; i.placeholder = 'dd/mm/yyyy'; i.autocomplete = 'off';
+      l.appendChild(i); dates.appendChild(l); return i;
+    }
+    var fIn = dateBox('From'); dates.appendChild(el('span', '', 'to')).style.cssText = 'padding-bottom:12px;color:#5B6675';
+    var tIn = dateBox('To');
+    dates.appendChild(el('span', 'pxd-tip', 'Type a date, or click the calendar: first click = start, second click = end'));
+    function typed() {
+      var a = fromUk(fIn.value), b = fromUk(tIn.value);
+      fIn.classList.toggle('bad', !!fIn.value && !a); tIn.classList.toggle('bad', !!tIn.value && !b);
+      if (!a) return;
+      sel.period = 'custom'; sel.from = a; sel.to = b && b >= a ? b : ''; picking = !sel.to;
+      if (b && b < a) tIn.classList.add('bad');
+      jump(); draw(true);
+    }
+    fIn.onchange = typed; tIn.onchange = typed;
+    [fIn, tIn].forEach(function (i) { i.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); typed(); } }; });
+    main.appendChild(dates);
+
+    var nav = el('div', 'pxd-nav'), prev = el('button', 'pxd-arrow', '‹'), next = el('button', 'pxd-arrow', '›');
+    prev.type = next.type = 'button'; prev.setAttribute('aria-label', 'Earlier month'); next.setAttribute('aria-label', 'Later month');
+    var mSel = el('select', 'pxd-sel'), ySel = el('select', 'pxd-sel');
+    mSel.setAttribute('aria-label', 'Month'); ySel.setAttribute('aria-label', 'Year');
+    MONTHS.forEach(function (m, i) { var op = el('option', '', m); op.value = i; mSel.appendChild(op); });
+    var ty = (parse(T) || new Date()).getFullYear();
+    for (var y = ty + 1; y >= ty - 15; y--) { var op = el('option', '', y); op.value = y; ySel.appendChild(op); }
+    prev.onclick = function () { view = new Date(view.getFullYear(), view.getMonth() - 1, 1); draw(); };
+    next.onclick = function () { view = new Date(view.getFullYear(), view.getMonth() + 1, 1); draw(); };
+    function narrow() { return window.matchMedia && window.matchMedia('(max-width:760px)').matches; }   // phone: one month (the right one)
+    mSel.onchange = ySel.onchange = function () { view = new Date(+ySel.value, +mSel.value - (narrow() ? 1 : 0), 1); draw(); };
+    nav.appendChild(prev); nav.appendChild(mSel); nav.appendChild(ySel); nav.appendChild(el('span')).style.flex = '1'; nav.appendChild(next);
+    main.appendChild(nav);
+    var cals = el('div', 'pxd-cals'); main.appendChild(cals);
+    var leg = el('div', 'pxd-leg');
+    leg.innerHTML = '<span><i style="background:#2563EB"></i>Start / end</span><span><i style="background:#DBEAFE"></i>In the range</span><span><i style="box-shadow:inset 0 0 0 2px #F59E0B"></i>Today</span>';
+    main.appendChild(leg);
+    var foot = el('div', 'pxd-foot'), sum = el('span', 'pxd-sum'), btns = el('div', 'pxd-row');
+    var cancel = el('button', 'pxd-btn', 'Cancel'), go = el('button', 'pxd-btn go', 'Use these dates');
+    cancel.type = go.type = 'button'; btns.style.gap = '10px';
+    cancel.onclick = close;
+    go.onclick = function () {
+      if (go.disabled) return;
+      var v = {period: sel.period, from: sel.period === 'custom' ? sel.from : '', to: sel.period === 'custom' ? sel.to : ''};
+      close(); if (o.onApply) o.onApply(v);
+    };
+    btns.appendChild(cancel); btns.appendChild(go); foot.appendChild(sum); foot.appendChild(btns); main.appendChild(foot);
+
+    function jump() {   // keep the chosen dates in view
+      var d = parse(sel.to || sel.from);
+      if (!d) return;
+      var left = new Date(d.getFullYear(), d.getMonth() - 1, 1), f = parse(sel.from);
+      if (f && f >= left) view = left;
+      else if (f) view = new Date(f.getFullYear(), f.getMonth(), 1);
+      else view = left;
+    }
+    function month(y, m) {
+      var box = el('div'), g = el('div', 'pxd-grid');
+      box.appendChild(el('div', 'pxd-mt', MONTHS[m] + ' ' + y));
+      'Mo Tu We Th Fr Sa Su'.split(' ').forEach(function (w) { g.appendChild(el('span', 'wd', w)); });
+      var first = (new Date(y, m, 1).getDay() + 6) % 7, n = new Date(y, m + 1, 0).getDate();
+      for (var i = 0; i < first; i++) g.appendChild(el('span'));
+      for (var d = 1; d <= n; d++) {
+        var s = iso(new Date(y, m, d)), b = el('button', 'pxd-d', String(d));
+        b.type = 'button'; b.setAttribute('aria-label', d + ' ' + MONTHS[m] + ' ' + y);
+        if (s === sel.from) b.classList.add('s');
+        if (s === sel.to || (s === sel.from && !sel.to)) b.classList.add('e');
+        if (sel.from && sel.to && s > sel.from && s < sel.to) b.classList.add('in');
+        if (s === T) b.classList.add('t');
+        if (s === sel.from || s === sel.to) b.setAttribute('aria-pressed', 'true');
+        b.onclick = (function (s) { return function () {
+          if (!picking || sel.period !== 'custom' || !sel.from) { sel.period = 'custom'; sel.from = s; sel.to = ''; picking = true; }
+          else { if (s < sel.from) { sel.to = sel.from; sel.from = s; } else sel.to = s; picking = false; }
+          draw();
+        }; })(s);
+        g.appendChild(b);
+      }
+      box.appendChild(g); return box;
+    }
+    function draw(keepTyping) {
+      qBtns.forEach(function (q) { var on = q.key === sel.period; q.b.classList.toggle('on', on); q.b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+      last.classList.toggle('on', !!roll(sel.period));
+      if (!keepTyping) { fIn.value = ukText(sel.from); tIn.value = ukText(sel.to); fIn.classList.remove('bad'); tIn.classList.remove('bad'); }
+      var dis = sel.period === 'all' || sel.period === '';
+      fIn.classList.toggle('on', sel.period === 'custom' && picking); tIn.classList.toggle('on', sel.period === 'custom' && picking);
+      if (dis) { fIn.value = ''; tIn.value = ''; }
+      var shown = narrow() ? new Date(view.getFullYear(), view.getMonth() + 1, 1) : view;
+      mSel.value = shown.getMonth(); ySel.value = shown.getFullYear();
+      cals.innerHTML = '';
+      cals.appendChild(month(view.getFullYear(), view.getMonth()));
+      var nx = new Date(view.getFullYear(), view.getMonth() + 1, 1);
+      cals.appendChild(month(nx.getFullYear(), nx.getMonth()));
+      var n = days(sel.from, sel.to);
+      go.disabled = false;
+      if (sel.period === '') sum.innerHTML = '<b>' + o.ownOption + '</b> · each box keeps the time it was saved with';
+      else if (sel.period === 'all') sum.innerHTML = '<b>All time</b> · every record, no dates';
+      else if (sel.period === 'custom' && !sel.to) { sum.innerHTML = '<b>From ' + nice(sel.from) + '</b> · now click or type the end date'; go.disabled = true; }
+      else {
+        var l = label(sel, presets);
+        sum.innerHTML = '<b>' + span(sel.from, sel.to) + '</b> · ' + n + (n === 1 ? ' day' : ' days') + ' · ' +
+          (l ? '“' + l + '” moves on by itself when you open the report later' : 'these dates stay fixed when you open the report later');
+      }
+    }
+    draw();
+    document.body.appendChild(pop);
+    var r = anchor.getBoundingClientRect(), w = pop.offsetWidth;
+    var left = Math.max(16, Math.min(r.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - w - 16));
+    pop.style.left = left + 'px'; pop.style.top = (r.bottom + window.scrollY + 8) + 'px';
+    anchor.setAttribute('aria-expanded', 'true');
+    pop.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+    onDoc = function (e) { if (pop && !pop.contains(e.target) && !anchor.contains(e.target)) close(); };
+    document.addEventListener('mousedown', onDoc, true);
+    var on = pop.querySelector('.pxd-q.on') || fIn; on.focus();
+  }
+  return {open: open, close: close, describe: describe, compare: compare, range: range, span: span, label: label};
+})();
+</script>
+{% endmacro %}
+
+{#- A ready-made trigger button: shows the chosen time; clicking opens the picker. -#}
+{% macro trigger(id, extra_class='') %}
+<button type="button" class="pxd-trigger {{ extra_class }}" id="{{ id }}" aria-haspopup="dialog" aria-expanded="false">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+  <b class="main"></b><span class="sub"></span><span aria-hidden="true" style="color:#5B6675">▾</span>
+</button>
+{% endmacro %}

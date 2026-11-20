@@ -169,7 +169,7 @@ def _query(cfg: dict, **extra) -> str:
 
 def _dash_filters(args):
     period = args.get("period") or ""
-    return {"period": period if period in RB.PERIOD_KEYS else "",
+    return {"period": period if RB.period_ok(period) else "",
             "date_from": RB._iso(args.get("date_from")), "date_to": RB._iso(args.get("date_to")),
             "member": (args.get("member") or "")[:64],
             "cmp": args.get("cmp") if args.get("cmp") in ("prev", "year", "none") else ""}
@@ -429,9 +429,7 @@ def _sentence(cfg, url_with):
                                    "more": [{"label": l, "url": url_with(g2=v), "on": v == cfg["g2"]}
                                             for v, l in RP.split_choices(cfg["subject"]) if v != cfg["g1"]]}]
     parts += [{"t": ", for " if cfg["period"] != "all" else ", for "},
-              {"pick": "period", "text": RP.period_words(cfg), "label": "Time",
-               "options": [{"label": RP.PERIOD_WORDS[k].capitalize(), "on": k == cfg["period"], "url": url_with(period=k)}
-                           for k, _l in RB.PERIODS if k != "custom"], "custom": True}]
+              {"pick": "period", "text": RP.period_words(cfg), "label": "Time", "picker": RB.picker_value(cfg), "options": []}]
     if cfg["period"] != "all":
         cmp_text = dict(RP.COMPARE_WORDS)[cfg["cmp"] or ""]
         parts += [{"t": ", "},
@@ -528,7 +526,7 @@ def builder():
     return render_template(
         "portal/report_builder.html", customer=customer, RB=RB, RA=RA, RP=RP, cfg=cfg, subj=subj, d=data, headline=headline,
         saved=saved, report_id=report_id, tab=tab,
-        sentence=sentence,
+        sentence=sentence, dp_presets=RB.picker_presets(), dp_value=RB.picker_value(cfg),
         other_filters=[{"label": RB.filter_label(cfg, f, ctx),
                         "remove": url_with(f=[x for x in cfg["f"] if x is not f])} for f in other_filters],
         filter_fields_json=json.dumps(filter_fields), filter_ops_json=json.dumps(RB.FILTER_OPS),

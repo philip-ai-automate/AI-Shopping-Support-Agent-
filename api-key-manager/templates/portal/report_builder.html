@@ -1,7 +1,8 @@
 {% extends "portal/base.html" %}
 {% import "portal/_report_chart.html" as rc %}
 {% import "portal/_report_share.html" as rs %}
-{# ask: A report page reads as a sentence, for example "Show the total quote value of won quotes, split by team member, for this quarter, compared with the period before." Click any blue underlined part of the sentence to change it: what to count (number, total value, average…), which records (e.g. All quotes, Won, Lost, Waiting for an answer), split by (team member, month, status, where it came from…, "More ways to split", or Nothing for one number), the time (this month, last quarter, this year, all time…, or "Use these dates" for your own dates), and the comparison (period before, same time last year, or none). Changes show straight away.
+{% import "portal/_date_picker.html" as dp %}
+{# ask: A report page reads as a sentence, for example "Show the total quote value of won quotes, split by team member, for this quarter, compared with the period before." Click any blue underlined part of the sentence to change it: what to count (number, total value, average…), which records (e.g. All quotes, Won, Lost, Waiting for an answer), split by (team member, month, status, where it came from…, "More ways to split", or Nothing for one number), the time (opens the date picker: Quick picks like Today, This week, This month, Last quarter, This year, All time; "The last…" a number of days, weeks or months that moves on by itself; or type From and To dates (dd/mm/yyyy) or click a start and end day on the calendar, then "Use these dates"), and the comparison (period before, same time last year, or none). Changes show straight away.
 "+ Only show … where" adds a condition (Field, Rule, Value, Add); remove one with its ×. "More options" has "And also split by" (for a stacked chart, heatmap or pivot table), "Count by date" (which date puts a record in the period) and Folder.
 Two tabs: "List" (every record; the blue "Columns (n)" button picks and orders the columns — tick what you need, drag to reorder, then the green "Use these columns" button; click a heading to sort) and "Chart and totals" (the chart, the totals and a totals table). The "Columns" button is also shown on the Chart tab and opens the list with the column chooser.
 "Show as" buttons: Bar, Pie, Line, Table, Big number, and "More ▾" for Donut, Horizontal bar, Stacked bar, Area, Bar + line, Funnel, Heatmap and Pivot. The chart you chose is highlighted. A greyed one says why when you point at it (most charts need a split; Stacked bar, Heatmap and Pivot need "And also split by"; Pie, Donut and Funnel need a number or a total, not an average).
@@ -167,8 +168,8 @@ Quotes have Invoice columns read from Xero, QuickBooks or Sage: Invoice status (
 
   <section class="rv-card" aria-label="What this report shows">
     <div class="rv-label">THIS REPORT SHOWS — CLICK ANY BLUE PART TO CHANGE IT</div>
-    <p class="rv-sentence">{% for p in sentence %}{% if p.t is defined %}{{ p.t }}{% else %}<button type="button" class="rv-pick" data-pick="{{ p.pick }}" aria-expanded="false" aria-controls="menu-{{ p.pick }}">{{ p.text }} ▾</button>{% endif %}{% endfor %}</p>
-    {% for p in sentence if p.pick is defined %}
+    <p class="rv-sentence">{% for p in sentence %}{% if p.t is defined %}{{ p.t }}{% elif p.picker is defined %}<button type="button" class="rv-pick" data-dp aria-haspopup="dialog" aria-expanded="false">{{ p.text }} ▾</button>{% else %}<button type="button" class="rv-pick" data-pick="{{ p.pick }}" aria-expanded="false" aria-controls="menu-{{ p.pick }}">{{ p.text }} ▾</button>{% endif %}{% endfor %}</p>
+    {% for p in sentence if p.pick is defined and p.picker is not defined %}
       <div class="rv-menu" id="menu-{{ p.pick }}" role="group" aria-label="{{ p.label }}">
         <span class="t">{{ p.label }}</span>
         {% for o in p.options %}<a class="rv-opt {{ 'on' if o.on }}" href="{{ o.url }}" {% if o.on %}aria-current="true"{% endif %}>{{ o.label }}</a>{% endfor %}
@@ -179,13 +180,6 @@ Quotes have Invoice columns read from Xero, QuickBooks or Sage: Invoice status (
               {% for o in p.more %}<option value="{{ o.url }}" {{ 'selected' if o.on }}>{{ o.label }}</option>{% endfor %}
             </select>
           </label>
-        {% endif %}
-        {% if p.custom %}
-          <form method="get" action="{{ url_for('reports.builder') }}" class="rv-row" style="margin-left:4px" data-custom-dates>
-            <label class="rv-lbl">From<input class="rv-in" type="date" name="date_from" value="{{ cfg.date_from.isoformat() if cfg.date_from and cfg.period == 'custom' else '' }}" required></label>
-            <label class="rv-lbl">To<input class="rv-in" type="date" name="date_to" value="{{ cfg.date_to.isoformat() if cfg.date_to and cfg.period == 'custom' else '' }}" required></label>
-            <button type="submit" class="rv-btn sm" style="align-self:flex-end">Use these dates</button>
-          </form>
         {% endif %}
       </div>
     {% endfor %}
@@ -344,13 +338,23 @@ Quotes have Invoice columns read from Xero, QuickBooks or Sage: Invoice status (
 </dialog>
 
 {{ rc.chart_assets() }}
+{{ dp.assets() }}
 {% if saved and can_manage %}{{ rs.share_dialog(url_for('reports.share', report_id=saved.id), saved, saved.name, share_people, share_roles, viewer, RA) }}{% endif %}
 <script>
 (function () {
   var BUILDER = '{{ url_for("reports.builder") }}', BASE = {{ base_qs|tojson }};
   function go(extra) { window.location = BUILDER + '?' + BASE + (extra ? '&' + extra : ''); }
 
-  document.querySelectorAll('.rv-pick').forEach(function (b) {
+  document.querySelectorAll('[data-dp]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      PXDate.open(b, {value: {{ dp_value | tojson }}, presets: {{ dp_presets | tojson }},
+        onApply: function (v) {
+          var q = BASE.replace(/(^|&)(period|date_from|date_to|page)=[^&]*/g, '');
+          window.location = BUILDER + '?' + q + '&period=' + encodeURIComponent(v.period) + (v.period === 'custom' ? '&date_from=' + v.from + '&date_to=' + v.to : '');
+        }});
+    });
+  });
+  document.querySelectorAll('.rv-pick:not([data-dp])').forEach(function (b) {
     b.addEventListener('click', function () {
       var m = document.getElementById('menu-' + b.getAttribute('data-pick')), open = !m.classList.contains('open');
       document.querySelectorAll('.rv-menu.open').forEach(function (x) { x.classList.remove('open'); });
@@ -360,14 +364,6 @@ Quotes have Invoice columns read from Xero, QuickBooks or Sage: Invoice status (
   });
   document.querySelectorAll('select[data-go]').forEach(function (s) {
     s.addEventListener('change', function () { if (s.value) window.location = s.value; });
-  });
-  document.querySelectorAll('form[data-custom-dates]').forEach(function (f) {
-    f.addEventListener('submit', function (e) {
-      e.preventDefault();
-      var a = f.querySelector('[name=date_from]').value, b = f.querySelector('[name=date_to]').value;
-      var q = BASE.replace(/(^|&)(period|date_from|date_to)=[^&]*/g, '');
-      window.location = BUILDER + '?' + q + '&period=custom&date_from=' + a + '&date_to=' + b;
-    });
   });
 
   document.querySelectorAll('[data-menu]').forEach(function (m) {

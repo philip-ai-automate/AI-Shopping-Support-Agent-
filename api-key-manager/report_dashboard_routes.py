@@ -92,7 +92,7 @@ def dashboard(dash_id: int):
     people, role_list = _share_choices(ctx)
     v = ctx["viewer"]
     return render_template("portal/report_dashboard.html", customer=customer, dash=d, boxes=boxes,
-                           dashboards=_visible_dashboards(ctx), flt=flt, filter_qs=filter_qs,
+                           dashboards=_visible_dashboards(ctx), flt=flt, filter_qs=filter_qs, dp_presets=RB.picker_presets(),
                            people=ctx["people"], RB=RB, RA=RA, sizes=dict(RD.SIZES),
                            can_edit=RA.can_edit(d, v), can_manage=RA.can_manage(d, v), viewer=v,
                            share_people=people, share_roles=role_list)

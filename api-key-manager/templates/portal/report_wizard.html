@@ -1,5 +1,6 @@
 {% extends "portal/base.html" %}
 {% import "portal/_report_chart.html" as rc %}
+{% import "portal/_date_picker.html" as dp %}
 {# ask: Reports › All reports › "+ New report" opens "Create a report". First pick what the report is about (Quotes, Deals, Enquiries & leads, Contacts & companies, Conversations, Calls, Campaign messages, Email sequences, Follow-ups & tasks, Team activity, AI Agent usage, Orders, Products sold, Discount codes, Cart recovery — only the ones your business uses), then "How do you want to see it?": "A list" (every record as a row; next step "Which columns do you want?" — tick columns under Most used or open a group, search with "Find a column", drag or use ↑ ↓ on the right to order them; then "Time and filters"; press "Create list") or "A chart or totals" (steps: "What should we count?", "Split it by", "Which time, and anything to leave out?" with "+ Only show … where…" for conditions, and "Show it as" — Bar, Pie, Line, Table, Big number or More chart types; press "Create report"). Or click a ready-made question to go straight to "Show it as". The Preview on the right shows your real rows or chart from step 2 on. On the report page press "Save report" to keep it. #}
 {% block title %}Create a report — Reports — PhiXtra Portal{% endblock %}
 
@@ -41,6 +42,11 @@
   .wz-pill.on{border:2px solid var(--blue);background:var(--soft);color:#1E3A8A;font-weight:700;padding:0 13px}
   .wz-pill.off{opacity:.45;cursor:not-allowed}
   .wz-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .wz-cmp{flex:1 1 200px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:52px;padding:10px 14px;border:1px solid #D5DBE3;border-radius:10px;
+    background:#fff;font-family:inherit;font-size:14px;color:#1F2A37;cursor:pointer;text-align:left}
+  .wz-cmp b{font-weight:600}
+  .wz-cmp span{font-size:12.5px;color:#5B6675}
+  .wz-cmp.on{border:2px solid var(--blue);background:var(--soft);padding:9px 13px}
   .wz-lbl{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--sub)}
   .wz-sel,.wz-in{font-family:inherit;font-size:14px;min-height:42px;border:1px solid #D5DBE3;border-radius:10px;padding:0 10px;background:#fff;color:var(--ink);box-sizing:border-box;max-width:100%}
   .wz-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 20px;border-radius:10px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;
@@ -158,16 +164,19 @@
 
       <div data-step="4" hidden>
         <h2 style="margin-bottom:14px">Which time, and anything to leave out?</h2>
-        <div class="wz-row" role="radiogroup" aria-label="Time" id="wzPeriods"></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <b style="font-size:15px;color:#0B1D40">Time</b>
+          <div>{{ dp.trigger('wzTime') }}</div>
+        </div>
+        <div id="wzCmpBox" style="display:flex;flex-direction:column;gap:8px;margin-top:16px">
+          <b style="font-size:15px;color:#0B1D40">Compare with</b>
+          <div class="wz-row" role="radiogroup" aria-label="Compare with" id="wzCmp" style="gap:10px"></div>
+        </div>
         <div class="wz-row" style="margin-top:14px;gap:16px;align-items:flex-end">
-          <label class="wz-lbl">Count a record in the period by
+          <label class="wz-lbl">Count a record in the time by
             <select class="wz-sel" id="wzDatef"></select>
           </label>
         </div>
-        <label style="display:flex;gap:10px;align-items:center;font-size:14px;padding:12px;border:1px solid var(--edge);border-radius:10px;margin-top:14px;cursor:pointer">
-          <input type="checkbox" id="wzCompare" style="width:20px;height:20px;accent-color:#1D4ED8">
-          <span><b style="font-weight:600">Compare with the period before</b><br><span style="font-size:12.5px;color:var(--sub)">Shows the change, e.g. +14% vs last quarter</span></span>
-        </label>
         <div class="wz-row" id="wzConds" style="margin:16px 0 8px"></div>
         <button type="button" class="wz-btn" id="wzShowCond" style="min-height:40px;font-size:14px;border-style:dashed;color:var(--blue);border-radius:20px">+ Only show <span id="wzNoun2"></span> where…</button>
         <div class="wz-cond" id="wzCondBox" hidden>
@@ -210,13 +219,14 @@
 </div>
 
 {{ rc.chart_assets() }}
+{{ dp.assets() }}
 <script>
 (function () {
   var SPEC = {{ spec | tojson }}, START = {{ start | tojson }};
   var PREVIEW = '{{ url_for("reports.preview") }}', BUILDER = '{{ url_for("reports.builder") }}', DASH = {{ dash | tojson }};
   var STEP_NAMES = {1: 'What and how', 6: 'Choose columns', 2: 'What to count', 3: 'Split it by', 4: 'Time and filters', 5: 'Show it as'};
   var PIE_SPLITS = ['qstatus', 'outcome', 'source', 'vch', 'kres', 'cstatus', 'ost', 'dused', 'fstatus', 'ivst', 'mch', 'sst', 'ktype', 'isdeal', 'vhanded', 'vwait', 'csource'];
-  var S = {step: 1, path: 'list', subj: null, m: 'count', which: 'all', g1: '', g2: '', period: 'this_quarter', datef: '', cmp: false,
+  var S = {step: 1, path: 'list', subj: null, m: 'count', which: 'all', g1: '', g2: '', period: 'this_quarter', date_from: '', date_to: '', datef: '', cmp: '',
            conds: [], chart: '', q: null, cols: []};
   function order() { return S.path === 'q' ? [1, 5] : (S.path === 'list' ? [1, 6, 4] : [1, 2, 3, 4, 5]); }
   function subj() { return SPEC.subjects.filter(function (x) { return x.key === S.subj; })[0]; }
@@ -238,17 +248,19 @@
     }
     if (S.path === 'list') {
       p.push(['subject', S.subj], ['period', S.period], ['view', 'detailed'], ['chart', 'table'], ['cols_set', '1']);
+      if (S.period === 'custom') p.push(['date_from', S.date_from], ['date_to', S.date_to]);
       S.cols.forEach(function (k) { p.push(['col', k]); });
       if (S.datef) p.push(['datef', S.datef]);
-      if (S.cmp && S.period !== 'all') p.push(['cmp', 'prev']);
+      if (S.cmp && S.period !== 'all') p.push(['cmp', S.cmp]);
       S.conds.forEach(function (c) { p.push(['f', c.raw]); });
       return p;
     }
     var w = whichOpt();
     p.push(['subject', S.subj], ['m', S.m], ['period', S.period], ['chart', S.step === 5 ? chosenChart() : (S.chart || 'auto')]);
+    if (S.period === 'custom') p.push(['date_from', S.date_from], ['date_to', S.date_to]);
     if (S.datef) p.push(['datef', S.datef]);
     if (S.g1) { p.push(['g1', S.g1], ['view', 'summary']); if (S.g2) p.push(['g2', S.g2]); }
-    if (S.cmp && S.period !== 'all') p.push(['cmp', 'prev']);
+    if (S.cmp && S.period !== 'all') p.push(['cmp', S.cmp]);
     ((w && w.f) || []).concat(S.conds.map(function (c) { return c.raw; })).forEach(function (f) { p.push(['f', f]); });
     return p;
   }
@@ -278,10 +290,17 @@
     if (!c || c === 'auto' || ruleFor(c)) c = sug;
     return c;
   }
+  function tv() { return {period: S.period, from: S.date_from, to: S.date_to}; }
+  function periodWords() {
+    if (S.period === 'custom') return PXDate.span(S.date_from, S.date_to);
+    var m = /^last(\d+)([dwm])$/.exec(S.period);
+    if (m) return 'the last ' + m[1] + ' ' + ({d: ['day', 'days'], w: ['week', 'weeks'], m: ['month', 'months']})[m[2]][m[1] === '1' ? 0 : 1];
+    return SPEC.period_words[S.period] || S.period;
+  }
   function sentence() {
     if (S.path === 'list') {
       var s0 = subj(), n0 = S.cols.length;
-      return 'A list of ' + s0.noun + ' with ' + n0 + ' column' + (n0 === 1 ? '' : 's') + ', for ' + SPEC.period_words[S.period] +
+      return 'A list of ' + s0.noun + ' with ' + n0 + ' column' + (n0 === 1 ? '' : 's') + ', for ' + periodWords() +
              (S.conds.length ? ', only where ' + S.conds.map(function (c) { return c.label; }).join(' and ') : '') + '.';
     }
     if (S.path === 'q' && S.q) return S.q.q;
@@ -292,7 +311,7 @@
       if (S.g2) { var o2 = s.more_splits.filter(function (x) { return x.key === S.g2; })[0]; sp += ' and ' + (o2 ? o2.label.toLowerCase() : S.g2); }
     } else { sp = ', as one number'; }
     var conds = S.conds.length ? ', only where ' + S.conds.map(function (c) { return c.label; }).join(' and ') : '';
-    return 'Show ' + mm.words + ' ' + w.words + sp + ', for ' + SPEC.period_words[S.period] + (S.cmp && S.period !== 'all' ? ', compared with the period before' : '') + conds + '.';
+    return 'Show ' + mm.words + ' ' + w.words + sp + ', for ' + periodWords() + (S.cmp && S.period !== 'all' ? (S.cmp === 'year' ? ', compared with the same time last year' : ', compared with the period before') : '') + conds + '.';
   }
   function name() {
     if (S.path === 'q' && S.q) return S.q.label;
@@ -473,14 +492,31 @@
   }
   function step4() {
     var s = subj();
-    radioCards(document.getElementById('wzPeriods'), SPEC.periods, function (p) { return p.key === S.period; }, function (p) { S.period = p.key; step4(); preview(); }, 'wz-pill');
+    var tb = document.getElementById('wzTime'), dsc = PXDate.describe(tv(), SPEC.picker);
+    tb.querySelector('.main').textContent = dsc.main;
+    tb.querySelector('.sub').textContent = dsc.sub ? '· ' + dsc.sub : '';
+    tb.onclick = function () {
+      PXDate.open(tb, {value: tv(), presets: SPEC.picker, onApply: function (v) {
+        S.period = v.period; S.date_from = v.from; S.date_to = v.to;
+        if (S.period === 'all') S.cmp = '';
+        step4(); preview();
+      }});
+    };
     var d = document.getElementById('wzDatef'); d.innerHTML = '';
     s.dates.forEach(function (x) { var o = el('option', '', x.label); o.value = x.key; o.selected = x.key === (S.datef || s.date_default); d.appendChild(o); });
     d.disabled = S.period === 'all';
     d.onchange = function () { S.datef = d.value; preview(); };
-    var c = document.getElementById('wzCompare'); c.checked = S.cmp; c.disabled = S.period === 'all';
-    c.onchange = function () { S.cmp = c.checked; preview(); };
-    document.getElementById('wzNoun2').textContent = s.noun;
+    var cb = document.getElementById('wzCmp'); cb.innerHTML = '';
+    document.getElementById('wzCmpBox').hidden = S.period === 'all';
+    [['', 'No comparison'], ['prev', 'The period before'], ['year', 'Same time last year']].forEach(function (c) {
+      var r = PXDate.compare(tv(), c[0], SPEC.picker), on = (S.cmp || '') === c[0];
+      var b = el('button', 'wz-cmp' + (on ? ' on' : '')); b.type = 'button'; b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', on ? 'true' : 'false');
+      b.appendChild(el('b', '', c[1]));
+      if (r) b.appendChild(el('span', '', PXDate.span(r.from, r.to)));
+      b.onclick = function () { S.cmp = c[0]; step4(); preview(); };
+      cb.appendChild(b);
+    });
+    document.getElementById('wzNoun2').textContent = '\u00a0' + s.noun + '\u00a0';
     var cs = document.getElementById('wzConds'); cs.innerHTML = '';
     S.conds.forEach(function (cd, i) {
       var chip = el('span', 'wz-chip', cd.label), x = el('button', '', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Remove ' + cd.label);

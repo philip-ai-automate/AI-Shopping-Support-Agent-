@@ -1,6 +1,7 @@
 {% extends "portal/base.html" %}
 {% import "portal/_report_chart.html" as rc %}
 {% import "portal/_report_share.html" as rs %}
+{% import "portal/_date_picker.html" as dp %}
 {# ask: Reports › Dashboards shows saved reports side by side as boxes. Make one with "+ New dashboard" (or "Create dashboard" the first time), or from a saved report with "Add to dashboard ▾".
 "Edit dashboard": "Add a box" lists your saved reports (Add), "+ Build a new report", "+ Text note (heading or explanation)". Drag boxes to move them, or use Earlier / Later. Each box has a size: Small, Medium, Large, Full width, and "Use dashboard filters". "Dashboard filters" choose which filters viewers get at the top: Period, Team member, Compare with. Press Save.
 On the dashboard, change Period, Team member or Compare with at the top and every box that uses dashboard filters follows. Click any number, slice, bar or cell in a box to see the records behind it. "Open" on a box opens its report. "Print or save as PDF" prints the dashboard.
@@ -96,17 +97,12 @@ On the dashboard, change Period, Team member or Compare with at the top and ever
     {% if active %}
     <form method="get" class="db-filters" id="dbFilters">
       {% if 'period' in active %}
-      <label class="db-lbl">Period
-        <select class="db-sel" name="period" id="dbPeriod">
-          <option value="">Each box's own period</option>
-          {% for k, l in RB.PERIODS %}<option value="{{ k }}" {{ 'selected' if flt.period == k }}>{{ l }}</option>{% endfor %}
-        </select>
-      </label>
-      <span id="dbCustom" style="display:{{ 'inline-flex' if flt.period == 'custom' else 'none' }};gap:8px;align-items:flex-end">
-        <label class="db-lbl">From<input class="db-sel" type="date" name="date_from" value="{{ flt.date_from.isoformat() if flt.date_from else '' }}"></label>
-        <label class="db-lbl">To<input class="db-sel" type="date" name="date_to" value="{{ flt.date_to.isoformat() if flt.date_to else '' }}"></label>
-        <button type="submit" class="db-btn">Apply</button>
-      </span>
+      <div class="db-lbl">Time
+        {{ dp.trigger('dbTime') }}
+        <input type="hidden" name="period" id="dbPeriod" value="{{ flt.period }}">
+        <input type="hidden" name="date_from" id="dbFrom" value="{{ flt.date_from.isoformat() if flt.date_from and flt.period == 'custom' else '' }}">
+        <input type="hidden" name="date_to" id="dbTo" value="{{ flt.date_to.isoformat() if flt.date_to and flt.period == 'custom' else '' }}">
+      </div>
       {% endif %}
       {% if 'member' in active %}
       <label class="db-lbl">Team member
@@ -158,16 +154,31 @@ On the dashboard, change Period, Team member or Compare with at the top and ever
 </div>
 
 {{ rc.chart_assets() }}
+{{ dp.assets() }}
 {% if dash and can_manage %}{{ rs.share_dialog(url_for('reports.dashboard_share', dash_id=dash.id), dash, dash.name, share_people, share_roles, viewer, RA) }}{% endif %}
 <script>
 (function () {
   var f = document.getElementById('dbFilters');
   if (f) f.querySelectorAll('select').forEach(function (s) {
     s.addEventListener('change', function () {
-      if (s.id === 'dbPeriod') { var c = s.value === 'custom'; document.getElementById('dbCustom').style.display = c ? 'inline-flex' : 'none'; if (c) return; }
       f.submit();
     });
   });
+  var tb = document.getElementById('dbTime');
+  if (tb) {
+    var PRE = {{ dp_presets | tojson }}, OWN = 'Each box\u2019s own time';
+    var val = function () { return {period: document.getElementById('dbPeriod').value, from: document.getElementById('dbFrom').value, to: document.getElementById('dbTo').value}; };
+    var dsc = PXDate.describe(val(), PRE, OWN);
+    tb.querySelector('.main').textContent = dsc.main;
+    tb.querySelector('.sub').textContent = dsc.sub ? '· ' + dsc.sub : '';
+    tb.addEventListener('click', function () {
+      PXDate.open(tb, {value: val(), presets: PRE, ownOption: OWN, title: 'Time for every box', onApply: function (v) {
+        document.getElementById('dbPeriod').value = v.period;
+        document.getElementById('dbFrom').value = v.from; document.getElementById('dbTo').value = v.to;
+        f.submit();
+      }});
+    });
+  }
   var nb = document.getElementById('newDashBtn');
   if (nb) nb.addEventListener('click', function () {
     var fm = document.getElementById('newDashForm'); var open = fm.classList.toggle('open');

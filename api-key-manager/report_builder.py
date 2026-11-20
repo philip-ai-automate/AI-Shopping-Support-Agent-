@@ -16,6 +16,7 @@ count their own records; Quotes keep to the requests handed to them
 looked up in a fixed list — no SQL text ever comes from the browser.
 """
 import datetime as _dt
+import re
 
 import crm_report as crm
 
@@ -24,14 +25,48 @@ PER_PAGE = 50
 MAX_GROUP_ROWS = 500
 
 # ── Time periods ─────────────────────────────────────────────────────────────
-PERIODS = [
+# QUICK = the quick picks the date picker shows (in this order).
+QUICK = [
+    ("today", "Today"), ("yesterday", "Yesterday"), ("this_week", "This week"), ("last_week", "Last week"),
     ("this_month", "This month"), ("last_month", "Last month"),
     ("this_quarter", "This quarter"), ("last_quarter", "Last quarter"),
-    ("this_year", "This year"), ("last_year", "Last year"),
-    ("7", "Last 7 days"), ("30", "Last 30 days"), ("90", "Last 90 days"),
-    ("all", "All time"), ("custom", "Custom dates…"),
+    ("this_year", "This year"), ("last_year", "Last year"), ("all", "All time"),
 ]
+# Older keys still accepted (saved reports, ready-made ones): 7 / 30 / 90 days.
+PERIODS = QUICK + [("7", "Last 7 days"), ("30", "Last 30 days"), ("90", "Last 90 days"), ("custom", "Your own dates")]
 PERIOD_KEYS = {k for k, _ in PERIODS}
+# "The last N days / weeks / months" — moves on every day: last45d, last6w, last3m.
+ROLL_RE = re.compile(r"^last([1-9][0-9]{0,3})([dwm])$")
+ROLL_MAX = {"d": 3660, "w": 520, "m": 120}
+ROLL_UNIT = {"d": ("day", "days"), "w": ("week", "weeks"), "m": ("month", "months")}
+
+
+def roll_parts(period):
+    """(n, unit) for a rolling key like 'last45d', else None."""
+    m = ROLL_RE.match(period or "")
+    if not m:
+        return None
+    n, u = int(m.group(1)), m.group(2)
+    return (n, u) if n <= ROLL_MAX[u] else None
+
+
+def period_ok(period) -> bool:
+    return period in PERIOD_KEYS or roll_parts(period) is not None
+
+
+def _months_back(d, n):
+    y, m = divmod(d.year * 12 + d.month - 1 - n, 12)
+    m += 1
+    last = (_dt.date(y + (m == 12), m % 12 + 1, 1) - _dt.timedelta(days=1)).day
+    return _dt.date(y, m, min(d.day, last))
+
+
+def _span(a, b):
+    if a.year == b.year:
+        if a == b:
+            return a.strftime("%d %b %Y")
+        return a.strftime("%d %b") + " – " + b.strftime("%d %b %Y")
+    return a.strftime("%d %b %Y") + " – " + b.strftime("%d %b %Y")
 
 
 def _q_start(d):
@@ -45,6 +80,24 @@ def period_range(period, d_from=None, d_to=None, today=None):
         return d_from, d_to, d_from.strftime("%d %b %Y") + " – " + d_to.strftime("%d %b %Y")
     if period == "all":
         return None, None, "All time"
+    rp = roll_parts(period)
+    if rp:
+        n, u = rp
+        a = (t - _dt.timedelta(days=n - 1) if u == "d" else t - _dt.timedelta(days=7 * n - 1) if u == "w"
+             else _months_back(t, n) + _dt.timedelta(days=1))
+        return a, t, f"Last {n} {ROLL_UNIT[u][0 if n == 1 else 1]} ({_span(a, t)})"
+    if period == "today":
+        return t, t, "Today (" + _span(t, t) + ")"
+    if period == "yesterday":
+        y = t - _dt.timedelta(days=1)
+        return y, y, "Yesterday (" + _span(y, y) + ")"
+    if period == "this_week":
+        s = t - _dt.timedelta(days=t.weekday())
+        return s, t, "This week (" + _span(s, t) + ")"
+    if period == "last_week":
+        s = t - _dt.timedelta(days=t.weekday() + 7)
+        e = s + _dt.timedelta(days=6)
+        return s, e, "Last week (" + _span(s, e) + ")"
     if period == "this_month":
         return t.replace(day=1), t, "This month (" + t.strftime("%B %Y") + ")"
     if period == "last_month":
@@ -63,6 +116,22 @@ def period_range(period, d_from=None, d_to=None, today=None):
         return _dt.date(t.year - 1, 1, 1), _dt.date(t.year - 1, 12, 31), "Last year (" + str(t.year - 1) + ")"
     n = int(period) if period in ("7", "30", "90") else 30
     return t - _dt.timedelta(days=n - 1), t, f"Last {n} days"
+
+
+def picker_presets(today=None):
+    """Quick picks with their dates today, for the date picker."""
+    out = []
+    for k, label in QUICK:
+        a, b, _l = period_range(k, today=today)
+        out.append({"key": k, "label": label, "from": a.isoformat() if a else "", "to": b.isoformat() if b else ""})
+    return out
+
+
+def picker_value(cfg_or_flt):
+    """What the date picker starts on: {period, from, to}."""
+    p = cfg_or_flt.get("period") or ""
+    a, b = cfg_or_flt.get("date_from"), cfg_or_flt.get("date_to")
+    return {"period": p, "from": a.isoformat() if a else "", "to": b.isoformat() if b else ""}
 
 
 # ── Column catalogue helpers ─────────────────────────────────────────────────
@@ -444,7 +513,7 @@ def read_config(args, b2b_allowed, today=None) -> dict:
         cols = list(subj["default_cols"])
 
     period = args.get("period") or "this_quarter"
-    period = period if period in PERIOD_KEYS else "this_quarter"
+    period = period if period_ok(period) else "this_quarter"
     d_from, d_to, plabel = period_range(period, _iso(args.get("date_from")), _iso(args.get("date_to")), today)
     if period == "custom" and d_from is None:
         period = "this_quarter"
@@ -1122,7 +1191,7 @@ DASH_MEMBER_COL = {"quotes": "qassigned", "deals": "assigned", "leads": "assigne
 def apply_dashboard(cfg, period=None, d_from=None, d_to=None, member=None, cmp=None, today=None):
     """The report as it shows on a dashboard whose filters are set."""
     out = dict(cfg, f=list(cfg["f"]), page=1)
-    if period and period in PERIOD_KEYS:
+    if period and period_ok(period):
         a, b, label = period_range(period, d_from, d_to, today)
         if not (period == "custom" and a is None):
             out.update(period=period, date_from=a, date_to=b, period_label=label)

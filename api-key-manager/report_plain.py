@@ -127,7 +127,8 @@ def plain_sentence(cfg) -> str:
         s += f" ({len(rest)} condition{'s' if len(rest) > 1 else ''})"
     return s
 
-PERIOD_WORDS = {"this_month": "this month", "last_month": "last month", "this_quarter": "this quarter",
+PERIOD_WORDS = {"today": "today", "yesterday": "yesterday", "this_week": "this week", "last_week": "last week",
+                "this_month": "this month", "last_month": "last month", "this_quarter": "this quarter",
                 "last_quarter": "last quarter", "this_year": "this year", "last_year": "last year", "7": "the last 7 days",
                 "30": "the last 30 days", "90": "the last 90 days", "all": "all time", "custom": "dates you pick"}
 COMPARE_WORDS = [("prev", "compared with the period before"), ("year", "compared with the same time last year"),
@@ -193,6 +194,10 @@ def split_words(cfg, g):
 def period_words(cfg):
     if cfg["period"] == "custom" and cfg["date_from"]:
         return cfg["date_from"].strftime("%d %b %Y") + " to " + cfg["date_to"].strftime("%d %b %Y")
+    rp = RB.roll_parts(cfg["period"])
+    if rp:
+        n, u = rp
+        return f"the last {n} {RB.ROLL_UNIT[u][0 if n == 1 else 1]}"
     return PERIOD_WORDS.get(cfg["period"], cfg["period_label"].lower())
 
 
@@ -243,4 +248,5 @@ def wizard_spec(allowed: set, ctx) -> dict:
             s["questions"].append({"key": r["key"], "q": QUESTIONS.get(r["key"], r["label"]), "how": r["desc"],
                                    "label": r["label"], "cfg": r["cfg"]})
     return {"subjects": subjects, "periods": [{"key": k, "label": PERIOD_WORDS[k].capitalize()} for k, l in RB.PERIODS if k != "custom"],
+            "picker": RB.picker_presets(),
             "period_words": PERIOD_WORDS, "charts": [{"key": k, "label": l} for k, l in RB.CHARTS], "ops": RB.FILTER_OPS}
