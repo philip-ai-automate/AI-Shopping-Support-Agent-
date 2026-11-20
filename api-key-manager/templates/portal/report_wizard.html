@@ -217,7 +217,7 @@
   var PREVIEW = '{{ url_for("reports.preview") }}', BUILDER = '{{ url_for("reports.builder") }}', DASH = {{ dash | tojson }};
   var STEP_NAMES = {1: 'What and how', 6: 'Choose columns', 2: 'What to count', 3: 'Split it by', 4: 'Time and filters', 5: 'Show it as'};
   var PIE_SPLITS = ['qstatus', 'outcome', 'source', 'vch', 'kres', 'cstatus', 'ost', 'dused', 'fstatus', 'ivst', 'mch', 'sst', 'ktype', 'isdeal', 'vhanded', 'vwait', 'csource'];
-  var S = {step: 1, path: 'list', subj: null, m: 'count', which: 'all', g1: '', g2: '', period: 'this_quarter', date_from: '', date_to: '', datef: '', cmp: '',
+  var S = {step: 1, path: 'list', subj: null, m: 'count', which: 'all', g1: '', g2: '', period: 'this_quarter', date_from: '', date_to: '', datef: '',
            conds: [], chart: '', q: null, cols: []};
   function order() { return S.path === 'q' ? [1, 5] : (S.path === 'list' ? [1, 6, 4] : [1, 2, 3, 4, 5]); }
   function subj() { return SPEC.subjects.filter(function (x) { return x.key === S.subj; })[0]; }
@@ -242,7 +242,6 @@
       if (S.period === 'custom') p.push(['date_from', S.date_from], ['date_to', S.date_to]);
       S.cols.forEach(function (k) { p.push(['col', k]); });
       if (S.datef) p.push(['datef', S.datef]);
-      if (S.cmp && S.period !== 'all') p.push(['cmp', S.cmp]);
       S.conds.forEach(function (c) { p.push(['f', c.raw]); });
       return p;
     }
@@ -251,7 +250,6 @@
     if (S.period === 'custom') p.push(['date_from', S.date_from], ['date_to', S.date_to]);
     if (S.datef) p.push(['datef', S.datef]);
     if (S.g1) { p.push(['g1', S.g1], ['view', 'summary']); if (S.g2) p.push(['g2', S.g2]); }
-    if (S.cmp && S.period !== 'all') p.push(['cmp', S.cmp]);
     ((w && w.f) || []).concat(S.conds.map(function (c) { return c.raw; })).forEach(function (f) { p.push(['f', f]); });
     return p;
   }
@@ -302,7 +300,7 @@
       if (S.g2) { var o2 = s.more_splits.filter(function (x) { return x.key === S.g2; })[0]; sp += ' and ' + (o2 ? o2.label.toLowerCase() : S.g2); }
     } else { sp = ', as one number'; }
     var conds = S.conds.length ? ', only where ' + S.conds.map(function (c) { return c.label; }).join(' and ') : '';
-    return 'Show ' + mm.words + ' ' + w.words + sp + ', for ' + periodWords() + (S.cmp && S.period !== 'all' ? (S.cmp === 'year' ? ', compared with the same time last year' : ', compared with the period before') : '') + conds + '.';
+    return 'Show ' + mm.words + ' ' + w.words + sp + ', for ' + periodWords() + conds + '.';
   }
   function name() {
     if (S.path === 'q' && S.q) return S.q.label;
@@ -489,7 +487,6 @@
     tb.onclick = function () {
       PXDate.open(tb, {value: tv(), presets: SPEC.picker, onApply: function (v) {
         S.period = v.period; S.date_from = v.from; S.date_to = v.to;
-        if (S.period === 'all') S.cmp = '';
         step4(); preview();
       }});
     };

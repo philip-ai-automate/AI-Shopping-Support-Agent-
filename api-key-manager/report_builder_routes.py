@@ -172,7 +172,7 @@ def _dash_filters(args):
     return {"period": period if RB.period_ok(period) else "",
             "date_from": RB._iso(args.get("date_from")), "date_to": RB._iso(args.get("date_to")),
             "member": (args.get("member") or "")[:64],
-            "cmp": args.get("cmp") if args.get("cmp") in ("prev", "year", "none") else ""}
+            "cmp": ""}
 
 
 def _dash_filter_qs(flt) -> dict:
@@ -184,9 +184,7 @@ def _box_cfg(box, b2b, flt, active):
     if box["use_filters"]:
         cfg = RB.apply_dashboard(cfg, period=flt["period"] if "period" in active else None,
                                  d_from=flt["date_from"], d_to=flt["date_to"],
-                                 member=flt["member"] if "member" in active else None,
-                                 cmp=(("" if flt["cmp"] == "none" else flt["cmp"]) if "cmp" in active and flt["cmp"]
-                                      else None))
+                                 member=flt["member"] if "member" in active else None)
     return cfg
 
 
@@ -430,12 +428,6 @@ def _sentence(cfg, url_with):
                                             for v, l in RP.split_choices(cfg["subject"]) if v != cfg["g1"]]}]
     parts += [{"t": ", for " if cfg["period"] != "all" else ", for "},
               {"pick": "period", "text": RP.period_words(cfg), "label": "Time", "picker": RB.picker_value(cfg), "options": []}]
-    if cfg["period"] != "all":
-        cmp_text = dict(RP.COMPARE_WORDS)[cfg["cmp"] or ""]
-        parts += [{"t": ", "},
-                  {"pick": "compare", "text": cmp_text, "label": "Compare",
-                   "options": [{"label": l[0].upper() + l[1:], "on": k == (cfg["cmp"] or ""), "url": url_with(cmp=k)}
-                               for k, l in RP.COMPARE_WORDS]}]
     parts.append({"t": "."})
     return parts, rest
 

@@ -366,15 +366,15 @@ def _md(cfg: dict):
 
 # Boxes of the ready-made Sales overview: (name, size, config). Each is skipped if the business can't use its subject.
 _KPI_B2B = [
-    ("Enquiries", "s", {"subject": "leads", "period": "this_quarter", "chart": "number", "cmp": "prev"}),
-    ("Quotes sent", "s", {"subject": "quotes", "datef": "firstsent", "period": "this_quarter", "chart": "number", "cmp": "prev"}),
+    ("Enquiries", "s", {"subject": "leads", "period": "this_quarter", "chart": "number"}),
+    ("Quotes sent", "s", {"subject": "quotes", "datef": "firstsent", "period": "this_quarter", "chart": "number"}),
     ("Quotes won (value)", "s", {"subject": "quotes", "f": "qstatus|is|won", "m": "sum_qvalue", "datef": "qclosed",
-                                 "period": "this_quarter", "chart": "number", "cmp": "prev"}),
+                                 "period": "this_quarter", "chart": "number"}),
 ]
 _KPI_B2C = [
-    ("Orders", "s", {"subject": "orders", "period": "this_quarter", "chart": "number", "cmp": "prev"}),
-    ("Sales (order value)", "s", {"subject": "orders", "m": "sum_tot", "period": "this_quarter", "chart": "number", "cmp": "prev"}),
-    ("Enquiries", "s", {"subject": "leads", "period": "this_quarter", "chart": "number", "cmp": "prev"}),
+    ("Orders", "s", {"subject": "orders", "period": "this_quarter", "chart": "number"}),
+    ("Sales (order value)", "s", {"subject": "orders", "m": "sum_tot", "period": "this_quarter", "chart": "number"}),
+    ("Enquiries", "s", {"subject": "leads", "period": "this_quarter", "chart": "number"}),
 ]
 _READY_B2B = [("quotes_by_member", "m"), ("where_enquiries", "m"), ("quotes_waiting", "w"), ("deal_funnel", "m"), ("missed_replies", "m")]
 _READY_B2C = [("orders_week", "w"), ("orders_status", "m"), ("top_products", "m"), ("where_enquiries", "m"), ("cart_recovery", "m")]

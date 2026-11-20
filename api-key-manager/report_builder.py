@@ -556,7 +556,7 @@ def read_config(args, b2b_allowed, today=None) -> dict:
 
     chart = args.get("chart") or "auto"
     chart = chart if chart in CHART_KEYS else "auto"
-    compare = args.get("cmp") or ""
+    compare = ""            # 20 Nov: comparisons removed (PhiXtra is a sales system, not accounting)
     compare = compare if compare in ("prev", "year") and period != "all" else ""
 
     sort = args.get("sort") or ""
@@ -1204,8 +1204,7 @@ def apply_dashboard(cfg, period=None, d_from=None, d_to=None, member=None, cmp=N
             out["f"].append({"key": mcol, "op": "empty", "val": ""})
         else:
             out["f"].append({"key": mcol, "op": "is", "val": member[:64]})
-    if cmp is not None and out["period"] != "all":
-        out["cmp"] = cmp if cmp in ("prev", "year") else ""
+    out["cmp"] = ""
     return out
 
 

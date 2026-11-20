@@ -17,7 +17,7 @@ import report_builder as RB
 SIZES = [("s", "Small"), ("m", "Medium"), ("l", "Large"), ("w", "Full width")]
 SIZE_KEYS = {k for k, _ in SIZES}
 MAX_BOXES = 40
-DASH_FILTERS = [("period", "Period"), ("member", "Team member"), ("cmp", "Compare with")]
+DASH_FILTERS = [("period", "Time"), ("member", "Team member")]
 
 _tables_ok = False
 
