@@ -3,7 +3,7 @@
 {% import "portal/_report_share.html" as rs %}
 {% import "portal/_date_picker.html" as dp %}
 {# ask: A report page reads as a sentence, for example "Show the total quote value of won quotes, split by team member, for this quarter." Click any blue underlined part of the sentence to change it: what to count (number, total value, average…), which records (e.g. All quotes, Won, Lost, Waiting for an answer), split by (team member, month, status, where it came from…, "More ways to split", or Nothing for one number), the time (opens the date picker: Quick picks like Today, This week, This month, Last quarter, This year, All time; "The last…" a number of days, weeks or months that moves on by itself; or type From and To dates (dd/mm/yyyy) or click a start and end day on the calendar, then "Use these dates"). Changes show straight away.
-"+ Only show … where" adds a condition (Field, Rule, Value, Add); remove one with its ×. "More options" has "And also split by" (for a stacked chart, heatmap or pivot table), "Count by date" (which date puts a record in the period) and Folder.
+"+ Only show … where" adds a condition (Field, Rule, Value, Add); remove one with its ×. "More options" has "And also split by" (for a stacked chart, heatmap or pivot table), and Folder.
 Two tabs: "List" (every record; the blue "Columns (n)" button picks and orders the columns — tick what you need, drag to reorder, then the green "Use these columns" button; click a heading to sort) and "Chart and totals" (the chart, the totals and a totals table). The "Columns" button is also shown on the Chart tab and opens the list with the column chooser.
 "Show as" buttons: Bar, Pie, Line, Table, Big number, and "More ▾" for Donut, Horizontal bar, Stacked bar, Area, Bar + line, Funnel, Heatmap and Pivot. The chart you chose is highlighted. A greyed one says why when you point at it (most charts need a split; Stacked bar, Heatmap and Pivot need "And also split by"; Pie, Donut and Funnel need a number or a total, not an average).
 Example, pie chart of quotes won by each team member: Reports › All reports › + New report, pick Quotes, then "Who wins the most quotes?" or Start from blank: What to count = Total quote value, Which quotes = Won, Split it by = Team member, Show it as = Pie, Create report.
@@ -204,13 +204,6 @@ Quotes have Invoice columns read from Xero, QuickBooks or Sage: Invoice status (
           <select class="rv-sel" data-go>
             <option value="{{ g2_url('') }}">Nothing</option>
             {% for v_, l_ in g2_options %}<option value="{{ g2_url(v_) }}" {{ 'selected' if v_ == cfg.g2 }}>{{ l_ }}</option>{% endfor %}
-          </select>
-        </label>
-        {% endif %}
-        {% if cfg.period != 'all' %}
-        <label class="rv-lbl">Count by date
-          <select class="rv-sel" data-go>
-            {% for k, l, _ in subj.dates %}<option value="{{ datef_url(k) }}" {{ 'selected' if k == cfg.datef }}>{{ l }}</option>{% endfor %}
           </select>
         </label>
         {% endif %}
