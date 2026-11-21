@@ -291,10 +291,21 @@ window.PXDate = (function () {
       }
     }
     draw();
-    document.body.appendChild(pop);
-    var r = anchor.getBoundingClientRect(), w = pop.offsetWidth;
-    var left = Math.max(16, Math.min(r.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - w - 16));
-    pop.style.left = left + 'px'; pop.style.top = (r.bottom + window.scrollY + 8) + 'px';
+    // Inside an open modal (e.g. a dashboard widget's Settings) the picker must live in the dialog, or it
+    // sits under it and can't be clicked (21 Nov 2026). There it is fixed to the screen.
+    var host = anchor.closest('dialog[open]');
+    (host || document.body).appendChild(pop);
+    var r = anchor.getBoundingClientRect(), w = pop.offsetWidth, vw = document.documentElement.clientWidth;
+    if (host) {
+      pop.style.position = 'fixed';
+      pop.style.left = Math.max(16, Math.min(r.left, vw - w - 16)) + 'px';
+      var top = r.bottom + 8, h = pop.offsetHeight;
+      if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 8);
+      pop.style.top = top + 'px';
+    } else {
+      var left = Math.max(16, Math.min(r.left + window.scrollX, window.scrollX + vw - w - 16));
+      pop.style.left = left + 'px'; pop.style.top = (r.bottom + window.scrollY + 8) + 'px';
+    }
     anchor.setAttribute('aria-expanded', 'true');
     pop.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); close(); } });
     onDoc = function (e) { if (pop && !pop.contains(e.target) && !anchor.contains(e.target)) close(); };

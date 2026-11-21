@@ -127,7 +127,7 @@ def dashboard_box(dash_id: int, box_id: int):
         if box is None:
             return render_template("portal/_report_widget.html", kind="error", box={})
         active = set(d["filters"] or [])
-        flt0 = _dash_filters(request.args)
+        flt0 = _dash_filters({})      # the form's own "period" / "member" fields are the widget's, not dashboard filters
         if RW.kind_of(box) == "report":
             cfg = _box_cfg(box, b2b, flt0, active)
         else:
