@@ -124,6 +124,38 @@ def title_for(cfg, cfg0, base_title, split_label):
     return what + tail, base_title
 
 
+GROUP_MAX = 20            # List view: at most this many groups on the page (Download gives everything)
+
+
+def grouped_list(ctx, cfg, scope):
+    """List view with "Show per" chosen (21 Nov 2026, approved mock-up screen 5): the records grouped under
+    the choice — one heading and count per group, the chosen column first, up to PER_PAGE rows a group.
+    Returns (groups, columns, number of groups) or None when it can't be worked out."""
+    subj = RB.SUBJECTS[cfg["subject"]]
+    gcol = cfg["g1"].partition("@")[0]
+    rest = [c for c in (cfg["col"] or subj["default_cols"]) if c != gcol]
+    cols = ([gcol] if gcol in subj["columns"] else []) + rest
+    base = dict(cfg, g2="", view="summary", col=cols, chart="auto")
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        summ = RB.run_summary(cur, ctx, base, scope)
+        out = []
+        for r in summ["rows"][:GROUP_MAX]:
+            dc = RB.drill_cfg(base, r["rk"][0])
+            dc["col"] = cols
+            rows, total = RB.run_detailed(cur, ctx, dc, quote_scope=scope)
+            out.append({"label": r["labels"][0], "n": total, "rows": rows, "rk": r["rk"][:1],
+                        "more": max(0, total - len(rows))})
+        return out, cols, len(summ["rows"])
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ report simple grouped list:", e)
+        return None
+    finally:
+        conn.close()
+
+
 def _tiles(ctx, cfg, scope):
     subj = RB.SUBJECTS[cfg["subject"]]
     m = RB.measure_of(cfg)
@@ -185,7 +217,13 @@ def view():
             conn.close()
 
     subj = RB.SUBJECTS[cfg["subject"]]
-    if show == "list":
+    groups = None
+    if show == "list" and cfg["g1"]:
+        got = grouped_list(rctx, cfg, rscope)
+        data = {"error": "This report could not be worked out. Try another choice."} if got is None else {}
+        if got:
+            groups, list_cols, n_groups = got
+    elif show == "list":
         data = _results(rctx, dict(cfg, view="detailed"), rscope)
     elif cfg["g1"]:
         data = _results(rctx, dict(cfg, view="summary"), rscope)
@@ -214,10 +252,32 @@ def view():
         who = next((p["display"] for p in ctx["people"] if p["key"] == member_val), "One team member")
     m = RB.measure_of(cfg)
     n_main = 2 if m[2] else 1          # the table shows the count and the chosen number only
+    # What you're looking at, in one line, and which groups "Show per" makes (approved mock-up screen 5)
+    n_records = tiles[0]["value"] if tiles else "0"
+    if groups is not None:
+        labels, n_grp = [g["label"] for g in groups], n_groups
+    elif data.get("summary"):
+        labels = [r["labels"][0] for r in data["summary"]["rows"]]
+        n_grp = len(labels)
+    else:
+        labels, n_grp = [], 0
+    split_lower = split_label[:1].lower() + split_label[1:]
+    if cfg["g1"]:
+        look_line = f"{n_records} {subj['noun']} {period_words}, shown per {split_lower}: " \
+                    f"{n_grp} group{'' if n_grp == 1 else 's'}"
+        names = ", ".join(str(x) for x in labels[:3]) + ("…" if len(labels) > 3 else "")
+        per_hint = (("One group for each: " if show == "list" else "One bar and row for each: ") + names) if labels \
+            else "No groups in this time"
+    else:
+        look_line = f"{n_records} {subj['noun']} {period_words} in total"
+        per_hint = "Just the total, no groups"
     return render_template(
         "portal/report_simple.html", customer=customer, RB=RB, cfg=cfg, subj=subj, d=data, chart=chart,
         title=shown_title, from_q=from_q, ready=ready, saved=saved, rid=rid, mine=mine, show=show, tiles=tiles,
         subline=cfg["period_label"] + (" · " + who if mcol else ""), period_words=period_words, n_main=n_main,
+        look_line=look_line, per_hint=per_hint, split_label=split_label,
+        n_records=n_records, n_groups=n_grp,
+        groups=groups, list_cols=list_cols if groups is not None else [],
         dp_presets=RB.picker_presets(), dp_value=RB.picker_value(cfg),
         member_on=bool(mcol), member_val=member_val, people=ctx["people"],
         split_val=cfg["g1"], split_opts=split_opts,

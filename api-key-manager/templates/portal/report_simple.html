@@ -1,7 +1,7 @@
 {% extends "portal/base.html" %}
 {% import "portal/_report_chart.html" as rc %}
 {% import "portal/_date_picker.html" as dp %}
-{# ask: A report (Reports › pick a question, or a saved report) shows the answer with four choices at the top: "Time" (quick picks like This month, Last month, This quarter, "The last N days", or your own dates), "Team member" (Everyone or one person), "Show per" (breaks the total into groups — for example per Team member, Month, Where it came from, or Nothing for one total; the title changes to say what the chart now shows) and "Show as" Chart or List. Numbers at the top give the totals. Click any bar, slice or number to see the records behind it. "Save as my report" keeps it with your choices under Reports › Your saved reports (a report you saved shows "Save changes" and "Save as new"). "Download" gives Excel, CSV or PDF. On Growth and Scale plans, "Open in custom report builder" lets you change columns and filters; on Starter, custom reports come with Growth and Scale. #}
+{# ask: A report (Reports › pick a question, or a saved report) shows the answer with four choices at the top: "Time" (quick picks like This month, Last month, This quarter, "The last N days", or your own dates), "Team member" (Everyone or one person), "Show per" (breaks the total into groups — for example per Team member, Month, Where it came from, or Nothing for one total; the title changes to say what the chart now shows; on List the records are grouped under the same choice, each group with a heading and count) and "Show as" Chart or List. Numbers at the top give the totals. Click any bar, slice or number to see the records behind it. "Save as my report" keeps it with your choices under Reports › Your saved reports (a report you saved shows "Save changes" and "Save as new"). "Download" gives Excel, CSV or PDF. On Growth and Scale plans, "Open in custom report builder" lets you change columns and filters; on Starter, custom reports come with Growth and Scale. #}
 {% block title %}{{ title }} — Reports — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -12,7 +12,11 @@
   .sr h1{margin:0;font-size:26px;font-weight:800;color:var(--navy);line-height:1.25;overflow-wrap:anywhere}
   .sr-sub{margin:6px 0 0;color:var(--sub);font-size:15px}
   .sr-from{font-size:13px;color:var(--sub);margin-bottom:4px}
-  .sr-hint{font-size:12px;font-weight:400;color:var(--sub)}
+  .sr-hint{font-size:12.5px;font-weight:400;color:var(--sub);max-width:320px;line-height:1.4}
+  .sr-look{background:#EEF4FF;border:1px solid #C7D7F7;border-radius:10px;padding:14px 16px;font-size:16px;color:var(--navy)}
+  .sr-grp td{padding:14px 10px 8px;background:#F1F5FB;border-top:2px solid #D5DBE3;font-size:15px;font-weight:700;color:var(--navy)}
+  .sr-grp span{font-weight:400;color:var(--sub)}
+  .sr-tbl td.first{font-weight:700;color:var(--navy)}
   .sr-top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between}
   @media (min-width:900px){.sr-top{padding-right:150px}}
   .sr-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border-radius:8px;font-size:15px;font-weight:700;
@@ -106,7 +110,7 @@
         {% for v, l in split_opts %}<option value="{{ v }}" {{ 'selected' if split_val == v }}>{{ l }}</option>{% endfor %}
         <option value="" {{ 'selected' if not split_val }}>Nothing — one total</option>
       </select>
-      <span class="sr-hint" id="srPerHint">Breaks the total into groups</span>
+      <span class="sr-hint" id="srPerHint">{{ per_hint }}</span>
     </label>
     <div class="sr-lbl">Show as
       <div class="sr-seg" role="group" aria-label="Show as">
@@ -123,6 +127,8 @@
   </div>
   {% endif %}
 
+  {% if not d.error %}<div class="sr-look">{{ look_line }}</div>{% endif %}
+
   <div class="sr-card">
     {% if d.error %}
       <div class="rb-err">{{ d.error }}</div>
@@ -132,7 +138,7 @@
         {% set s = d.summary %}
         <div class="rb-scroll" data-drill-base="{{ drill_base }}" style="margin-top:12px">
           <table class="sr-tbl">
-            <thead><tr>{% for h in s.headers[:s.ngroups + n_main] %}<th class="{{ 'num' if loop.index > s.ngroups }}">{{ h }}</th>{% endfor %}</tr></thead>
+            <thead><tr>{% for h in s.headers[:s.ngroups + n_main] %}<th class="{{ 'num' if loop.index > s.ngroups }}">{{ split_label if loop.first and split_label else h }}</th>{% endfor %}</tr></thead>
             <tbody>
               {% for r in s.rows %}
                 <tr>{% for l in r.labels %}<td>{{ l }}</td>{% endfor %}{% for c in r.cells[:n_main] %}<td class="num">{% if loop.first %}<button type="button" class="rb-sumbtn" data-drill='{{ r.rk|tojson }}' aria-label="See the {{ c }} records for {{ r.labels|join(' · ') }}">{{ c }}</button>{% else %}{{ c }}{% endif %}</td>{% endfor %}</tr>
@@ -145,6 +151,25 @@
         </div>
       {% endif %}
       {% if chart.kind not in ('number', 'table') %}<p class="rb-note" style="margin:10px 0 0">Click any bar, slice or number to see the records behind it.</p>{% endif %}
+    {% elif groups is not none %}
+      <div class="rb-scroll" data-drill-base="{{ drill_base }}">
+        <table class="sr-tbl">
+          <thead><tr>{% for k in list_cols %}{% set c = subj.columns[k] %}<th class="{{ 'num' if c.fmt in ('money','money_own','int') }}">{{ split_label if loop.first else c.label }}</th>{% endfor %}</tr></thead>
+          <tbody>
+            {% for g in groups %}
+              <tr class="sr-grp"><td colspan="{{ list_cols|length }}">{{ g.label }} <span>— {{ '{:,}'.format(g.n) }} {{ subj.noun }}</span></td></tr>
+              {% for r in g.rows %}
+                <tr>{% for cell in r.cells %}{% set c = subj.columns[list_cols[loop.index0]] %}<td class="{{ 'num' if c.fmt in ('money','money_own','int') }} {{ 'first' if loop.first }}">{{ cell }}</td>{% endfor %}</tr>
+              {% endfor %}
+              {% if g.more %}<tr><td colspan="{{ list_cols|length }}"><button type="button" class="rb-sumbtn" data-drill='{{ g.rk|tojson }}'>See all {{ '{:,}'.format(g.n) }} in {{ g.label }}</button></td></tr>{% endif %}
+            {% else %}
+              <tr><td colspan="{{ list_cols|length }}" class="rb-note">Nothing in this time. Try a longer time.</td></tr>
+            {% endfor %}
+            {% if groups %}<tr class="total"><td colspan="{{ list_cols|length }}">Total — {{ n_records }} {{ subj.noun }}</td></tr>{% endif %}
+          </tbody>
+        </table>
+      </div>
+      {% if groups|length < n_groups %}<p class="rb-note" style="margin:10px 0 0">Showing the first {{ groups|length }} groups. Download gives every group.</p>{% endif %}
     {% else %}
       <div class="rb-scroll">
         <table class="sr-tbl">
