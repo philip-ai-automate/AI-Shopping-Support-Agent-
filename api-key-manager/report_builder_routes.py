@@ -192,12 +192,9 @@ def _dash_filter_qs(flt) -> dict:
 
 
 def _box_cfg(box, b2b, flt, active):
+    import report_widgets as RW
     cfg = RB.read_config(_args_from_saved({"config": box["config"]}), b2b)
-    if box["use_filters"]:
-        cfg = RB.apply_dashboard(cfg, period=flt["period"] if "period" in active else None,
-                                 d_from=flt["date_from"], d_to=flt["date_to"],
-                                 member=flt["member"] if "member" in active else None)
-    return cfg
+    return RW.apply_filters(cfg, box, flt, active)     # dashboard filters, or the widget's own (21 Nov 2026)
 
 
 def _resolve(args, ctx, b2b, quote_scope, drill=False):

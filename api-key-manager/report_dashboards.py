@@ -243,6 +243,24 @@ def update_widget(tenant_id: int, dash_id: int, box_id: int, pick: str = None, r
         conn.close()
 
 
+def set_widget(tenant_id: int, dash_id: int, box_id: int, wcfg: dict, report_id: int = None, note: str = None) -> bool:
+    """A widget's Settings (21 Nov 2026): its own settings, and what it shows."""
+    conn, cur = _db()
+    try:
+        cur.execute("""UPDATE report_dashboard_boxes b SET wcfg=%s, use_filters=TRUE,
+                              report_id = COALESCE(%s, b.report_id),
+                              note = CASE WHEN %s IS NOT NULL THEN %s ELSE b.note END
+                         FROM report_dashboards d
+                        WHERE b.id=%s AND b.dashboard_id=%s AND d.id=b.dashboard_id AND d.tenant_id=%s""",
+                    (json.dumps(wcfg), report_id, note, (note or "")[:2000], box_id, dash_id, tenant_id))
+        ok = cur.rowcount > 0
+        cur.execute("UPDATE report_dashboards SET updated_at=NOW() WHERE id=%s AND tenant_id=%s", (dash_id, tenant_id))
+        conn.commit()
+        return ok
+    finally:
+        conn.close()
+
+
 def save_layout(tenant_id: int, dash_id: int, boxes: list, filters: list, name: str = None) -> bool:
     """boxes: [{id, size, use_filters, note?}] in the new order; boxes left out are removed."""
     conn, cur = _db()

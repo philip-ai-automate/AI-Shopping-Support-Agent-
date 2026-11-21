@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% import "portal/_date_picker.html" as dp %}
 {# ask: Reports › Dashboards › "Edit dashboard" (Growth and Scale plans). A dashboard is a grid of widgets. Drag a widget by its ⠿ handle to move it, pull its ◢ corner to resize it (or focus the handle and use the arrow keys to move, Shift + arrow keys to resize). Every change saves itself ("All changes saved"). "+ Add a widget here" in any empty space adds one exactly there: pick a type — Number tile (one big number: quotes won, quotes sent, new enquiries, chats waiting, follow-ups overdue, open deals), Chart or table (a ready-made question or one of your saved reports), Action list (follow-ups due today, chats waiting for our reply, quotes waiting on the buyer, deals gone quiet — click a row to open it), Leaderboard (team ranked by won quote value, deals won, calls made or chats answered) or Heading (a title for a section) — then press Add. Each widget has "Settings" (change what it shows; "Follow the dashboard's filters") and "Remove". At the top: the dashboard name, which filters viewers get (Time, Team member) and "Delete this dashboard". Press "Done editing" to see it. On a phone the widgets stack one under another. #}
 {% block title %}Edit {{ dash.name }} — Reports — PhiXtra Portal{% endblock %}
 
@@ -62,6 +63,31 @@
   .ge-topics{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
   .ge-topics button{min-height:40px;padding:0 14px;border-radius:20px;font-family:inherit;font-size:13.5px;cursor:pointer;background:#fff;color:#1F2A37;border:1px solid #D5DBE3}
   .ge-topics button[aria-pressed=true]{background:var(--navy);color:#fff;border-color:var(--navy);font-weight:700}
+  .gs-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:18px 22px;border-bottom:1px solid var(--edge)}
+  .gs-head h2{margin:2px 0 0;font-size:20px;color:var(--navy)}
+  .gs-kind{font-size:12px;color:var(--sub);text-transform:uppercase;letter-spacing:.4px;font-weight:700}
+  .gs-body{display:flex;flex-wrap:wrap;gap:24px;padding:20px 22px}
+  .gs-left{flex:1 1 360px;display:flex;flex-direction:column;gap:18px;min-width:0}
+  .gs-right{flex:0 1 300px;display:flex;flex-direction:column;gap:8px;min-width:0}
+  .gs-f{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:700;color:#374151;border:0;padding:0;margin:0;min-width:0}
+  .gs-f legend{font-size:13px;font-weight:700;color:#374151;padding:0;margin-bottom:6px}
+  .gs-f .ge-in{width:100%;font-weight:400;color:#1F2A37;background:#fff}
+  .gs-help{font-size:13px;font-weight:400;color:var(--sub)}
+  .gs-radios{display:flex;flex-direction:column;gap:6px}
+  .gs-r{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:14px;font-weight:400;color:#1F2A37;min-height:40px}
+  .gs-r input[type=radio]{width:18px;height:18px;margin:0;flex:none}
+  .gs-r .ge-in{width:auto;flex:1 1 180px}
+  .gs-now{font-size:14px;font-weight:400;color:var(--sub);background:#F5F7FA;border-radius:8px;padding:10px 12px}
+  .gs-seg{display:inline-flex;border:1px solid #D5DBE3;border-radius:8px;overflow:hidden;align-self:flex-start}
+  .gs-seg label{position:relative}
+  .gs-seg input{position:absolute;opacity:0;width:1px;height:1px}
+  .gs-seg span{min-height:40px;min-width:52px;display:flex;align-items:center;justify-content:center;padding:0 14px;font-size:14px;font-weight:400;background:#fff;color:#1F2A37;cursor:pointer}
+  .gs-seg input:checked + span{background:var(--navy);color:#fff;font-weight:700}
+  .gs-seg input:focus-visible + span{outline:2px solid var(--blue);outline-offset:-2px}
+  .gs-pvl{font-size:13px;font-weight:700;color:#374151}
+  .gs-pv{border:1px solid #D5DBE3;border-radius:10px;padding:12px 14px;min-height:140px;max-height:360px;overflow:auto}
+  .gs-foot{display:flex;gap:8px;justify-content:flex-end;padding:14px 22px;border-top:1px solid var(--edge)}
+  .gs-cancel{min-height:44px;padding:0 18px;border:1px solid #D5DBE3;background:#fff;border-radius:8px;font-family:inherit;font-size:14px;cursor:pointer}
   .ge-opt{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid #D5DBE3;border-radius:10px;font-size:14px;cursor:pointer}
   .ge-opt small{display:block;color:var(--sub);font-size:12.5px;margin-top:2px}
   @media (max-width:760px){
@@ -176,42 +202,79 @@
   </div>
 </dialog>
 
-<dialog class="ge-dlg" id="geSet" aria-labelledby="geSetT" style="max-width:640px">
-  <form method="POST" id="geSetForm" style="display:flex;flex-direction:column;gap:12px">
-    <div class="ge-dh"><h2 id="geSetT">Widget settings</h2><button type="button" class="ge-x" data-close aria-label="Close">✕</button></div>
-    {% for k in ('number', 'list', 'board') %}
-    <fieldset data-skind="{{ k }}" hidden style="border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:8px">
-      <legend class="ge-lbl" style="margin-bottom:6px">It shows</legend>
-      {% for p in picks[k] %}<label class="ge-opt"><input type="radio" name="pick" value="{{ p.key }}" data-k="{{ k }}"><span>{{ p.label }}<small>{{ p.help }}</small></span></label>{% endfor %}
-    </fieldset>
-    {% endfor %}
-    <div data-skind="report" hidden style="display:flex;flex-direction:column;gap:8px">
-      <label class="ge-lbl">Show one of your saved reports instead
-        <select name="report_id" class="ge-in">
-          <option value="">Keep the report it shows now</option>
-          {% for r in mine %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}
-        </select>
-      </label>
-      <label class="ge-lbl">Or a ready-made question
-        <select name="ready" class="ge-in">
-          <option value="">—</option>
-          {% for t in topics %}<optgroup label="{{ t.label }}">{% for q in t.qs %}<option value="{{ q.key }}">{{ q.q }}</option>{% endfor %}</optgroup>{% endfor %}
-        </select>
-      </label>
+{# ── A widget's Settings (21 Nov 2026 redesign, approved mock-up screen 8) ── #}
+<dialog class="ge-dlg" id="geSet" aria-labelledby="geSetT" style="max-width:860px;padding:0">
+  <form method="POST" id="geSetForm">
+    <div class="gs-head">
+      <div><div class="gs-kind" id="geSetKind"></div><h2 id="geSetT"></h2></div>
+      <button type="button" class="ge-x" data-close aria-label="Close">✕</button>
     </div>
-    <label data-skind="heading" hidden class="ge-lbl">Heading (first line) and an optional explanation below it
-      <textarea name="note" rows="3" class="ge-in" style="padding:10px" id="geSetNote"></textarea>
-    </label>
-    <label class="ge-chk" id="geSetFiltersRow"><input type="checkbox" name="use_filters" value="1" id="geSetFilters"> Follow the dashboard’s filters (Time and Team member)</label>
-    <div style="display:flex;gap:8px">
-      <button type="submit" class="ge-add" style="min-height:44px;padding:0 18px;font-size:14px">Save</button>
-      <button type="button" data-close style="min-height:44px;padding:0 18px;border:1px solid #D5DBE3;background:#fff;border-radius:8px;font-family:inherit;font-size:14px;cursor:pointer">Cancel</button>
+    <div class="gs-body">
+      <div class="gs-left">
+        <label class="gs-f" data-f="title">Name on the widget
+          <input name="title" id="gsTitle" maxlength="80" class="ge-in">
+        </label>
+        <label class="gs-f" data-f="pick"><span id="gsPickLbl">It shows</span>
+          <select name="pick" id="gsPick" class="ge-in"></select>
+          <span class="gs-help" id="gsHelp"></span>
+        </label>
+        <label class="gs-f" data-f="report">It shows
+          <select id="gsReport" class="ge-in">
+            <option value="">Keep the report it shows now</option>
+            {% if mine %}<optgroup label="Your saved reports">{% for r in mine %}<option value="r:{{ r.id }}">{{ r.name }}</option>{% endfor %}</optgroup>{% endif %}
+            {% for t in topics %}<optgroup label="Ready-made · {{ t.label }}">{% for q in t.qs %}<option value="q:{{ q.key }}">{{ q.q }}</option>{% endfor %}</optgroup>{% endfor %}
+          </select>
+          <input type="hidden" name="report_id" id="gsReportId"><input type="hidden" name="ready" id="gsReady">
+          <span class="gs-help">To change columns, filters or the chart type, <a href="#" id="gsOpen" target="_blank" rel="noopener">open the report</a>.</span>
+        </label>
+        <fieldset class="gs-f" data-f="time">
+          <legend>Time</legend>
+          <span class="gs-now" id="gsNow">Always “right now” — this number doesn’t depend on a time.</span>
+          <span id="gsTimeChoice" class="gs-radios">
+            <label class="gs-r"><input type="radio" name="time" value="dash"> Same as the dashboard’s Time filter</label>
+            <label class="gs-r"><input type="radio" name="time" value="own"> Always {{ dp.trigger('gsTimeBtn') }}</label>
+            <input type="hidden" name="period" id="gsPeriod"><input type="hidden" name="date_from" id="gsFrom"><input type="hidden" name="date_to" id="gsTo">
+          </span>
+        </fieldset>
+        <fieldset class="gs-f" data-f="member">
+          <legend>Team member</legend>
+          <span class="gs-radios">
+            <label class="gs-r"><input type="radio" name="member" value="dash"> Same as the dashboard’s Team member filter</label>
+            <label class="gs-r"><input type="radio" name="member" value="own"> Always
+              <select name="member_key" id="gsMemberKey" class="ge-in" style="min-height:38px;font-size:14px">
+                <option value="">Everyone</option>
+                {% for p in people %}<option value="{{ p.key }}">{{ p.display }}</option>{% endfor %}
+                <option value="__none__">Unassigned</option>
+              </select></label>
+          </span>
+        </fieldset>
+        <fieldset class="gs-f" data-f="rows">
+          <legend id="gsRowsLbl">Rows to show</legend>
+          <span class="gs-seg" id="gsRows"></span>
+        </fieldset>
+        <label class="gs-f" data-f="heading">Heading
+          <input name="heading" id="gsHeading" maxlength="200" class="ge-in">
+        </label>
+        <label class="gs-f" data-f="heading">Explanation (optional)
+          <textarea name="explanation" id="gsExpl" rows="3" class="ge-in" style="padding:10px"></textarea>
+        </label>
+      </div>
+      <div class="gs-right">
+        <span class="gs-pvl">Preview</span>
+        <div class="gs-pv" id="gsPv" aria-live="polite"></div>
+        <span class="gs-help">Updates as you change the settings.</span>
+      </div>
+    </div>
+    <div class="gs-foot">
+      <button type="button" data-close class="gs-cancel">Cancel</button>
+      <button type="submit" class="ge-add" style="min-height:44px;padding:0 20px;font-size:14px">Save</button>
     </div>
   </form>
 </dialog>
 
 {% import "portal/_report_chart.html" as rc %}
 {{ rc.chart_assets() }}
+{{ dp.assets() }}
 <script>
 (function () {
   var W = {{ widgets | tojson }}, COLS = 12, ROW = 64, GAP = 12, MINS = {{ mins | tojson }};
@@ -398,18 +461,83 @@
     });
   });
 
-  var setDlg = document.getElementById('geSet'), setForm = document.getElementById('geSetForm');
+  // ── Settings (approved mock-up screen 8): name, what it shows, its own time / team member, rows; live preview ──
+  var PICKS = {{ picks | tojson }}, PRE = {{ dp_presets | tojson }};
+  var REPORT_URL = {{ url_for('reports.builder') | tojson }};
+  var setDlg = document.getElementById('geSet'), setForm = document.getElementById('geSetForm'), cur = null, pvT;
+  function $(id) { return document.getElementById(id); }
+  function field(name, on) { setForm.querySelectorAll('[data-f="' + name + '"]').forEach(function (e) { e.hidden = !on; }); }
+  function radio(name, val) { setForm.querySelectorAll('input[name="' + name + '"]').forEach(function (r) { r.checked = r.value === val; }); }
+  function timeVal() { return {period: $('gsPeriod').value, from: $('gsFrom').value, to: $('gsTo').value}; }
+  function showTime() { var d = PXDate.describe(timeVal(), PRE); var b = $('gsTimeBtn'); b.querySelector('.main').textContent = d.main; b.querySelector('.sub').textContent = d.sub ? '· ' + d.sub : ''; }
   function openSettings(w) {
+    cur = w;
     setForm.action = SETTINGS + w.id + '/settings';
-    document.getElementById('geSetT').textContent = w.kind_name + ': ' + w.title;
-    setDlg.querySelectorAll('[data-skind]').forEach(function (s) { s.hidden = s.getAttribute('data-skind') !== w.kind; });
-    setDlg.querySelectorAll('input[name=pick]').forEach(function (r) { r.disabled = r.getAttribute('data-k') !== w.kind; r.checked = !r.disabled && r.value === w.pick; });
-    setDlg.querySelectorAll('select').forEach(function (s) { s.value = ''; s.disabled = w.kind !== 'report'; });
-    var note = document.getElementById('geSetNote'); note.value = w.note || ''; note.disabled = w.kind !== 'heading';
-    document.getElementById('geSetFiltersRow').hidden = w.kind === 'heading';
-    document.getElementById('geSetFilters').checked = !!w.use_filters;
-    setDlg.showModal();
+    $('geSetKind').textContent = w.kind_name + ' settings';
+    $('geSetT').textContent = w.title;
+    var isHead = w.kind === 'heading';
+    field('title', !isHead); field('heading', isHead);
+    field('pick', !!PICKS[w.kind]); field('report', w.kind === 'report');
+    field('time', w.has_time || (w.kind === 'number')); field('member', w.has_member); field('rows', !!(w.row_choices && w.row_choices.length));
+    $('gsTitle').value = w.own_title; $('gsTitle').placeholder = w.default_title;
+    $('gsHeading').value = w.head || ''; $('gsExpl').value = w.more || '';
+    if (PICKS[w.kind]) {
+      $('gsPickLbl').textContent = {number: 'It shows', list: 'List', board: 'Rank the team by'}[w.kind];
+      $('gsPick').innerHTML = PICKS[w.kind].map(function (p) { return '<option value="' + esc(p.key) + '">' + esc(p.label) + '</option>'; }).join('');
+      $('gsPick').value = w.pick; pickHelp();
+    }
+    $('gsPick').disabled = !PICKS[w.kind];
+    $('gsReport').value = ''; $('gsReportId').value = ''; $('gsReady').value = '';
+    $('gsOpen').href = w.report_id ? REPORT_URL + '?id=' + w.report_id : '#';
+    radio('time', w.time); $('gsPeriod').value = w.period; $('gsFrom').value = w.date_from; $('gsTo').value = w.date_to; showTime();
+    radio('member', w.member); $('gsMemberKey').value = w.member_key;
+    $('gsRowsLbl').textContent = w.kind === 'board' ? 'People to show' : 'Rows to show';
+    $('gsRows').innerHTML = (w.row_choices || []).map(function (n) {
+      return '<label><input type="radio" name="rows" value="' + n + '"' + (n === w.rows ? ' checked' : '') + '><span>' + n + '</span></label>';
+    }).join('');
+    nowState();
+    setDlg.showModal(); preview();
   }
+  function pickHelp() {
+    var p = (PICKS[cur.kind] || []).filter(function (x) { return x.key === $('gsPick').value; })[0];
+    $('gsHelp').textContent = p ? p.help : '';
+  }
+  function nowState() {             // "right now" numbers have no time choice
+    var rn = cur.kind === 'number' && {{ right_now | tojson }}.indexOf($('gsPick').value) >= 0;
+    $('gsNow').hidden = !rn; $('gsTimeChoice').hidden = rn;
+    if (cur.kind === 'number') field('time', true);
+  }
+  function preview() {
+    clearTimeout(pvT);
+    pvT = setTimeout(function () {
+      var pv = $('gsPv');
+      if (cur.kind === 'heading') {
+        pv.innerHTML = '<div class="ge-head"><b>' + esc($('gsHeading').value || 'Heading') + '</b>' + ($('gsExpl').value.trim() ? '<span>' + esc($('gsExpl').value.trim()) + '</span>' : '') + '</div>';
+        return;
+      }
+      syncReport();
+      var q = new URLSearchParams(new FormData(setForm)); q.set('pv', '1'); q.set('h', '220');
+      pv.innerHTML = '<div class="ge-loading">Working it out…</div>';
+      fetch(BOX + cur.id + '?' + q.toString(), {credentials: 'same-origin'}).then(function (r) { if (!r.ok) throw 0; return r.text(); })
+        .then(function (html) { pv.innerHTML = html; pv.querySelectorAll('canvas[id]').forEach(function (c) { RBC.draw(c.id); }); })
+        .catch(function () { pv.innerHTML = '<div class="ge-loading">The preview could not be worked out.</div>'; });
+    }, 250);
+  }
+  function syncReport() {
+    var v = $('gsReport').value;
+    $('gsReportId').value = v.indexOf('r:') === 0 ? v.slice(2) : '';
+    $('gsReady').value = v.indexOf('q:') === 0 ? v.slice(2) : '';
+  }
+  $('gsPick').addEventListener('change', function () { pickHelp(); nowState(); });
+  setForm.addEventListener('input', preview); setForm.addEventListener('change', preview);
+  setForm.addEventListener('submit', syncReport);
+  $('gsMemberKey').addEventListener('change', function () { radio('member', 'own'); });
+  $('gsTimeBtn').addEventListener('click', function () {
+    PXDate.open($('gsTimeBtn'), {value: timeVal(), presets: PRE, title: 'Time for this widget', onApply: function (v) {
+      $('gsPeriod').value = v.period; $('gsFrom').value = v.from || ''; $('gsTo').value = v.to || '';
+      radio('time', 'own'); showTime(); preview();
+    }});
+  });
   document.querySelectorAll('dialog [data-close]').forEach(function (b) { b.addEventListener('click', function () { b.closest('dialog').close(); }); });
 
   var before = JSON.stringify(W.map(function (w) { return [w.x, w.y, w.w, w.h]; }));

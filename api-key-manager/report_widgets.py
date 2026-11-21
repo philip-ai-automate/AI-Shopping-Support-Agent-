@@ -116,23 +116,79 @@ def spec(box):
     return BY_KIND.get(kind_of(box), {}).get((box.get("wcfg") or {}).get("pick") or "")
 
 
+ROW_CHOICES = {"list": [5, 8, 10], "board": [3, 5, 10]}
+
+
+def has_time(box) -> bool:
+    """Does this widget depend on a time? (Action lists and "right now" numbers don't.)"""
+    k = kind_of(box)
+    if k == "number":
+        sp = spec(box)
+        return bool(sp) and not sp[4]
+    return k in ("board", "report")
+
+
+def has_member(box) -> bool:
+    return kind_of(box) in ("number", "list", "report")
+
+
+def opts(box) -> dict:
+    """The widget's own settings (21 Nov 2026 Settings redesign). Older widgets: use_filters off = own
+    time is the widget's default and everyone's numbers."""
+    w = dict(box.get("wcfg") or {})
+    if not box.get("use_filters", True) and "time" not in w:
+        w["time"], w["member"] = "own", "own"
+    w.setdefault("time", "dash")
+    w.setdefault("member", "dash")
+    return w
+
+
+def rows_for(box) -> int:
+    k = kind_of(box)
+    default = {"list": LIST_ROWS, "board": BOARD_ROWS}.get(k, 5)
+    try:
+        n = int((box.get("wcfg") or {}).get("rows") or default)
+    except (TypeError, ValueError):
+        n = default
+    return n if n in ROW_CHOICES.get(k, [n]) else default
+
+
+def title_of(box, fallback=""):
+    t = " ".join(str((box.get("wcfg") or {}).get("title") or "").split())[:80]
+    if t:
+        return t
+    sp = spec(box)
+    return sp[1] if sp else fallback
+
+
+def apply_filters(cfg, box, flt, active):
+    """The dashboard's Time / Team member, or the widget's own ("Always …"), whichever its Settings say."""
+    o = opts(box)
+    if has_time(box):
+        if o["time"] == "own":
+            if RB.period_ok(o.get("period") or ""):
+                cfg = RB.apply_dashboard(cfg, period=o["period"], d_from=RB._iso(o.get("date_from")), d_to=RB._iso(o.get("date_to")))
+        elif "period" in active and flt.get("period"):
+            cfg = RB.apply_dashboard(cfg, period=flt["period"], d_from=flt["date_from"], d_to=flt["date_to"])
+    if has_member(box):
+        if o["member"] == "own":
+            if o.get("member_key"):
+                cfg = RB.apply_dashboard(cfg, member=o["member_key"])
+        elif "member" in active and flt.get("member"):
+            cfg = RB.apply_dashboard(cfg, member=flt["member"])
+    return cfg
+
+
 def cfg_for(box, b2b, flt, active):
-    """The report settings behind a number / list / board widget, with the dashboard filters it follows.
+    """The report settings behind a number / list / board widget, with the filters it follows.
     None when this business can't use it."""
-    kind, sp = kind_of(box), spec(box)
+    sp = spec(box)
     if not sp:
         return None
     raw = sp[3]
     if not RB.subject_ok(raw["subject"], b2b):
         return None
-    cfg = RB.read_config(_md(raw), b2b)
-    if not box.get("use_filters", True):
-        return cfg
-    follows_time = (kind == "number" and not sp[4]) or kind == "board"
-    follows_member = kind in ("number", "list")
-    return RB.apply_dashboard(cfg, period=flt["period"] if (follows_time and "period" in active) else None,
-                              d_from=flt["date_from"], d_to=flt["date_to"],
-                              member=flt["member"] if (follows_member and "member" in active) else None)
+    return apply_filters(RB.read_config(_md(raw), b2b), box, flt, active)
 
 
 # ── Layout ───────────────────────────────────────────────────────────────────

@@ -119,6 +119,22 @@ def dashboard_box(dash_id: int, box_id: int):
     except NotAllowed:
         return "", 404
     box = source["box"]
+    if request.args.get("pv") == "1":                # Settings preview: the choices on screen, not saved yet
+        d = _dash(ctx, dash_id, "edit")
+        if not d or _custom_only(ctx, json_ok=True):
+            return "", 403
+        box = _preview_box(ctx, customer, b2b, box, request.args)
+        if box is None:
+            return render_template("portal/_report_widget.html", kind="error", box={})
+        active = set(d["filters"] or [])
+        flt0 = _dash_filters(request.args)
+        if RW.kind_of(box) == "report":
+            cfg = _box_cfg(box, b2b, flt0, active)
+        else:
+            cfg = RW.cfg_for(box, b2b, flt0, active)
+            if cfg is None:
+                return render_template("portal/_report_widget.html", kind="error", box=box)
+        rctx, rscope = ctx, quote_scope
     kind = RW.kind_of(box)
     flt = _dash_filter_qs(_dash_filters(request.args))
     drill_base = url_for("reports.drill") + "?" + urlencode(dict(flt, did=dash_id, bid=box_id))
@@ -142,7 +158,7 @@ def dashboard_box(dash_id: int, box_id: int):
             return render_template("portal/_report_widget.html", kind="error", box=box)
         finally:
             conn.close()
-        return render_template("portal/_report_widget.html", kind="number", box=box, title=sp[1], value=value, warn=warn,
+        return render_template("portal/_report_widget.html", kind="number", box=box, title=RW.title_of(box), value=value, warn=warn,
                                sub="Right now" if sp[4] else cfg["period_label"], drill_base=drill_base)
     if kind == "board":
         sp = RW.spec(box)
@@ -163,11 +179,11 @@ def dashboard_box(dash_id: int, box_id: int):
             rows.append({"label": r["labels"][0], "v": r["cells"][1] if use_m and len(r["cells"]) > 1 else r["cells"][0],
                          "num": float(num or 0), "rk": r["rk"]})
         rows.sort(key=lambda x: -x["num"])
-        rows = rows[:RW.BOARD_ROWS]
+        rows = rows[:RW.rows_for(box)]
         top = max([x["num"] for x in rows] or [0]) or 1
         for i, x in enumerate(rows, 1):
             x["rank"], x["pct"] = i, round(x["num"] * 100 / top)
-        return render_template("portal/_report_widget.html", kind="board", box=box, title=sp[1], rows=rows,
+        return render_template("portal/_report_widget.html", kind="board", box=box, title=RW.title_of(box), rows=rows,
                                sub=cfg["period_label"], drill_base=drill_base)
     if kind == "list":
         sp = RW.spec(box)
@@ -175,7 +191,7 @@ def dashboard_box(dash_id: int, box_id: int):
         try:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             rows, total = RB.run_detailed(cur, rctx, dict(cfg, page=1), quote_scope=rscope)
-            rows = rows[:RW.LIST_ROWS]
+            rows = rows[:RW.rows_for(box)]
             links = {}
             if sp[4] == "followup" and rows:
                 cur.execute("SELECT id, lead_id FROM lead_followups WHERE id = ANY(%s)", ([r["id"] for r in rows],))
@@ -195,11 +211,12 @@ def dashboard_box(dash_id: int, box_id: int):
                 r["url"] = url_for("portal.my_inbox", show="waiting")
             else:
                 r["url"] = links.get(r["id"]) or url_for("portal.follow_ups_page")
-        return render_template("portal/_report_widget.html", kind="list", box=box, title=sp[1], rows=rows, total=total,
+        return render_template("portal/_report_widget.html", kind="list", box=box, title=RW.title_of(box), rows=rows, total=total,
                                cols=[subj["columns"][k]["label"] for k in cfg["col"]], drill_base=drill_base)
     # a report (chart or table)
     data = _results(rctx, cfg, rscope)
     headline, chart = ("", {"kind": "table"}) if data.get("error") else _chart_and_totals(rctx, cfg, rscope, data)
+    box = dict(box, report_name=RW.title_of(box, box.get("report_name") or ""))
     report = _saved(ctx["tenant_id"], box["report_id"])
     if not RA.can_view(report, ctx["viewer"]):
         open_url = ""
@@ -208,9 +225,56 @@ def dashboard_box(dash_id: int, box_id: int):
     else:
         open_url = url_for("reports.builder") + "?" + _query(cfg, id=box["report_id"])
     return render_template("portal/_report_box.html", box=box, cfg=cfg, d=data, chart=chart, headline=headline,
-                           subj=subj, RB=RB, cid=f"box{box_id}", chart_h=h,
+                           subj=subj, RB=RB, cid=("pv" if request.args.get("pv") == "1" else "box") + str(box_id), chart_h=h,
                            compare_label=(RB.compare_range(cfg) or (None, None, ""))[2],
                            drill_base=drill_base, open_url=open_url)
+
+def _settings_wcfg(f, kind, old=None):
+    """The widget's own settings from the Settings form (or the preview's query string)."""
+    w = dict(old or {})
+    w["title"] = " ".join((f.get("title") or "").split())[:80]
+    if f.get("time") in ("dash", "own"):
+        w["time"] = f.get("time")
+        if w["time"] == "own":
+            p = f.get("period") or ""
+            w["period"] = p if RB.period_ok(p) else "this_month"
+            w["date_from"], w["date_to"] = (f.get("date_from") or "")[:10], (f.get("date_to") or "")[:10]
+    if f.get("member") in ("dash", "own"):
+        w["member"] = f.get("member")
+        w["member_key"] = (f.get("member_key") or "")[:64] if w["member"] == "own" else ""
+    if kind in RW.ROW_CHOICES:
+        try:
+            n = int(f.get("rows") or 0)
+        except ValueError:
+            n = 0
+        if n in RW.ROW_CHOICES[kind]:
+            w["rows"] = n
+    return w
+
+
+def _preview_box(ctx, customer, b2b, box, f):
+    """A copy of the widget with the Settings choices on screen applied (nothing saved)."""
+    kind = RW.kind_of(box)
+    b = dict(box)
+    if kind in ("number", "list", "board") and f.get("pick"):
+        if f.get("pick") not in {a for a, _l, _h in RW.choices(kind, b2b)}:
+            return None
+        b["wcfg"] = dict(b.get("wcfg") or {}, pick=f.get("pick"))
+    if kind == "report":
+        rid = f.get("report_id", type=int)
+        ready = f.get("ready") or ""
+        if ready and ready in {x["key"] for x in _offer(b2b)}:
+            r = RS.READY_BY_KEY[ready]
+            b.update(config=r["cfg"], subject=r["cfg"]["subject"], report_name=RP.QUESTIONS.get(ready, r["label"]))
+        elif rid:
+            row = _saved(ctx["tenant_id"], rid)
+            if not row or not RA.can_view(row, ctx["viewer"]):
+                return None
+            b.update(config=row["config"], subject=row["subject"], report_name=row["name"], report_id=rid)
+    b["wcfg"] = _settings_wcfg(f, kind, b.get("wcfg"))
+    b["use_filters"] = True
+    return b
+
 
 @reports_bp.route("/reports/dashboards/<int:dash_id>/edit")
 @team_feature("reports.custom")
@@ -258,13 +322,27 @@ def dashboard_edit(dash_id: int):
         sp = RW.spec(b)
         title = (b.get("report_name") if k == "report" else RW.heading_parts(b.get("note"))[0] if k == "heading"
                  else (sp[1] if sp else "Not available"))
-        widgets.append({"id": b["id"], "kind": k, "kind_name": RW.TYPE_NAMES[k], "title": title or "Heading",
-                        "note": b.get("note") or "", "pick": (b.get("wcfg") or {}).get("pick") or "",
+        o = RW.opts(b)
+        head, more = RW.heading_parts(b.get("note"))
+        widgets.append({"id": b["id"], "kind": k, "kind_name": RW.TYPE_NAMES[k],
+                        "title": RW.title_of(b, title or "Heading") if k != "heading" else (head or "Heading"),
+                        "default_title": (sp[1] if sp else (b.get("report_name") or "")),
+                        "own_title": (b.get("wcfg") or {}).get("title") or "",
+                        "head": head, "more": more, "pick": (b.get("wcfg") or {}).get("pick") or "",
                         "report_id": b.get("report_id"), "use_filters": b.get("use_filters", True),
+                        "has_time": RW.has_time(b), "right_now": bool(sp and k == "number" and sp[4]),
+                        "has_member": RW.has_member(b),
+                        "time": o["time"], "period": o.get("period") or "this_month",
+                        "date_from": o.get("date_from") or "", "date_to": o.get("date_to") or "",
+                        "member": o["member"], "member_key": o.get("member_key") or "",
+                        "rows": RW.rows_for(b), "row_choices": RW.ROW_CHOICES.get(k, []),
                         "x": b["gx"], "y": b["gy"], "w": b["gw"], "h": b["gh"]})
     picks = {k: [{"key": a, "label": l, "help": h} for a, l, h in RW.choices(k, b2b)] for k in ("number", "list", "board")}
     return render_template("portal/report_dashboard_edit.html", customer=customer, dash=d, widgets=widgets,
                            types=RW.TYPES, picks=picks, topics=topics, mine=mine, sizes=RW.SIZE, mins=RW.MIN,
+                           people=ctx["people"], dp_presets=RB.picker_presets(),
+                           pick_help={k: {a: h for a, _l, h in RW.choices(k, b2b)} for k in ("number", "list", "board")},
+                           right_now=[x[0] for x in RW.NUMBERS if x[4]],
                            dash_filters=RD.DASH_FILTERS, can_manage=RA.can_manage(d, v), RB=RB)
 
 
@@ -373,15 +451,28 @@ def dashboard_widget_settings(dash_id: int, box_id: int):
         flash("You can't change that dashboard.", "warning")
         return redirect(url_for("reports.dashboards"))
     f = request.form.copy()
-    f["kind"] = RW.kind_of(box)
-    keep = not (f.get("pick") or f.get("ready") or f.get("report_id") or f.get("note"))
-    w = None if keep else _widget_from_form(ctx, customer, b2b, f)
-    if not keep and not w:
-        flash("That choice is not available for your business.", "warning")
+    kind = RW.kind_of(box)
+    f["kind"] = kind
+    rid, wcfg = None, dict(box.get("wcfg") or {})
+    if kind == "heading":
+        head = " ".join((f.get("heading") or "").split())[:200] or "Heading"
+        more = (f.get("explanation") or "").strip()[:1800]
+        RD.set_widget(ctx["tenant_id"], dash_id, box_id, wcfg, note=head + ("\n" + more if more else ""))
+        flash("Widget updated.", "success")
         return redirect(url_for("reports.dashboard_edit", dash_id=dash_id) + f"#box-{box_id}")
-    _k, pick, rid, note = w if w else (None, None, None, None)
-    RD.update_widget(ctx["tenant_id"], dash_id, box_id, pick=pick, report_id=rid, note=note,
-                     use_filters=f.get("use_filters") == "1")
+    if kind in ("number", "list", "board"):
+        if f.get("pick") not in {a for a, _l, _h in RW.choices(kind, b2b)}:
+            flash("That choice is not available for your business.", "warning")
+            return redirect(url_for("reports.dashboard_edit", dash_id=dash_id) + f"#box-{box_id}")
+        wcfg["pick"] = f.get("pick")
+    elif kind == "report" and (f.get("ready") or f.get("report_id")):
+        w = _widget_from_form(ctx, customer, b2b, f)
+        if not w:
+            flash("That report is not available.", "warning")
+            return redirect(url_for("reports.dashboard_edit", dash_id=dash_id) + f"#box-{box_id}")
+        rid = w[2]
+    wcfg = _settings_wcfg(f, kind, wcfg)
+    RD.set_widget(ctx["tenant_id"], dash_id, box_id, wcfg, report_id=rid)
     flash("Widget updated.", "success")
     return redirect(url_for("reports.dashboard_edit", dash_id=dash_id) + f"#box-{box_id}")
 
