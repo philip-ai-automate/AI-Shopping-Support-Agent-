@@ -440,6 +440,7 @@ def _custom_list(which):
         except Exception:
             what = RB.SUBJECTS[r["subject"]]["label"]
         rows.append({"name": r["name"], "what": what, "url": url_for("reports.builder", id=r["id"]),
+                     "delete_url": url_for("reports.delete", report_id=r["id"]) if RA.can_manage(r, v) else "",
                      "who": RA.sharing_label(r) if which == "mine" else "Made by " + (r.get("created_by") or "a team member"),
                      "when": (r.get("last_opened_at") or r.get("updated_at"))})
     return render_template("portal/report_custom_list.html", customer=customer, which=which, rows=rows)

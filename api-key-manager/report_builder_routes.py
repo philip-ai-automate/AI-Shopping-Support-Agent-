@@ -679,7 +679,9 @@ def delete(report_id: int):
         conn.commit()
     finally:
         conn.close()
-    flash("Report deleted." if ok else "That report was not found.", "success" if ok else "warning")
+    flash(f"“{saved['name']}” deleted." if ok else "That report was not found.", "success" if ok else "warning")
+    if request.form.get("next") == "custom":      # from Reports › Custom reports › My custom reports (21 Nov 2026)
+        return redirect(url_for("reports.custom_mine"))
     return redirect(url_for("reports.library"))
 
 

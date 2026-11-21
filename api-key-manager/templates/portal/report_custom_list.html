@@ -1,5 +1,5 @@
 {% extends "portal/base.html" %}
-{# ask: Reports › Custom reports (Growth and Scale plans) has three items: "Build a custom report" opens the report builder (what to count, which records, show per, time, chart, columns and filters). "My custom reports" lists the custom reports you built — click one to open and change it, share it or add it to a dashboard. "Shared with me" lists custom reports your team shared with you. Reports saved from a ready-made question are under Reports › All reports, not here. Starter plans don't have custom reports. #}
+{# ask: Reports › Custom reports (Growth and Scale plans) has three items: "Build a custom report" opens the report builder (what to count, which records, show per, time, chart, columns and filters). "My custom reports" lists the custom reports you built — click one to open and change it, share it or add it to a dashboard; "Delete" on a row removes it (after you confirm) for everyone and from any dashboard it is on. "Shared with me" lists custom reports your team shared with you. Reports saved from a ready-made question are under Reports › All reports, not here. Starter plans don't have custom reports. #}
 {% block title %}{{ 'My custom reports' if which == 'mine' else 'Shared with me' }} — Reports — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -21,6 +21,14 @@
   .cr-meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--sub)}
   .cr-pill{background:#E3F1E7;color:#14532D;border-radius:10px;padding:3px 10px;font-size:12px}
   .cr-empty{font-size:14px;color:var(--sub);padding:16px;margin:0}
+  .cr-del{min-height:36px;padding:0 14px;border:1px solid #F3C2C2;background:#fff;color:#B91C1C;border-radius:8px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer}
+  .cr-del:hover{background:#FEF2F2}
+  .cr-dlg{border:2px solid #DC2626;border-radius:12px;padding:20px;max-width:520px;width:calc(100% - 32px);margin:auto;font-family:inherit}
+  .cr-dlg::backdrop{background:rgba(11,29,64,.35)}
+  .cr-dlg b{display:block;font-size:16px;color:var(--navy);margin-bottom:8px;overflow-wrap:anywhere}
+  .cr-dlg p{margin:0 0 16px;font-size:14px;color:var(--sub)}
+  .cr-dlg .row{display:flex;gap:8px}
+  .cr-dlg button{min-height:44px;padding:0 18px;border-radius:8px;font-family:inherit;font-size:15px;cursor:pointer}
 </style>
 {% endblock %}
 
@@ -42,7 +50,8 @@
     {% for r in rows %}
       <div class="cr-row">
         <a href="{{ r.url }}">{{ r.name }}<span>{{ r.what }}</span></a>
-        <span class="cr-meta"><span class="cr-pill">{{ r.who }}</span>{% if r.when %}<span>Opened {{ r.when.strftime('%d %b') }}</span>{% endif %}</span>
+        <span class="cr-meta"><span class="cr-pill">{{ r.who }}</span>{% if r.when %}<span>Opened {{ r.when.strftime('%d %b') }}</span>{% endif %}
+          {% if which == 'mine' and r.delete_url %}<button type="button" class="cr-del" data-url="{{ r.delete_url }}" data-name="{{ r.name }}" aria-haspopup="dialog">Delete</button>{% endif %}</span>
       </div>
     {% else %}
       <p class="cr-empty">
@@ -56,4 +65,29 @@
     {% else %}Only reports someone chose to share with you show here.{% endif %}
   </p>
 </div>
+
+<dialog class="cr-dlg" id="crDlg" aria-labelledby="crDlgT">
+  <form method="POST" id="crDlgForm">
+    <input type="hidden" name="next" value="custom">
+    <b id="crDlgT"></b>
+    <p>It is removed for everyone it was shared with, and from any dashboard it is on. This can't be undone.</p>
+    <div class="row">
+      <button type="submit" style="border:0;background:#DC2626;color:#fff;font-weight:700">Delete</button>
+      <button type="button" id="crDlgNo" style="border:1px solid #D5DBE3;background:#fff;color:#1F2A37">Cancel</button>
+    </div>
+  </form>
+</dialog>
+<script>
+(function () {
+  var d = document.getElementById('crDlg'), f = document.getElementById('crDlgForm'), t = document.getElementById('crDlgT');
+  document.querySelectorAll('.cr-del').forEach(function (b) {
+    b.addEventListener('click', function () {
+      f.action = b.getAttribute('data-url');
+      t.textContent = 'Delete \u201c' + b.getAttribute('data-name') + '\u201d?';
+      d.showModal();
+    });
+  });
+  document.getElementById('crDlgNo').addEventListener('click', function () { d.close(); });
+})();
+</script>
 {% endblock %}
