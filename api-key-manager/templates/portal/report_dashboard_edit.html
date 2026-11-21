@@ -464,14 +464,14 @@
   // ── Settings (approved mock-up screen 8): name, what it shows, its own time / team member, rows; live preview ──
   var PICKS = {{ picks | tojson }}, PRE = {{ dp_presets | tojson }};
   var REPORT_URL = {{ url_for('reports.builder') | tojson }};
-  var setDlg = document.getElementById('geSet'), setForm = document.getElementById('geSetForm'), cur = null, pvT;
+  var setDlg = document.getElementById('geSet'), setForm = document.getElementById('geSetForm'), cur = null, pvT, pvSeq = 0;
   function $(id) { return document.getElementById(id); }
   function field(name, on) { setForm.querySelectorAll('[data-f="' + name + '"]').forEach(function (e) { e.hidden = !on; }); }
   function radio(name, val) { setForm.querySelectorAll('input[name="' + name + '"]').forEach(function (r) { r.checked = r.value === val; }); }
   function timeVal() { return {period: $('gsPeriod').value, from: $('gsFrom').value, to: $('gsTo').value}; }
   function showTime() { var d = PXDate.describe(timeVal(), PRE); var b = $('gsTimeBtn'); b.querySelector('.main').textContent = d.main; b.querySelector('.sub').textContent = d.sub ? '· ' + d.sub : ''; }
   function openSettings(w) {
-    cur = w;
+    cur = w; pvSeq++; $('gsPv').innerHTML = '';
     setForm.action = SETTINGS + w.id + '/settings';
     $('geSetKind').textContent = w.kind_name + ' settings';
     $('geSetT').textContent = w.title;
@@ -516,11 +516,12 @@
         return;
       }
       syncReport();
-      var q = new URLSearchParams(new FormData(setForm)); q.set('pv', '1'); q.set('h', '220');
+      var q = new URLSearchParams(new FormData(setForm)); q.delete('csrf_token'); q.set('pv', '1'); q.set('h', '220');
+      var mine = ++pvSeq;                  // only the newest answer may fill the preview
       pv.innerHTML = '<div class="ge-loading">Working it out…</div>';
       fetch(BOX + cur.id + '?' + q.toString(), {credentials: 'same-origin'}).then(function (r) { if (!r.ok) throw 0; return r.text(); })
-        .then(function (html) { pv.innerHTML = html; pv.querySelectorAll('canvas[id]').forEach(function (c) { RBC.draw(c.id); }); })
-        .catch(function () { pv.innerHTML = '<div class="ge-loading">The preview could not be worked out.</div>'; });
+        .then(function (html) { if (mine !== pvSeq) return; pv.innerHTML = html; pv.querySelectorAll('canvas[id]').forEach(function (c) { RBC.draw(c.id); }); })
+        .catch(function () { if (mine === pvSeq) pv.innerHTML = '<div class="ge-loading">The preview could not be worked out.</div>'; });
     }, 250);
   }
   function syncReport() {
