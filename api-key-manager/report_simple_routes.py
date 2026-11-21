@@ -28,7 +28,8 @@ from db import get_db_connection
 from feature_access import team_feature
 from portal_routes import _current_actor
 from report_builder_routes import (
-    _args_from_saved, _chart_and_totals, _conn, _query, _results, _saved, _setup, _unscoped, reports_bp,
+    _args_from_saved, _chart_and_totals, _conn, _custom_only, _query, _results, _saved, _setup, _unscoped,
+    _visible_reports, reports_bp,
 )
 
 SIMPLE = "simple"           # report_defs.config["kind"] for reports saved from the simple page
@@ -411,3 +412,46 @@ def home_numbers():
     finally:
         conn.close()
     return jsonify(out)
+
+
+# ── Reports › Custom reports (Growth + Scale, 21 Nov 2026, approved mock-up screen 6) ─────────────
+
+@reports_bp.app_context_processor
+def _menu_flags():
+    return {"reports_custom_ok": PLAN.custom_ok_for_menu}
+
+
+def _custom_list(which):
+    customer, ctx, b2b, _scope, err = _setup()
+    if err:
+        return err
+    stop = _custom_only(ctx)
+    if stop:
+        return stop
+    v = ctx["viewer"]
+    rows = []
+    for r in _visible_reports(ctx, b2b):
+        if (r.get("config") or {}).get("kind") == SIMPLE or r.get("folder") == "Sales overview":
+            continue                      # saved from a ready-made question, or a Sales overview box
+        if RA.is_mine(r, v) != (which == "mine"):
+            continue
+        try:
+            what = RP.plain_sentence(RB.read_config(_args_from_saved(r), b2b))
+        except Exception:
+            what = RB.SUBJECTS[r["subject"]]["label"]
+        rows.append({"name": r["name"], "what": what, "url": url_for("reports.builder", id=r["id"]),
+                     "who": RA.sharing_label(r) if which == "mine" else "Made by " + (r.get("created_by") or "a team member"),
+                     "when": (r.get("last_opened_at") or r.get("updated_at"))})
+    return render_template("portal/report_custom_list.html", customer=customer, which=which, rows=rows)
+
+
+@reports_bp.route("/reports/custom-reports")
+@team_feature("reports.custom")
+def custom_mine():
+    return _custom_list("mine")
+
+
+@reports_bp.route("/reports/custom-reports/shared")
+@team_feature("reports.custom")
+def custom_shared():
+    return _custom_list("shared")

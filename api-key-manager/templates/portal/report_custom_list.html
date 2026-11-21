@@ -1,0 +1,59 @@
+{% extends "portal/base.html" %}
+{# ask: Reports › Custom reports (Growth and Scale plans) has three items: "Build a custom report" opens the report builder (what to count, which records, show per, time, chart, columns and filters). "My custom reports" lists the custom reports you built — click one to open and change it, share it or add it to a dashboard. "Shared with me" lists custom reports your team shared with you. Reports saved from a ready-made question are under Reports › All reports, not here. Starter plans don't have custom reports. #}
+{% block title %}{{ 'My custom reports' if which == 'mine' else 'Shared with me' }} — Reports — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  /* Reports › Custom reports (21 Nov 2026) — approved mock-up Nbf3F8K2ShDdocrnpbrTGr screen 6 */
+  .cr{padding-top:52px;--navy:#0B1D40;--blue:#1D4ED8;--sub:#5B6675;--edge:#E3E7ED;max-width:1000px;display:flex;flex-direction:column;gap:18px}
+  @media (max-width:640px){.cr{padding-top:40px}}
+  .cr-top{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center}
+  @media (min-width:900px){.cr-top{padding-right:150px}}
+  .cr h1{margin:0;font-size:26px;font-weight:800;color:var(--navy)}
+  .cr-btn{display:inline-flex;align-items:center;min-height:44px;padding:0 18px;border-radius:8px;background:var(--blue);color:#fff;font-size:15px;font-weight:700;text-decoration:none}
+  .cr-btn:hover{color:#fff;text-decoration:none;opacity:.92}
+  .cr-list{background:#fff;border:1px solid var(--edge);border-radius:10px}
+  .cr-row{display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:space-between;align-items:center;padding:14px 16px;border-top:1px solid #EEF1F5}
+  .cr-row:first-child{border-top:0}
+  .cr-row a{font-weight:700;font-size:15px;text-decoration:none;min-width:0}
+  .cr-row a:hover{text-decoration:underline}
+  .cr-row a span{display:block;font-weight:400;font-size:13px;color:var(--sub);margin-top:2px}
+  .cr-meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--sub)}
+  .cr-pill{background:#E3F1E7;color:#14532D;border-radius:10px;padding:3px 10px;font-size:12px}
+  .cr-empty{font-size:14px;color:var(--sub);padding:16px;margin:0}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cr">
+  <div style="font-size:13px;color:var(--sub)"><a href="{{ url_for('reports.library') }}" style="color:var(--sub)">Reports</a> › Custom reports</div>
+  <div class="cr-top">
+    <div>
+      <h1>{{ 'My custom reports' if which == 'mine' else 'Shared with me' }}</h1>
+      <p style="margin:6px 0 0;color:var(--sub);font-size:15px">
+        {% if which == 'mine' %}Custom reports you built. Open one to change it, share it or add it to a dashboard.
+        {% else %}Custom reports your team shared with you.{% endif %}
+      </p>
+    </div>
+    <a class="cr-btn" href="{{ url_for('reports.wizard') }}">+ Build a custom report</a>
+  </div>
+
+  <div class="cr-list">
+    {% for r in rows %}
+      <div class="cr-row">
+        <a href="{{ r.url }}">{{ r.name }}<span>{{ r.what }}</span></a>
+        <span class="cr-meta"><span class="cr-pill">{{ r.who }}</span>{% if r.when %}<span>Opened {{ r.when.strftime('%d %b') }}</span>{% endif %}</span>
+      </div>
+    {% else %}
+      <p class="cr-empty">
+        {% if which == 'mine' %}You haven't built a custom report yet. Press <b>+ Build a custom report</b> to make one.
+        {% else %}Nobody has shared a custom report with you yet.{% endif %}
+      </p>
+    {% endfor %}
+  </div>
+  <p style="margin:0;font-size:13px;color:var(--sub)">
+    {% if which == 'mine' %}Reports you saved from a ready-made question stay under <a href="{{ url_for('reports.library') }}">Reports › All reports</a>.
+    {% else %}Only reports someone chose to share with you show here.{% endif %}
+  </p>
+</div>
+{% endblock %}

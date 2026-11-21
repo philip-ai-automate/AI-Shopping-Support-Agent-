@@ -35,3 +35,25 @@ def custom_ok(tenant_id) -> bool:
             print("⚠️ report plan:", e)
             setattr(g, key, False)
     return getattr(g, key)
+
+
+def custom_ok_for_menu() -> bool:
+    """For the side menu on every page: Growth / Scale business logged in? (one lookup per request, only when asked)."""
+    from flask import session
+    cid = session.get("customer_id")
+    if not session.get("portal_logged_in") or not cid:
+        return False
+    if "rp_menu_tid" not in g:
+        try:
+            conn = get_db_connection()
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT tenant_id FROM customers WHERE id = %s", (int(cid),))
+                row = cur.fetchone()
+                g.rp_menu_tid = row[0] if row else None
+            finally:
+                conn.close()
+        except Exception as e:
+            print("⚠️ report plan (menu):", e)
+            g.rp_menu_tid = None
+    return bool(g.rp_menu_tid) and custom_ok(g.rp_menu_tid)
