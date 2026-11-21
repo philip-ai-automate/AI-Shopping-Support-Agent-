@@ -43,6 +43,7 @@ On the dashboard, change Time or Team member at the top and every box that uses 
   .de-tabs button{flex:1;min-height:36px;border:0;background:none;border-radius:8px;font-family:inherit;font-size:13px;color:#475569;cursor:pointer}
   .de-tabs button[aria-selected="true"]{background:#fff;color:#0B1F3A;font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.08)}
   .de-list{display:flex;flex-direction:column;gap:6px;max-height:440px;overflow-y:auto}
+  .de-side [hidden]{display:none!important}   /* 21 Nov 2026: the tabs' panels really hide (display:flex beat the hidden attribute) */
   .de-ico{width:32px;height:32px;border-radius:8px;background:#DBEAFE;color:#1E40AF;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;font-size:13px}
   .de-btn.go{background:#16A34A;border-color:#16A34A;color:#fff}
   .de-lib{gap:10px}
