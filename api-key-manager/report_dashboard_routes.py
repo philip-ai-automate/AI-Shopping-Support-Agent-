@@ -27,6 +27,7 @@ from flask import flash, jsonify, redirect, render_template, request, url_for
 
 import report_access as RA
 import report_plan as PLAN
+import report_widgets as RW
 import report_builder as RB
 import report_dashboards as RD
 import report_plain as RP
@@ -88,8 +89,11 @@ def dashboard(dash_id: int):
         return redirect(url_for("reports.dashboards"))
     flt = _dash_filters(request.args)
     filter_qs = urlencode(_dash_filter_qs(flt))
-    boxes = [b for b in d["boxes"] if b["report_id"] is None or
-             RB.subject_ok(b["subject"], b2b)]
+    boxes = [b for b in RW.place_all(d["boxes"])
+             if b["kind_v"] in ("heading", "number", "list", "board") or RB.subject_ok(b["subject"], b2b)]
+    for b in boxes:
+        if b["kind_v"] == "heading":
+            b["head"], b["more"] = RW.heading_parts(b.get("note"))
     people, role_list = _share_choices(ctx)
     v = ctx["viewer"]
     custom = PLAN.custom_ok(ctx["tenant_id"])     # Starter: the Sales overview is fixed (21 Nov 2026)
@@ -104,6 +108,7 @@ def dashboard(dash_id: int):
 @reports_bp.route("/reports/dashboards/<int:dash_id>/box/<int:box_id>")
 @team_feature("reports.custom")
 def dashboard_box(dash_id: int, box_id: int):
+    """One widget's contents (loaded by the page, in parallel): a report, a number, an action list or a leaderboard."""
     customer, ctx, b2b, quote_scope, err = _setup()
     if err:
         return "", 403
@@ -114,9 +119,87 @@ def dashboard_box(dash_id: int, box_id: int):
     except NotAllowed:
         return "", 404
     box = source["box"]
+    kind = RW.kind_of(box)
+    flt = _dash_filter_qs(_dash_filters(request.args))
+    drill_base = url_for("reports.drill") + "?" + urlencode(dict(flt, did=dash_id, bid=box_id))
+    subj = RB.SUBJECTS[cfg["subject"]]
+    try:
+        h = max(140, min(1200, int(request.args.get("h") or 240)))
+    except ValueError:
+        h = 240
+    if kind == "number":
+        sp = RW.spec(box)
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            n, val = RB.run_total(cur, rctx, cfg, rscope)
+            m = RB.measure_of(cfg)
+            value = RB.fmt(val or 0, m[3], rctx) if m[2] else f"{(n or 0):,}"
+            warn = RW.WARN.get(sp[0]) if (n or 0) > 0 else None
+        except Exception as e:
+            conn.rollback()
+            print("⚠️ widget number:", e)
+            return render_template("portal/_report_widget.html", kind="error", box=box)
+        finally:
+            conn.close()
+        return render_template("portal/_report_widget.html", kind="number", box=box, title=sp[1], value=value, warn=warn,
+                               sub="Right now" if sp[4] else cfg["period_label"], drill_base=drill_base)
+    if kind == "board":
+        sp = RW.spec(box)
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            summ = RB.run_summary(cur, rctx, cfg, rscope)
+        except Exception as e:
+            conn.rollback()
+            print("⚠️ widget leaderboard:", e)
+            return render_template("portal/_report_widget.html", kind="error", box=box)
+        finally:
+            conn.close()
+        use_m = bool(RB.measure_of(cfg)[2])
+        rows = []
+        for r in summ["rows"]:
+            num = r.get("mv") if use_m else r.get("n")
+            rows.append({"label": r["labels"][0], "v": r["cells"][1] if use_m and len(r["cells"]) > 1 else r["cells"][0],
+                         "num": float(num or 0), "rk": r["rk"]})
+        rows.sort(key=lambda x: -x["num"])
+        rows = rows[:RW.BOARD_ROWS]
+        top = max([x["num"] for x in rows] or [0]) or 1
+        for i, x in enumerate(rows, 1):
+            x["rank"], x["pct"] = i, round(x["num"] * 100 / top)
+        return render_template("portal/_report_widget.html", kind="board", box=box, title=sp[1], rows=rows,
+                               sub=cfg["period_label"], drill_base=drill_base)
+    if kind == "list":
+        sp = RW.spec(box)
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            rows, total = RB.run_detailed(cur, rctx, dict(cfg, page=1), quote_scope=rscope)
+            rows = rows[:RW.LIST_ROWS]
+            links = {}
+            if sp[4] == "followup" and rows:
+                cur.execute("SELECT id, lead_id FROM lead_followups WHERE id = ANY(%s)", ([r["id"] for r in rows],))
+                links = {x["id"]: url_for("portal.opportunity_detail", lead_id=x["lead_id"]) for x in cur.fetchall()}
+        except Exception as e:
+            conn.rollback()
+            print("⚠️ widget action list:", e)
+            return render_template("portal/_report_widget.html", kind="error", box=box)
+        finally:
+            conn.close()
+        for r in rows:
+            if sp[4] == "deal":
+                r["url"] = url_for("portal.opportunity_detail", lead_id=r["id"])
+            elif sp[4] == "quote":
+                r["url"] = url_for("portal.quotes_request_detail", request_id=r["id"])
+            elif sp[4] == "inbox":
+                r["url"] = url_for("portal.my_inbox", show="waiting")
+            else:
+                r["url"] = links.get(r["id"]) or url_for("portal.follow_ups_page")
+        return render_template("portal/_report_widget.html", kind="list", box=box, title=sp[1], rows=rows, total=total,
+                               cols=[subj["columns"][k]["label"] for k in cfg["col"]], drill_base=drill_base)
+    # a report (chart or table)
     data = _results(rctx, cfg, rscope)
     headline, chart = ("", {"kind": "table"}) if data.get("error") else _chart_and_totals(rctx, cfg, rscope, data)
-    flt = _dash_filter_qs(_dash_filters(request.args))
     report = _saved(ctx["tenant_id"], box["report_id"])
     if not RA.can_view(report, ctx["viewer"]):
         open_url = ""
@@ -125,15 +208,14 @@ def dashboard_box(dash_id: int, box_id: int):
     else:
         open_url = url_for("reports.builder") + "?" + _query(cfg, id=box["report_id"])
     return render_template("portal/_report_box.html", box=box, cfg=cfg, d=data, chart=chart, headline=headline,
-                           subj=RB.SUBJECTS[cfg["subject"]], RB=RB, cid=f"box{box_id}",
+                           subj=subj, RB=RB, cid=f"box{box_id}", chart_h=h,
                            compare_label=(RB.compare_range(cfg) or (None, None, ""))[2],
-                           drill_base=url_for("reports.drill") + "?" + urlencode(dict(flt, did=dash_id, bid=box_id)),
-                           open_url=open_url)
-
+                           drill_base=drill_base, open_url=open_url)
 
 @reports_bp.route("/reports/dashboards/<int:dash_id>/edit")
 @team_feature("reports.custom")
 def dashboard_edit(dash_id: int):
+    """Edit a dashboard: widgets on a grid — drag, resize, + in an empty space (approved mock-up screen 7)."""
     customer, ctx, b2b, _scope, err = _setup()
     if err:
         return err
@@ -148,17 +230,67 @@ def dashboard_edit(dash_id: int):
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT * FROM report_defs WHERE tenant_id=%s ORDER BY name", (ctx["tenant_id"],))
-        reports = [r for r in cur.fetchall() if r["subject"] in RB.SUBJECTS and
+        cur.execute("SELECT * FROM report_defs WHERE tenant_id=%s ORDER BY COALESCE(last_opened_at, updated_at) DESC",
+                    (ctx["tenant_id"],))
+        reports = [r for r in cur.fetchall() if r["subject"] in RB.SUBJECTS and r.get("folder") != OVERVIEW_FOLDER and
                    RB.subject_ok(r["subject"], b2b) and RA.can_view(r, v)]
     finally:
         conn.close()
+    mine = []
     for r in reports:
-        r["subject_label"] = RB.SUBJECTS[r["subject"]]["label"]
-    return render_template("portal/report_dashboard_edit.html", customer=customer, dash=d, reports=reports,
-                           ready=_offer(b2b),
-                           sizes=RD.SIZES, dash_filters=RD.DASH_FILTERS, RB=RB, chart_names=dict(RB.CHARTS),
-                           can_manage=RA.can_manage(d, v))
+        try:
+            what = RP.plain_sentence(RB.read_config(_args_from_saved(r), b2b))
+        except Exception:
+            what = RB.SUBJECTS[r["subject"]]["label"]
+        mine.append({"id": r["id"], "name": r["name"], "what": what,
+                     "who": "Saved by you" if RA.is_mine(r, v) else "Saved by " + (r.get("created_by") or "a team member")})
+    offered = {x["key"]: x for x in _offer(b2b)}
+    topics = []
+    for key, label, keys in RP.TOPICS:
+        qs = [offered[k] for k in keys if k in offered]
+        if qs:
+            topics.append({"key": key, "label": label, "qs": qs})
+    widgets = []
+    for b in RW.place_all(d["boxes"]):
+        k = b["kind_v"]
+        if k == "report" and not RB.subject_ok(b.get("subject") or "", b2b):
+            continue
+        sp = RW.spec(b)
+        title = (b.get("report_name") if k == "report" else RW.heading_parts(b.get("note"))[0] if k == "heading"
+                 else (sp[1] if sp else "Not available"))
+        widgets.append({"id": b["id"], "kind": k, "kind_name": RW.TYPE_NAMES[k], "title": title or "Heading",
+                        "note": b.get("note") or "", "pick": (b.get("wcfg") or {}).get("pick") or "",
+                        "report_id": b.get("report_id"), "use_filters": b.get("use_filters", True),
+                        "x": b["gx"], "y": b["gy"], "w": b["gw"], "h": b["gh"]})
+    picks = {k: [{"key": a, "label": l, "help": h} for a, l, h in RW.choices(k, b2b)] for k in ("number", "list", "board")}
+    return render_template("portal/report_dashboard_edit.html", customer=customer, dash=d, widgets=widgets,
+                           types=RW.TYPES, picks=picks, topics=topics, mine=mine, sizes=RW.SIZE, mins=RW.MIN,
+                           dash_filters=RD.DASH_FILTERS, can_manage=RA.can_manage(d, v), RB=RB)
+
+
+def _widget_from_form(ctx, customer, b2b, f):
+    """(kind, pick, report_id, note) from the Add / Settings form, or None when it isn't allowed."""
+    kind = f.get("kind") or ""
+    if kind in ("number", "list", "board"):
+        pick = f.get("pick") or ""
+        if pick not in {a for a, _l, _h in RW.choices(kind, b2b)}:
+            return None
+        return kind, pick, None, None
+    if kind == "heading":
+        note = (f.get("note") or "").strip()[:2000] or "New heading"
+        return kind, None, None, note
+    if kind == "report":
+        ready = f.get("ready") or ""
+        if ready:
+            r = RS.READY_BY_KEY.get(ready)
+            if not r or ready not in {x["key"] for x in _offer(b2b)}:
+                return None
+            rid = _save_report(ctx, customer, b2b, r["label"], _md(r["cfg"]), OVERVIEW_FOLDER)
+            return (kind, None, rid, None) if rid else None
+        rid = f.get("report_id", type=int)
+        if rid and RA.can_view(_saved(ctx["tenant_id"], rid), ctx["viewer"]):
+            return kind, None, rid, None
+    return None
 
 
 @reports_bp.route("/reports/dashboards/new", methods=["POST"])
@@ -184,6 +316,8 @@ def dashboard_layout(dash_id: int):
     customer, ctx, b2b, _scope, err = _setup()
     if err:
         return jsonify({"error": "Please log in again."}), 401
+    if _custom_only(ctx, json_ok=True):
+        return jsonify({"error": "Your own dashboards come with Growth and Scale."}), 403
     if not _dash(ctx, dash_id, "edit"):
         return jsonify({"error": "That dashboard was not found."}), 404
     body = request.get_json(silent=True) or {}
@@ -197,33 +331,59 @@ def dashboard_layout(dash_id: int):
 @reports_bp.route("/reports/dashboards/<int:dash_id>/add", methods=["POST"])
 @team_feature("reports.custom")
 def dashboard_add(dash_id: int):
+    """Add a widget where the person clicked "+ Add a widget here"."""
     customer, ctx, b2b, _scope, err = _setup()
     if err:
         return err
     stop = _custom_only(ctx)
     if stop:
         return stop
-    stop = _custom_only(ctx)
-    if stop:
-        return stop
     if not _dash(ctx, dash_id, "edit"):
         flash("You can't change that dashboard.", "warning")
         return redirect(url_for("reports.dashboards"))
-    rid = request.form.get("report_id", type=int)
-    ready = request.form.get("ready") or ""
-    if ready:
-        r = RS.READY_BY_KEY.get(ready)
-        if not r or ready not in {x["key"] for x in _offer(b2b)}:
-            flash("That ready-made report is not available for your business.", "warning")
-            return redirect(url_for("reports.dashboard_edit", dash_id=dash_id))
-        rid = _save_report(ctx, customer, b2b, r["label"], _md(r["cfg"])) or -1
-    if rid and rid != -1 and not RA.can_view(_saved(ctx["tenant_id"], rid), ctx["viewer"]):
-        rid = -1
-    note = (request.form.get("note") or "").strip()
-    bid = None if rid == -1 else RD.add_box(ctx["tenant_id"], dash_id, report_id=rid, note=None if rid else (note or "New note"))
+    w = _widget_from_form(ctx, customer, b2b, request.form)
+    bid = None
+    if w:
+        kind, pick, rid, note = w
+        dw, dh = RW.SIZE[kind]
+        sw = request.form.get("w", type=int) or dw
+        place = RW.clean_place(request.form.get("x") or 0, request.form.get("y") or 0,
+                               dw if kind != "heading" else max(dw, sw), dh, kind)
+        if place and place[0] + place[2] > RW.COLS:
+            place = (RW.COLS - place[2],) + place[1:]
+        bid = RD.add_widget(ctx["tenant_id"], dash_id, kind, place, pick=pick, report_id=rid, note=note) if place else None
     if not bid:
-        flash(f"Could not add that box (a dashboard holds up to {RD.MAX_BOXES}).", "warning")
+        flash(f"Could not add that widget (a dashboard holds up to {RD.MAX_BOXES}).", "warning")
     return redirect(url_for("reports.dashboard_edit", dash_id=dash_id) + (f"#box-{bid}" if bid else ""))
+
+
+@reports_bp.route("/reports/dashboards/<int:dash_id>/box/<int:box_id>/settings", methods=["POST"])
+@team_feature("reports.custom")
+def dashboard_widget_settings(dash_id: int, box_id: int):
+    """A widget's Settings: what it shows, and whether it follows the dashboard's filters."""
+    customer, ctx, b2b, _scope, err = _setup()
+    if err:
+        return err
+    stop = _custom_only(ctx)
+    if stop:
+        return stop
+    d = _dash(ctx, dash_id, "edit")
+    box = next((b for b in (d or {}).get("boxes", []) if b["id"] == box_id), None)
+    if not box:
+        flash("You can't change that dashboard.", "warning")
+        return redirect(url_for("reports.dashboards"))
+    f = request.form.copy()
+    f["kind"] = RW.kind_of(box)
+    keep = not (f.get("pick") or f.get("ready") or f.get("report_id") or f.get("note"))
+    w = None if keep else _widget_from_form(ctx, customer, b2b, f)
+    if not keep and not w:
+        flash("That choice is not available for your business.", "warning")
+        return redirect(url_for("reports.dashboard_edit", dash_id=dash_id) + f"#box-{box_id}")
+    _k, pick, rid, note = w if w else (None, None, None, None)
+    RD.update_widget(ctx["tenant_id"], dash_id, box_id, pick=pick, report_id=rid, note=note,
+                     use_filters=f.get("use_filters") == "1")
+    flash("Widget updated.", "success")
+    return redirect(url_for("reports.dashboard_edit", dash_id=dash_id) + f"#box-{box_id}")
 
 
 @reports_bp.route("/reports/dashboards/<int:dash_id>/share", methods=["POST"])

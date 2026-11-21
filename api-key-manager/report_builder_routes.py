@@ -210,10 +210,16 @@ def _resolve(args, ctx, b2b, quote_scope, drill=False):
         d = RD.get_dashboard(ctx["tenant_id"], did)
         if not RA.can_view(d, v):
             raise NotAllowed()
-        box = next((b for b in d["boxes"] if b["id"] == bid and b["report_id"]), None)
-        if not box or not RB.subject_ok(box["subject"], b2b):
+        box = next((b for b in d["boxes"] if b["id"] == bid), None)
+        import report_widgets as RW
+        if box and RW.kind_of(box) in ("number", "list", "board"):     # widgets (21 Nov 2026)
+            cfg = RW.cfg_for(box, b2b, _dash_filters(args), set(d["filters"] or []))
+            if not cfg:
+                raise NotAllowed()
+        elif not box or not box["report_id"] or not RB.subject_ok(box["subject"], b2b):
             raise NotAllowed()
-        cfg = _box_cfg(box, b2b, _dash_filters(args), set(d["filters"] or []))
+        else:
+            cfg = _box_cfg(box, b2b, _dash_filters(args), set(d["filters"] or []))
         whole, source = RA.whole_business(d), {"dash": d, "box": box}
     elif rid:
         saved = _saved(ctx["tenant_id"], rid)

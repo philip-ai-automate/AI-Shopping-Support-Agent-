@@ -337,6 +337,7 @@ _subject(
         _col("adate", "Date", "a.created_at::date", "date"),
         _col("aqty", "How many", "COALESCE(a.qty, 1)", "int"),
         _col("aauto", "Done automatically", "COALESCE(a.auto, FALSE)", "yesno"),
+        _col("areply", "Message to a customer", "(a.action IN ('wa_sent','messenger_sent','webchat_sent','email_sent'))", "yesno"),
         _col("acust", "Customer", "l.customer_name"),
     ])],
     group_too=("aact",), no_group=("acust",),

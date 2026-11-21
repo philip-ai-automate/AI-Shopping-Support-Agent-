@@ -9,7 +9,7 @@
 {% if d.error %}
   <div class="rb-err">{{ d.error }}</div>
 {% elif chart.kind != 'table' %}
-  {{ rc.chart_block(chart, cid, '' if chart.kind == 'number' else cfg.period_label, compare_label, drill_base, 240) }}
+  {{ rc.chart_block(chart, cid, '' if chart.kind == 'number' else cfg.period_label, compare_label, drill_base, chart_h or 240) }}
 {% elif d.summary is defined %}
   {% set s = d.summary %}
   <div class="rb-scroll" data-drill-base="{{ drill_base }}">

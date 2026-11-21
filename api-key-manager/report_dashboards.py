@@ -64,8 +64,38 @@ def ensure_tables():
         conn.close()
 
 
+_widget_cols_ok = False
+
+
+def ensure_widget_columns():
+    """Widgets on a grid (21 Nov 2026): kind, its settings and its place. Lock limited; small new table."""
+    global _widget_cols_ok
+    if _widget_cols_ok:
+        return
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""SELECT COUNT(*) FROM information_schema.columns
+                        WHERE table_name='report_dashboard_boxes' AND column_name IN ('kind','wcfg','gx','gy','gw','gh')""")
+        if cur.fetchone()[0] < 6:
+            cur.execute("SET lock_timeout = '3s'")
+            cur.execute("ALTER TABLE report_dashboard_boxes ADD COLUMN IF NOT EXISTS kind VARCHAR(12)")
+            cur.execute("ALTER TABLE report_dashboard_boxes ADD COLUMN IF NOT EXISTS wcfg JSONB NOT NULL DEFAULT '{}'::jsonb")
+            for c in ("gx", "gy", "gw", "gh"):
+                cur.execute(f"ALTER TABLE report_dashboard_boxes ADD COLUMN IF NOT EXISTS {c} SMALLINT")
+            conn.commit()
+        _widget_cols_ok = True
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ report widget columns:", e)
+    finally:
+        cur.close()
+        conn.close()
+
+
 def _db():
     ensure_tables()
+    ensure_widget_columns()
     conn = get_db_connection()
     return conn, conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -163,6 +193,56 @@ def add_box(tenant_id: int, dash_id: int, report_id: int = None, note: str = Non
         conn.close()
 
 
+def add_widget(tenant_id: int, dash_id: int, kind: str, place: tuple, pick: str = None, report_id: int = None,
+               note: str = None):
+    """Adds a widget at a place on the grid (x, y, w, h). None if not allowed or the dashboard is full."""
+    conn, cur = _db()
+    try:
+        cur.execute("SELECT 1 FROM report_dashboards WHERE id=%s AND tenant_id=%s", (dash_id, tenant_id))
+        if not cur.fetchone():
+            return None
+        if report_id:
+            cur.execute("SELECT 1 FROM report_defs WHERE id=%s AND tenant_id=%s", (report_id, tenant_id))
+            if not cur.fetchone():
+                return None
+        cur.execute("SELECT COUNT(*) AS n, COALESCE(MAX(position),0) AS p FROM report_dashboard_boxes WHERE dashboard_id=%s",
+                    (dash_id,))
+        row = cur.fetchone()
+        if row["n"] >= MAX_BOXES:
+            return None
+        x, y, w, h = place
+        cur.execute("""INSERT INTO report_dashboard_boxes (dashboard_id, report_id, note, size, position, kind, wcfg, gx, gy, gw, gh)
+                       VALUES (%s,%s,%s,'m',%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                    (dash_id, report_id, (note or "")[:2000] if kind == "heading" else None, row["p"] + 1, kind,
+                     json.dumps({"pick": pick} if pick else {}), x, y, w, h))
+        bid = cur.fetchone()["id"]
+        cur.execute("UPDATE report_dashboards SET updated_at=NOW() WHERE id=%s", (dash_id,))
+        conn.commit()
+        return bid
+    finally:
+        conn.close()
+
+
+def update_widget(tenant_id: int, dash_id: int, box_id: int, pick: str = None, report_id: int = None,
+                  note: str = None, use_filters: bool = True) -> bool:
+    conn, cur = _db()
+    try:
+        cur.execute("""UPDATE report_dashboard_boxes b SET
+                              wcfg = CASE WHEN %s IS NOT NULL THEN jsonb_build_object('pick', %s::text) ELSE b.wcfg END,
+                              report_id = COALESCE(%s, b.report_id),
+                              note = CASE WHEN %s IS NOT NULL THEN %s ELSE b.note END,
+                              use_filters = %s
+                         FROM report_dashboards d
+                        WHERE b.id=%s AND b.dashboard_id=%s AND d.id=b.dashboard_id AND d.tenant_id=%s""",
+                    (pick, pick, report_id, note, (note or "")[:2000], bool(use_filters), box_id, dash_id, tenant_id))
+        ok = cur.rowcount > 0
+        cur.execute("UPDATE report_dashboards SET updated_at=NOW() WHERE id=%s AND tenant_id=%s", (dash_id, tenant_id))
+        conn.commit()
+        return ok
+    finally:
+        conn.close()
+
+
 def save_layout(tenant_id: int, dash_id: int, boxes: list, filters: list, name: str = None) -> bool:
     """boxes: [{id, size, use_filters, note?}] in the new order; boxes left out are removed."""
     conn, cur = _db()
@@ -187,6 +267,12 @@ def save_layout(tenant_id: int, dash_id: int, boxes: list, filters: list, name: 
                                   note=CASE WHEN report_id IS NULL AND %s IS NOT NULL THEN %s ELSE note END
                             WHERE id=%s AND dashboard_id=%s""",
                         (pos, size, bool(b.get("use_filters", True)), note, (note or "")[:2000], bid, dash_id))
+            if all(k in b for k in ("x", "y", "w", "h")):      # widgets on the grid (21 Nov 2026)
+                import report_widgets as RW
+                pl = RW.clean_place(b["x"], b["y"], b["w"], b["h"], str(b.get("kind") or "report"))
+                if pl:
+                    cur.execute("UPDATE report_dashboard_boxes SET gx=%s, gy=%s, gw=%s, gh=%s WHERE id=%s AND dashboard_id=%s",
+                                pl + (bid, dash_id))
         gone = list(have - set(keep))
         if gone:
             cur.execute("DELETE FROM report_dashboard_boxes WHERE dashboard_id=%s AND id = ANY(%s)", (dash_id, gone))
