@@ -154,7 +154,7 @@
     {% elif groups is not none %}
       <div class="rb-scroll" data-drill-base="{{ drill_base }}">
         <table class="sr-tbl">
-          <thead><tr>{% for k in list_cols %}{% set c = subj.columns[k] %}<th class="{{ 'num' if c.fmt in ('money','money_own','int') }}">{{ split_label if loop.first else c.label }}</th>{% endfor %}</tr></thead>
+          <thead><tr>{% for k in list_cols %}{% set c = subj.columns[k] %}<th class="{{ 'num' if c.fmt in ('money','money_own','int') }}">{{ split_label if loop.first else col_words.get(k, c.label) }}</th>{% endfor %}</tr></thead>
           <tbody>
             {% for g in groups %}
               <tr class="sr-grp"><td colspan="{{ list_cols|length }}">{{ g.label }} <span>— {{ '{:,}'.format(g.n) }} {{ subj.noun }}</span></td></tr>
@@ -173,7 +173,7 @@
     {% else %}
       <div class="rb-scroll">
         <table class="sr-tbl">
-          <thead><tr>{% for k in cfg.col %}{% set c = subj.columns[k] %}<th class="{{ 'num' if c.fmt in ('money','money_own','int') }}">{{ c.label }}</th>{% endfor %}</tr></thead>
+          <thead><tr>{% for k in cfg.col %}{% set c = subj.columns[k] %}<th class="{{ 'num' if c.fmt in ('money','money_own','int') }}">{{ col_words.get(k, c.label) }}</th>{% endfor %}</tr></thead>
           <tbody>
             {% for r in d.rows %}
               <tr>{% for cell in r.cells %}{% set c = subj.columns[cfg.col[loop.index0]] %}<td class="{{ 'num' if c.fmt in ('money','money_own','int') }}">{{ cell }}</td>{% endfor %}</tr>

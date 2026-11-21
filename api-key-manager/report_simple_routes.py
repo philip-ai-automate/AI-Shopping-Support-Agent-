@@ -277,6 +277,7 @@ def view():
         subline=cfg["period_label"] + (" · " + who if mcol else ""), period_words=period_words, n_main=n_main,
         look_line=look_line, per_hint=per_hint, split_label=split_label,
         n_records=n_records, n_groups=n_grp,
+        col_words={k: l for k, l, _h in RP.SPLITS.get(cfg["subject"], []) if "@" not in k},
         groups=groups, list_cols=list_cols if groups is not None else [],
         dp_presets=RB.picker_presets(), dp_value=RB.picker_value(cfg),
         member_on=bool(mcol), member_val=member_val, people=ctx["people"],
