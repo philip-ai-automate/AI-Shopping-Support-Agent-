@@ -1,7 +1,7 @@
 {% extends "portal/base.html" %}
 {% import "portal/_report_chart.html" as rc %}
 {% import "portal/_date_picker.html" as dp %}
-{# ask: A report (Reports › pick a question, or a saved report) shows the answer with four choices at the top: "Time" (quick picks like This month, Last month, This quarter, "The last N days", or your own dates), "Team member" (Everyone or one person), "Split by" (for example Team member, Month, Where it came from, or Nothing for one number) and "Show as" Chart or List. Numbers at the top give the totals. Click any bar, slice or number to see the records behind it. "Save as my report" keeps it with your choices under Reports › Your saved reports (a report you saved shows "Save changes" and "Save as new"). "Download" gives Excel, CSV or PDF. On Growth and Scale plans, "Open in custom report builder" lets you change columns and filters; on Starter, custom reports come with Growth and Scale. #}
+{# ask: A report (Reports › pick a question, or a saved report) shows the answer with four choices at the top: "Time" (quick picks like This month, Last month, This quarter, "The last N days", or your own dates), "Team member" (Everyone or one person), "Show per" (breaks the total into groups — for example per Team member, Month, Where it came from, or Nothing for one total; the title changes to say what the chart now shows) and "Show as" Chart or List. Numbers at the top give the totals. Click any bar, slice or number to see the records behind it. "Save as my report" keeps it with your choices under Reports › Your saved reports (a report you saved shows "Save changes" and "Save as new"). "Download" gives Excel, CSV or PDF. On Growth and Scale plans, "Open in custom report builder" lets you change columns and filters; on Starter, custom reports come with Growth and Scale. #}
 {% block title %}{{ title }} — Reports — PhiXtra Portal{% endblock %}
 
 {% block head %}
@@ -11,6 +11,8 @@
   @media (max-width:640px){.sr{padding-top:40px}}
   .sr h1{margin:0;font-size:26px;font-weight:800;color:var(--navy);line-height:1.25;overflow-wrap:anywhere}
   .sr-sub{margin:6px 0 0;color:var(--sub);font-size:15px}
+  .sr-from{font-size:13px;color:var(--sub);margin-bottom:4px}
+  .sr-hint{font-size:12px;font-weight:400;color:var(--sub)}
   .sr-top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between}
   @media (min-width:900px){.sr-top{padding-right:150px}}
   .sr-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border-radius:8px;font-size:15px;font-weight:700;
@@ -55,8 +57,9 @@
 
   <div class="sr-top">
     <div style="flex:1 1 420px;min-width:0">
+      {% if from_q %}<div class="sr-from">Ready-made: {{ from_q }}</div>{% endif %}
       <h1>{{ title }}</h1>
-      <p class="sr-sub">{{ sentence }}</p>
+      <p class="sr-sub">{{ subline }}</p>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <div class="sr-dl">
@@ -98,11 +101,12 @@
       </select>
     </label>
     {% endif %}
-    <label class="sr-lbl">Split by
-      <select class="sr-sel" name="split" data-auto>
+    <label class="sr-lbl">Show per
+      <select class="sr-sel" name="split" data-auto aria-describedby="srPerHint">
         {% for v, l in split_opts %}<option value="{{ v }}" {{ 'selected' if split_val == v }}>{{ l }}</option>{% endfor %}
-        <option value="" {{ 'selected' if not split_val }}>Nothing (one number)</option>
+        <option value="" {{ 'selected' if not split_val }}>Nothing — one total</option>
       </select>
+      <span class="sr-hint" id="srPerHint">Breaks the total into groups</span>
     </label>
     <div class="sr-lbl">Show as
       <div class="sr-seg" role="group" aria-label="Show as">
@@ -128,14 +132,14 @@
         {% set s = d.summary %}
         <div class="rb-scroll" data-drill-base="{{ drill_base }}" style="margin-top:12px">
           <table class="sr-tbl">
-            <thead><tr>{% for h in s.headers %}<th class="{{ 'num' if loop.index > s.ngroups }}">{{ h }}</th>{% endfor %}</tr></thead>
+            <thead><tr>{% for h in s.headers[:s.ngroups + n_main] %}<th class="{{ 'num' if loop.index > s.ngroups }}">{{ h }}</th>{% endfor %}</tr></thead>
             <tbody>
               {% for r in s.rows %}
-                <tr>{% for l in r.labels %}<td>{{ l }}</td>{% endfor %}{% for c in r.cells %}<td class="num">{% if loop.first %}<button type="button" class="rb-sumbtn" data-drill='{{ r.rk|tojson }}' aria-label="See the {{ c }} records for {{ r.labels|join(' · ') }}">{{ c }}</button>{% else %}{{ c }}{% endif %}</td>{% endfor %}</tr>
+                <tr>{% for l in r.labels %}<td>{{ l }}</td>{% endfor %}{% for c in r.cells[:n_main] %}<td class="num">{% if loop.first %}<button type="button" class="rb-sumbtn" data-drill='{{ r.rk|tojson }}' aria-label="See the {{ c }} records for {{ r.labels|join(' · ') }}">{{ c }}</button>{% else %}{{ c }}{% endif %}</td>{% endfor %}</tr>
               {% else %}
-                <tr><td colspan="{{ s.headers|length }}" class="rb-note">Nothing in this time. Try a longer time.</td></tr>
+                <tr><td colspan="{{ s.ngroups + n_main }}" class="rb-note">Nothing in this time. Try a longer time.</td></tr>
               {% endfor %}
-              {% if s.rows %}<tr class="total">{% for l in s.total_row.labels %}<td>{{ l }}</td>{% endfor %}{% for c in s.total_row.cells %}<td class="num">{{ c }}</td>{% endfor %}</tr>{% endif %}
+              {% if s.rows %}<tr class="total">{% for l in s.total_row.labels %}<td>{{ l }}</td>{% endfor %}{% for c in s.total_row.cells[:n_main] %}<td class="num">{{ c }}</td>{% endfor %}</tr>{% endif %}
             </tbody>
           </table>
         </div>

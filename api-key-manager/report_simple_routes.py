@@ -84,7 +84,7 @@ def apply_choices(cfg0, ch):
         if ch["split"] == "":
             cfg.update(g1="", g2="", chart="number" if cfg0.get("chart") != "table" else "table")
         elif g and g != cfg0["g1"]:
-            cfg.update(g1=g, g2="", chart="auto")
+            cfg.update(g1=g, g2="", chart=_kept_chart(cfg0.get("chart") or "auto", g))
         elif g == cfg0["g1"]:
             cfg.update(g1=cfg0["g1"], g2=cfg0["g2"], chart=cfg0["chart"])
     show = ch["show"] or ("list" if (not cfg["g1"] and cfg.get("chart") == "table") else "chart")
@@ -97,6 +97,31 @@ def apply_choices(cfg0, ch):
     if not cfg["col"]:
         cfg["col"] = list(subj["default_cols"])
     return cfg, show
+
+
+def _kept_chart(was, g):
+    """Same kind of chart when "Show per" changes (21 Nov 2026 fix): bars stay bars, a pie stays a pie.
+    Charts that only fit the old grouping (funnel = stages, stacked / pivot = two groupings) become bars."""
+    by_date = "@" in g
+    if by_date:
+        return was if was in ("bar", "line", "area", "combo") else "bar"
+    return was if was in ("bar", "hbar", "pie", "donut") else "hbar"
+
+
+def title_for(cfg, cfg0, base_title, split_label):
+    """(title, from_question). The title follows the person's "Show per" choice, so it always says what the
+    chart shows; the ready-made question it started from is shown small above it."""
+    if cfg["g1"] == cfg0["g1"]:
+        return base_title, ""
+    m = RB.measure_of(cfg)
+    which = RP.which_of(cfg)[0][2]
+    if which.startswith("all ") and m[0] == "count":
+        which = which[4:]                      # "Deals by team member", not "All deals by team member"
+    what = which[:1].upper() + which[1:] if m[0] == "count" else \
+        m[1].replace("Sum of ", "").replace("Number of records", "Number") + " of " + which
+    what = what[:1].upper() + what[1:]
+    tail = (" by " + split_label[:1].lower() + split_label[1:]) if cfg["g1"] else " in total"
+    return what + tail, base_title
 
 
 def _tiles(ctx, cfg, scope):
@@ -179,13 +204,23 @@ def view():
     if not member_val and mcol:
         member_val = next((f["val"] for f in cfg0["f"] if f["key"] == mcol and f["op"] == "is"), "")
     period_words = RP.period_words(cfg)
+    split_opts = _split_options(cfg0, cfg)
+    split_label = next((l for v_, l in split_opts if v_ == cfg["g1"]), "")
+    shown_title, from_q = title_for(cfg, cfg0, title, split_label)
+    who = "Everyone"
+    if member_val == "__none__":
+        who = "Unassigned"
+    elif member_val:
+        who = next((p["display"] for p in ctx["people"] if p["key"] == member_val), "One team member")
+    m = RB.measure_of(cfg)
+    n_main = 2 if m[2] else 1          # the table shows the count and the chosen number only
     return render_template(
         "portal/report_simple.html", customer=customer, RB=RB, cfg=cfg, subj=subj, d=data, chart=chart,
-        title=title, ready=ready, saved=saved, rid=rid, mine=mine, show=show, tiles=tiles,
-        sentence=RP.plain_sentence(cfg), period_words=period_words,
+        title=shown_title, from_q=from_q, ready=ready, saved=saved, rid=rid, mine=mine, show=show, tiles=tiles,
+        subline=cfg["period_label"] + (" · " + who if mcol else ""), period_words=period_words, n_main=n_main,
         dp_presets=RB.picker_presets(), dp_value=RB.picker_value(cfg),
         member_on=bool(mcol), member_val=member_val, people=ctx["people"],
-        split_val=cfg["g1"], split_opts=_split_options(cfg0, cfg),
+        split_val=cfg["g1"], split_opts=split_opts,
         ch=ch, chart_url=_view_url(ready, rid, ch, show="chart"), list_url=_view_url(ready, rid, ch, show="list"),
         page=cfg["page"], total_pages=total_pages,
         prev_url=_view_url(ready, rid, ch, show="list", page=cfg["page"] - 1) if cfg["page"] > 1 else None,
@@ -195,7 +230,7 @@ def view():
         builder_url=(url_for("reports.builder") + "?" + _query(cfg, name=title, ready=ready))
         if PLAN.custom_ok(ctx["tenant_id"]) else "",
         custom_ok=PLAN.custom_ok(ctx["tenant_id"]),
-        save_name=saved["name"] if mine else title,
+        save_name=saved["name"] if mine else shown_title,
     )
 
 

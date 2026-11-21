@@ -907,13 +907,19 @@ _MEANING = {"won": "#16A34A", "accepted": "#16A34A", "paid": "#16A34A", "lost": 
             "website": "#F97316", "phone call": "#F59E0B", "ai agent": "#7C3AED"}
 
 
+_LOOKS_LIKE = {"#25D366": "#16A34A", "#16A34A": "#25D366", "#F97316": "#F59E0B", "#F59E0B": "#F97316"}
+
+
 def colours_for(labels) -> list:
     """One colour per label: meaning colours first (Won green, Lost red, WhatsApp green…), then the palette."""
+    meant = [_MEANING.get(str(lab).strip().lower()) for lab in labels]
+    taken = {c for c in meant if c and c != GREY}
+    taken |= {_LOOKS_LIKE[c] for c in list(taken) if c in _LOOKS_LIKE}   # WhatsApp green ≈ palette green, etc.
+    free = [c for c in PALETTE if c not in taken] or list(PALETTE)
     out, i = [], 0
-    for lab in labels:
-        c = _MEANING.get(str(lab).strip().lower())
+    for c in meant:           # 21 Nov 2026: a palette colour never repeats a meaning colour already on the chart
         if not c:
-            c = PALETTE[i % len(PALETTE)]
+            c = free[i % len(free)]
             i += 1
         out.append(c)
     return out

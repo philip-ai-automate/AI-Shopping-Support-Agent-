@@ -208,7 +208,7 @@ def _chips(ch, subj, people):
     if ch.get("split"):
         label = next((l for k, l, _h in RP.SPLITS.get(subj, []) if k == ch["split"]), "")
         if label:
-            out.append("Split by: " + label.lower())
+            out.append("Show per: " + label.lower())
     if ch.get("show"):
         out.append("Show as: " + ch["show"])
     return out
