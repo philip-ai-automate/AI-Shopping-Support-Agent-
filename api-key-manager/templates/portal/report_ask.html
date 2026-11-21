@@ -1,0 +1,80 @@
+{% extends "portal/base.html" %}
+{# ask: Reports › "Ask for a report": type what you want to know in plain words, for example "won quotes by salesperson last month", and press Ask. The AI Agent finds the right ready-made report and sets its choices (time, team member, show per, chart or list) — then press "Open report". If no report fits exactly it shows the closest ones. It only opens PhiXtra's own ready-made reports; it never makes up numbers. Things PhiXtra doesn't record (stock levels, profit, payroll, website visits) are explained. On Growth and Scale you can also build a custom report. #}
+{% block title %}Ask for a report — Reports — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  /* Ask for a report (21 Nov 2026) — approved mock-up Nbf3F8K2ShDdocrnpbrTGr screen 3 */
+  .ak{padding-top:52px;--navy:#0B1F3A;--blue:#1D4ED8;--sub:#5B6675;--edge:#E3E7ED;max-width:820px;display:flex;flex-direction:column;gap:18px}
+  @media (max-width:640px){.ak{padding-top:40px}}
+  .ak h1{margin:0;font-size:26px;font-weight:800;color:var(--navy)}
+  .ak-box{display:flex;gap:10px;background:#fff;border:2px solid var(--blue);border-radius:12px;padding:8px 8px 8px 14px;align-items:center;flex-wrap:wrap}
+  .ak-box input{flex:1 1 260px;min-height:44px;border:0;font-size:17px;font-family:inherit;color:var(--navy);outline:none;background:transparent;min-width:0}
+  .ak-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 18px;border-radius:8px;font-size:15px;font-weight:700;
+    border:1px solid var(--blue);background:var(--blue);color:#fff;text-decoration:none;cursor:pointer;font-family:inherit}
+  .ak-btn:hover{text-decoration:none;opacity:.92}
+  .ak-btn.go{background:#16A34A;border-color:#16A34A}
+  .ak-ex{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .ak-ex a{display:inline-flex;align-items:center;min-height:40px;padding:0 14px;border:1px solid #D5DBE3;border-radius:20px;background:#fff;color:#1F2A37;font-size:14px;text-decoration:none}
+  .ak-ex a:hover{border-color:var(--blue);text-decoration:none}
+  .ak-card{background:#fff;border:1px solid var(--edge);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:12px}
+  .ak-tag{font-size:13px;font-weight:700;letter-spacing:.02em}
+  .ak-chips{display:flex;flex-wrap:wrap;gap:8px}
+  .ak-chips span{background:#E8EEFC;color:#1E3A8A;border-radius:16px;padding:6px 12px;font-size:14px}
+  .ak-card a.q{font-size:16px;font-weight:700;text-decoration:none}
+  .ak-note{font-size:14px;color:var(--sub);border-top:1px solid #EEF1F5;padding-top:12px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ak">
+  <div style="font-size:14px"><a href="{{ url_for('reports.library') }}" style="text-decoration:none">‹ Reports</a></div>
+  <div>
+    <h1>Ask for a report</h1>
+    <p style="margin:6px 0 0;color:var(--sub);font-size:15px">Type what you want to know. The AI Agent finds the right report and sets it up for you.</p>
+  </div>
+
+  <form method="get" action="{{ url_for('reports.ask') }}" class="ak-box" role="search">
+    <label for="akQ" style="position:absolute;left:-9999px">What do you want to know?</label>
+    <input id="akQ" name="q" value="{{ q }}" maxlength="300" placeholder="e.g. won quotes by salesperson last month" autocomplete="off" {% if not q %}autofocus{% endif %}>
+    <button type="submit" class="ak-btn">Ask</button>
+  </form>
+
+  {% if examples %}
+  <div class="ak-ex">
+    <span style="font-size:13px;color:var(--sub)">Try:</span>
+    {% for e in examples %}<a href="{{ url_for('reports.ask', q=e) }}">{{ e }}</a>{% endfor %}
+  </div>
+  {% endif %}
+
+  {% if result %}
+    {% if result.ready %}
+      <div class="ak-card">
+        <div class="ak-tag" style="color:#15803D">FOUND IT</div>
+        <div style="font-size:18px;font-weight:700;color:var(--navy)">{{ result.question }}</div>
+        {% if result.chips %}<div class="ak-chips">{% for c in result.chips %}<span>{{ c }}</span>{% endfor %}</div>{% endif %}
+        <div><a class="ak-btn go" href="{{ result.url }}">Open report</a></div>
+      </div>
+    {% elif result.not_recorded %}
+      <div class="ak-card">
+        <div class="ak-tag" style="color:var(--sub)">NOT SOMETHING PHIXTRA RECORDS</div>
+        <div style="font-size:15px">{{ result.reason }}</div>
+      </div>
+    {% else %}
+      <div class="ak-card">
+        <div class="ak-tag" style="color:#B45309">{{ 'CLOSEST MATCH' if result.closest else 'NO MATCH' }}</div>
+        {% if result.closest %}
+          <div style="font-size:15px">We don't have a report for exactly that. These are the closest:</div>
+          {% for c in result.closest %}<a class="q" href="{{ c.url }}">{{ c.q }}</a>{% endfor %}
+        {% else %}
+          <div style="font-size:15px">We couldn't find a report for that. Try other words, or <a href="{{ url_for('reports.library') }}">pick a question on Reports</a>.</div>
+        {% endif %}
+        <div class="ak-note">
+          {% if custom_ok %}Need something else? <a href="{{ url_for('reports.wizard') }}">Build a custom report</a>.
+          {% else %}Custom reports come with Growth and Scale.{% if staff_can_open('portal.billing_plans') %} <a href="{{ url_for('portal.billing_plans') }}">See plans</a>{% endif %}{% endif %}
+        </div>
+      </div>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

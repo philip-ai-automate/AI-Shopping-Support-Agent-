@@ -28,11 +28,12 @@ On the dashboard, change Time or Team member at the top and every box that uses 
   .db-filters{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:14px 0 16px}
   .db-lbl{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--sub)}
   .db-sel{font-family:inherit;font-size:14px;min-height:38px;border:1px solid #D5DBE3;border-radius:8px;padding:0 10px;background:#fff;color:var(--ink);max-width:100%}
-  .db-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:16px}
-  .db-box{background:#fff;border:1px solid var(--edge);border-radius:12px;padding:16px 18px;min-width:0;min-height:120px;display:flex;flex-direction:column;gap:8px}
-  .db-s{grid-column:span 3}.db-m{grid-column:span 6}.db-l{grid-column:span 9}.db-w{grid-column:span 12}
-  @media (max-width:1100px){.db-s{grid-column:span 6}.db-m,.db-l,.db-w{grid-column:span 12}}
-  @media (max-width:640px){.db-s{grid-column:span 12}}
+  /* Widgets on a 12-column grid (21 Nov 2026, approved mock-up screen 7); on a phone they stack */
+  .db-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));grid-auto-rows:64px;gap:12px}
+  .db-box{background:#fff;border:1px solid var(--edge);border-radius:12px;padding:12px 14px;min-width:0;min-height:0;display:flex;flex-direction:column;gap:6px;overflow:auto}
+  .db-k-heading{background:none;border:0;padding:4px 2px;justify-content:flex-end}
+  .db-head b{display:block;font-size:20px;color:var(--navy)}.db-head span{display:block;font-size:14px;color:var(--sub);margin-top:2px;white-space:pre-line}
+  @media (max-width:760px){.db-grid{display:flex;flex-direction:column}.db-box{min-height:var(--mh)}.db-k-heading{min-height:0}}
   .db-boxhead{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
   .db-boxtitle{margin:0;font-size:15.5px;line-height:1.3}
   .db-boxtitle a{color:var(--navy);text-decoration:none}.db-boxtitle a:hover{text-decoration:underline}
@@ -86,11 +87,13 @@ On the dashboard, change Time or Team member at the top and every box that uses 
   {% else %}
     <nav class="db-tabs" aria-label="Dashboards">
       {% for x in dashboards %}<a href="{{ url_for('reports.dashboard', dash_id=x.id) }}" class="{{ 'on' if x.id == dash.id }}" {% if x.id == dash.id %}aria-current="page"{% endif %}>{{ x.name }}</a>{% endfor %}
+      {% if custom_ok %}
       <button type="button" id="newDashBtn" aria-expanded="false">+ New dashboard</button>
       <form method="POST" action="{{ url_for('reports.dashboard_new') }}" class="db-newform" id="newDashForm">
         <input class="db-sel" name="name" maxlength="80" placeholder="Dashboard name" aria-label="New dashboard name" required>
         <button type="submit" class="db-btn primary">Create</button>
       </form>
+      {% endif %}
     </nav>
 
     {% set active = dash.filters or [] %}
@@ -113,33 +116,38 @@ On the dashboard, change Time or Team member at the top and every box that uses 
         </select>
       </label>
       {% endif %}
-      <span class="rb-note" style="margin-left:auto;padding-bottom:10px">These filters apply to every box that uses them</span>
+      <span class="rb-note" style="margin-left:auto;padding-bottom:10px">These filters apply to every box{{ ' that uses them' if custom_ok }}</span>
     </form>
     {% else %}<div style="height:16px"></div>{% endif %}
 
     {% if boxes %}
     <div class="db-grid">
       {% for b in boxes %}
-        <section class="db-box db-{{ b.size }}" id="box-{{ b.id }}"
-                 {% if b.report_id %}data-src="{{ url_for('reports.dashboard_box', dash_id=dash.id, box_id=b.id) }}{{ '?' + filter_qs if filter_qs }}"{% endif %}
-                 aria-label="{{ b.report_name or 'Note' }}">
-          {% if b.report_id %}<div class="db-load">Loading {{ b.report_name }}…</div>
-          {% else %}<div class="db-note">{{ b.note }}</div>{% endif %}
+        {% set hpx = b.gh * 64 + (b.gh - 1) * 12 %}
+        <section class="db-box db-k-{{ b.kind_v }}" id="box-{{ b.id }}"
+                 style="grid-column:{{ b.gx + 1 }} / span {{ b.gw }};grid-row:{{ b.gy + 1 }} / span {{ b.gh }};--mh:{{ hpx }}px"
+                 {% if b.kind_v != 'heading' %}data-src="{{ url_for('reports.dashboard_box', dash_id=dash.id, box_id=b.id) }}?h={{ [140, hpx - 90]|max }}{{ '&' + filter_qs if filter_qs }}"{% endif %}
+                 aria-label="{{ b.head if b.kind_v == 'heading' else (b.report_name or 'Widget') }}">
+          {% if b.kind_v == 'heading' %}<div class="db-head"><b>{{ b.head }}</b>{% if b.more %}<span>{{ b.more }}</span>{% endif %}</div>
+          {% else %}<div class="db-load">Loading{% if b.report_name %} {{ b.report_name }}{% endif %}…</div>{% endif %}
         </section>
       {% endfor %}
     </div>
     {% else %}
       <div class="db-empty" style="display:flex;flex-direction:column;gap:12px;align-items:center">
         <b style="font-size:16px;color:#0B1F3A">This dashboard is empty.</b>
-        {% if can_edit %}
+        {% if can_fill %}
         <form method="POST" action="{{ url_for('reports.dashboard_fill', dash_id=dash.id) }}">
           <button type="submit" style="min-height:46px;padding:0 22px;border:0;border-radius:10px;background:#16A34A;color:#fff;font-family:inherit;font-size:15px;font-weight:800;cursor:pointer">Fill it with the ready-made Sales overview</button>
         </form>
-        <span>Number boxes, quotes won, where enquiries come from, quotes waiting and more. You can change anything afterwards.
-          Or <a href="{{ url_for('reports.dashboard_edit', dash_id=dash.id) }}">edit the dashboard</a> and add your own boxes.</span>
+        <span>Number boxes, quotes won, where enquiries come from, quotes waiting and more.
+          {% if can_edit %}You can change anything afterwards. Or <a href="{{ url_for('reports.dashboard_edit', dash_id=dash.id) }}">edit the dashboard</a> and add your own boxes.{% endif %}</span>
         {% endif %}
       </div>
     {% endif %}
+  {% endif %}
+  {% if dash and not custom_ok %}
+  <p class="rb-note" style="margin:14px 0 0;font-size:14px">Click any box to open the full report. Your own dashboards come with Growth and Scale.</p>
   {% endif %}
 </div>
 

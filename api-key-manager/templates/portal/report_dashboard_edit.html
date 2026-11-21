@@ -1,240 +1,551 @@
 {% extends "portal/base.html" %}
-{# ask: Reports › Dashboards shows saved reports side by side as boxes. Make one with "+ New dashboard" (or "Create dashboard" the first time), or from a saved report with "Add to dashboard ▾".
-"Edit dashboard": "Add a box" lists your saved reports (Add), "+ Build a new report", "+ Text note (heading or explanation)". Drag boxes to move them, or use Earlier / Later. Each box has a size: Small, Medium, Large, Full width, and "Use dashboard filters". "Dashboard filters" choose which filters viewers get at the top: Time, Team member. Press Save.
-On the dashboard, change Time or Team member at the top and every box that uses dashboard filters follows. Click any number, slice, bar or cell in a box to see the records behind it. "Open" on a box opens its report. "Print or save as PDF" prints the dashboard.
-"Share" (dashboard you made): Who can open it = Only me, Chosen team members or roles, Everyone in the business; What numbers they see = Follow each person's access, or Everyone sees the whole business; "Others can edit it". People a dashboard is shared with see its boxes even if the report behind a box isn't shared with them. Only the person who made a dashboard can share or delete it ("Delete this dashboard" in Edit dashboard; its reports are kept). #}
+{% import "portal/_date_picker.html" as dp %}
+{# ask: Reports › Dashboards › "Edit dashboard" (Growth and Scale plans). A dashboard is a grid of widgets. Drag a widget by its ⠿ handle to move it, pull its ◢ corner to resize it (or focus the handle and use the arrow keys to move, Shift + arrow keys to resize). Every change saves itself ("All changes saved"). "+ Add a widget here" in any empty space adds one exactly there: pick a type — Number tile (one big number: quotes won, quotes sent, new enquiries, chats waiting, follow-ups overdue, open deals), Chart or table (a ready-made question or one of your saved reports), Action list (follow-ups due today, chats waiting for our reply, quotes waiting on the buyer, deals gone quiet — click a row to open it), Leaderboard (team ranked by won quote value, deals won, calls made or chats answered) or Heading (a title for a section) — then press Add. Each widget has "Settings" (change what it shows; "Follow the dashboard's filters") and "Remove". At the top: the dashboard name, which filters viewers get (Time, Team member) and "Delete this dashboard". Press "Done editing" to see it. On a phone the widgets stack one under another. #}
 {% block title %}Edit {{ dash.name }} — Reports — PhiXtra Portal{% endblock %}
 
 {% block head %}
 <style>
-  /* Reports pages: a strip at the top for the Ask PhiXtra button, so it never covers the page's buttons (20 Nov 2026) */
-  .de{padding-top:52px}
-  @media (max-width:640px){.de{padding-top:40px}}
-  /* Edit dashboard R3 (19 Nov 2026) — approved mock-up EPpwZTeFt5iccD8SH155P1 screen 4 */
-  .de{--navy:#0B1F3A;--blue:#1D4ED8;--sub:#5B6675;--edge:#E3E7ED}
-  .de-bar{background:var(--navy);color:#fff;border-radius:12px;padding:12px 18px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
-  .de-bar span{font-size:13px;color:#C9D3E0}
-  .de-btn{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border-radius:8px;font-size:14px;font-weight:600;
-    border:1px solid #D5DBE3;background:#fff;color:var(--navy);text-decoration:none;cursor:pointer;font-family:inherit}
-  .de-btn.ghost{background:transparent;color:#fff;border-color:#5B7090}
-  .de-btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
-  .de-btn.sm{min-height:32px;font-size:13px;padding:0 10px}
-  .de-layout{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;margin-top:18px}
-  .de-canvas{flex:999 1 560px;min-width:0;background-image:radial-gradient(#D5DBE3 1px,transparent 1px);background-size:16px 16px;padding:12px;border-radius:12px}
-  .de-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px}
-  .de-box{background:#fff;border:1px dashed #AEB8C5;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0}
-  .de-box.dragging{opacity:.4}.de-box.over{outline:3px solid var(--blue)}
-  .de-s{grid-column:span 3}.de-m{grid-column:span 6}.de-l{grid-column:span 9}.de-w{grid-column:span 12}
-  @media (max-width:1100px){.de-s{grid-column:span 6}.de-m,.de-l,.de-w{grid-column:span 12}}
-  @media (max-width:640px){.de-s{grid-column:span 12}}
-  .de-handle{cursor:grab;font-weight:700;color:var(--navy);font-size:14px;display:flex;gap:6px;align-items:flex-start}
-  .de-meta{font-size:12px;color:var(--sub)}
-  .de-ctrl{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-  .de-sel{font-family:inherit;font-size:13px;min-height:32px;border:1px solid #D5DBE3;border-radius:6px;padding:0 8px;background:#fff}
-  .de-ctrl label{font-size:12.5px;display:inline-flex;gap:6px;align-items:center}
-  .de-x{border:0;background:none;color:#B91C1C;font-family:inherit;font-size:13px;cursor:pointer;padding:6px 2px}
-  .de-side{flex:1 1 320px;max-width:380px;display:flex;flex-direction:column;gap:16px}
-  .de-card{background:#fff;border:1px solid var(--edge);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px}
-  .de-card h2{margin:0;font-size:15px;color:var(--navy)}
-  .de-lib{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--edge);border-radius:8px;font-size:13px}
-  .de-lib small{display:block;color:var(--sub);font-size:12px}
-  .de-in{font-family:inherit;font-size:14px;min-height:38px;border:1px solid #D5DBE3;border-radius:8px;padding:0 10px;box-sizing:border-box;width:100%}
-  .de-tabs{display:flex;gap:4px;background:#F1F5F9;border-radius:10px;padding:4px}
-  .de-tabs button{flex:1;min-height:36px;border:0;background:none;border-radius:8px;font-family:inherit;font-size:13px;color:#475569;cursor:pointer}
-  .de-tabs button[aria-selected="true"]{background:#fff;color:#0B1F3A;font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.08)}
-  .de-list{display:flex;flex-direction:column;gap:6px;max-height:440px;overflow-y:auto}
-  .de-side [hidden]{display:none!important}   /* 21 Nov 2026: the tabs' panels really hide (display:flex beat the hidden attribute) */
-  .de-ico{width:32px;height:32px;border-radius:8px;background:#DBEAFE;color:#1E40AF;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;font-size:13px}
-  .de-btn.go{background:#16A34A;border-color:#16A34A;color:#fff}
-  .de-lib{gap:10px}
-  .de-note{width:100%;min-height:70px;font-family:inherit;font-size:13.5px;border:1px solid #D5DBE3;border-radius:8px;padding:8px;box-sizing:border-box;resize:vertical}
+  /* Dashboard widgets editor (21 Nov 2026) — approved mock-up Nbf3F8K2ShDdocrnpbrTGr screen 7 */
+  .ge{padding-top:52px;--navy:#0B1D40;--blue:#1D4ED8;--sub:#5B6675;--edge:#E3E7ED;display:flex;flex-direction:column;gap:14px;max-width:1240px}
+  @media (max-width:640px){.ge{padding-top:40px}}
+  .ge [hidden]{display:none!important}
+  .ge-bar{background:var(--navy);color:#fff;border-radius:12px;padding:12px 18px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+  .ge-bar small{color:#B8C4D9;font-size:13px}
+  .ge-pill{border-radius:14px;padding:6px 12px;font-size:13px;font-weight:700;background:#DCFCE7;color:#14532D}
+  .ge-pill.bad{background:#FEE2E2;color:#991B1B}.ge-pill.busy{background:#E0E7FF;color:#1E3A8A}
+  .ge-done{background:#fff;color:var(--navy);border-radius:8px;padding:0 16px;min-height:42px;display:inline-flex;align-items:center;font-weight:700;font-size:14px;text-decoration:none}
+  .ge-done:hover{text-decoration:none;color:var(--navy);opacity:.92}
+  .ge-set{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;background:#fff;border:1px solid var(--edge);border-radius:12px;padding:12px 16px}
+  .ge-lbl{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--sub);font-weight:700}
+  .ge-in{min-height:42px;border:1px solid #D5DBE3;border-radius:8px;padding:0 10px;font-size:15px;font-family:inherit;box-sizing:border-box}
+  .ge-chk{display:flex;gap:6px;align-items:center;font-weight:400;font-size:14px;color:#1F2A37;min-height:42px}
+  .ge-chk input{width:18px;height:18px}
+  .ge-del{min-height:42px;border:0;background:none;color:#B91C1C;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;padding:0 6px}
+  .ge-grid{position:relative;border:1px dashed #C5CDD8;border-radius:12px;background-color:#FBFCFE;padding:0;touch-action:none}
+  .ge-w{position:absolute;background:#fff;border:1px solid #D5DBE3;border-radius:10px;box-shadow:0 1px 2px rgba(0,0,0,.05);display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box}
+  .ge-w.moving{box-shadow:0 12px 30px rgba(11,29,64,.22);border-color:var(--blue);z-index:5;opacity:.95}
+  .ge-w.new{border:2px solid #16A34A}
+  .ge-wh{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:6px 8px 4px 6px;border-bottom:1px solid #F0F2F5;flex:none}
+  .ge-handle{display:flex;gap:6px;align-items:center;min-height:32px;padding:0 6px;border:0;background:none;font-family:inherit;font-size:11.5px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.4px;cursor:grab;border-radius:6px;min-width:0}
+  .ge-handle:focus-visible{outline:2px solid var(--blue)}
+  .ge-handle b{font-size:15px;color:#94A3B8}
+  .ge-handle span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ge-acts{display:flex;gap:2px;flex:none}
+  .ge-acts button{min-height:32px;padding:0 8px;border:0;background:none;font-family:inherit;font-size:12.5px;cursor:pointer;border-radius:6px}
+  .ge-acts .s{color:var(--blue)}.ge-acts .r{color:#B91C1C}
+  .ge-acts button:hover{background:#F1F5F9}
+  .ge-body{flex:1;min-height:0;overflow:auto;padding:8px 12px 10px}
+  .ge-size{position:absolute;right:0;bottom:0;width:26px;height:26px;cursor:nwse-resize;display:flex;align-items:flex-end;justify-content:flex-end;padding:2px 4px;color:#94A3B8;font-size:14px;box-sizing:border-box;user-select:none}
+  .ge-slot{position:absolute;border:2px dashed #93B4F5;background:#F5F8FF;color:#1D4ED8;border-radius:10px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;box-sizing:border-box}
+  .ge-slot:hover{background:#EAF1FF}
+  .ge-note{font-size:13px;color:var(--sub);margin:0}
+  .ge-head b{display:block;font-size:20px;color:var(--navy)}.ge-head span{display:block;font-size:14px;color:var(--sub);margin-top:4px;white-space:pre-line}
+  .ge-loading{color:var(--sub);font-size:13px}
+  .ge-dlg{margin:auto;position:fixed;inset:0;height:fit-content;max-height:calc(100vh - 48px);overflow:auto;border:0;border-radius:14px;padding:22px;width:calc(100% - 32px);max-width:980px;box-shadow:0 20px 50px rgba(11,29,64,.25);font-family:inherit;color:#1F2A37}
+  .ge-dlg::backdrop{background:rgba(11,29,64,.35)}
+  .ge-dlg [hidden]{display:none!important}
+  .ge-dh{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+  .ge-dh h2{margin:0;font-size:20px;color:var(--navy)}
+  .ge-x{min-width:44px;min-height:44px;border:1px solid #D5DBE3;background:#fff;border-radius:8px;font-size:18px;cursor:pointer}
+  .ge-types{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px}
+  .ge-type{text-align:left;border:1px solid #D5DBE3;border-radius:12px;padding:16px;background:#fff;font-family:inherit;cursor:pointer;display:flex;gap:12px;align-items:flex-start;min-height:92px}
+  .ge-type:hover{border-color:var(--blue)}
+  .ge-type i{flex:none;width:40px;height:40px;border-radius:10px;background:#E8EEFC;color:#2563EB;display:flex;align-items:center;justify-content:center;font-size:17px;font-style:normal;font-weight:800}
+  .ge-type b{display:block;font-size:15px;color:var(--navy)}.ge-type span span{display:block;font-size:13px;color:var(--sub);margin-top:4px}
+  .ge-back{border:0;background:none;color:var(--blue);font-family:inherit;font-size:14px;cursor:pointer;padding:4px 0;margin-bottom:8px}
+  .ge-picks{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px}
+  .ge-pick{border:1px solid #D5DBE3;border-radius:10px;padding:12px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between;margin:0}
+  .ge-pick b{display:block;font-size:14.5px;color:var(--navy)}.ge-pick small{display:block;font-size:12.5px;color:var(--sub);margin-top:3px}
+  .ge-add{flex:none;background:#16A34A;color:#fff;border:0;border-radius:8px;padding:0 14px;min-height:40px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer}
+  .ge-tabs{display:flex;gap:6px;border-bottom:1px solid var(--edge);margin-bottom:12px}
+  .ge-tabs button{min-height:44px;padding:0 16px;border:0;background:none;font-family:inherit;font-size:15px;cursor:pointer;margin-bottom:-1px;color:var(--sub);border-bottom:3px solid transparent}
+  .ge-tabs button[aria-selected=true]{color:var(--blue);font-weight:700;border-bottom-color:var(--blue)}
+  .ge-topics{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .ge-topics button{min-height:40px;padding:0 14px;border-radius:20px;font-family:inherit;font-size:13.5px;cursor:pointer;background:#fff;color:#1F2A37;border:1px solid #D5DBE3}
+  .ge-topics button[aria-pressed=true]{background:var(--navy);color:#fff;border-color:var(--navy);font-weight:700}
+  .gs-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:18px 22px;border-bottom:1px solid var(--edge)}
+  .gs-head h2{margin:2px 0 0;font-size:20px;color:var(--navy)}
+  .gs-kind{font-size:12px;color:var(--sub);text-transform:uppercase;letter-spacing:.4px;font-weight:700}
+  .gs-body{display:flex;flex-wrap:wrap;gap:24px;padding:20px 22px}
+  .gs-left{flex:1 1 360px;display:flex;flex-direction:column;gap:18px;min-width:0}
+  .gs-right{flex:0 1 300px;display:flex;flex-direction:column;gap:8px;min-width:0}
+  .gs-f{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:700;color:#374151;border:0;padding:0;margin:0;min-width:0}
+  .gs-f legend{font-size:13px;font-weight:700;color:#374151;padding:0;margin-bottom:6px}
+  .gs-f .ge-in{width:100%;font-weight:400;color:#1F2A37;background:#fff}
+  .gs-help{font-size:13px;font-weight:400;color:var(--sub)}
+  .gs-radios{display:flex;flex-direction:column;gap:6px}
+  .gs-r{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:14px;font-weight:400;color:#1F2A37;min-height:40px}
+  .gs-r input[type=radio]{width:18px;height:18px;margin:0;flex:none}
+  .gs-r .ge-in{width:auto;flex:1 1 180px}
+  .gs-now{font-size:14px;font-weight:400;color:var(--sub);background:#F5F7FA;border-radius:8px;padding:10px 12px}
+  .gs-seg{display:inline-flex;border:1px solid #D5DBE3;border-radius:8px;overflow:hidden;align-self:flex-start}
+  .gs-seg label{position:relative}
+  .gs-seg input{position:absolute;opacity:0;width:1px;height:1px}
+  .gs-seg span{min-height:40px;min-width:52px;display:flex;align-items:center;justify-content:center;padding:0 14px;font-size:14px;font-weight:400;background:#fff;color:#1F2A37;cursor:pointer}
+  .gs-seg input:checked + span{background:var(--navy);color:#fff;font-weight:700}
+  .gs-seg input:focus-visible + span{outline:2px solid var(--blue);outline-offset:-2px}
+  .gs-pvl{font-size:13px;font-weight:700;color:#374151}
+  .gs-pv{border:1px solid #D5DBE3;border-radius:10px;padding:12px 14px;min-height:140px;max-height:360px;overflow:auto}
+  .gs-foot{display:flex;gap:8px;justify-content:flex-end;padding:14px 22px;border-top:1px solid var(--edge)}
+  .gs-cancel{min-height:44px;padding:0 18px;border:1px solid #D5DBE3;background:#fff;border-radius:8px;font-family:inherit;font-size:14px;cursor:pointer}
+  .ge-opt{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid #D5DBE3;border-radius:10px;font-size:14px;cursor:pointer}
+  .ge-opt small{display:block;color:var(--sub);font-size:12.5px;margin-top:2px}
+  @media (max-width:760px){
+    .ge-grid{border:0;background:none;height:auto!important;display:flex;flex-direction:column;gap:12px}
+    .ge-w{position:static!important;width:auto!important;height:auto!important;min-height:var(--mh)}
+    .ge-size,.ge-slot.gap{display:none}
+    .ge-slot.end{position:static!important;width:auto!important;height:56px!important}
+    .ge-handle{cursor:default}
+  }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="de">
-  <div class="de-bar">
-    <div><b>Editing “<span id="deTitle" style="color:#fff;font-size:inherit">{{ dash.name }}</span>”</b> <span>· drag boxes to move them, or use Earlier / Later · every change saves itself</span></div>
-    <div style="display:flex;gap:10px;align-items:center">
-      <span id="deSaved" role="status" aria-live="polite" style="font-size:13px;font-weight:700;color:#052E16;background:#4ADE80;border-radius:999px;padding:5px 12px">All changes saved</span>
-      <a class="de-btn" href="{{ url_for('reports.dashboard', dash_id=dash.id) }}" id="deDone" style="font-weight:800">Done editing</a>
+<div class="ge">
+  <div class="ge-bar">
+    <span><b style="font-size:17px">Editing “<span id="geName">{{ dash.name }}</span>”</b> <small>· drag a widget to move it · pull its corner to resize · + in any empty space adds one there</small></span>
+    <span style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span class="ge-pill" id="geStatus" role="status" aria-live="polite">All changes saved</span>
+      <a class="ge-done" href="{{ url_for('reports.dashboard', dash_id=dash.id) }}" id="geDone">Done editing</a>
+    </span>
+  </div>
+
+  <div class="ge-set">
+    <label class="ge-lbl" style="flex:1 1 240px">Dashboard name
+      <input class="ge-in" id="geNameIn" value="{{ dash.name }}" maxlength="80">
+    </label>
+    <div class="ge-lbl">Filters viewers get
+      <span style="display:flex;gap:14px;flex-wrap:wrap">
+        {% for k, l in dash_filters %}<label class="ge-chk"><input type="checkbox" data-filter="{{ k }}" {{ 'checked' if k in (dash.filters or []) }}>{{ l }}</label>{% endfor %}
+      </span>
     </div>
+    {% if can_manage %}
+    <form method="POST" action="{{ url_for('reports.dashboard_delete', dash_id=dash.id) }}" onsubmit="return confirm('Delete the dashboard “' + document.getElementById('geNameIn').value + '”? Its widgets go too. Saved reports are kept.')">
+      <button type="submit" class="ge-del">Delete this dashboard</button>
+    </form>
+    {% endif %}
   </div>
-  <div id="deMsg" role="status" aria-live="polite" style="font-size:13px;color:#991B1B;margin-top:8px"></div>
 
-  <div class="de-layout">
-    <section class="de-canvas" aria-label="Dashboard layout">
-      {% if not dash.boxes %}<p style="background:#fff;border-radius:10px;padding:20px;margin:0;color:var(--sub);text-align:center">No boxes yet. Add a ready-made question, one of your reports, or build a new one from the right.</p>{% endif %}
-      <div class="de-grid" id="deGrid">
-        {% for b in dash.boxes %}
-          <div class="de-box de-{{ b.size }}" draggable="true" data-id="{{ b.id }}" id="box-{{ b.id }}" data-note="{{ '1' if not b.report_id else '' }}">
-            <div class="de-handle"><span aria-hidden="true">⠿</span><span>{{ b.report_name if b.report_id else 'Text note' }}</span></div>
-            {% if b.report_id %}
-              {% set c = b.config or {} %}
-              <div class="de-meta">{{ RB.SUBJECTS[b.subject].label if b.subject in RB.SUBJECTS else '' }} · {{ chart_names.get(c.get('chart')) or 'Suggested chart' }}</div>
-            {% else %}
-              <textarea class="de-note" aria-label="Note text" maxlength="2000">{{ b.note }}</textarea>
-            {% endif %}
-            <div class="de-ctrl">
-              <select class="de-sel" aria-label="Box size" data-size>
-                {% for k, l in sizes %}<option value="{{ k }}" {{ 'selected' if b.size == k }}>{{ l }}</option>{% endfor %}
-              </select>
-              <button type="button" class="de-btn sm" data-move="-1" aria-label="Move earlier">Earlier</button>
-              <button type="button" class="de-btn sm" data-move="1" aria-label="Move later">Later</button>
-              {% if b.report_id %}<label><input type="checkbox" data-usef {{ 'checked' if b.use_filters }}> Use dashboard filters</label>{% endif %}
-              <button type="button" class="de-x" data-remove>Remove</button>
-            </div>
-          </div>
-        {% endfor %}
-      </div>
-    </section>
-
-    <aside class="de-side">
-      <div class="de-card">
-        <h2>Dashboard name</h2>
-        <input class="de-in" id="deName" value="{{ dash.name }}" maxlength="80" aria-label="Dashboard name">
-      </div>
-      <div class="de-card">
-        <h2>Add a box</h2>
-        <div role="tablist" aria-label="Add from" class="de-tabs">
-          <button type="button" role="tab" aria-selected="true" data-tab="ready">Ready-made</button>
-          <button type="button" role="tab" aria-selected="false" data-tab="mine">My reports ({{ reports|length }})</button>
-          <button type="button" role="tab" aria-selected="false" data-tab="new">Build new</button>
-        </div>
-        <input class="de-in" type="search" id="deSearch" placeholder="Search, e.g. overdue, WhatsApp, team" aria-label="Search boxes">
-        <div data-panel="ready" class="de-list">
-          {% for r in ready %}
-            <form method="POST" action="{{ url_for('reports.dashboard_add', dash_id=dash.id) }}" class="de-lib" data-name="{{ (r.q ~ ' ' ~ r.label)|lower }}">
-              <input type="hidden" name="ready" value="{{ r.key }}">
-              <span class="de-ico" aria-hidden="true">{{ r.icon }}</span>
-              <span style="flex:1;min-width:0">{{ r.q }}<small>{{ r.how }}</small></span>
-              <button type="submit" class="de-btn sm go">Add</button>
-            </form>
-          {% else %}
-            <p style="margin:0;font-size:13px;color:var(--sub)">No ready-made reports for your plan yet.</p>
-          {% endfor %}
-        </div>
-        <div data-panel="mine" class="de-list" hidden>
-          {% for r in reports %}
-            <form method="POST" action="{{ url_for('reports.dashboard_add', dash_id=dash.id) }}" class="de-lib" data-name="{{ r.name|lower }}">
-              <input type="hidden" name="report_id" value="{{ r.id }}">
-              <span style="flex:1;min-width:0">{{ r.name }}<small>{{ r.subject_label }}</small></span>
-              <button type="submit" class="de-btn sm go">Add</button>
-            </form>
-          {% else %}
-            <p style="margin:0;font-size:13px;color:var(--sub)">No saved reports yet. Use Ready-made or Build new.</p>
-          {% endfor %}
-        </div>
-        <div data-panel="new" hidden>
-          <p style="margin:0 0 10px;font-size:13.5px;color:#1F2A37;line-height:1.5">Opens the report steps. When you press <b>Create and add</b>, the report is saved, added to this dashboard, and you come straight back here.</p>
-          <a class="de-btn go" href="{{ url_for('reports.wizard') }}?dash={{ dash.id }}" style="font-weight:800;width:100%;box-sizing:border-box">Build a new report →</a>
-        </div>
-        <form method="POST" action="{{ url_for('reports.dashboard_add', dash_id=dash.id) }}">
-          <input type="hidden" name="note" value="Write a heading or explanation here">
-          <button type="submit" class="de-btn" style="width:100%;border-style:dashed;color:var(--blue)">+ Text note (heading or explanation)</button>
-        </form>
-      </div>
-      <div class="de-card">
-        <h2>Dashboard filters</h2>
-        <p style="margin:0;font-size:13px;color:var(--sub)">Shown at the top for viewers. Each box can opt out.</p>
-        {% for k, l in dash_filters %}
-          <label style="display:flex;gap:10px;align-items:center;font-size:14px"><input type="checkbox" data-filter="{{ k }}" {{ 'checked' if k in (dash.filters or []) }} style="width:18px;height:18px">{{ l }}</label>
-        {% endfor %}
-      </div>
-      {% if can_manage %}
-      <form method="POST" action="{{ url_for('reports.dashboard_delete', dash_id=dash.id) }}" class="de-card"
-            data-msg="Delete the dashboard “{{ dash.name }}”? The reports in it are kept in All reports." onsubmit="return confirm(this.dataset.msg)">
-        <button type="submit" class="de-btn" style="color:#B91C1C">Delete this dashboard</button>
-      </form>
-      {% endif %}
-    </aside>
-  </div>
+  <div class="ge-grid" id="geGrid" aria-label="Dashboard widgets"></div>
+  <p class="ge-note">Widgets snap to the grid. Focus a widget's ⠿ handle and use the arrow keys to move it, or Shift + arrow keys to resize. On a phone the widgets stack one under another.</p>
 </div>
 
+<dialog class="ge-dlg" id="geAdd" aria-labelledby="geAddT">
+  <div class="ge-dh"><h2 id="geAddT">Add a widget</h2><button type="button" class="ge-x" data-close aria-label="Close">✕</button></div>
+  <div data-step="type" class="ge-types">
+    {% for k, name, icon, desc in types %}
+      <button type="button" class="ge-type" data-type="{{ k }}"><i aria-hidden="true">{{ icon }}</i><span><b>{{ name }}</b><span>{{ desc }}</span></span></button>
+    {% endfor %}
+  </div>
+  {% for k in ('number', 'list', 'board') %}
+  <div data-step="{{ k }}" hidden>
+    <button type="button" class="ge-back" data-back>‹ Other widget types</button>
+    <p class="ge-note" style="margin-bottom:12px">{{ {'number': 'Pick the number. It follows the dashboard’s Time and Team member filters (numbers marked “Right now” ignore Time).', 'list': 'Pick the list. Each row opens the record so you can act on it.', 'board': 'Rank your team by:'}[k] }}</p>
+    <div class="ge-picks">
+      {% for p in picks[k] %}
+        <form method="POST" action="{{ url_for('reports.dashboard_add', dash_id=dash.id) }}" class="ge-pick" data-place>
+          <input type="hidden" name="kind" value="{{ k }}"><input type="hidden" name="pick" value="{{ p.key }}">
+          <span><b>{{ p.label }}</b><small>{{ p.help }}</small></span>
+          <button type="submit" class="ge-add">Add</button>
+        </form>
+      {% else %}
+        <p class="ge-note">Nothing of this kind is available for your business yet.</p>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+  <div data-step="report" hidden>
+    <button type="button" class="ge-back" data-back>‹ Other widget types</button>
+    <div class="ge-tabs" role="tablist">
+      <button type="button" role="tab" aria-selected="true" data-rtab="ready">Ready-made</button>
+      <button type="button" role="tab" aria-selected="false" data-rtab="mine">My reports ({{ mine|length }})</button>
+    </div>
+    <div data-rpanel="ready">
+      <div class="ge-topics">{% for t in topics %}<button type="button" data-topic="{{ t.key }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">{{ t.label }}</button>{% endfor %}</div>
+      {% for t in topics %}
+      <div class="ge-picks" data-topicpanel="{{ t.key }}" {% if not loop.first %}hidden{% endif %}>
+        {% for q in t.qs %}
+          <form method="POST" action="{{ url_for('reports.dashboard_add', dash_id=dash.id) }}" class="ge-pick" data-place>
+            <input type="hidden" name="kind" value="report"><input type="hidden" name="ready" value="{{ q.key }}">
+            <span><b>{{ q.q }}</b><small>{{ q.how }}</small></span>
+            <button type="submit" class="ge-add">Add</button>
+          </form>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    <div data-rpanel="mine" hidden>
+      <div class="ge-picks">
+        {% for r in mine %}
+          <form method="POST" action="{{ url_for('reports.dashboard_add', dash_id=dash.id) }}" class="ge-pick" data-place>
+            <input type="hidden" name="kind" value="report"><input type="hidden" name="report_id" value="{{ r.id }}">
+            <span><b>{{ r.name }}</b><small>{{ r.what }} · {{ r.who }}</small></span>
+            <button type="submit" class="ge-add">Add</button>
+          </form>
+        {% else %}
+          <p class="ge-note">No saved reports yet. Open a ready-made question and press “Save as my report”, or build a custom report.</p>
+        {% endfor %}
+      </div>
+      <p class="ge-note" style="margin-top:10px">Only reports you or your team saved. The parts of the ready-made Sales overview are not listed here — add them from Ready-made.</p>
+    </div>
+    <p class="ge-note" style="margin-top:12px">Need something else? <a href="{{ url_for('reports.wizard', dash=dash.id) }}">Build a new report</a> — press <b>Create and add</b> and you come back here with it added.</p>
+  </div>
+  <div data-step="heading" hidden>
+    <button type="button" class="ge-back" data-back>‹ Other widget types</button>
+    <form method="POST" action="{{ url_for('reports.dashboard_add', dash_id=dash.id) }}" data-place style="display:flex;flex-direction:column;gap:10px;max-width:560px">
+      <input type="hidden" name="kind" value="heading">
+      <label class="ge-lbl">Heading (first line) and an optional explanation below it
+        <textarea name="note" rows="3" class="ge-in" style="padding:10px" required>This week's pipeline</textarea>
+      </label>
+      <button type="submit" class="ge-add" style="align-self:flex-start;min-height:44px;padding:0 18px;font-size:14px">Add</button>
+    </form>
+  </div>
+</dialog>
+
+{# ── A widget's Settings (21 Nov 2026 redesign, approved mock-up screen 8) ── #}
+<dialog class="ge-dlg" id="geSet" aria-labelledby="geSetT" style="max-width:860px;padding:0">
+  <form method="POST" id="geSetForm">
+    <div class="gs-head">
+      <div><div class="gs-kind" id="geSetKind"></div><h2 id="geSetT"></h2></div>
+      <button type="button" class="ge-x" data-close aria-label="Close">✕</button>
+    </div>
+    <div class="gs-body">
+      <div class="gs-left">
+        <label class="gs-f" data-f="title">Name on the widget
+          <input name="title" id="gsTitle" maxlength="80" class="ge-in">
+        </label>
+        <label class="gs-f" data-f="pick"><span id="gsPickLbl">It shows</span>
+          <select name="pick" id="gsPick" class="ge-in"></select>
+          <span class="gs-help" id="gsHelp"></span>
+        </label>
+        <label class="gs-f" data-f="report">It shows
+          <select id="gsReport" class="ge-in">
+            <option value="">Keep the report it shows now</option>
+            {% if mine %}<optgroup label="Your saved reports">{% for r in mine %}<option value="r:{{ r.id }}">{{ r.name }}</option>{% endfor %}</optgroup>{% endif %}
+            {% for t in topics %}<optgroup label="Ready-made · {{ t.label }}">{% for q in t.qs %}<option value="q:{{ q.key }}">{{ q.q }}</option>{% endfor %}</optgroup>{% endfor %}
+          </select>
+          <input type="hidden" name="report_id" id="gsReportId"><input type="hidden" name="ready" id="gsReady">
+          <span class="gs-help">To change columns, filters or the chart type, <a href="#" id="gsOpen" target="_blank" rel="noopener">open the report</a>.</span>
+        </label>
+        <fieldset class="gs-f" data-f="time">
+          <legend>Time</legend>
+          <span class="gs-now" id="gsNow">Always “right now” — this number doesn’t depend on a time.</span>
+          <span id="gsTimeChoice" class="gs-radios">
+            <label class="gs-r"><input type="radio" name="time" value="dash"> Same as the dashboard’s Time filter</label>
+            <label class="gs-r"><input type="radio" name="time" value="own"> Always {{ dp.trigger('gsTimeBtn') }}</label>
+            <input type="hidden" name="period" id="gsPeriod"><input type="hidden" name="date_from" id="gsFrom"><input type="hidden" name="date_to" id="gsTo">
+          </span>
+        </fieldset>
+        <fieldset class="gs-f" data-f="member">
+          <legend>Team member</legend>
+          <span class="gs-radios">
+            <label class="gs-r"><input type="radio" name="member" value="dash"> Same as the dashboard’s Team member filter</label>
+            <label class="gs-r"><input type="radio" name="member" value="own"> Always
+              <select name="member_key" id="gsMemberKey" class="ge-in" style="min-height:38px;font-size:14px">
+                <option value="">Everyone</option>
+                {% for p in people %}<option value="{{ p.key }}">{{ p.display }}</option>{% endfor %}
+                <option value="__none__">Unassigned</option>
+              </select></label>
+          </span>
+        </fieldset>
+        <fieldset class="gs-f" data-f="rows">
+          <legend id="gsRowsLbl">Rows to show</legend>
+          <span class="gs-seg" id="gsRows"></span>
+        </fieldset>
+        <label class="gs-f" data-f="heading">Heading
+          <input name="heading" id="gsHeading" maxlength="200" class="ge-in">
+        </label>
+        <label class="gs-f" data-f="heading">Explanation (optional)
+          <textarea name="explanation" id="gsExpl" rows="3" class="ge-in" style="padding:10px"></textarea>
+        </label>
+      </div>
+      <div class="gs-right">
+        <span class="gs-pvl">Preview</span>
+        <div class="gs-pv" id="gsPv" aria-live="polite"></div>
+        <span class="gs-help">Updates as you change the settings.</span>
+      </div>
+    </div>
+    <div class="gs-foot">
+      <button type="button" data-close class="gs-cancel">Cancel</button>
+      <button type="submit" class="ge-add" style="min-height:44px;padding:0 20px;font-size:14px">Save</button>
+    </div>
+  </form>
+</dialog>
+
+{% import "portal/_report_chart.html" as rc %}
+{{ rc.chart_assets() }}
+{{ dp.assets() }}
 <script>
 (function () {
-  var grid = document.getElementById('deGrid'), dragged = null;
-  grid.addEventListener('dragstart', function (e) { dragged = e.target.closest('.de-box'); if (dragged) dragged.classList.add('dragging'); });
-  grid.addEventListener('dragend', function () { if (dragged) dragged.classList.remove('dragging'); grid.querySelectorAll('.over').forEach(function (x) { x.classList.remove('over'); }); dragged = null; });
-  grid.addEventListener('dragover', function (e) {
-    var t = e.target.closest('.de-box'); if (!t || !dragged || t === dragged) return;
-    e.preventDefault(); grid.querySelectorAll('.over').forEach(function (x) { x.classList.remove('over'); }); t.classList.add('over');
-  });
-  grid.addEventListener('drop', function (e) {
-    var t = e.target.closest('.de-box'); if (!t || !dragged || t === dragged) return;
-    e.preventDefault();
-    var boxes = Array.prototype.slice.call(grid.children);
-    if (boxes.indexOf(dragged) < boxes.indexOf(t)) t.after(dragged); else t.before(dragged);
-  });
-  grid.addEventListener('click', function (e) {
-    var box = e.target.closest('.de-box'); if (!box) return;
-    var mv = e.target.closest('[data-move]');
-    if (mv) {
-      if (mv.getAttribute('data-move') === '-1' && box.previousElementSibling) box.previousElementSibling.before(box);
-      if (mv.getAttribute('data-move') === '1' && box.nextElementSibling) box.nextElementSibling.after(box);
-      mv.focus();
+  var W = {{ widgets | tojson }}, COLS = 12, ROW = 64, GAP = 12, MINS = {{ mins | tojson }};
+  var LAYOUT = '{{ url_for("reports.dashboard_layout", dash_id=dash.id) }}';
+  var BOX = '{{ url_for("reports.dashboard_box", dash_id=dash.id, box_id=0) }}'.replace(/0$/, '');
+  var SETTINGS = '{{ url_for("reports.dashboard_widget_settings", dash_id=dash.id, box_id=0) }}'.replace(/0\/settings$/, '');
+  var grid = document.getElementById('geGrid'), status = document.getElementById('geStatus');
+  var narrow = function () { return window.matchMedia('(max-width:760px)').matches; };
+  var newId = (location.hash.match(/^#box-(\d+)$/) || [])[1];
+
+  function cellW() { return (grid.clientWidth - GAP * (COLS + 1)) / COLS; }
+  function px(w) { var c = cellW(); return {left: GAP + w.x * (c + GAP), top: GAP + w.y * (ROW + GAP), width: w.w * c + (w.w - 1) * GAP, height: w.h * ROW + (w.h - 1) * GAP}; }
+  function overlap(a, b) { return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h; }
+  function settle(moved) {
+    var queue = [moved], guard = 0;
+    while (queue.length && guard++ < 500) {
+      var m = queue.shift();
+      W.forEach(function (o) { if (o !== m && overlap(m, o)) { o.y = m.y + m.h; queue.push(o); } });
     }
-    if (e.target.closest('[data-remove]')) box.remove();
-  });
-  grid.addEventListener('change', function (e) {
-    var s = e.target.closest('[data-size]'); if (!s) return;
-    var box = s.closest('.de-box'); box.className = box.className.replace(/de-[smlw]\b/, 'de-' + s.value);
-  });
-  var search = document.getElementById('deSearch');
-  if (search) search.addEventListener('input', function () {
-    var q = search.value.trim().toLowerCase();
-    document.querySelectorAll('.de-list [data-name]').forEach(function (f) { f.style.display = !q || f.getAttribute('data-name').indexOf(q) !== -1 ? '' : 'none'; });
-  });
-  var saved = document.getElementById('deSaved'), timer = null, pending = false, busy = false;
-  function status(t, bad) { saved.textContent = t; saved.style.background = bad ? '#FEE2E2' : (t === 'Saving…' ? '#FEF3C7' : '#4ADE80'); saved.style.color = bad ? '#991B1B' : (t === 'Saving…' ? '#78350F' : '#052E16'); }
+  }
+  function bottom() { return W.reduce(function (b, w) { return Math.max(b, w.y + w.h); }, 0); }
+  function free(x, y) { return !W.some(function (w) { return x >= w.x && x < w.x + w.w && y >= w.y && y < w.y + w.h; }); }
+  function gaps() {
+    var out = [], used = [], B = bottom();
+    function taken(x, y) { return !free(x, y) || used.some(function (s) { return x >= s.x && x < s.x + s.w && y >= s.y && y < s.y + s.h; }); }
+    for (var y = 0; y + 2 <= B; y++) for (var x = 0; x + 3 <= COLS; x++) {
+      var ok = true;
+      for (var dy = 0; dy < 2 && ok; dy++) for (var dx = 0; dx < 3 && ok; dx++) if (taken(x + dx, y + dy)) ok = false;
+      if (!ok) continue;
+      var w = 3; while (x + w < COLS && w < 6 && !taken(x + w, y) && !taken(x + w, y + 1)) w++;
+      var h = 2; while (y + h < B && h < 4) { var row = true; for (var i = 0; i < w; i++) if (taken(x + i, y + h)) row = false; if (!row) break; h++; }
+      var s = {x: x, y: y, w: w, h: h}; used.push(s); out.push(s);
+      if (out.length >= 2) return out;
+    }
+    return out;
+  }
+
+  function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+  function load(w, el) {
+    var body = el.querySelector('.ge-body');
+    if (w.kind === 'heading') {
+      body.innerHTML = '<div class="ge-head"><b>' + esc(w.head || 'Heading') + '</b>' + (w.more ? '<span>' + esc(w.more) + '</span>' : '') + '</div>';
+      return;
+    }
+    body.innerHTML = '<div class="ge-loading">Loading ' + esc(w.title) + '…</div>';
+    var h = Math.max(140, px(w).height - 110);
+    fetch(BOX + w.id + '?h=' + Math.round(h), {credentials: 'same-origin'}).then(function (r) { if (!r.ok) throw 0; return r.text(); })
+      .then(function (html) { body.innerHTML = html; body.querySelectorAll('canvas[id]').forEach(function (c) { RBC.draw(c.id); }); })
+      .catch(function () { body.innerHTML = '<div class="ge-loading">This widget could not be loaded.</div>'; });
+  }
+  function place(w, el) {
+    if (narrow()) { el.style.cssText = '--mh:' + (w.h * ROW + (w.h - 1) * GAP) + 'px'; return; }
+    var p = px(w); el.style.left = p.left + 'px'; el.style.top = p.top + 'px'; el.style.width = p.width + 'px'; el.style.height = p.height + 'px';
+  }
+  function draw(reloadIds) {
+    grid.querySelectorAll('.ge-slot').forEach(function (s) { s.remove(); });
+    W.forEach(function (w) {
+      var el = document.getElementById('box-' + w.id);
+      if (!el) {
+        el = document.createElement('section'); el.className = 'ge-w' + (String(w.id) === newId ? ' new' : ''); el.id = 'box-' + w.id;
+        el.setAttribute('aria-label', w.kind_name + ': ' + w.title);
+        el.innerHTML = '<div class="ge-wh"><button type="button" class="ge-handle" aria-label="Move or resize ' + esc(w.title) + ' (arrow keys move, Shift + arrow keys resize)"><b aria-hidden="true">⠿</b><span>' + esc(w.kind_name) + '</span></button>' +
+          '<span class="ge-acts"><button type="button" class="s">Settings</button><button type="button" class="r">Remove</button></span></div>' +
+          '<div class="ge-body"></div><span class="ge-size" aria-hidden="true">◢</span>';
+        grid.appendChild(el); wire(w, el); place(w, el); load(w, el);
+      } else {
+        place(w, el);
+        if (reloadIds && reloadIds.indexOf(w.id) >= 0) load(w, el);
+      }
+    });
+    if (!narrow()) gaps().forEach(function (s) { slot(s, 'gap'); });
+    var B = bottom();
+    slot({x: 0, y: B, w: COLS, h: 2}, 'end');
+    grid.style.height = narrow() ? 'auto' : (GAP + (B + 2) * (ROW + GAP)) + 'px';
+  }
+  function slot(s, cls) {
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'ge-slot ' + cls;
+    b.textContent = W.length ? '+ Add a widget here' : '+ Add your first widget';
+    if (!narrow()) { var p = px(s); b.style.left = p.left + 'px'; b.style.top = p.top + 'px'; b.style.width = p.width + 'px'; b.style.height = p.height + 'px'; }
+    b.addEventListener('click', function () { openAdd(s); });
+    grid.appendChild(b);
+  }
+
+  function wire(w, el) {
+    var handle = el.querySelector('.ge-handle'), corner = el.querySelector('.ge-size');
+    function drag(e, mode) {
+      if (narrow() || e.button > 0) return;
+      e.preventDefault();
+      var sx = e.clientX, sy = e.clientY, start = {x: w.x, y: w.y, w: w.w, h: w.h}, c = cellW();
+      el.classList.add('moving');
+      function mv(ev) {
+        var dx = ev.clientX - sx, dy = ev.clientY - sy;
+        if (mode === 'move') {
+          w.x = Math.max(0, Math.min(COLS - w.w, start.x + Math.round(dx / (c + GAP))));
+          w.y = Math.max(0, start.y + Math.round(dy / (ROW + GAP)));
+        } else {
+          var mn = MINS[w.kind] || [2, 1];
+          w.w = Math.max(mn[0], Math.min(COLS - w.x, start.w + Math.round(dx / (c + GAP))));
+          w.h = Math.max(mn[1], Math.min(20, start.h + Math.round(dy / (ROW + GAP))));
+        }
+        place(w, el);
+      }
+      function up() {
+        document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up);
+        el.classList.remove('moving');
+        if (w.x !== start.x || w.y !== start.y || w.w !== start.w || w.h !== start.h) {
+          settle(w); draw(mode === 'size' ? [w.id] : null); save();
+        }
+      }
+      document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
+    }
+    handle.addEventListener('pointerdown', function (e) { drag(e, 'move'); });
+    corner.addEventListener('pointerdown', function (e) { drag(e, 'size'); });
+    handle.addEventListener('keydown', function (e) {
+      var k = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[e.key];
+      if (!k) return;
+      e.preventDefault();
+      var mn = MINS[w.kind] || [2, 1];
+      if (e.shiftKey) { w.w = Math.max(mn[0], Math.min(COLS - w.x, w.w + k[0])); w.h = Math.max(mn[1], Math.min(20, w.h + k[1])); }
+      else { w.x = Math.max(0, Math.min(COLS - w.w, w.x + k[0])); w.y = Math.max(0, w.y + k[1]); }
+      settle(w); draw(e.shiftKey ? [w.id] : null); save(); handle.focus();
+    });
+    el.querySelector('.ge-acts .r').addEventListener('click', function () {
+      if (!confirm('Remove “' + w.title + '” from this dashboard? Saved reports are kept.')) return;
+      W = W.filter(function (o) { return o !== w; }); el.remove(); draw(); save();
+    });
+    el.querySelector('.ge-acts .s').addEventListener('click', function () { openSettings(w); });
+  }
+
+  var timer = null, busy = false, again = false;
+  function show(t, cls) { status.textContent = t; status.className = 'ge-pill' + (cls ? ' ' + cls : ''); }
   function body() {
-    return {
-      name: document.getElementById('deName').value,
-      filters: Array.prototype.map.call(document.querySelectorAll('[data-filter]:checked'), function (c) { return c.getAttribute('data-filter'); }),
-      boxes: Array.prototype.map.call(grid.querySelectorAll('.de-box'), function (b) {
-        var o = {id: b.getAttribute('data-id'), size: b.querySelector('[data-size]').value};
-        var u = b.querySelector('[data-usef]'); o.use_filters = u ? u.checked : true;
-        var n = b.querySelector('.de-note'); if (n) o.note = n.value;
-        return o;
-      })
-    };
+    return {name: document.getElementById('geNameIn').value.trim(),
+            filters: Array.prototype.slice.call(document.querySelectorAll('[data-filter]:checked')).map(function (c) { return c.getAttribute('data-filter'); }),
+            boxes: W.slice().sort(function (a, b) { return a.y - b.y || a.x - b.x; })
+                    .map(function (w) { return {id: w.id, kind: w.kind, size: 'm', use_filters: w.use_filters, x: w.x, y: w.y, w: w.w, h: w.h}; })};
   }
   function saveNow() {
-    if (busy) { pending = true; return Promise.resolve(); }
-    busy = true; status('Saving…');
-    return fetch('{{ url_for("reports.dashboard_layout", dash_id=dash.id) }}', {method: 'POST', credentials: 'same-origin',
-      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body())})
-      .then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); })
-      .then(function (x) { if (!x[0]) throw new Error(x[1].error || 'save'); status('Saved ✓'); })
-      .catch(function (err) { status('Not saved: ' + (err.message !== 'save' ? err.message : 'please try again'), true); })
-      .then(function () { busy = false; if (pending) { pending = false; return saveNow(); } });
+    timer = null;
+    if (busy) { again = true; return Promise.resolve(); }
+    busy = true; show('Saving…', 'busy');
+    return fetch(LAYOUT, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body())})
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'save'); }); })
+      .then(function () { show('All changes saved'); })
+      .catch(function (e) { show('Not saved — ' + (e.message && e.message !== 'save' ? e.message : 'please try again'), 'bad'); })
+      .then(function () { busy = false; if (again) { again = false; return saveNow(); } });
   }
-  function soon() { clearTimeout(timer); status('Saving…'); timer = setTimeout(saveNow, 500); }
-  grid.addEventListener('drop', function () { setTimeout(soon, 0); });
-  grid.addEventListener('click', function (e) { if (e.target.closest('[data-move]') || e.target.closest('[data-remove]')) soon(); });
-  grid.addEventListener('change', soon);
-  grid.addEventListener('input', function (e) { if (e.target.closest('.de-note')) soon(); });
-  document.getElementById('deName').addEventListener('input', function () { document.getElementById('deTitle').textContent = this.value; soon(); });
-  document.querySelectorAll('[data-filter]').forEach(function (c) { c.addEventListener('change', soon); });
-  // Adding a box reloads the page: save first, so nothing is lost.
-  document.querySelectorAll('.de-side form').forEach(function (f) {
-    if (f.action.indexOf('/delete') !== -1) return;
-    f.addEventListener('submit', function (e) {
-      if (f.getAttribute('data-saved') === '1') return;
-      e.preventDefault(); clearTimeout(timer); saveNow().then(function () { f.setAttribute('data-saved', '1'); f.submit(); });
+  function save() { clearTimeout(timer); show('Saving…', 'busy'); timer = setTimeout(saveNow, 400); }
+  document.getElementById('geNameIn').addEventListener('input', function () { document.getElementById('geName').textContent = this.value; save(); });
+  document.querySelectorAll('[data-filter]').forEach(function (c) { c.addEventListener('change', save); });
+  document.getElementById('geDone').addEventListener('click', function (e) {
+    if (busy || timer) { e.preventDefault(); clearTimeout(timer); var href = this.href; saveNow().then(function () { location.href = href; }); }
+  });
+
+  var add = document.getElementById('geAdd'), spot = null;
+  function step(name) {
+    add.querySelectorAll('[data-step]').forEach(function (s) { s.hidden = s.getAttribute('data-step') !== name; });
+    var t = add.querySelector('[data-type="' + name + '"] b');
+    document.getElementById('geAddT').textContent = name === 'type' ? 'Add a widget' : (t ? t.textContent : 'Add a widget');
+  }
+  function openAdd(s) { spot = s; step('type'); add.showModal(); }
+  add.querySelectorAll('[data-type]').forEach(function (b) { b.addEventListener('click', function () { step(b.getAttribute('data-type')); }); });
+  add.querySelectorAll('[data-back]').forEach(function (b) { b.addEventListener('click', function () { step('type'); }); });
+  add.querySelectorAll('form[data-place]').forEach(function (f) {
+    f.addEventListener('submit', function () {
+      ['x', 'y', 'w'].forEach(function (k) {
+        var i = f.querySelector('input[name="' + k + '"]');
+        if (!i) { i = document.createElement('input'); i.type = 'hidden'; i.name = k; f.appendChild(i); }
+        i.value = spot ? spot[k] : 0;
+      });
     });
   });
-  document.getElementById('deDone').addEventListener('click', function (e) {
-    if (saved.textContent === 'Saving…') { e.preventDefault(); var href = this.href; clearTimeout(timer); saveNow().then(function () { window.location = href; }); }
-  });
-  var tabs = document.querySelectorAll('.de-tabs [data-tab]');
-  tabs.forEach(function (t) {
+  add.querySelectorAll('[data-rtab]').forEach(function (t) {
     t.addEventListener('click', function () {
-      tabs.forEach(function (x) { x.setAttribute('aria-selected', x === t ? 'true' : 'false'); });
-      document.querySelectorAll('[data-panel]').forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== t.getAttribute('data-tab'); });
-      document.getElementById('deSearch').hidden = t.getAttribute('data-tab') === 'new';
+      add.querySelectorAll('[data-rtab]').forEach(function (x) { x.setAttribute('aria-selected', x === t ? 'true' : 'false'); });
+      add.querySelectorAll('[data-rpanel]').forEach(function (p) { p.hidden = p.getAttribute('data-rpanel') !== t.getAttribute('data-rtab'); });
     });
   });
+  add.querySelectorAll('[data-topic]').forEach(function (t) {
+    t.addEventListener('click', function () {
+      add.querySelectorAll('[data-topic]').forEach(function (x) { x.setAttribute('aria-pressed', x === t ? 'true' : 'false'); });
+      add.querySelectorAll('[data-topicpanel]').forEach(function (p) { p.hidden = p.getAttribute('data-topicpanel') !== t.getAttribute('data-topic'); });
+    });
+  });
+
+  // ── Settings (approved mock-up screen 8): name, what it shows, its own time / team member, rows; live preview ──
+  var PICKS = {{ picks | tojson }}, PRE = {{ dp_presets | tojson }};
+  var REPORT_URL = {{ url_for('reports.builder') | tojson }};
+  var setDlg = document.getElementById('geSet'), setForm = document.getElementById('geSetForm'), cur = null, pvT, pvSeq = 0;
+  function $(id) { return document.getElementById(id); }
+  function field(name, on) { setForm.querySelectorAll('[data-f="' + name + '"]').forEach(function (e) { e.hidden = !on; }); }
+  function radio(name, val) { setForm.querySelectorAll('input[name="' + name + '"]').forEach(function (r) { r.checked = r.value === val; }); }
+  function timeVal() { return {period: $('gsPeriod').value, from: $('gsFrom').value, to: $('gsTo').value}; }
+  function showTime() { var d = PXDate.describe(timeVal(), PRE); var b = $('gsTimeBtn'); b.querySelector('.main').textContent = d.main; b.querySelector('.sub').textContent = d.sub ? '· ' + d.sub : ''; }
+  function openSettings(w) {
+    cur = w; pvSeq++; $('gsPv').innerHTML = '';
+    setForm.action = SETTINGS + w.id + '/settings';
+    $('geSetKind').textContent = w.kind_name + ' settings';
+    $('geSetT').textContent = w.title;
+    var isHead = w.kind === 'heading';
+    field('title', !isHead); field('heading', isHead);
+    field('pick', !!PICKS[w.kind]); field('report', w.kind === 'report');
+    field('time', w.has_time || (w.kind === 'number')); field('member', w.has_member); field('rows', !!(w.row_choices && w.row_choices.length));
+    $('gsTitle').value = w.own_title; $('gsTitle').placeholder = w.default_title;
+    $('gsHeading').value = w.head || ''; $('gsExpl').value = w.more || '';
+    if (PICKS[w.kind]) {
+      $('gsPickLbl').textContent = {number: 'It shows', list: 'List', board: 'Rank the team by'}[w.kind];
+      $('gsPick').innerHTML = PICKS[w.kind].map(function (p) { return '<option value="' + esc(p.key) + '">' + esc(p.label) + '</option>'; }).join('');
+      $('gsPick').value = w.pick; pickHelp();
+    }
+    $('gsPick').disabled = !PICKS[w.kind];
+    $('gsReport').value = ''; $('gsReportId').value = ''; $('gsReady').value = '';
+    $('gsOpen').href = w.report_id ? REPORT_URL + '?id=' + w.report_id : '#';
+    radio('time', w.time); $('gsPeriod').value = w.period; $('gsFrom').value = w.date_from; $('gsTo').value = w.date_to; showTime();
+    radio('member', w.member); $('gsMemberKey').value = w.member_key;
+    $('gsRowsLbl').textContent = w.kind === 'board' ? 'People to show' : 'Rows to show';
+    $('gsRows').innerHTML = (w.row_choices || []).map(function (n) {
+      return '<label><input type="radio" name="rows" value="' + n + '"' + (n === w.rows ? ' checked' : '') + '><span>' + n + '</span></label>';
+    }).join('');
+    nowState();
+    setDlg.showModal(); preview();
+  }
+  function pickHelp() {
+    var p = (PICKS[cur.kind] || []).filter(function (x) { return x.key === $('gsPick').value; })[0];
+    $('gsHelp').textContent = p ? p.help : '';
+  }
+  function nowState() {             // "right now" numbers have no time choice
+    var rn = cur.kind === 'number' && {{ right_now | tojson }}.indexOf($('gsPick').value) >= 0;
+    $('gsNow').hidden = !rn; $('gsTimeChoice').hidden = rn;
+    if (cur.kind === 'number') field('time', true);
+  }
+  function preview() {
+    clearTimeout(pvT);
+    pvT = setTimeout(function () {
+      var pv = $('gsPv');
+      if (cur.kind === 'heading') {
+        pv.innerHTML = '<div class="ge-head"><b>' + esc($('gsHeading').value || 'Heading') + '</b>' + ($('gsExpl').value.trim() ? '<span>' + esc($('gsExpl').value.trim()) + '</span>' : '') + '</div>';
+        return;
+      }
+      syncReport();
+      var q = new URLSearchParams(new FormData(setForm)); q.delete('csrf_token'); q.set('pv', '1'); q.set('h', '220');
+      var mine = ++pvSeq;                  // only the newest answer may fill the preview
+      pv.innerHTML = '<div class="ge-loading">Working it out…</div>';
+      fetch(BOX + cur.id + '?' + q.toString(), {credentials: 'same-origin'}).then(function (r) { if (!r.ok) throw 0; return r.text(); })
+        .then(function (html) { if (mine !== pvSeq) return; pv.innerHTML = html; pv.querySelectorAll('canvas[id]').forEach(function (c) { RBC.draw(c.id); }); })
+        .catch(function () { if (mine === pvSeq) pv.innerHTML = '<div class="ge-loading">The preview could not be worked out.</div>'; });
+    }, 250);
+  }
+  function syncReport() {
+    var v = $('gsReport').value;
+    $('gsReportId').value = v.indexOf('r:') === 0 ? v.slice(2) : '';
+    $('gsReady').value = v.indexOf('q:') === 0 ? v.slice(2) : '';
+  }
+  $('gsPick').addEventListener('change', function () { pickHelp(); nowState(); });
+  setForm.addEventListener('input', preview); setForm.addEventListener('change', preview);
+  setForm.addEventListener('submit', syncReport);
+  $('gsMemberKey').addEventListener('change', function () { radio('member', 'own'); });
+  $('gsTimeBtn').addEventListener('click', function () {
+    PXDate.open($('gsTimeBtn'), {value: timeVal(), presets: PRE, title: 'Time for this widget', onApply: function (v) {
+      $('gsPeriod').value = v.period; $('gsFrom').value = v.from || ''; $('gsTo').value = v.to || '';
+      radio('time', 'own'); showTime(); preview();
+    }});
+  });
+  document.querySelectorAll('dialog [data-close]').forEach(function (b) { b.addEventListener('click', function () { b.closest('dialog').close(); }); });
+
+  var before = JSON.stringify(W.map(function (w) { return [w.x, w.y, w.w, w.h]; }));
+  W.slice().sort(function (a, b) { return a.y - b.y || a.x - b.x; }).forEach(settle);
+  draw();
+  if (JSON.stringify(W.map(function (w) { return [w.x, w.y, w.w, w.h]; })) !== before) save();
+  var rt; window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { draw(); }, 150); });
+  if (newId) { var n = document.getElementById('box-' + newId); if (n) n.scrollIntoView({block: 'center'}); }
 })();
 </script>
 {% endblock %}

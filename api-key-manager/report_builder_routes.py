@@ -21,6 +21,7 @@ from werkzeug.datastructures import MultiDict
 
 import quote_requests as qr
 import report_access as RA
+import report_plan as PLAN
 import report_plain as RP
 import report_subjects as RS
 import report_builder as RB
@@ -79,7 +80,18 @@ def _retired_reports():
     r = RS.READY_BY_KEY.get(key) if key else None
     if not r:
         return redirect(url_for("reports.wizard"))
-    return redirect(url_for("reports.builder") + "?" + urlencode(dict(r["cfg"], ready=key), doseq=True))
+    return redirect(url_for("reports.view", ready=key))
+
+
+def _custom_only(ctx, json_ok=False):
+    """Growth + Scale only (21 Nov 2026): the report builder, own dashboards, sharing.
+    Starter gets the simple reports; this sends them back with a plain note. None when allowed."""
+    if PLAN.custom_ok(ctx["tenant_id"]):
+        return None
+    if json_ok:
+        return ("", 403)
+    flash("Custom reports and your own dashboards come with Growth and Scale.", "info")
+    return redirect(url_for("reports.library"))
 
 
 def _setup():
@@ -180,12 +192,9 @@ def _dash_filter_qs(flt) -> dict:
 
 
 def _box_cfg(box, b2b, flt, active):
+    import report_widgets as RW
     cfg = RB.read_config(_args_from_saved({"config": box["config"]}), b2b)
-    if box["use_filters"]:
-        cfg = RB.apply_dashboard(cfg, period=flt["period"] if "period" in active else None,
-                                 d_from=flt["date_from"], d_to=flt["date_to"],
-                                 member=flt["member"] if "member" in active else None)
-    return cfg
+    return RW.apply_filters(cfg, box, flt, active)     # dashboard filters, or the widget's own (21 Nov 2026)
 
 
 def _resolve(args, ctx, b2b, quote_scope, drill=False):
@@ -198,10 +207,16 @@ def _resolve(args, ctx, b2b, quote_scope, drill=False):
         d = RD.get_dashboard(ctx["tenant_id"], did)
         if not RA.can_view(d, v):
             raise NotAllowed()
-        box = next((b for b in d["boxes"] if b["id"] == bid and b["report_id"]), None)
-        if not box or not RB.subject_ok(box["subject"], b2b):
+        box = next((b for b in d["boxes"] if b["id"] == bid), None)
+        import report_widgets as RW
+        if box and RW.kind_of(box) in ("number", "list", "board"):     # widgets (21 Nov 2026)
+            cfg = RW.cfg_for(box, b2b, _dash_filters(args), set(d["filters"] or []))
+            if not cfg:
+                raise NotAllowed()
+        elif not box or not box["report_id"] or not RB.subject_ok(box["subject"], b2b):
             raise NotAllowed()
-        cfg = _box_cfg(box, b2b, _dash_filters(args), set(d["filters"] or []))
+        else:
+            cfg = _box_cfg(box, b2b, _dash_filters(args), set(d["filters"] or []))
         whole, source = RA.whole_business(d), {"dash": d, "box": box}
     elif rid:
         saved = _saved(ctx["tenant_id"], rid)
@@ -312,7 +327,10 @@ def library():
     v = ctx["viewer"]
     show = request.args.get("show") if request.args.get("show") in ("mine", "shared") else "all"
     folder = (request.args.get("folder") or "").strip()[:RA.MAX_FOLDER]
+    custom = PLAN.custom_ok(ctx["tenant_id"])
     every = _visible_reports(ctx, b2b)
+    if not custom:    # Starter: the fixed Sales overview's own box reports stay out of "Your saved reports"
+        every = [r for r in every if r.get("folder") != "Sales overview"]
     folders = sorted({r["folder"] for r in every if r.get("folder")}, key=str.lower)
     counts = {"all": len(every), "mine": sum(1 for r in every if RA.is_mine(r, v))}
     counts["shared"] = counts["all"] - counts["mine"]
@@ -331,7 +349,7 @@ def library():
         except Exception:
             sentence, kind = RB.SUBJECTS[r["subject"]]["label"], "auto"
         reports.append({**r, "sentence": sentence, "icon": RP.CHART_ICON.get(kind, "▮▮"),
-                        "sharing": RA.sharing_label(r), "mine": RA.is_mine(r, v)})
+                        "sharing": RA.sharing_label(r), "mine": RA.is_mine(r, v), "url": RSR.open_url(r, custom)})
     dashboards = [d for d in RD.list_dashboards(ctx["tenant_id"]) if RA.can_view(d, v)]
     is_b2b = "quotes" in b2b
     is_b2c = bool({"orders", "discounts", "carts"} & b2b)
@@ -343,15 +361,15 @@ def library():
             r = offered.get(k)
             if not r:
                 continue
-            items.append({"key": k, "q": RP.QUESTIONS.get(k, r["label"]), "label": r["label"],
+            items.append({"key": k, "q": RP.QUESTIONS.get(k, r["label"]), "label": r["label"], "desc": r["desc"],
                           "how": RP.CHART_WORD.get(r["cfg"].get("chart", "auto"), "Chart") + " · " + r["desc"],
                           "icon": RP.CHART_ICON.get(r["cfg"].get("chart", "auto"), "▮▮"),
-                          "url": url_for("reports.builder") + "?" + urlencode(dict(r["cfg"], ready=k), doseq=True)})
+                          "url": url_for("reports.view", ready=k)})
         if items:
             topics.append({"key": key, "label": label, "qs": items})
     return render_template("portal/report_home.html", customer=customer, reports=reports, topics=topics,
                            show=show, folder=folder, folders=folders, counts=counts, dashboards=dashboards, RA=RA,
-                           can_new_dashboard=True)
+                           custom_ok=custom, can_new_dashboard=custom)
 
 
 @reports_bp.route("/reports/new")
@@ -361,6 +379,9 @@ def wizard():
     customer, ctx, b2b, _scope, err = _setup()
     if err:
         return err
+    stop = _custom_only(ctx)
+    if stop:
+        return stop
     spec = RP.wizard_spec(b2b, ctx)
     start = request.args.get("subject") or ""
     dash = None
@@ -380,7 +401,7 @@ def wizard():
 def preview():
     """The wizard's live preview: the chart (or number / first rows) for the settings so far."""
     customer, ctx, b2b, quote_scope, err = _setup()
-    if err:
+    if err or _custom_only(ctx, json_ok=True):
         return "", 403
     cfg = RB.read_config(request.args, b2b)
     data = _results(ctx, dict(cfg, view="summary" if cfg["g1"] else "detailed", page=1), quote_scope)
@@ -432,6 +453,17 @@ def _sentence(cfg, url_with):
     return parts, rest
 
 
+def _builder_to_simple(report_id):
+    """Starter: a builder link (old bookmark, ready-made link, retired page) opens the simple report page."""
+    if report_id:
+        return redirect(url_for("reports.view", id=report_id))
+    key = request.args.get("ready") or ""
+    if key in RS.READY_BY_KEY:
+        return redirect(url_for("reports.view", ready=key))
+    flash("Custom reports come with Growth and Scale. Pick a ready-made report below.", "info")
+    return redirect(url_for("reports.library"))
+
+
 @reports_bp.route("/reports/builder")
 @team_feature("reports.custom")
 def builder():
@@ -440,6 +472,8 @@ def builder():
         return err
     v = ctx["viewer"]
     report_id = request.args.get("id", type=int)
+    if not PLAN.custom_ok(ctx["tenant_id"]):
+        return _builder_to_simple(report_id)
     if not report_id and not any(k in request.args for k in CONFIG_KEYS):
         return redirect(url_for("reports.wizard"))          # a brand-new report starts in the wizard
     saved = _saved(ctx["tenant_id"], report_id) if report_id else None
@@ -555,6 +589,9 @@ def save():
     customer, ctx, b2b, _scope, err = _setup()
     if err:
         return err
+    stop = _custom_only(ctx)
+    if stop:
+        return stop
     v = ctx["viewer"]
     cfg = RB.read_config(request.form, b2b)
     name = " ".join((request.form.get("name") or "").split())[:120]
@@ -603,6 +640,9 @@ def share(report_id: int):
     customer, ctx, b2b, _scope, err = _setup()
     if err:
         return err
+    stop = _custom_only(ctx)
+    if stop:
+        return stop
     v = ctx["viewer"]
     saved = _saved(ctx["tenant_id"], report_id)
     if not saved or not RA.can_manage(saved, v):
@@ -642,7 +682,9 @@ def delete(report_id: int):
         conn.commit()
     finally:
         conn.close()
-    flash("Report deleted." if ok else "That report was not found.", "success" if ok else "warning")
+    flash(f"“{saved['name']}” deleted." if ok else "That report was not found.", "success" if ok else "warning")
+    if request.form.get("next") == "custom":      # from Reports › Custom reports › My custom reports (21 Nov 2026)
+        return redirect(url_for("reports.custom_mine"))
     return redirect(url_for("reports.library"))
 
 
@@ -710,3 +752,4 @@ def export(fmt: str):
 
 
 import report_dashboard_routes  # noqa: E402,F401  (R3 routes live on reports_bp)
+import report_simple_routes as RSR  # noqa: E402  (simple report page + Ask for a report, 21 Nov 2026)

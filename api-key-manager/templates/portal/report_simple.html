@@ -1,0 +1,236 @@
+{% extends "portal/base.html" %}
+{% import "portal/_report_chart.html" as rc %}
+{% import "portal/_date_picker.html" as dp %}
+{# ask: A report (Reports › pick a question, or a saved report) shows the answer with four choices at the top: "Time" (quick picks like This month, Last month, This quarter, "The last N days", or your own dates), "Team member" (Everyone or one person), "Show per" (breaks the total into groups — for example per Team member, Month, Where it came from, or Nothing for one total; the title changes to say what the chart now shows; on List the records are grouped under the same choice, each group with a heading and count) and "Show as" Chart or List. Numbers at the top give the totals. Click any bar, slice or number to see the records behind it. "Save as my report" keeps it with your choices under Reports › Your saved reports (a report you saved shows "Save changes" and "Save as new"). "Download" gives Excel, CSV or PDF. On Growth and Scale plans, "Open in custom report builder" lets you change columns and filters; on Starter, custom reports come with Growth and Scale. #}
+{% block title %}{{ title }} — Reports — PhiXtra Portal{% endblock %}
+
+{% block head %}
+<style>
+  /* Simple report page (21 Nov 2026) — approved mock-up Nbf3F8K2ShDdocrnpbrTGr screen 2 */
+  .sr{padding-top:52px;--navy:#0B1F3A;--blue:#1D4ED8;--sub:#5B6675;--edge:#E3E7ED;display:flex;flex-direction:column;gap:18px;font-variant-numeric:tabular-nums}
+  @media (max-width:640px){.sr{padding-top:40px}}
+  .sr h1{margin:0;font-size:26px;font-weight:800;color:var(--navy);line-height:1.25;overflow-wrap:anywhere}
+  .sr-sub{margin:6px 0 0;color:var(--sub);font-size:15px}
+  .sr-from{font-size:13px;color:var(--sub);margin-bottom:4px}
+  .sr-hint{font-size:12.5px;font-weight:400;color:var(--sub);max-width:320px;line-height:1.4}
+  .sr-look{background:#EEF4FF;border:1px solid #C7D7F7;border-radius:10px;padding:14px 16px;font-size:16px;color:var(--navy)}
+  .sr-grp td{padding:14px 10px 8px;background:#F1F5FB;border-top:2px solid #D5DBE3;font-size:15px;font-weight:700;color:var(--navy)}
+  .sr-grp span{font-weight:400;color:var(--sub)}
+  .sr-tbl td.first{font-weight:700;color:var(--navy)}
+  .sr-top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between}
+  @media (min-width:900px){.sr-top{padding-right:150px}}
+  .sr-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border-radius:8px;font-size:15px;font-weight:700;
+    border:1px solid #D5DBE3;background:#fff;color:var(--navy);text-decoration:none;cursor:pointer;font-family:inherit}
+  .sr-btn:hover{border-color:var(--navy);text-decoration:none}
+  .sr-btn.go{background:#16A34A;border-color:#16A34A;color:#fff}
+  .sr-btn.go:hover{background:#15803D}
+  .sr-card{background:#fff;border:1px solid var(--edge);border-radius:12px;padding:16px 18px;min-width:0}
+  .sr-bar{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end}
+  .sr-lbl{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--sub);font-weight:700}
+  .sr-sel{min-height:44px;min-width:180px;border:1px solid #D5DBE3;border-radius:8px;padding:0 10px;font-size:15px;color:#1F2A37;background:#fff;font-family:inherit}
+  .sr-seg{display:flex;border:1px solid #D5DBE3;border-radius:8px;overflow:hidden}
+  .sr-seg a{min-height:44px;display:flex;align-items:center;padding:0 18px;font-size:15px;color:#1F2A37;text-decoration:none;background:#fff}
+  .sr-seg a.on{background:#0B1D40;color:#fff;font-weight:700}
+  .sr .pxd-trigger{min-height:44px}
+  .sr-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+  .sr-tile{background:#fff;border:1px solid var(--edge);border-radius:10px;padding:14px 16px}
+  .sr-tile span{display:block;font-size:13px;color:var(--sub)}
+  .sr-tile b{display:block;font-size:24px;color:var(--navy);margin-top:2px}
+  .sr-tbl{width:100%;border-collapse:collapse;font-size:14px}
+  .sr-tbl th{color:var(--sub);font-weight:600;text-align:left;padding:10px 10px;border-bottom:1px solid var(--edge);white-space:nowrap;background:#F8FAFC}
+  .sr-tbl td{padding:10px 10px;border-bottom:1px solid #F0F2F5;vertical-align:top}
+  .sr-tbl .num{text-align:right}.sr-tbl tr.total td{font-weight:700;border-top:1px solid var(--edge)}
+  .rb-scroll{overflow-x:auto}.rb-note{font-size:13px;color:var(--sub)}
+  .rb-err{background:#FBE4E4;color:#991B1B;border-radius:8px;padding:10px 14px;font-size:14px}
+  .rb-sumbtn{font-family:inherit;font-size:inherit;border:0;background:none;padding:0;color:#1D4ED8;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+  .sr-save{display:none;flex-wrap:wrap;gap:8px;align-items:flex-end}
+  .sr-save.open{display:flex}
+  .sr-save input{min-height:44px;border:1px solid #D5DBE3;border-radius:8px;padding:0 10px;font-size:15px;font-family:inherit;min-width:280px;max-width:100%;box-sizing:border-box}
+  .sr-dl{position:relative}
+  .sr-dl-menu{display:none;position:absolute;right:0;top:48px;z-index:30;background:#fff;border:1px solid #D5DBE3;border-radius:10px;box-shadow:0 8px 24px rgba(11,29,64,.12);padding:6px;min-width:170px}
+  .sr-dl-menu.open{display:block}
+  .sr-dl-menu a{display:block;padding:10px 12px;border-radius:6px;font-size:14px;color:#1F2A37;text-decoration:none}
+  .sr-dl-menu a:hover{background:#F1F5F9}
+  .sr-foot{font-size:14px;color:var(--sub)}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sr">
+  <div style="font-size:14px"><a href="{{ url_for('reports.library') }}" style="text-decoration:none">‹ Reports</a></div>
+
+  <div class="sr-top">
+    <div style="flex:1 1 420px;min-width:0">
+      {% if from_q %}<div class="sr-from">Ready-made: {{ from_q }}</div>{% endif %}
+      <h1>{{ title }}</h1>
+      <p class="sr-sub">{{ subline }}</p>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="sr-dl">
+        <button type="button" class="sr-btn" id="srDl" aria-expanded="false" aria-controls="srDlMenu">Download ▾</button>
+        <div class="sr-dl-menu" id="srDlMenu">
+          <a href="{{ url_for('reports.export', fmt='xlsx') }}?{{ export_qs }}">Excel</a>
+          <a href="{{ url_for('reports.export', fmt='csv') }}?{{ export_qs }}">CSV</a>
+          <a href="{{ url_for('reports.export', fmt='pdf') }}?{{ export_qs }}">PDF</a>
+        </div>
+      </div>
+      <button type="button" class="sr-btn go" id="srSaveBtn" aria-expanded="false" aria-controls="srSave">{{ 'Save changes' if mine else 'Save as my report' }}</button>
+    </div>
+  </div>
+
+  <form method="POST" action="{{ url_for('reports.view_save') }}" class="sr-save sr-card" id="srSave">
+    {% if rid %}<input type="hidden" name="id" value="{{ rid }}">{% else %}<input type="hidden" name="ready" value="{{ ready }}">{% endif %}
+    {% for k in ('period', 'date_from', 'date_to', 'member', 'show') %}{% if ch[k] %}<input type="hidden" name="{{ k }}" value="{{ ch[k] }}">{% endif %}{% endfor %}
+    {% if ch.split is not none %}<input type="hidden" name="split" value="{{ ch.split }}">{% endif %}
+    <label class="sr-lbl">Report name<input name="name" maxlength="120" value="{{ save_name }}" required></label>
+    <button type="submit" class="sr-btn go">Save</button>
+    {% if mine %}<button type="submit" class="sr-btn" name="as_new" value="1">Save as new</button>{% endif %}
+  </form>
+
+  <form method="get" action="{{ url_for('reports.view') }}" class="sr-card sr-bar" id="srChoices">
+    {% if rid %}<input type="hidden" name="id" value="{{ rid }}">{% else %}<input type="hidden" name="ready" value="{{ ready }}">{% endif %}
+    <input type="hidden" name="show" value="{{ show }}">
+    <div class="sr-lbl">Time
+      {{ dp.trigger('srTime') }}
+      <input type="hidden" name="period" id="srPeriod" value="{{ dp_value.period }}">
+      <input type="hidden" name="date_from" id="srFrom" value="{{ dp_value.from if dp_value.period == 'custom' else '' }}">
+      <input type="hidden" name="date_to" id="srTo" value="{{ dp_value.to if dp_value.period == 'custom' else '' }}">
+    </div>
+    {% if member_on %}
+    <label class="sr-lbl">Team member
+      <select class="sr-sel" name="member" data-auto>
+        <option value="">Everyone</option>
+        {% for p in people %}<option value="{{ p.key }}" {{ 'selected' if member_val == p.key }}>{{ p.display }}</option>{% endfor %}
+        <option value="__none__" {{ 'selected' if member_val == '__none__' }}>Unassigned</option>
+      </select>
+    </label>
+    {% endif %}
+    <label class="sr-lbl">Show per
+      <select class="sr-sel" name="split" data-auto aria-describedby="srPerHint">
+        {% for v, l in split_opts %}<option value="{{ v }}" {{ 'selected' if split_val == v }}>{{ l }}</option>{% endfor %}
+        <option value="" {{ 'selected' if not split_val }}>Nothing — one total</option>
+      </select>
+      <span class="sr-hint" id="srPerHint">{{ per_hint }}</span>
+    </label>
+    <div class="sr-lbl">Show as
+      <div class="sr-seg" role="group" aria-label="Show as">
+        <a href="{{ chart_url }}" class="{{ 'on' if show == 'chart' }}" {% if show == 'chart' %}aria-current="true"{% endif %}>Chart</a>
+        <a href="{{ list_url }}" class="{{ 'on' if show == 'list' }}" {% if show == 'list' %}aria-current="true"{% endif %}>List</a>
+      </div>
+    </div>
+    <noscript><button type="submit" class="sr-btn">Show</button></noscript>
+  </form>
+
+  {% if tiles %}
+  <div class="sr-tiles">
+    {% for t in tiles %}<div class="sr-tile"><span>{{ t.label }}</span><b>{{ t.value }}</b></div>{% endfor %}
+  </div>
+  {% endif %}
+
+  {% if not d.error %}<div class="sr-look">{{ look_line }}</div>{% endif %}
+
+  <div class="sr-card">
+    {% if d.error %}
+      <div class="rb-err">{{ d.error }}</div>
+    {% elif show == 'chart' %}
+      {% if chart.kind != 'table' %}{{ rc.chart_block(chart, 'srChart', cfg.period_label, '', drill_base) }}{% endif %}
+      {% if d.summary is defined %}
+        {% set s = d.summary %}
+        <div class="rb-scroll" data-drill-base="{{ drill_base }}" style="margin-top:12px">
+          <table class="sr-tbl">
+            <thead><tr>{% for h in s.headers[:s.ngroups + n_main] %}<th class="{{ 'num' if loop.index > s.ngroups }}">{{ split_label if loop.first and split_label else ('Number of ' ~ subj.noun if loop.index == s.ngroups + 1 else h|replace('Sum of ', '')) }}</th>{% endfor %}</tr></thead>
+            <tbody>
+              {% for r in s.rows %}
+                <tr>{% for l in r.labels %}<td>{{ l }}</td>{% endfor %}{% for c in r.cells[:n_main] %}<td class="num">{% if loop.first %}<button type="button" class="rb-sumbtn" data-drill='{{ r.rk|tojson }}' aria-label="See the {{ c }} records for {{ r.labels|join(' · ') }}">{{ c }}</button>{% else %}{{ c }}{% endif %}</td>{% endfor %}</tr>
+              {% else %}
+                <tr><td colspan="{{ s.ngroups + n_main }}" class="rb-note">Nothing in this time. Try a longer time.</td></tr>
+              {% endfor %}
+              {% if s.rows %}<tr class="total">{% for l in s.total_row.labels %}<td>{{ l }}</td>{% endfor %}{% for c in s.total_row.cells[:n_main] %}<td class="num">{{ c }}</td>{% endfor %}</tr>{% endif %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+      {% if chart.kind not in ('number', 'table') %}<p class="rb-note" style="margin:10px 0 0">Click any bar, slice or number to see the records behind it.</p>{% endif %}
+    {% elif groups is not none %}
+      <div class="rb-scroll" data-drill-base="{{ drill_base }}">
+        <table class="sr-tbl">
+          <thead><tr>{% for k in list_cols %}{% set c = subj.columns[k] %}<th class="{{ 'num' if c.fmt in ('money','money_own','int') }}">{{ split_label if loop.first else col_words.get(k, c.label) }}</th>{% endfor %}</tr></thead>
+          <tbody>
+            {% for g in groups %}
+              <tr class="sr-grp"><td colspan="{{ list_cols|length }}">{{ g.label }} <span>— {{ '{:,}'.format(g.n) }} {{ subj.noun }}</span></td></tr>
+              {% for r in g.rows %}
+                <tr>{% for cell in r.cells %}{% set c = subj.columns[list_cols[loop.index0]] %}<td class="{{ 'num' if c.fmt in ('money','money_own','int') }} {{ 'first' if loop.first }}">{{ cell }}</td>{% endfor %}</tr>
+              {% endfor %}
+              {% if g.more %}<tr><td colspan="{{ list_cols|length }}"><button type="button" class="rb-sumbtn" data-drill='{{ g.rk|tojson }}'>See all {{ '{:,}'.format(g.n) }} in {{ g.label }}</button></td></tr>{% endif %}
+            {% else %}
+              <tr><td colspan="{{ list_cols|length }}" class="rb-note">Nothing in this time. Try a longer time.</td></tr>
+            {% endfor %}
+            {% if groups %}<tr class="total"><td colspan="{{ list_cols|length }}">Total — {{ n_records }} {{ subj.noun }}</td></tr>{% endif %}
+          </tbody>
+        </table>
+      </div>
+      {% if groups|length < n_groups %}<p class="rb-note" style="margin:10px 0 0">Showing the first {{ groups|length }} groups. Download gives every group.</p>{% endif %}
+    {% else %}
+      <div class="rb-scroll">
+        <table class="sr-tbl">
+          <thead><tr>{% for k in cfg.col %}{% set c = subj.columns[k] %}<th class="{{ 'num' if c.fmt in ('money','money_own','int') }}">{{ col_words.get(k, c.label) }}</th>{% endfor %}</tr></thead>
+          <tbody>
+            {% for r in d.rows %}
+              <tr>{% for cell in r.cells %}{% set c = subj.columns[cfg.col[loop.index0]] %}<td class="{{ 'num' if c.fmt in ('money','money_own','int') }}">{{ cell }}</td>{% endfor %}</tr>
+            {% else %}
+              <tr><td colspan="{{ cfg.col|length }}" class="rb-note">Nothing in this time. Try a longer time.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if total_pages > 1 %}
+      <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;margin-top:12px">
+        <span class="rb-note">Page {{ page }} of {{ total_pages }} · Download gives every row</span>
+        <span style="display:flex;gap:8px">
+          {% if prev_url %}<a class="sr-btn" href="{{ prev_url }}">‹ Previous</a>{% endif %}
+          {% if next_url %}<a class="sr-btn" href="{{ next_url }}">Next ›</a>{% endif %}
+        </span>
+      </div>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  {% if custom_ok %}
+    <div class="sr-foot">Need other columns or filters? <a href="{{ builder_url }}">Open in custom report builder</a></div>
+  {% endif %}
+</div>
+
+{{ rc.chart_assets() }}
+{{ dp.assets() }}
+<script>
+(function () {
+  var f = document.getElementById('srChoices');
+  f.querySelectorAll('select[data-auto]').forEach(function (s) { s.addEventListener('change', function () { f.submit(); }); });
+  var tb = document.getElementById('srTime'), PRE = {{ dp_presets | tojson }};
+  var val = function () { return {period: document.getElementById('srPeriod').value, from: document.getElementById('srFrom').value, to: document.getElementById('srTo').value}; };
+  var dsc = PXDate.describe(val(), PRE);
+  tb.querySelector('.main').textContent = dsc.main;
+  tb.querySelector('.sub').textContent = dsc.sub ? '· ' + dsc.sub : '';
+  tb.addEventListener('click', function () {
+    PXDate.open(tb, {value: val(), presets: PRE, title: 'Time', onApply: function (v) {
+      document.getElementById('srPeriod').value = v.period;
+      document.getElementById('srFrom').value = v.from || ''; document.getElementById('srTo').value = v.to || '';
+      f.submit();
+    }});
+  });
+  function toggle(btn, el) {
+    btn.addEventListener('click', function () {
+      var o = el.classList.toggle('open'); btn.setAttribute('aria-expanded', o ? 'true' : 'false');
+      if (o && el.querySelector('input:not([type=hidden])')) el.querySelector('input:not([type=hidden])').focus();
+    });
+  }
+  toggle(document.getElementById('srSaveBtn'), document.getElementById('srSave'));
+  toggle(document.getElementById('srDl'), document.getElementById('srDlMenu'));
+  document.addEventListener('click', function (e) {
+    var m = document.getElementById('srDlMenu');
+    if (m.classList.contains('open') && !e.target.closest('.sr-dl')) { m.classList.remove('open'); document.getElementById('srDl').setAttribute('aria-expanded', 'false'); }
+  });
+  if (document.getElementById('srChart')) RBC.draw('srChart');
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,56 @@
+{# One dashboard widget's contents (21 Nov 2026): number tile, action list, leaderboard. Reports use _report_box.html. #}
+{% if kind == 'error' %}
+  <div class="rb-err">This widget could not be worked out. Try Settings to pick something else.</div>
+{% elif kind == 'number' %}
+  <div class="wg-num" data-drill-base="{{ drill_base }}">
+    <div class="wg-t">{{ title }}</div>
+    <button type="button" class="wg-v rb-linkbtn" data-drill="[]" style="{{ 'color:' ~ warn if warn else '' }}" aria-label="See the records behind {{ value }}">{{ value }}</button>
+    <div class="wg-s">{{ sub }}</div>
+  </div>
+{% elif kind == 'board' %}
+  <div class="wg-board" data-drill-base="{{ drill_base }}">
+    <div class="wg-t">{{ title }} <span class="wg-s">· {{ sub }}</span></div>
+    {% for r in rows %}
+      <div class="wg-row">
+        <span class="wg-rank">{{ r.rank }}</span>
+        <span class="wg-name">{{ r.label }}</span>
+        <span class="wg-bar" aria-hidden="true"><i style="width:{{ r.pct }}%"></i></span>
+        <button type="button" class="wg-val rb-sumbtn" data-drill='{{ r.rk|tojson }}' aria-label="See the records for {{ r.label }}">{{ r.v }}</button>
+      </div>
+    {% else %}
+      <div class="wg-s">Nobody yet in this time.</div>
+    {% endfor %}
+  </div>
+{% elif kind == 'list' %}
+  <div class="wg-list">
+    <div class="wg-t">{{ title }} <span class="wg-s">· {{ '{:,}'.format(total) }}</span></div>
+    {% for r in rows %}
+      <a class="wg-item" href="{{ r.url }}">
+        <span class="wg-main">{{ r.cells[0] }}</span>
+        <span class="wg-meta">{{ r.cells[1:]|reject('equalto', '—')|join(' · ') }}</span>
+      </a>
+    {% else %}
+      <div class="wg-s">Nothing here right now. 🎉</div>
+    {% endfor %}
+    {% if total > rows|length %}<div class="wg-s">and {{ '{:,}'.format(total - rows|length) }} more</div>{% endif %}
+  </div>
+{% endif %}
+<style>
+  .wg-t{font-size:13.5px;font-weight:700;color:#0B1D40}
+  .wg-s{font-size:12px;color:#5B6675;font-weight:400}
+  .wg-num{display:flex;flex-direction:column;gap:2px;height:100%;justify-content:center}
+  .wg-num .wg-t{font-weight:400;color:#5B6675}
+  .wg-num .wg-v{font-size:30px!important;font-weight:800;color:#0B1D40;border:0;background:none;padding:0;text-align:left;cursor:pointer;font-family:inherit;line-height:1.15;text-decoration:none}
+  .wg-num .wg-v:hover{text-decoration:underline}
+  .wg-board{display:flex;flex-direction:column;gap:8px}
+  .wg-row{display:grid;grid-template-columns:22px minmax(0,1fr) minmax(40px,1.2fr) auto;gap:8px;align-items:center;font-size:13px}
+  .wg-rank{width:22px;height:22px;border-radius:11px;background:#DCFCE7;color:#14532D;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center}
+  .wg-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .wg-bar{background:#EEF1F5;border-radius:4px;height:10px;display:flex}.wg-bar i{display:block;background:#16A34A;border-radius:4px}
+  .wg-val{font-weight:700}
+  .wg-list{display:flex;flex-direction:column;gap:2px}
+  .wg-item{display:flex;flex-direction:column;gap:1px;padding:7px 4px;border-top:1px solid #EEF1F5;text-decoration:none;color:#1F2A37;border-radius:6px}
+  .wg-item:hover{background:#F5F8FF;text-decoration:none}
+  .wg-main{font-size:13.5px;font-weight:700;color:#1D4ED8}
+  .wg-meta{font-size:12px;color:#5B6675}
+</style>
