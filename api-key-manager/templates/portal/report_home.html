@@ -1,64 +1,62 @@
 {% extends "portal/base.html" %}
-{# ask: Reports › All reports is Reports home. At the top: the search box "Find a report" (searches your saved reports and the ready-made questions) and "+ New report" (opens Create a report). "Your dashboards" shows your dashboards (open one, or "+ New dashboard"). "Your reports" lists the reports you saved or that were shared with you, newest first, each with its sentence (what it shows), who can open it and when it was last opened; filter with All, Made by me, Shared with me, or a Folder. "Ready-made: pick a question" has plain questions in tabs — Sales & quotes (Who wins the most quotes?, Won, lost or still waiting?, Which quotes are still waiting for an answer?, How much have won quotes been paid?, Which invoices are overdue?, Quote value per person month by month, How many deals sit at each stage?), Enquiries & chats (Where do our enquiries come from?, Which chats are waiting for our reply?, How many new customers message us on WhatsApp?, How often does the AI Agent hand over to staff?, How fast do we first reply?, Why are enquiries not a fit?), Team (What did each team member do?, Are follow-ups done on time?, How many calls get answered?), Marketing (Which campaigns got replies?, Who finished our email sequences?, How much did the AI Agent answer?), Online shop (orders per week, orders by status, products that sell most, discount codes, carts left behind). A question opens the report with your numbers; press "Save report" to keep it. The old report pages (Handoff, Leads, Not a Fit, Calls, Cart Recovery, Email Campaign, AI Usage, Custom Report, CRM Report) now open the matching report here. #}
+{# ask: Reports › All reports is Reports home. At the top: "Ask for a report" — type what you want to know (e.g. "won quotes by salesperson last month") and the AI Agent opens the right report. Below it, your dashboard (Sales overview) with this month's numbers — click it to open. "What do you want to know?" has ready-made questions in tabs: Sales & quotes, Leads & CRM (new leads, hot/warm/cold leads, deals at each stage, deals gone quiet, days in each stage, open deals per team member, deals won and lost, new contacts, follow-ups on time), Enquiries & chats, Team, Marketing, Online shop. A question opens the report; change Time, Team member, Split by or Chart/List, then "Save as my report" to keep it under "Your saved reports". Growth and Scale plans also have "+ Build a custom report" (columns, filters, any chart), their own dashboards and sharing. On Starter, custom reports come with Growth and Scale. #}
 {% block title %}Reports — PhiXtra Portal{% endblock %}
 
 {% block head %}
 <style>
-  /* Reports pages: a strip at the top for the Ask PhiXtra button, so it never covers the page's buttons (20 Nov 2026) */
-  .rh{padding-top:52px}
+  /* Reports home (21 Nov 2026) — approved mock-up Nbf3F8K2ShDdocrnpbrTGr screen 1 */
+  .rh{padding-top:52px;--navy:#0B1D40;--blue:#1D4ED8;--soft:#E8EEFC;--sub:#5B6675;--edge:#E3E7ED;display:flex;flex-direction:column;gap:24px;max-width:1120px}
   @media (max-width:640px){.rh{padding-top:40px}}
-  /* Reports home (19 Nov 2026) — approved mock-up EPpwZTeFt5iccD8SH155P1 screen 11 */
-  .rh{--navy:#0B1F3A;--blue:#1D4ED8;--soft:#E8EEFC;--sub:#5B6675;--edge:#E3E7ED;display:flex;flex-direction:column;gap:22px}
   .rh h1{margin:0;font-size:28px;font-weight:800;color:var(--navy)}
-  .rh h2{margin:0;font-size:17px;color:var(--navy)}
-  .rh-top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:14px}
-  @media (min-width:900px){.rh-top{padding-right:150px}}   /* leaves room for the Ask PhiXtra button (top right) */
-  .rh-search{position:relative;flex:1 1 320px;max-width:460px}
-  .rh-search input{width:100%;box-sizing:border-box;height:46px;border:1px solid #D5DBE3;border-radius:12px;padding:0 14px 0 40px;font-family:inherit;font-size:15px;background:#fff}
-  .rh-search svg{position:absolute;left:14px;top:14px}
-  .rh-btn{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:0 20px;border-radius:12px;font-size:15px;font-weight:700;text-decoration:none;
-    background:var(--blue);color:#fff;border:1px solid var(--blue);font-family:inherit;cursor:pointer}
-  .rh-btn:hover{text-decoration:none;opacity:.92}
-  .rh-card{background:#fff;border:1px solid var(--edge);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;min-width:0}
-  .rh-dash{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-  .rh-qs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-  @media (max-width:1100px){.rh-dash{grid-template-columns:repeat(2,minmax(0,1fr))}.rh-qs{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  @media (max-width:640px){.rh-dash,.rh-qs{grid-template-columns:minmax(0,1fr)}}
-  .rh-d{text-decoration:none;background:#fff;border:1px solid var(--edge);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:6px;color:#1F2A37}
-  .rh-d:hover{border-color:var(--blue);text-decoration:none}
-  .rh-d b{color:var(--navy)}
-  .rh-d small{font-size:12px;color:var(--sub)}
-  .rh-d .thumb{height:56px;border-radius:8px;background:#F5F7FA;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;padding:7px;box-sizing:border-box}
-  .rh-d .thumb i{background:#C7D5F7;border-radius:3px}.rh-d .thumb i:nth-child(2){background:#FCE3B6}.rh-d .thumb i:nth-child(4){grid-column:span 2;background:#DCE4F2}
-  .rh-d.new{border:2px dashed #AEB8C5;background:#F8FAFC;align-items:center;justify-content:center;min-height:110px;font-family:inherit;font-size:14px;cursor:pointer}
+  .rh h2{margin:0;font-size:19px;color:var(--navy)}
+  .rh-top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:14px}
+  @media (min-width:900px){.rh-top{padding-right:150px}}
+  .rh-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 18px;border-radius:8px;font-size:15px;font-weight:700;text-decoration:none;
+    background:#fff;color:var(--navy);border:1px solid #D5DBE3;font-family:inherit;cursor:pointer}
+  .rh-btn:hover{text-decoration:none;border-color:var(--navy)}
+  .rh-btn.blue{background:var(--blue);border-color:var(--blue);color:#fff}
+  .rh-ask{display:flex;gap:12px;align-items:center;background:#fff;border:2px solid var(--blue);border-radius:12px;padding:8px 8px 8px 16px;flex-wrap:wrap}
+  .rh-ask input{flex:1 1 260px;min-height:44px;border:0;font-size:17px;font-family:inherit;color:var(--navy);outline:none;background:transparent;min-width:0}
+  .rh-ask b{color:var(--navy);font-size:16px;white-space:nowrap}
+  .rh-dash{text-decoration:none;color:inherit;display:flex;flex-wrap:wrap;gap:16px;align-items:center;background:#0B1D40;border-radius:12px;padding:20px 22px}
+  .rh-dash:hover{text-decoration:none;background:#102657}
+  .rh-dash .t{flex:1 1 280px;color:#fff}
+  .rh-dash .k{font-size:12.5px;color:#B8C4D9;text-transform:uppercase;letter-spacing:.5px}
+  .rh-dash .n{font-size:20px;font-weight:700;margin-top:4px}
+  .rh-dash .d{font-size:14px;color:#D5DBE3;margin-top:4px}
+  .rh-nums{display:flex;gap:10px;flex-wrap:wrap}
+  .rh-num{background:#13295A;border-radius:8px;padding:10px 14px;color:#fff;min-width:120px}
+  .rh-num span{display:block;font-size:12px;color:#B8C4D9}
+  .rh-num b{display:block;font-size:20px}
+  .rh-num b.warn{color:#FCD34D}
+  .rh-others{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:14px}
+  .rh-others a{text-decoration:none}
+  .rh-pills{display:flex;flex-wrap:wrap;gap:8px}
+  .rh-pill{min-height:44px;padding:0 16px;border-radius:22px;border:1px solid #D5DBE3;background:#fff;color:#1F2A37;font-family:inherit;font-size:14px;cursor:pointer}
+  .rh-pill[aria-selected=true]{background:var(--navy);border-color:var(--navy);color:#fff;font-weight:700}
+  .rh-qs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+  @media (max-width:640px){.rh-qs{grid-template-columns:minmax(0,1fr)}}
+  .rh-q{text-decoration:none;color:#1F2A37;background:#fff;border:1px solid #D5DBE3;border-radius:10px;padding:16px;display:flex;gap:12px;align-items:flex-start}
+  .rh-q:hover{border-color:var(--blue);text-decoration:none}
+  .rh-q i{flex:none;width:36px;height:36px;border-radius:8px;background:var(--soft);color:#2563EB;display:flex;align-items:center;justify-content:center;font-size:15px;font-style:normal}
+  .rh-q b{display:block;font-size:15px;color:var(--navy)}
+  .rh-q small{display:block;font-size:13px;color:var(--sub);margin-top:4px}
+  .rh-list{background:#fff;border:1px solid var(--edge);border-radius:10px}
+  .rh-row{display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:space-between;align-items:center;padding:14px 16px;border-top:1px solid #EEF1F5}
+  .rh-row:first-child{border-top:0}
+  .rh-row a{font-weight:700;font-size:15px;text-decoration:none;min-width:0}
+  .rh-row a:hover{text-decoration:underline}
+  .rh-row .s{display:block;font-weight:400;font-size:13px;color:var(--sub);margin-top:2px}
+  .rh-row .w{font-size:13px;color:var(--sub)}
   .rh-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
   .rh-chip{display:inline-flex;align-items:center;min-height:36px;padding:0 14px;border-radius:18px;font-size:13px;text-decoration:none;border:1px solid #D5DBE3;background:#fff;color:#1F2A37}
-  .rh-chip:hover{border-color:var(--blue);text-decoration:none}
   .rh-chip.on{border:2px solid var(--blue);background:var(--soft);color:#1E3A8A;font-weight:700;padding:0 13px}
   .rh-sel{font-family:inherit;font-size:13px;min-height:36px;border:1px solid #D5DBE3;border-radius:18px;padding:0 12px;background:#fff}
-  .rh-row{display:grid;grid-template-columns:40px minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:12px 6px;border-top:1px solid #F0F2F5}
-  @media (max-width:640px){.rh-row{grid-template-columns:40px minmax(0,1fr)}.rh-row .meta{grid-column:2}}
-  .rh-ic{width:40px;height:40px;border-radius:10px;background:var(--soft);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700}
-  .rh-row a{text-decoration:none;min-width:0}
-  .rh-row a b{display:block;font-size:15px;color:var(--navy)}
-  .rh-row a span{display:block;font-size:13px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .rh-row a:hover b{text-decoration:underline}
-  .rh-pill{font-size:12px;padding:3px 10px;border-radius:10px;white-space:nowrap;background:#E3F1E7;color:#14532D}
-  .rh-pill.me{background:#EEF1F5;color:#374151}
-  .rh-when{font-size:12px;color:var(--sub);white-space:nowrap}
-  .rh-tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--edge)}
-  .rh-tab{min-height:42px;padding:0 14px;border:0;background:none;font-family:inherit;font-size:14px;cursor:pointer;margin-bottom:-1px;color:var(--sub);border-bottom:2px solid transparent}
-  .rh-tab[aria-selected=true]{color:var(--blue);font-weight:700;border-bottom-color:var(--blue)}
-  .rh-tab small{font-weight:400;color:var(--sub)}
-  .rh-q{text-decoration:none;display:grid;grid-template-columns:36px minmax(0,1fr);gap:12px;align-items:center;padding:12px;border:1px solid var(--edge);border-radius:12px;color:#1F2A37}
-  .rh-q:hover{border-color:var(--blue);text-decoration:none}
-  .rh-q i{width:36px;height:36px;border-radius:9px;background:#F5F7FA;color:var(--navy);display:flex;align-items:center;justify-content:center;font-size:14px;font-style:normal}
-  .rh-q b{display:block;font-size:14px;color:var(--navy)}
-  .rh-q small{display:block;font-size:12px;color:var(--sub)}
-  .rh-empty{font-size:14px;color:var(--sub);padding:6px 0;margin:0}
+  .rh-empty{font-size:14px;color:var(--sub);padding:14px 16px;margin:0}
+  .rh-up{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;background:#fff;border:1px dashed #C5CDD8;border-radius:10px;padding:16px 18px;font-size:15px}
   .rh-newdash{display:none;gap:8px;align-items:flex-end;flex-wrap:wrap}
   .rh-newdash.open{display:flex}
-  .rh-newdash input{font-family:inherit;font-size:14px;min-height:40px;border:1px solid #D5DBE3;border-radius:10px;padding:0 10px;display:block;margin-top:4px}
+  .rh-newdash input{font-family:inherit;font-size:14px;min-height:40px;border:1px solid #D5DBE3;border-radius:8px;padding:0 10px}
   [hidden]{display:none!important}
 </style>
 {% endblock %}
@@ -66,42 +64,68 @@
 {% block content %}
 <div class="rh">
   <div class="rh-top">
-    <h1>Reports</h1>
-    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;flex:1 1 420px;justify-content:flex-end">
-      <label class="rh-search">
-        <span style="position:absolute;left:-9999px">Find a report</span>
-        <input type="search" id="rhSearch" placeholder="Find a report — e.g. quotes won, overdue, calls" autocomplete="off">
-        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5B6675" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>
-      </label>
-      <a class="rh-btn" href="{{ url_for('reports.wizard') }}">+ New report</a>
+    <div>
+      <h1>Reports</h1>
+      <p style="margin:6px 0 0;color:var(--sub);font-size:15px">Answers about your sales, enquiries and team.</p>
     </div>
+    {% if custom_ok %}<a class="rh-btn" href="{{ url_for('reports.wizard') }}">+ Build a custom report</a>{% endif %}
   </div>
-  <div id="rhNoMatch" class="rh-card" hidden><p class="rh-empty">Nothing matches. Try other words, or <a href="{{ url_for('reports.wizard') }}">+ New report</a>.</p></div>
 
-  <section aria-labelledby="hDash" style="display:flex;flex-direction:column;gap:10px">
-    <div style="display:flex;justify-content:space-between;align-items:baseline"><h2 id="hDash">Your dashboards</h2>{% if dashboards|length > 3 %}<a href="{{ url_for('reports.dashboards') }}" style="font-size:13px">See all {{ dashboards|length }}</a>{% endif %}</div>
-    <div class="rh-dash">
-      {% for d in dashboards[:3] %}
-        <a class="rh-d" href="{{ url_for('reports.dashboard', dash_id=d.id) }}" data-find="{{ d.name|lower }} dashboard">
-          <span class="thumb" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
-          <b>{{ d.name }}</b><small>{{ d.boxes }} box{{ 'es' if d.boxes != 1 }} · {{ RA.sharing_label(d) }}</small>
-        </a>
-      {% endfor %}
-      <button type="button" class="rh-d new" id="rhNewDashBtn" aria-expanded="false" aria-controls="rhNewDash"><b style="color:var(--blue)">+ New dashboard</b><small>Your reports side by side</small></button>
+  <form method="get" action="{{ url_for('reports.ask') }}" class="rh-ask" role="search">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+    <label for="rhAsk"><b>Ask for a report</b></label>
+    <input id="rhAsk" name="q" maxlength="300" placeholder="e.g. won quotes by salesperson last month" autocomplete="off">
+    <button type="submit" class="rh-btn blue">Ask</button>
+  </form>
+
+  <section style="display:flex;flex-direction:column;gap:10px" aria-label="Your dashboard">
+    {% set first = dashboards[0] if dashboards else none %}
+    <a class="rh-dash" href="{{ url_for('reports.dashboard', dash_id=first.id) if first else url_for('reports.dashboards') }}">
+      <div class="t">
+        <div class="k">Your dashboard</div>
+        <div class="n">{{ first.name if first else 'Sales overview' }}</div>
+        <div class="d">This month at a glance — click to open</div>
+      </div>
+      <div class="rh-nums" id="rhNums" aria-live="polite"></div>
+    </a>
+    {% if custom_ok %}
+    <div class="rh-others">
+      {% if dashboards|length > 1 %}<span style="color:var(--sub)">Other dashboards:</span>
+        {% for d in dashboards[1:6] %}<a href="{{ url_for('reports.dashboard', dash_id=d.id) }}">{{ d.name }}</a>{% if not loop.last %} ·{% endif %}{% endfor %}
+        <span style="color:var(--sub)">·</span>{% endif %}
+      <button type="button" id="rhNewDashBtn" aria-expanded="false" aria-controls="rhNewDash" style="border:0;background:none;color:var(--blue);font:inherit;font-size:14px;cursor:pointer;padding:6px 0">+ New dashboard</button>
     </div>
     <form method="POST" action="{{ url_for('reports.dashboard_new') }}" class="rh-newdash" id="rhNewDash">
-      <label style="font-size:13px;color:var(--sub)">Dashboard name<input name="name" maxlength="80" placeholder="e.g. Monday sales meeting" required></label>
-      <button type="submit" class="rh-btn" style="min-height:40px;font-size:14px">Create</button>
+      <label style="font-size:13px;color:var(--sub)">Dashboard name<br><input name="name" maxlength="80" placeholder="e.g. Monday sales meeting" required></label>
+      <button type="submit" class="rh-btn blue" style="min-height:40px;font-size:14px">Create</button>
     </form>
+    {% endif %}
   </section>
 
-  <section class="rh-card" aria-labelledby="hMine">
+  {% if topics %}
+  <section style="display:flex;flex-direction:column;gap:14px" aria-labelledby="hReady">
+    <h2 id="hReady">What do you want to know?</h2>
+    <div class="rh-pills" role="tablist" aria-label="Topics" id="rhTabs">
+      {% for t in topics %}<button type="button" class="rh-pill" role="tab" id="tab-{{ t.key }}" aria-controls="panel-{{ t.key }}" aria-selected="{{ 'true' if loop.first else 'false' }}" tabindex="{{ '0' if loop.first else '-1' }}">{{ t.label }}</button>{% endfor %}
+    </div>
+    {% for t in topics %}
+      <div class="rh-qs" role="tabpanel" id="panel-{{ t.key }}" aria-labelledby="tab-{{ t.key }}" {% if not loop.first %}hidden{% endif %}>
+        {% for q in t.qs %}
+          <a class="rh-q" href="{{ q.url }}"><i aria-hidden="true">{{ q.icon }}</i><span><b>{{ q.q }}</b><small>{{ q.desc }}</small></span></a>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <section style="display:flex;flex-direction:column;gap:12px" aria-labelledby="hMine">
     <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px">
-      <h2 id="hMine">Your reports</h2>
+      <h2 id="hMine">Your saved reports</h2>
+      {% if custom_ok and counts.all %}
       <nav class="rh-chips" aria-label="Which reports">
-        <a class="rh-chip {{ 'on' if show == 'all' and not folder }}" href="{{ url_for('reports.library') }}" {% if show == 'all' and not folder %}aria-current="page"{% endif %}>All ({{ counts.all }})</a>
-        <a class="rh-chip {{ 'on' if show == 'mine' and not folder }}" href="{{ url_for('reports.library', show='mine') }}" {% if show == 'mine' %}aria-current="page"{% endif %}>Made by me ({{ counts.mine }})</a>
-        <a class="rh-chip {{ 'on' if show == 'shared' and not folder }}" href="{{ url_for('reports.library', show='shared') }}" {% if show == 'shared' %}aria-current="page"{% endif %}>Shared with me ({{ counts.shared }})</a>
+        <a class="rh-chip {{ 'on' if show == 'all' and not folder }}" href="{{ url_for('reports.library') }}">All ({{ counts.all }})</a>
+        <a class="rh-chip {{ 'on' if show == 'mine' and not folder }}" href="{{ url_for('reports.library', show='mine') }}">Made by me ({{ counts.mine }})</a>
+        <a class="rh-chip {{ 'on' if show == 'shared' and not folder }}" href="{{ url_for('reports.library', show='shared') }}">Shared with me ({{ counts.shared }})</a>
         {% if folders %}
         <select class="rh-sel" id="rhFolder" aria-label="Folder">
           <option value="{{ url_for('reports.library') }}">All folders</option>
@@ -109,55 +133,36 @@
         </select>
         {% endif %}
       </nav>
+      {% endif %}
     </div>
-    {% if reports %}
-      <div role="list" id="rhList">
-        {% for r in reports %}
-          <div class="rh-row" role="listitem" data-find="{{ (r.name ~ ' ' ~ r.sentence ~ ' ' ~ (r.folder or ''))|lower }}" {% if loop.index > 8 %}data-more hidden{% endif %}>
-            <span class="rh-ic" aria-hidden="true">{{ r.icon }}</span>
-            <a href="{{ url_for('reports.builder', id=r.id) }}"><b>{{ r.name }}</b><span>{{ r.sentence }}</span></a>
-            <span class="meta" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-              <span class="rh-pill {{ 'me' if r.visibility == 'private' }}">{{ r.sharing }}</span>
-              {% if r.folder %}<span class="rh-when">{{ r.folder }}</span>{% endif %}
-            </span>
-            <span class="rh-when meta">{% if not r.mine and r.created_by %}{{ r.created_by }} · {% endif %}{{ (r.last_opened_at or r.updated_at).strftime('%d %b') }}</span>
-          </div>
-        {% endfor %}
-      </div>
-      {% if reports|length > 8 %}<button type="button" id="rhShowAll" style="align-self:flex-start;border:0;background:none;color:var(--blue);font:inherit;font-size:13px;cursor:pointer;padding:4px 0">Show all {{ reports|length }}</button>{% endif %}
-    {% else %}
-      <p class="rh-empty">
-        {% if show == 'shared' %}Nothing has been shared with you yet.
-        {% elif folder %}This folder is empty.
-        {% else %}No saved reports yet. Pick a question below, or press <b>+ New report</b> — then <b>Save report</b> keeps it here.{% endif %}
-      </p>
-    {% endif %}
+    <div class="rh-list">
+      {% for r in reports %}
+        <div class="rh-row" {% if loop.index > 10 %}data-more hidden{% endif %}>
+          <a href="{{ r.url }}">{{ r.name }}<span class="s">{{ r.sentence }}</span></a>
+          <span class="w">{% if r.mine %}Saved by you{% else %}Saved by {{ r.created_by or 'a team member' }}{% endif %} · opened {{ (r.last_opened_at or r.updated_at).strftime('%d %b') }}</span>
+        </div>
+      {% else %}
+        <p class="rh-empty">
+          {% if show == 'shared' %}Nothing has been shared with you yet.
+          {% elif folder %}This folder is empty.
+          {% else %}No saved reports yet. Open a question above, change it how you like, then press <b>Save as my report</b>.{% endif %}
+        </p>
+      {% endfor %}
+    </div>
+    {% if reports|length > 10 %}<button type="button" id="rhShowAll" style="align-self:flex-start;border:0;background:none;color:var(--blue);font:inherit;font-size:14px;cursor:pointer;padding:4px 0">Show all {{ reports|length }}</button>{% endif %}
   </section>
 
-  {% if topics %}
-  <section class="rh-card" aria-labelledby="hReady">
-    <div>
-      <h2 id="hReady">Ready-made: pick a question</h2>
-      <p style="margin:4px 0 0;font-size:13px;color:var(--sub)">Opens with your numbers. Change anything, then <b>Save report</b> to keep it.</p>
-    </div>
-    <div class="rh-tabs" role="tablist" aria-label="Topics" id="rhTabs">
-      {% for t in topics %}<button type="button" class="rh-tab" role="tab" id="tab-{{ t.key }}" aria-controls="panel-{{ t.key }}" aria-selected="{{ 'true' if loop.first else 'false' }}" tabindex="{{ '0' if loop.first else '-1' }}">{{ t.label }} <small>({{ t.qs|length }})</small></button>{% endfor %}
-    </div>
-    {% for t in topics %}
-      <div class="rh-qs" role="tabpanel" id="panel-{{ t.key }}" aria-labelledby="tab-{{ t.key }}" {% if not loop.first %}hidden{% endif %}>
-        {% for q in t.qs %}
-          <a class="rh-q" href="{{ q.url }}" data-find="{{ (q.q ~ ' ' ~ q.label ~ ' ' ~ q.how ~ ' ' ~ t.label)|lower }}"><i aria-hidden="true">{{ q.icon }}</i><span><b>{{ q.q }}</b><small>{{ q.how }}</small></span></a>
-        {% endfor %}
-      </div>
-    {% endfor %}
-    <div style="font-size:13px;color:var(--sub)">Can't find it? <a href="{{ url_for('reports.wizard') }}">+ New report</a> walks you through it in 4 short steps.</div>
-  </section>
+  {% if not custom_ok %}
+  <div class="rh-up">
+    <span>Need a report we don't have? Custom reports come with Growth and Scale.</span>
+    {% if staff_can_open('portal.billing_plans') %}<a href="{{ url_for('portal.billing_plans') }}" style="font-weight:700">See plans</a>{% endif %}
+  </div>
   {% endif %}
 </div>
 
 <script>
 (function () {
-  var tabs = Array.prototype.slice.call(document.querySelectorAll('#rhTabs .rh-tab'));
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('#rhTabs .rh-pill'));
   function pick(t) {
     tabs.forEach(function (x) {
       var on = x === t; x.setAttribute('aria-selected', on ? 'true' : 'false'); x.tabIndex = on ? 0 : -1;
@@ -175,27 +180,21 @@
   var f = document.getElementById('rhFolder');
   if (f) f.addEventListener('change', function () { window.location = f.value; });
   var nb = document.getElementById('rhNewDashBtn'), nf = document.getElementById('rhNewDash');
-  nb.addEventListener('click', function () { var o = nf.classList.toggle('open'); nb.setAttribute('aria-expanded', o ? 'true' : 'false'); if (o) nf.querySelector('input').focus(); });
+  if (nb) nb.addEventListener('click', function () { var o = nf.classList.toggle('open'); nb.setAttribute('aria-expanded', o ? 'true' : 'false'); if (o) nf.querySelector('input').focus(); });
   var sa = document.getElementById('rhShowAll');
-  if (sa) sa.addEventListener('click', function () { document.querySelectorAll('[data-more]').forEach(function (r) { r.hidden = false; r.removeAttribute('data-more'); }); sa.remove(); sa = null; });
+  if (sa) sa.addEventListener('click', function () { document.querySelectorAll('[data-more]').forEach(function (r) { r.hidden = false; }); sa.remove(); });
 
-  // Search: saved reports, dashboards and every ready-made question at once
-  var box = document.getElementById('rhSearch'), tabBar = document.getElementById('rhTabs');
-  box.addEventListener('input', function () {
-    var q = box.value.trim().toLowerCase(), words = q.split(/\s+/).filter(Boolean), any = false;
-    document.querySelectorAll('[data-find]').forEach(function (el) {
-      var s = el.getAttribute('data-find') || '';
-      var show = !q || words.every(function (w) { return s.indexOf(w) !== -1; });
-      if (!q && el.hasAttribute('data-more')) show = false;
-      el.hidden = !show; if (q && show) any = true;
-    });
-    document.querySelectorAll('[role=tabpanel]').forEach(function (p) {
-      if (q) p.hidden = !p.querySelector('[data-find]:not([hidden])');
-      else p.hidden = document.querySelector('[aria-controls="' + p.id + '"]').getAttribute('aria-selected') !== 'true';
-    });
-    if (tabBar) tabBar.hidden = !!q;
-    document.getElementById('rhNoMatch').hidden = !q || any;
-  });
+  // The dashboard strip's numbers load after the page, so Reports home opens straight away
+  var box = document.getElementById('rhNums');
+  fetch('{{ url_for("reports.home_numbers") }}', {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : []; })
+    .then(function (xs) {
+      xs.forEach(function (x) {
+        var d = document.createElement('div'); d.className = 'rh-num';
+        var s = document.createElement('span'); s.textContent = x.label;
+        var b = document.createElement('b'); b.textContent = x.value; if (x.warn) b.className = 'warn';
+        d.appendChild(s); d.appendChild(b); box.appendChild(d);
+      });
+    }).catch(function () {});
 })();
 </script>
 {% endblock %}

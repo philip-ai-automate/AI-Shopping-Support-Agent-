@@ -86,11 +86,13 @@ On the dashboard, change Time or Team member at the top and every box that uses 
   {% else %}
     <nav class="db-tabs" aria-label="Dashboards">
       {% for x in dashboards %}<a href="{{ url_for('reports.dashboard', dash_id=x.id) }}" class="{{ 'on' if x.id == dash.id }}" {% if x.id == dash.id %}aria-current="page"{% endif %}>{{ x.name }}</a>{% endfor %}
+      {% if custom_ok %}
       <button type="button" id="newDashBtn" aria-expanded="false">+ New dashboard</button>
       <form method="POST" action="{{ url_for('reports.dashboard_new') }}" class="db-newform" id="newDashForm">
         <input class="db-sel" name="name" maxlength="80" placeholder="Dashboard name" aria-label="New dashboard name" required>
         <button type="submit" class="db-btn primary">Create</button>
       </form>
+      {% endif %}
     </nav>
 
     {% set active = dash.filters or [] %}
@@ -113,7 +115,7 @@ On the dashboard, change Time or Team member at the top and every box that uses 
         </select>
       </label>
       {% endif %}
-      <span class="rb-note" style="margin-left:auto;padding-bottom:10px">These filters apply to every box that uses them</span>
+      <span class="rb-note" style="margin-left:auto;padding-bottom:10px">These filters apply to every box{{ ' that uses them' if custom_ok }}</span>
     </form>
     {% else %}<div style="height:16px"></div>{% endif %}
 
@@ -131,15 +133,18 @@ On the dashboard, change Time or Team member at the top and every box that uses 
     {% else %}
       <div class="db-empty" style="display:flex;flex-direction:column;gap:12px;align-items:center">
         <b style="font-size:16px;color:#0B1F3A">This dashboard is empty.</b>
-        {% if can_edit %}
+        {% if can_fill %}
         <form method="POST" action="{{ url_for('reports.dashboard_fill', dash_id=dash.id) }}">
           <button type="submit" style="min-height:46px;padding:0 22px;border:0;border-radius:10px;background:#16A34A;color:#fff;font-family:inherit;font-size:15px;font-weight:800;cursor:pointer">Fill it with the ready-made Sales overview</button>
         </form>
-        <span>Number boxes, quotes won, where enquiries come from, quotes waiting and more. You can change anything afterwards.
-          Or <a href="{{ url_for('reports.dashboard_edit', dash_id=dash.id) }}">edit the dashboard</a> and add your own boxes.</span>
+        <span>Number boxes, quotes won, where enquiries come from, quotes waiting and more.
+          {% if can_edit %}You can change anything afterwards. Or <a href="{{ url_for('reports.dashboard_edit', dash_id=dash.id) }}">edit the dashboard</a> and add your own boxes.{% endif %}</span>
         {% endif %}
       </div>
     {% endif %}
+  {% endif %}
+  {% if dash and not custom_ok %}
+  <p class="rb-note" style="margin:14px 0 0;font-size:14px">Click any box to open the full report. Your own dashboards come with Growth and Scale.</p>
   {% endif %}
 </div>
 

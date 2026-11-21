@@ -26,6 +26,7 @@ import psycopg2.extras
 from flask import flash, jsonify, redirect, render_template, request, url_for
 
 import report_access as RA
+import report_plan as PLAN
 import report_builder as RB
 import report_dashboards as RD
 import report_plain as RP
@@ -35,7 +36,7 @@ from feature_access import team_feature
 from portal_routes import _current_actor
 from report_builder_routes import (
     NotAllowed, _args_from_saved, _box_cfg, _chart_and_totals, _dash_filter_qs, _dash_filters, _query, _resolve, _results,
-    _saved, _setup, _share_choices, _unscoped, reports_bp,
+    _custom_only, _saved, _setup, _share_choices, _unscoped, reports_bp,
 )
 
 
@@ -91,10 +92,12 @@ def dashboard(dash_id: int):
              RB.subject_ok(b["subject"], b2b)]
     people, role_list = _share_choices(ctx)
     v = ctx["viewer"]
+    custom = PLAN.custom_ok(ctx["tenant_id"])     # Starter: the Sales overview is fixed (21 Nov 2026)
     return render_template("portal/report_dashboard.html", customer=customer, dash=d, boxes=boxes,
                            dashboards=_visible_dashboards(ctx), flt=flt, filter_qs=filter_qs, dp_presets=RB.picker_presets(),
                            people=ctx["people"], RB=RB, RA=RA, sizes=dict(RD.SIZES),
-                           can_edit=RA.can_edit(d, v), can_manage=RA.can_manage(d, v), viewer=v,
+                           can_edit=custom and RA.can_edit(d, v), can_manage=custom and RA.can_manage(d, v), viewer=v,
+                           can_fill=RA.can_edit(d, v), custom_ok=custom,
                            share_people=people, share_roles=role_list)
 
 
@@ -115,8 +118,12 @@ def dashboard_box(dash_id: int, box_id: int):
     headline, chart = ("", {"kind": "table"}) if data.get("error") else _chart_and_totals(rctx, cfg, rscope, data)
     flt = _dash_filter_qs(_dash_filters(request.args))
     report = _saved(ctx["tenant_id"], box["report_id"])
-    open_url = (url_for("reports.builder") + "?" + _query(cfg, id=box["report_id"])) \
-        if RA.can_view(report, ctx["viewer"]) else ""
+    if not RA.can_view(report, ctx["viewer"]):
+        open_url = ""
+    elif not PLAN.custom_ok(ctx["tenant_id"]):
+        open_url = url_for("reports.view", id=box["report_id"], **{k: v for k, v in flt.items() if k in ("period", "date_from", "date_to", "member")})
+    else:
+        open_url = url_for("reports.builder") + "?" + _query(cfg, id=box["report_id"])
     return render_template("portal/_report_box.html", box=box, cfg=cfg, d=data, chart=chart, headline=headline,
                            subj=RB.SUBJECTS[cfg["subject"]], RB=RB, cid=f"box{box_id}",
                            compare_label=(RB.compare_range(cfg) or (None, None, ""))[2],
@@ -130,6 +137,9 @@ def dashboard_edit(dash_id: int):
     customer, ctx, b2b, _scope, err = _setup()
     if err:
         return err
+    stop = _custom_only(ctx)
+    if stop:
+        return stop
     d = _dash(ctx, dash_id, "edit")
     if not d:
         flash("You can't change that dashboard.", "warning")
@@ -157,6 +167,9 @@ def dashboard_new():
     customer, ctx, b2b, _scope, err = _setup()
     if err:
         return err
+    stop = _custom_only(ctx)
+    if stop:
+        return stop
     name = " ".join((request.form.get("name") or "").split())[:80]
     if not name:
         flash("Please give the dashboard a name.", "warning")
@@ -187,6 +200,12 @@ def dashboard_add(dash_id: int):
     customer, ctx, b2b, _scope, err = _setup()
     if err:
         return err
+    stop = _custom_only(ctx)
+    if stop:
+        return stop
+    stop = _custom_only(ctx)
+    if stop:
+        return stop
     if not _dash(ctx, dash_id, "edit"):
         flash("You can't change that dashboard.", "warning")
         return redirect(url_for("reports.dashboards"))
@@ -213,6 +232,9 @@ def dashboard_share(dash_id: int):
     customer, ctx, b2b, _scope, err = _setup()
     if err:
         return err
+    stop = _custom_only(ctx)
+    if stop:
+        return stop
     v = ctx["viewer"]
     if not _dash(ctx, dash_id, "manage"):
         flash("Only the person who made this dashboard can change who sees it.", "warning")
@@ -239,6 +261,9 @@ def dashboard_delete(dash_id: int):
     customer, ctx, b2b, _scope, err = _setup()
     if err:
         return err
+    stop = _custom_only(ctx)
+    if stop:
+        return stop
     if not _dash(ctx, dash_id, "manage"):
         flash("Only the person who made this dashboard can delete it.", "warning")
         return redirect(url_for("reports.dashboards"))
@@ -254,6 +279,9 @@ def add_to_dashboard(report_id: int):
     customer, ctx, b2b, _scope, err = _setup()
     if err:
         return err
+    stop = _custom_only(ctx)
+    if stop:
+        return stop
     if not RA.can_view(_saved(ctx["tenant_id"], report_id), ctx["viewer"]):
         flash("That report was not found.", "warning")
         return redirect(url_for("reports.library"))
@@ -426,6 +454,9 @@ def dashboard_add_new(dash_id: int):
     customer, ctx, b2b, _scope, err = _setup()
     if err:
         return err
+    stop = _custom_only(ctx)
+    if stop:
+        return stop
     if not _dash(ctx, dash_id, "edit"):
         flash("You can't change that dashboard.", "warning")
         return redirect(url_for("reports.dashboards"))

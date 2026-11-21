@@ -178,6 +178,26 @@ for _k in ("customer", "contact", "phone", "wa", "email", "otheremails", "websit
     if _k in CRM_COLUMNS:
         CRM_COLUMNS[_k]["group"] = False
 
+# 21 Nov 2026 (simple reports, Leads & CRM tab): hot / warm / cold and how long an open record has gone quiet.
+# "tier" is the Leads page's own score (AI Lead Qualification when on, else the six signals) — see _tier_join.
+_OPEN = "COALESCE(l.outcome, '') NOT IN ('won','lost','dropped','not_a_fit')"
+_CRM_EXTRA_COLS = [
+    ("Deal", {"key": "tier", "label": "Hot, warm or cold", "expr": "tr.tier", "fmt": "lm_tier", "joins": ("tier",)}),
+    ("Team activity", {"key": "quietdays", "label": "Days since last activity",
+                       "expr": f"CASE WHEN {_OPEN} THEN "
+                               "GREATEST(0, CURRENT_DATE - COALESCE(act.last_at, l.updated_at, l.created_at)::date) END",
+                       "fmt": "int", "joins": ("act",)}),
+]
+for _g, _c in _CRM_EXTRA_COLS:
+    _fc = _flags(dict(_c))
+    for _gname, _cols in CRM_GROUPS:
+        if _gname == _g:
+            _cols.append(_fc)
+            break
+    else:
+        CRM_GROUPS[0][1].append(_fc)
+    CRM_COLUMNS[_fc["key"]] = _fc
+
 CRM_MEASURES = [
     ("count", "Number of records", None, "int"),
     ("sum_value", "Sum of Deal value", "SUM(fx_to_selling(l.deal_value, l.currency, l.tenant_id))", "money"),
@@ -186,7 +206,11 @@ CRM_MEASURES = [
      "AVG(CASE WHEN l.outcome IN ('won','lost','dropped','not_a_fit') "
      "THEN COALESCE(l.won_date, l.dropped_at::date, l.updated_at::date) - l.created_at::date END)", "int"),
     ("avg_daysopen", "Average days open", "AVG(CURRENT_DATE - l.created_at::date)", "int"),
+    ("avg_daysstage", "Average days in this stage",
+     f"AVG(CASE WHEN {_OPEN} THEN "
+     "GREATEST(0, CURRENT_DATE - COALESCE(stg.at, l.opportunity_at, l.created_at)::date) END)", "int"),
 ]
+CRM_MEASURE_JOINS = {"avg_daysstage": ["stg"]}
 CRM_EXTRAS = [
     ("Won", "COUNT(*) FILTER (WHERE l.outcome = 'won')", "int"),
     ("Won value", "COALESCE(SUM(fx_to_selling(l.deal_value, l.currency, l.tenant_id)) "
@@ -204,7 +228,35 @@ CRM_DATES = [
 
 
 def _crm_from(tenant_id, joins):
-    return crm.base_from(tenant_id, joins)
+    sql = crm.base_from(tenant_id, joins)
+    if "tier" in joins:
+        sql += "\n" + _tier_join(tenant_id)
+    return sql
+
+
+_DEFAULT_SCORE = ("(CASE WHEN l.updated_at >= NOW() - INTERVAL '48 hours' THEN 15 ELSE 0 END"
+                  " + CASE WHEN l.stage IN ('proposal_sent', 'negotiating', 'won') THEN 25 ELSE 0 END"
+                  " + CASE WHEN l.budget_confirmed THEN 20 ELSE 0 END"
+                  " + CASE WHEN l.decision_maker_engaged THEN 20 ELSE 0 END"
+                  " + CASE WHEN l.deadline_date IS NOT NULL THEN 15 ELSE 0 END"
+                  " + CASE WHEN l.updated_at < NOW() - INTERVAL '7 days' THEN -25 ELSE 0 END)")
+
+
+def _tier_join(tenant_id) -> str:
+    """Hot / warm / cold exactly as the Leads page works it out (portal_routes._pipeline_scored_from_sql):
+    the business's AI Lead Qualification score and bands when it is on, else the six signals (60 / 30).
+    Dropped leads have no tier."""
+    expr, hot, warm = _DEFAULT_SCORE, 60, 30
+    try:
+        import lead_qualify as LQ
+        s = LQ.active(int(tenant_id))
+        if s:
+            expr, hot, warm = "(" + LQ.score_sql(s, "l") + ")", int(s["hot_from"]), int(s["warm_from"])
+    except Exception as e:
+        print("⚠️ report tier:", e)
+    return (f"CROSS JOIN LATERAL (SELECT CASE WHEN l.dropped_at IS NOT NULL THEN NULL "
+            f"WHEN z.s >= {hot} THEN 'hot' WHEN z.s >= {warm} THEN 'warm' ELSE 'cold' END AS tier "
+            f"FROM (SELECT ({expr})::int AS s) z) tr")
 
 
 # ── Subject: Quotes (quote requests and the quotation sent) ──────────────────
@@ -334,6 +386,7 @@ QUOTE_GROUPS = [
     ]),
 ]
 LABEL_MAPS["lm_inv"] = INV_WORDS
+LABEL_MAPS["lm_tier"] = {"hot": "Hot", "warm": "Warm", "cold": "Cold"}
 QUOTE_COLUMNS = {c["key"]: c for _, cols in QUOTE_GROUPS for c in cols}
 for _k in ("bcompany", "dcompany", "qreason", "qcurrency", "dcategory", "sentvia", "ivsys"):
     QUOTE_COLUMNS[_k]["group"] = True
@@ -433,6 +486,7 @@ SUBJECTS = {
         "default_cols": ["customer", "company", "stage", "outcome", "assigned", "value", "becamedeal", "closed"],
         "default_sort": ("becamedeal", "desc"), "scope": "leads", "cur": "l.currency",
         "hint": "Sales Pipeline records that became a deal.",
+        "measure_joins": CRM_MEASURE_JOINS,
     },
     "leads": {
         "label": "Enquiries & leads", "noun": "leads", "b2b": False, "id": "l.id", "tenant": "l.tenant_id",
@@ -441,6 +495,7 @@ SUBJECTS = {
         "default_cols": ["customer", "contact", "phone", "source", "channel", "assigned", "stage", "created"],
         "default_sort": ("created", "desc"), "scope": "leads", "cur": "l.currency",
         "hint": "Every enquiry and lead on the Sales Pipeline, deal or not.",
+        "measure_joins": CRM_MEASURE_JOINS,
     },
 }
 SUBJECT_ORDER = ["quotes", "deals", "leads"]

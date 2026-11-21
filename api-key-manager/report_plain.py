@@ -94,14 +94,20 @@ QUESTIONS = {
     "top_products": "Which products sell most?", "discount_codes": "Do buyers use the discount codes we give?",
     "cart_recovery": "What happens to carts left behind?",
     "new_wa_customers": "How many new customers message us on WhatsApp?",
+    "new_leads": "How many new leads did we get?", "lead_tiers": "How many leads are hot, warm or cold?",
+    "deals_quiet": "Which deals have gone quiet?", "stage_days": "How long do deals sit in each stage?",
+    "open_deals_member": "Who has the most open deals?", "deals_wonlost": "How many deals did we win or lose?",
+    "new_contacts": "How many new contacts did we add?",
 }
 
 # Reports home: the ready-made questions in topic tabs (approved mock-up screen 11)
 TOPICS = [("sales", "Sales & quotes", ["quotes_by_member", "quotes_wonlost", "quotes_waiting", "quote_revenue",
-                                        "overdue_invoices", "quotes_pivot", "deal_funnel"]),
+                                        "overdue_invoices", "quotes_pivot"]),
+          ("crm", "Leads & CRM", ["new_leads", "lead_tiers", "deal_funnel", "deals_quiet", "stage_days",
+                                  "open_deals_member", "deals_wonlost", "new_contacts", "followups"]),
           ("chats", "Enquiries & chats", ["where_enquiries", "missed_replies", "new_wa_customers", "handovers",
                                           "first_reply", "not_a_fit"]),
-          ("team", "Team", ["team_activity", "followups", "calls"]),
+          ("team", "Team", ["team_activity", "calls"]),
           ("marketing", "Marketing", ["campaigns", "sequences", "ai_usage"]),
           ("shop", "Online shop", ["orders_week", "orders_status", "top_products", "discount_codes", "cart_recovery"])]
 CHART_ICON = {"bar": "▮▮", "hbar": "▬", "stacked": "▮▮", "line": "⟋", "area": "⟋", "combo": "▮⟋", "pie": "◔",
