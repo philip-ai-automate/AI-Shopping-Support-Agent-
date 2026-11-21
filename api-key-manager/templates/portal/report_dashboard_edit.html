@@ -316,8 +316,7 @@
   function load(w, el) {
     var body = el.querySelector('.ge-body');
     if (w.kind === 'heading') {
-      var lines = (w.note || '').split('\n'), head = lines.shift();
-      body.innerHTML = '<div class="ge-head"><b>' + esc(head || 'Heading') + '</b>' + (lines.join('\n').trim() ? '<span>' + esc(lines.join('\n').trim()) + '</span>' : '') + '</div>';
+      body.innerHTML = '<div class="ge-head"><b>' + esc(w.head || 'Heading') + '</b>' + (w.more ? '<span>' + esc(w.more) + '</span>' : '') + '</div>';
       return;
     }
     body.innerHTML = '<div class="ge-loading">Loading ' + esc(w.title) + '…</div>';
