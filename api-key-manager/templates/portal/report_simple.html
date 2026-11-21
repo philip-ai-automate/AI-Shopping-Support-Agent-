@@ -138,7 +138,7 @@
         {% set s = d.summary %}
         <div class="rb-scroll" data-drill-base="{{ drill_base }}" style="margin-top:12px">
           <table class="sr-tbl">
-            <thead><tr>{% for h in s.headers[:s.ngroups + n_main] %}<th class="{{ 'num' if loop.index > s.ngroups }}">{{ split_label if loop.first and split_label else h }}</th>{% endfor %}</tr></thead>
+            <thead><tr>{% for h in s.headers[:s.ngroups + n_main] %}<th class="{{ 'num' if loop.index > s.ngroups }}">{{ split_label if loop.first and split_label else ('Number of ' ~ subj.noun if loop.index == s.ngroups + 1 else h|replace('Sum of ', '')) }}</th>{% endfor %}</tr></thead>
             <tbody>
               {% for r in s.rows %}
                 <tr>{% for l in r.labels %}<td>{{ l }}</td>{% endfor %}{% for c in r.cells[:n_main] %}<td class="num">{% if loop.first %}<button type="button" class="rb-sumbtn" data-drill='{{ r.rk|tojson }}' aria-label="See the {{ c }} records for {{ r.labels|join(' · ') }}">{{ c }}</button>{% else %}{{ c }}{% endif %}</td>{% endfor %}</tr>

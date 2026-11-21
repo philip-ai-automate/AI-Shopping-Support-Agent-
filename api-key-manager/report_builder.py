@@ -489,7 +489,7 @@ SUBJECTS = {
         "measure_joins": CRM_MEASURE_JOINS,
     },
     "leads": {
-        "label": "Enquiries & leads", "noun": "leads", "b2b": False, "id": "l.id", "tenant": "l.tenant_id",
+        "label": "Enquiries & leads", "noun": "enquiries", "b2b": False, "id": "l.id", "tenant": "l.tenant_id",
         "groups": CRM_GROUPS, "columns": CRM_COLUMNS, "from": _crm_from, "fixed": None,
         "measures": CRM_MEASURES, "extras": CRM_EXTRAS, "dates": CRM_DATES, "date_default": "created",
         "default_cols": ["customer", "contact", "phone", "source", "channel", "assigned", "stage", "created"],
