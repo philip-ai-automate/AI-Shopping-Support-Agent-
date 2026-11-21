@@ -28,6 +28,7 @@
   .ge-handle{display:flex;gap:6px;align-items:center;min-height:32px;padding:0 6px;border:0;background:none;font-family:inherit;font-size:11.5px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.4px;cursor:grab;border-radius:6px;min-width:0}
   .ge-handle:focus-visible{outline:2px solid var(--blue)}
   .ge-handle b{font-size:15px;color:#94A3B8}
+  .ge-handle span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ge-acts{display:flex;gap:2px;flex:none}
   .ge-acts button{min-height:32px;padding:0 8px;border:0;background:none;font-family:inherit;font-size:12.5px;cursor:pointer;border-radius:6px}
   .ge-acts .s{color:var(--blue)}.ge-acts .r{color:#B91C1C}
@@ -243,7 +244,7 @@
       var w = 3; while (x + w < COLS && w < 6 && !taken(x + w, y) && !taken(x + w, y + 1)) w++;
       var h = 2; while (y + h < B && h < 4) { var row = true; for (var i = 0; i < w; i++) if (taken(x + i, y + h)) row = false; if (!row) break; h++; }
       var s = {x: x, y: y, w: w, h: h}; used.push(s); out.push(s);
-      if (out.length >= 6) return out;
+      if (out.length >= 2) return out;
     }
     return out;
   }
