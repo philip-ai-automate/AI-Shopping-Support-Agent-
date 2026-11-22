@@ -108,6 +108,11 @@ def business_info(cur, tenant_id: int) -> dict:
         kind = "custom"
     cur.execute("SELECT 1 FROM wa_tenants WHERE tenant_id=%s AND active LIMIT 1", (tenant_id,))
     t["wa_on"] = cur.fetchone() is not None
+    # Fix 1 (22 Nov 2026): a WhatsApp-only business that has connected its
+    # website and had it read at least once gets its products, services and
+    # prices from the website, so they are no longer "Needed".
+    cur.execute("SELECT 1 FROM website_sources WHERE tenant_id=%s AND last_read_at IS NOT NULL", (tenant_id,))
+    t["site_read"] = cur.fetchone() is not None
     t.update(kind=kind, model="b2b" if b2b else "b2c", shopify=shopify)
     return t
 
@@ -299,7 +304,9 @@ def sections(info: dict, p: dict, prod: dict, web: dict | None, can_web: bool) -
 
     ptitle = {"services": "Your services and prices", "both": "Your products, services and prices"}.get(sells, "Your products and prices")
     one = {"services": "service", "both": "product or service"}.get(sells, "product")
-    if kind == "wa":
+    if kind == "wa" and info.get("site_read"):
+        add("products", ptitle, "From your website or an uploaded list", auto=True)
+    elif kind == "wa":
         add("products", ptitle, "The same list as My Products & Services, not a copy",
             [(prod["count"] > 0, "At least one " + one)])
     else:
@@ -307,7 +314,7 @@ def sections(info: dict, p: dict, prod: dict, web: dict | None, can_web: bool) -
                "shopify": "From your Shopify store, through the PhiXtra app"}[kind]
         add("products", ptitle, sub, auto=prod["count"] > 0)
 
-    if kind == "wa":
+    if kind == "wa" and not info.get("site_read"):
         add("website", "Your website", "If you have one", show=can_web, auto=bool(web and web.get("last_read_at")))
     else:
         add("website", "Your website", "Read when you connected it", auto=bool(web and web.get("last_read_at")))

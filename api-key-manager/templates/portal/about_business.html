@@ -121,7 +121,7 @@
   {% if autos %}<div class="ab-gl">Already known · check if you like</div>{% endif %}
   {% for s in secs %}{% if s.status == 'auto' %}{% set _open = false %}{% include "portal/_about_business_section.html" %}{% endif %}{% endfor %}
   {% if autos %}<div class="ab-gl">From you</div>{% endif %}
-  {% for s in secs %}{% if s.status != 'auto' %}{% set _open = s.status == 'need' or s.key == 'about' or (k == 'wa' and s.key == 'products') %}{% include "portal/_about_business_section.html" %}{% endif %}{% endfor %}
+  {% for s in secs %}{% if s.status != 'auto' %}{% set _open = s.status == 'need' or s.key == 'about' or (k == 'wa' and s.key == 'products' and not info.site_read) %}{% include "portal/_about_business_section.html" %}{% endif %}{% endfor %}
 
   <div class="ab-key"><b style="color:#DC2626">*</b> Must be filled before your AI Agent answers customers</div>
 
@@ -157,13 +157,14 @@
 (function(){
   var form=document.getElementById('abForm');
   // If/then rules (22 Nov 2026): what is required follows the ticks in section 1.
+  var SITE_READ={{ (info.site_read or false)|tojson }};
   var KIND={{ k|tojson }}, SELLS={{ (p.sells or 'products')|tojson }}, B2B={{ b2b|tojson }}, CAN_EDIT={{ can_edit|tojson }};
   if(!CAN_EDIT){ form.querySelectorAll('input,textarea,select').forEach(function(x){x.disabled=true}); }
   var IFNOT={{ if_not|tojson }};
   function ticked(key){var c=form.querySelector('[name="do"][value="'+key+'"]');return !!(c&&c.checked)}
   function reqFor(k){
     if(k==='about'){var r=[['business_name','text','Add your business name.'],['what','text','Add one or two lines about what you do.'],['do','ticks','Tick at least one thing for your AI Agent to do.']];if(B2B)r.push(['bp','radio','Choose what your AI Agent does when a buyer asks for a price.']);return r}
-    if(k==='products')return KIND==='wa'?[['products','fixed','']]:[];
+    if(k==='products')return (KIND==='wa'&&!SITE_READ)?[['products','fixed','']]:[];
     if(k==='hours'){var h=[['hours','hours','']];if(SELLS==='services')h.push(['addr','text',''])
       ;return h}
     if(k==='trade')return ticked('terms')?[['moq','moq',''],['lead','text',''],['del','text','']]:[];
