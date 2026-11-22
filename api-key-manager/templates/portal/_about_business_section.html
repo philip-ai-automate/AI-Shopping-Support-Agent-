@@ -38,7 +38,7 @@
         {% for r in prod.rows %}<tr><td>{{ r.title }}</td><td class="r">{% if r.price_min %}{{ r.currency or '' }} {{ '%.2f'|format(r.price_min) }}{% else %}–{% endif %}</td></tr>{% endfor %}
       </tbody></table></div>{% endif %}
     {% else %}
-      {% if k == 'wa' and info.site_read %}<div class="ab-ok">Your AI Agent reads your {{ what_word }} and prices from {{ (((web.url if web else '') or 'your website')|replace('https://', '')|replace('http://', '')|replace('www.', '')).rstrip('/') }}{% if web and web.last_read_at %} ({{ web.pages_read or 0 }} pages, read {{ web.last_read_at.strftime('%-d %b %Y') }}){% endif %}.</div>
+      {% if k == 'wa' and info.site_read %}<div class="ab-ok">Your AI Agent reads your {{ 'products, services' if p.sells == 'both' else what_word }} and prices from {{ (((web.url if web else '') or 'your website')|replace('https://', '')|replace('http://', '')|replace('www.', '')).rstrip('/') }}{% if web and web.last_read_at %} ({{ web.pages_read or 0 }} pages, read {{ web.last_read_at.strftime('%-d %b %Y') }}){% endif %}.</div>
         <div class="ab-note">Prices often out of date on your website? Add them in My Products &amp; Services or upload a list.</div>
       {% elif k == 'wa' %}<div data-f="products"><span class="ab-l ab-req">At least one {{ 'product or service' if p.sells == 'both' else ('service' if svc else 'product') }}</span>
         <div class="ab-warn">Your AI Agent doesn't know any of your {{ what_word }} yet, so it can't give prices.</div>{{ err('products', 'Add at least one product or service.' if p.sells == 'both' else ('Add at least one service.' if svc else 'Add at least one product.')) }}</div>
