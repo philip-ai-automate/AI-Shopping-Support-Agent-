@@ -1141,6 +1141,12 @@ def _chat(req: ChatRequest):
     _max_out = None
     if _engines is not None and _engines["info_chunks"]:
         _max_out = int(os.getenv("LLM_MAX_OUTPUT_TOKENS_INFO") or os.getenv("LLM_MAX_OUTPUT_TOKENS", "1200"))
+    # The documents behind the chunks the AI is given, for the test chat's
+    # "From: …" lines (answer_sources, 22 Nov 2026).
+    _chunk_doc = {}
+    for _c, _d in zip(context_chunks or [], raw_docs or []):
+        _chunk_doc.setdefault(_c, _d)
+    _gen_docs = [_chunk_doc[_c] for _c in (gen_chunks or []) if _c in _chunk_doc]
     answer, needs_handoff, usage = ask_llm(
         system_prompt, req.message, gen_chunks, history=history, structured_handoff=True,
         max_output_tokens=_max_out,
@@ -1453,6 +1459,23 @@ def _chat(req: ChatRequest):
         "website": tenant.get("website"),
         "handoff_triggered": handoff_triggered,
     }
+    # Test chat on About your business only: where the answer came from.
+    if str(session_id).startswith("playground-ab"):
+        try:
+            import answer_sources as _asrc
+            _prof = {}
+            _pc = get_db_connection()
+            if _pc:
+                try:
+                    _pcur = _pc.cursor()
+                    _pcur.execute("SELECT data FROM ai_business_profile WHERE tenant_id=%s", (int(tenant_id),))
+                    _pr = _pcur.fetchone()
+                    _prof = _pr[0] if _pr and isinstance(_pr[0], dict) else {}
+                finally:
+                    _pc.close()
+            response["sources"] = _asrc.find(_llm_module._get_client(), req.message, answer, _prof, _gen_docs)
+        except Exception as _src_err:
+            print(f"⚠️ test chat sources: {_src_err}")
     # The buyer's language for the chat box's own words (contact form,
     # plugin 3.10.0, 2026-11-12): the AI's reply follows the buyer's language.
     try:

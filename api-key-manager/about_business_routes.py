@@ -220,7 +220,9 @@ def test_chat():
         return jsonify({"ok": False, "error": "Your AI Agent has used this month's messages, so it can't answer the test."})
     if not reply:
         return jsonify({"ok": False, "error": "Your AI Agent didn't answer. Please try again in a moment."})
-    return jsonify({"ok": True, "reply": reply, "handed_over": bool(out.get("handoff_triggered"))})
+    src = out.get("sources") if isinstance(out.get("sources"), dict) else {}
+    return jsonify({"ok": True, "reply": reply, "handed_over": bool(out.get("handoff_triggered")),
+                    "sources": src.get("items") or [], "not_found": bool(src.get("not_found"))})
 
 
 @about_bp.route("/ai-agent/about-your-business/document", methods=["POST"])

@@ -89,6 +89,12 @@
 .web .ab-m.in{background:#F97316;color:#fff;align-self:flex-end}.web .ab-m.out{background:#F4F5F7;align-self:flex-start}
 .ab-m .who{display:block;font-size:10.5px;font-weight:700;color:#5B21B6;margin-bottom:2px}
 .ab-m .src{display:block;font-size:10.5px;color:#991B1B;margin-top:4px;border-top:1px dashed #d8b4b4;padding-top:3px}
+.ab-from{display:flex;flex-direction:column;gap:3px;margin-top:6px;border-top:1px dashed #b9c9b3;padding-top:5px;white-space:normal}
+.ab-from span{font-size:11px;color:#5d6b82}
+.ab-from b{color:#0B1D40;font-weight:700}
+.ab-from .nf b{color:#991B1B}
+.ab-from button,.ab-from a{font:inherit;font-size:11px;font-weight:700;color:#2563EB;background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}
+.web .ab-m.out .ab-from{border-top-color:#d5dce6}
 .ab-m.sys{align-self:center;background:#FEF3C7;color:#92400E;font-size:12px;box-shadow:none}
 .ab-send{display:flex;gap:6px;padding:8px;border-top:1px solid #e3e3e3;background:#F0F2F5}
 .ab-send input{flex:1;min-width:0;font:inherit;font-size:13px;border:1px solid #D5DCE6;border-radius:999px;padding:8px 12px}
@@ -137,7 +143,7 @@
 </form>
 
 <aside class="ab-chat" aria-label="Test chat">
-  <div class="ab-chat-h"><b>Try a test chat</b><small>Ask what your customers ask. Only you see this chat. Your AI Agent answers with what is saved, so press Save first after a change.</small></div>
+  <div class="ab-chat-h"><b>Try a test chat</b><small>Ask what your customers ask. Only you see this chat. Your AI Agent answers with what is saved, so press Save first after a change. Under each answer you can see where it came from.</small></div>
   <div class="ab-ph {{ 'wa' if k == 'wa' else 'web' }}">
     <div class="ab-phh"><span class="ab-av">{{ (p.business_name or info.name or 'AI')[:2]|upper }}</span><span><b>{{ p.business_name or info.name }}</b><small>{{ 'WhatsApp · test chat' if k == 'wa' else 'Chat box · test chat' }}</small></span></div>
     <div class="ab-msgs" id="abMsgs" aria-live="polite"></div>
@@ -280,6 +286,43 @@
     if(note){var s=document.createElement('span');s.className='src';s.textContent=note;d.appendChild(s)}
     msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight;return d;
   }
+  // "From: …" lines under a test answer (22 Nov 2026). Only the business sees them.
+  function openSec(key){
+    var sec=document.getElementById('sec-'+key);
+    if(!sec||sec.hidden){key='else';sec=document.getElementById('sec-else')}
+    if(!sec)return null;
+    var b=document.getElementById('b-'+key);if(b&&b.hidden){b.hidden=false;var h=document.querySelector('[data-tog="b-'+key+'"]');if(h)h.setAttribute('aria-expanded','true')}
+    sec.scrollIntoView({behavior:'smooth',block:'start'});return sec;
+  }
+  function link(txt,fn){var a=document.createElement('button');a.type='button';a.textContent=txt;a.addEventListener('click',fn);return a}
+  function sep(el){el.appendChild(document.createTextNode(' · '))}
+  function addFrom(d,items,notFound,question){
+    if(!(items&&items.length)&&!notFound)return;
+    var box=document.createElement('div');box.className='ab-from';
+    (items||[]).forEach(function(it){
+      var l=document.createElement('span');var b=document.createElement('b');b.textContent='From: ';l.appendChild(b);
+      l.appendChild(document.createTextNode(it.label));
+      if(it.kind==='site'){
+        if(it.url){sep(l);var a=document.createElement('a');a.href=it.url;a.target='_blank';a.rel='noopener';a.textContent='Open page';l.appendChild(a)}
+        sep(l);l.appendChild(link('Correct it here',function(){openSec(it.section)}));
+      }else if(it.kind==='info'){
+      }else if(it.kind==='product'){
+        sep(l);var p=document.createElement('a');p.href='{{ url_for("portal.products") }}?q='+encodeURIComponent(it.q||'');p.target='_blank';p.rel='noopener';p.textContent='Change';l.appendChild(p);
+      }else{sep(l);l.appendChild(link('Change',function(){openSec(it.section)}))}
+      box.appendChild(l);
+    });
+    if(!(items&&items.length)&&notFound){
+      var n=document.createElement('span');n.className='nf';var nb=document.createElement('b');nb.textContent='Not found';n.appendChild(nb);
+      n.appendChild(document.createTextNode(', passed to your team'));sep(n);
+      n.appendChild(link('Add an answer',function(){
+        if(!openSec('faq'))return;var add=document.getElementById('faqAdd');if(!add)return;add.click();
+        var list=document.getElementById('faqList'),last=list&&list.lastElementChild;var qi=last&&last.querySelector('[name="faq_q"]');
+        if(qi){qi.value=question;var ta=last.querySelector('textarea');if(ta)ta.focus()}
+      }));
+      box.appendChild(n);
+    }
+    d.appendChild(box);msgs.scrollTop=msgs.scrollHeight;
+  }
   add('sys','Send a message to see how your AI Agent answers.');
   document.getElementById('abSend').addEventListener('submit',function(e){
     e.preventDefault();
@@ -288,7 +331,9 @@
     fetch('{{ url_for("about.test_chat") }}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:t,sid:sid})})
       .then(function(r){return r.json()}).then(function(d){
         wait.remove();
-        if(d.ok)add('out',d.reply,'AI Agent',d.handed_over?'Your AI Agent passed this to your team. Add the answer to this page so it can answer next time.':null);
+        if(d.ok){var shown=(d.sources&&d.sources.length)||d.not_found;
+          var m=add('out',d.reply,'AI Agent',(d.handed_over&&!shown)?'Your AI Agent passed this to your team. Add the answer to this page so it can answer next time.':null);
+          addFrom(m,d.sources,d.not_found,t)}
         else add('sys',d.error||'Something went wrong. Please try again.');
       }).catch(function(){wait.remove();add('sys','Something went wrong. Please try again.')})
       .finally(function(){go.disabled=false;q.focus()});
