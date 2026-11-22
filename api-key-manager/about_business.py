@@ -333,10 +333,16 @@ def sections(info: dict, p: dict, prod: dict, web: dict | None, can_web: bool) -
             hidden="terms" not in do, show_if="terms")
     else:
         if sells in ("products", "both"):
+            # Fix 2 (22 Nov 2026): with a website that has been read, delivery
+            # and returns come from it ("Done for you"); the boxes only change
+            # or add to it. Without one, a WhatsApp-only business must fill them.
+            wa_only = kind == "wa" and not info.get("site_read")
             add("delivery", "Delivery and returns",
-                "Shown because you ticked \"Explain delivery and returns\"" if kind == "wa"
-                else "Your AI Agent also reads the delivery and returns pages on your website",
-                [(s("dl"), "Delivery"), (s("rt"), "Returns")] if kind == "wa" else None,
+                "Shown because you ticked \"Explain delivery and returns\"" if wa_only
+                else ("Read from your website" if info.get("site_read")
+                      else "Your AI Agent also reads the delivery and returns pages on your website"),
+                [(s("dl"), "Delivery"), (s("rt"), "Returns")] if wa_only else None,
+                auto=bool(info.get("site_read")) and not wa_only,
                 hidden="delivery" not in do, show_if="delivery")
         if sells in ("services", "both"):
             breq = []

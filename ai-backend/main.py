@@ -145,6 +145,11 @@ def _ab_block(tenant_id: int) -> str:
             return ""
         data = dict(r[0])
         data["model"] = "b2b" if r[1] else "b2c"   # today's answer, not the one saved with the page
+        try:   # Fix 2 (22 Nov 2026): website read → the owner's words win over it
+            cur.execute("SELECT 1 FROM website_sources WHERE tenant_id=%s AND last_read_at IS NOT NULL", (tenant_id,))
+            data["has_site"] = cur.fetchone() is not None
+        except Exception:
+            conn.rollback()
         if r[1]:
             try:   # payment terms as they are now in Quotations › Design
                 cur.execute("SELECT settings FROM quote_design WHERE tenant_id=%s", (tenant_id,))

@@ -168,7 +168,7 @@
     if(k==='hours'){var h=[['hours','hours','']];if(SELLS==='services')h.push(['addr','text',''])
       ;return h}
     if(k==='trade')return ticked('terms')?[['moq','moq',''],['lead','text',''],['del','text','']]:[];
-    if(k==='delivery')return (KIND==='wa'&&ticked('delivery'))?[['dl','text',''],['rt','text','']]:[];
+    if(k==='delivery')return (KIND==='wa'&&!SITE_READ&&ticked('delivery'))?[['dl','text',''],['rt','text','']]:[];
     if(k==='bookings'){var b=[];if(ticked('bookings'))b.push(['book','text','']);if(SELLS==='services'&&ticked('cancellations'))b.push(['canc','text','']);return b}
     return [];
   }

@@ -176,6 +176,11 @@ def build_block(p: dict) -> str:
         return ""
     out = "\n\nABOUT THIS BUSINESS (from the owner. Use it to answer; it is more up to date than anything else except the product data):\n"
     out += "\n".join(facts) if facts else "- (nothing added yet)"
+    if p.get("has_site"):
+        # Fix 2 (22 Nov 2026): the owner's own words win over the website.
+        rules.append("The facts above, and the business's own product and service list, are the most up to date. "
+                     "If a website page in the information you are given says something different, use these facts. "
+                     "Never give a customer both answers.")
     if rules:
         out += "\n\nHOW TO HELP THIS BUSINESS'S CUSTOMERS:\n" + "\n".join("- " + r for r in rules)
     out += ("\nIf the answer to a question is not here, in the product data or in the knowledge base, say you will check "
