@@ -1319,6 +1319,16 @@
         {% if staff_can_open('about.page') %}
         <a href="{{ url_for('about.page') }}" class="{% if request.endpoint == 'about.page' %}active{% endif %}">About your business</a>
         {% endif %}
+        {# Website links back in the menu (22 Nov 2026): they were in Store Information, removed with it by mistake. #}
+        {% if staff_can_open('portal.store_info_website_connect') %}
+        <a href="{{ url_for('portal.store_info_website_connect') }}" class="{% if request.endpoint == 'portal.store_info_website_connect' %}active{% endif %}">Connect Website{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Website + WhatsApp plans">🔒</span>{% endif %}</a>
+        {% endif %}
+        {% if staff_can_open('portal.store_info_website_sync') %}
+        <a href="{{ url_for('portal.store_info_website_sync') }}" class="{% if request.endpoint == 'portal.store_info_website_sync' %}active{% endif %}">Sync Website{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Website + WhatsApp plans">🔒</span>{% endif %}</a>
+        {% endif %}
+        {% if staff_can_open('portal.store_info_website_delete') %}
+        <a href="{{ url_for('portal.store_info_website_delete') }}" class="{% if request.endpoint == 'portal.store_info_website_delete' %}active{% endif %}">Delete Website{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Website + WhatsApp plans">🔒</span>{% endif %}</a>
+        {% endif %}
         {% if _store_platform != 'shopify' and staff_can_open('portal.api_keys') %}
         <a href="{{ url_for('portal.api_keys') }}"
            class="{% if request.endpoint == 'portal.api_keys' %}active{% endif %}">
