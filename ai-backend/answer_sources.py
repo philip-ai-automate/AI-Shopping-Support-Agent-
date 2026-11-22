@@ -135,7 +135,7 @@ def find(client, question: str, answer: str, profile: dict, docs: list) -> dict:
         r = client.chat.completions.create(
             model=os.getenv("RELEVANCE_CHECK_MODEL", "gpt-5.6-luna"),
             messages=[{"role": "user", "content": prompt}],
-            max_completion_tokens=300,
+            max_completion_tokens=2000,   # room for the model's thinking (300 ran out, 22 Nov)
             response_format={"type": "json_schema", "json_schema": _SCHEMA},
         )
         parsed = json.loads(r.choices[0].message.content)
