@@ -19,8 +19,8 @@
         {% else %}{% for v, l in [('products', 'Products'), ('services', 'Services'), ('both', 'Products and services')] %}<label><input type="radio" name="sells" value="{{ v }}"{% if p.sells == v %} checked{% endif %}> {{ l }}</label>{% endfor %}{% endif %}</div>
         <input type="hidden" name="switch_offer" id="abSwitch" value=""></div>
     </div>
-    <div data-f="what"><label class="ab-l ab-req" for="f-what">What does your business do? (one or two lines)</label>
-      <textarea class="ab-ta" id="f-what" name="what" maxlength="1500" placeholder="{{ 'For example: Private dental clinic in Leeds. Check-ups, whitening and emergency appointments.' if svc else ('For example: Wholesale packaging for food businesses across the UK.' if b2b else 'For example: Homeware shop selling kitchenware, bedding and candles, delivered across the UK.') }}">{{ p.what }}</textarea>{{ err('what', 'Add one or two lines about what you do.') }}</div>
+    <div data-f="what"><label class="ab-l{% if not info.site_read %} ab-req{% endif %}" for="f-what">What does your business do? (one or two lines)</label>
+      <textarea class="ab-ta" id="f-what" name="what" maxlength="1500" placeholder="{{ 'For example: Private dental clinic in Leeds. Check-ups, whitening and emergency appointments.' if svc else ('For example: Wholesale packaging for food businesses across the UK.' if b2b else 'For example: Homeware shop selling kitchenware, bedding and candles, delivered across the UK.') }}">{{ p.what }}</textarea>{% if info.site_read %}<div class="ab-hint">{{ site_read_line }} If your website doesn't say clearly what your business does, add one or two lines here.</div>{% endif %}{{ err('what', 'Add one or two lines about what you do.') }}</div>
     <div data-f="do"><span class="ab-l ab-req">What should your AI Agent do?</span>
       <div class="ab-chk">{% for key, label in tasks %}<label><input type="checkbox" name="do" value="{{ key }}"{% if key in (p.do or []) %} checked{% endif %}><span>{{ label }}</span></label>{% endfor %}</div>{{ err('do', 'Tick at least one thing for your AI Agent to do.') }}
       <ul class="ab-ifnot" id="abIfNot"></ul></div>
@@ -70,33 +70,35 @@
     {% endif %}
 
 {% elif s.key == 'hours' %}
-    {% if info.site_read %}<div class="ab-note"><b>Please add your hours below, even if they are on your website, so your AI Agent always knows when your team will reply.</b></div>{% endif %}
-    <div data-f="hours"><span class="ab-l ab-req">{{ 'Opening hours' if svc else 'When your team replies' }} (at least one day)</span>
+    {% if info.site_read %}<div class="ab-note">{{ site_read_line }}<br><b>If your {{ 'opening hours and address are' if svc else 'hours are' }} not on your website, add them below.</b></div>{% endif %}
+    <div data-f="hours"><span class="ab-l{% if not info.site_read %} ab-req{% endif %}">{{ 'Opening hours' if svc else 'When your team replies' }} (at least one day)</span>
       <div class="ab-hours">{% for d in days %}<span>{{ d }}</span><input class="ab-in" name="h{{ loop.index0 }}" maxlength="80" aria-label="{{ d }} hours" value="{{ p.hours[loop.index0] }}" placeholder="{{ '9:00 am – 5:30 pm' if loop.index0 < 5 else 'Closed' }}">{% endfor %}</div>
       {{ err('hours', 'Add your hours for at least one day.') }}</div>
-    <div data-f="addr"><label class="ab-l{% if svc %} ab-req{% endif %}" for="f-addr">Address{% if not svc %} (optional for online and trade businesses){% endif %}</label>
+    <div data-f="addr"><label class="ab-l{% if svc and not info.site_read %} ab-req{% endif %}" for="f-addr">Address{% if not svc %} (optional for online and trade businesses){% endif %}</label>
       <input class="ab-in" id="f-addr" name="addr" maxlength="300" value="{{ p.addr }}" placeholder="Street, town, postcode">{% if svc %}{{ err('addr', 'Add your address so customers can find you.') }}{% endif %}</div>
     {% if info.site_read %}<div class="ab-hint">If anything you write here is different from your website, your AI Agent uses what you write here.</div>{% endif %}
 
 {% elif s.key == 'trade' %}
+    {% if info.site_read %}<div class="ab-note">{{ site_read_line }}<br><b>If your trade terms are not on your website, add them below.</b></div>{% endif %}
     <div class="ab-two">
-      <div data-f="moq"><label class="ab-l ab-req" for="f-moq">Minimum order</label>
+      <div data-f="moq"><label class="ab-l{% if not info.site_read %} ab-req{% endif %}" for="f-moq">Minimum order</label>
         <div class="ab-acts"><input class="ab-in" id="f-moq" name="moq" maxlength="200" style="flex:1;min-width:150px" value="{{ p.moq }}" placeholder="£250 before VAT"{% if p.moq_none %} disabled{% endif %}>
           <label style="font-size:13px;display:flex;gap:6px;align-items:center;color:#000"><input type="checkbox" name="moq_none" value="1" style="width:16px;height:16px;margin:0;flex:0 0 16px"{% if p.moq_none %} checked{% endif %}> No minimum</label></div>{{ err('moq', 'Add your minimum order, or tick No minimum.') }}</div>
-      <div data-f="lead"><label class="ab-l ab-req" for="f-lead">Lead time</label><input class="ab-in" id="f-lead" name="lead" maxlength="300" value="{{ p.lead }}" placeholder="Stock items 2 working days">{{ err('lead', 'Add how long orders take to go out.') }}</div>
+      <div data-f="lead"><label class="ab-l{% if not info.site_read %} ab-req{% endif %}" for="f-lead">Lead time</label><input class="ab-in" id="f-lead" name="lead" maxlength="300" value="{{ p.lead }}" placeholder="Stock items 2 working days">{{ err('lead', 'Add how long orders take to go out.') }}</div>
     </div>
     <div class="ab-two">
-      <div data-f="del"><label class="ab-l ab-req" for="f-del">Where you deliver</label><input class="ab-in" id="f-del" name="del" maxlength="300" value="{{ p.del }}" placeholder="UK mainland and Ireland">{{ err('del', 'Add where you deliver.') }}</div>
+      <div data-f="del"><label class="ab-l{% if not info.site_read %} ab-req{% endif %}" for="f-del">Where you deliver</label><input class="ab-in" id="f-del" name="del" maxlength="300" value="{{ p.del }}" placeholder="UK mainland and Ireland">{{ err('del', 'Add where you deliver.') }}</div>
       <div><label class="ab-l" for="f-pay">Payment terms</label><input class="ab-in" id="f-pay" value="{{ payment_terms or 'Not set yet' }}" readonly>
         <div class="ab-hint">From your quotation settings (Quotations › Design), the same terms your quotations use.</div></div>
     </div>
 
 {% elif s.key == 'bookings' %}
-    <div data-f="book"><label class="ab-l{% if 'bookings' in (p.do or []) %} ab-req{% endif %}" for="f-book" id="lblBook">How do customers book?</label>
+    {% if info.site_read %}<div class="ab-note">{{ site_read_line }}<br><b>If how customers book{{ ' and your cancellation rule are' if p.sells == 'services' and 'cancellations' in (p.do or []) else ' is' }} not on your website, add {{ 'them' if p.sells == 'services' and 'cancellations' in (p.do or []) else 'it' }} below.</b></div>{% endif %}
+    <div data-f="book"><label class="ab-l{% if 'bookings' in (p.do or []) and not info.site_read %} ab-req{% endif %}" for="f-book" id="lblBook">How do customers book?</label>
       <textarea class="ab-ta" id="f-book" name="book" maxlength="800" placeholder="For example: Take their name, phone number and the treatment they want. Reception calls back within 2 working hours.">{{ p.book }}</textarea>
       <div class="ab-hint" id="hintBook">{{ 'Your AI Agent takes booking requests: say what it should ask for.' if 'bookings' in (p.do or []) else 'Your AI Agent explains this to customers.' }}</div>{{ err('book', 'Add how customers book.') }}</div>
     {% if p.sells == 'services' %}
-    <div data-f="canc" data-show-if="cancellations"{% if 'cancellations' not in (p.do or []) %} hidden{% endif %}><label class="ab-l ab-req" for="f-canc">Cancellation rule</label><input class="ab-in" id="f-canc" name="canc" maxlength="300" value="{{ p.canc }}" placeholder="48 hours' notice, or a £30 fee">{{ err('canc', 'Add your cancellation rule.') }}</div>
+    <div data-f="canc" data-show-if="cancellations"{% if 'cancellations' not in (p.do or []) %} hidden{% endif %}><label class="ab-l{% if not info.site_read %} ab-req{% endif %}" for="f-canc">Cancellation rule</label><input class="ab-in" id="f-canc" name="canc" maxlength="300" value="{{ p.canc }}" placeholder="48 hours' notice, or a £30 fee">{{ err('canc', 'Add your cancellation rule.') }}</div>
     {% else %}
     <div><label class="ab-l" for="f-canc">Cancellation rule (optional)</label><input class="ab-in" id="f-canc" name="canc" maxlength="300" value="{{ p.canc }}" placeholder="48 hours' notice, or a £30 fee"></div>
     {% endif %}

@@ -302,7 +302,10 @@ def sections(info: dict, p: dict, prod: dict, web: dict | None, can_web: bool) -
                     "hidden": hidden, "show_if": show_if})
 
     s = lambda k: bool((p.get(k) or "").strip()) if isinstance(p.get(k), str) else bool(p.get(k))
-    about_req = [(s("business_name"), "Business name"), (s("what"), "What your business does"),
+    # A website that has been read can answer these, so they are optional then
+    # (22 Nov 2026). Decisions no website can make stay required.
+    site = bool(info.get("site_read"))
+    about_req = [(s("business_name"), "Business name")] + ([] if site else [(s("what"), "What your business does")]) + [
                  (bool(p.get("do")), "What your AI Agent should do")]
     if model == "b2b":
         about_req.append((p.get("bp") in ("list", "quote"), "What to do when a buyer asks for a price"))
@@ -326,8 +329,8 @@ def sections(info: dict, p: dict, prod: dict, web: dict | None, can_web: bool) -
     else:
         add("website", "Your website", "Read when you connected it", auto=bool(web and web.get("last_read_at")))
 
-    hours_req = [(any((h or "").strip() for h in (p.get("hours") or [])), "Hours (at least one day)")]
-    if svc:
+    hours_req = [] if site else [(any((h or "").strip() for h in (p.get("hours") or [])), "Hours (at least one day)")]
+    if svc and not site:
         hours_req.append((s("addr"), "Address"))
     add("hours", "Opening hours and where you are" if svc else "Your team's hours and address",
         "So it can say when you're open and how to find you" if svc else "So it can say when your team will reply",
@@ -336,7 +339,7 @@ def sections(info: dict, p: dict, prod: dict, web: dict | None, can_web: bool) -
     # If/then rules (22 Nov 2026): these sections follow the ticks in section 1.
     if model == "b2b":
         add("trade", "Trade terms", "Shown because you ticked \"Explain trade terms\"",
-            [(bool(p.get("moq_none")) or s("moq"), "Minimum order"), (s("lead"), "Lead time"), (s("del"), "Where you deliver")],
+            None if site else [(bool(p.get("moq_none")) or s("moq"), "Minimum order"), (s("lead"), "Lead time"), (s("del"), "Where you deliver")],
             hidden="terms" not in do, show_if="terms")
     else:
         if sells in ("products", "both"):
@@ -352,9 +355,9 @@ def sections(info: dict, p: dict, prod: dict, web: dict | None, can_web: bool) -
                 hidden="delivery" not in do, show_if="delivery")
         if sells in ("services", "both"):
             breq = []
-            if "bookings" in do:
+            if "bookings" in do and not site:
                 breq.append((s("book"), "How customers book"))
-            if sells == "services" and "cancellations" in do:
+            if sells == "services" and "cancellations" in do and not site:
                 breq.append((s("canc"), "Cancellation rule"))
             add("bookings", "Bookings and cancellations", "How customers book" + (" and your cancellation rule" if sells == "both" or "cancellations" in do else ""),
                 breq or None)

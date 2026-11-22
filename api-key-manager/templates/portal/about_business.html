@@ -179,13 +179,13 @@
   var IFNOT={{ if_not|tojson }};
   function ticked(key){var c=form.querySelector('[name="do"][value="'+key+'"]');return !!(c&&c.checked)}
   function reqFor(k){
-    if(k==='about'){var r=[['business_name','text','Add your business name.'],['what','text','Add one or two lines about what you do.'],['do','ticks','Tick at least one thing for your AI Agent to do.']];if(B2B)r.push(['bp','radio','Choose what your AI Agent does when a buyer asks for a price.']);return r}
+    if(k==='about'){var r=[['business_name','text','Add your business name.']];if(!SITE_READ)r.push(['what','text','Add one or two lines about what you do.']);r.push(['do','ticks','Tick at least one thing for your AI Agent to do.']);if(B2B)r.push(['bp','radio','Choose what your AI Agent does when a buyer asks for a price.']);return r}
     if(k==='products')return (KIND==='wa'&&!SITE_READ)?[['products','fixed','']]:[];
-    if(k==='hours'){var h=[['hours','hours','']];if(SELLS==='services')h.push(['addr','text',''])
+    if(k==='hours'){if(SITE_READ)return [];var h=[['hours','hours','']];if(SELLS==='services')h.push(['addr','text',''])
       ;return h}
-    if(k==='trade')return ticked('terms')?[['moq','moq',''],['lead','text',''],['del','text','']]:[];
+    if(k==='trade')return (ticked('terms')&&!SITE_READ)?[['moq','moq',''],['lead','text',''],['del','text','']]:[];
     if(k==='delivery')return (KIND==='wa'&&!SITE_READ&&ticked('delivery'))?[['dl','text',''],['rt','text','']]:[];
-    if(k==='bookings'){var b=[];if(ticked('bookings'))b.push(['book','text','']);if(SELLS==='services'&&ticked('cancellations'))b.push(['canc','text','']);return b}
+    if(k==='bookings'){if(SITE_READ)return [];var b=[];if(ticked('bookings'))b.push(['book','text','']);if(SELLS==='services'&&ticked('cancellations'))b.push(['canc','text','']);return b}
     return [];
   }
   var PRODUCTS_OK = {{ (prod.count > 0)|tojson }};
@@ -210,7 +210,7 @@
     // show/hide sections and fields that depend on a tick
     form.querySelectorAll('[data-show-if]').forEach(function(el){el.hidden=!ticked(el.dataset.showIf)});
     var sb=document.getElementById('sub-bookings');if(sb)sb.textContent='How customers book'+((SELLS==='both'||ticked('cancellations'))?' and your cancellation rule':'');
-    var lb=document.getElementById('lblBook');if(lb){lb.classList.toggle('ab-req',ticked('bookings'));
+    var lb=document.getElementById('lblBook');if(lb){lb.classList.toggle('ab-req',ticked('bookings')&&!SITE_READ);
       var hb=document.getElementById('hintBook');if(hb)hb.textContent=ticked('bookings')?'Your AI Agent takes booking requests: say what it should ask for.':'Your AI Agent explains this to customers.'}
     var n=0;form.querySelectorAll('.ab-sec').forEach(function(el){if(!el.hidden){n++;var ic=el.querySelector('.ab-ic');if(ic)ic.textContent=n}});
     var ul=document.getElementById('abIfNot');
