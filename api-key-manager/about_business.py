@@ -305,7 +305,8 @@ def sections(info: dict, p: dict, prod: dict, web: dict | None, can_web: bool) -
     ptitle = {"services": "Your services and prices", "both": "Your products, services and prices"}.get(sells, "Your products and prices")
     one = {"services": "service", "both": "product or service"}.get(sells, "product")
     if kind == "wa" and info.get("site_read"):
-        add("products", ptitle, "From your website or an uploaded list", auto=True)
+        # Website read: not "Needed", but never claimed as done either (22 Nov 2026).
+        add("products", ptitle, "The same list as My Products & Services, not a copy")
     elif kind == "wa":
         add("products", ptitle, "The same list as My Products & Services, not a copy",
             [(prod["count"] > 0, "At least one " + one)])
@@ -334,15 +335,14 @@ def sections(info: dict, p: dict, prod: dict, web: dict | None, can_web: bool) -
     else:
         if sells in ("products", "both"):
             # Fix 2 (22 Nov 2026): with a website that has been read, delivery
-            # and returns come from it ("Done for you"); the boxes only change
-            # or add to it. Without one, a WhatsApp-only business must fill them.
+            # and returns are optional (the page says the website is read and
+            # asks for what isn't on it). Without one, WhatsApp-only must fill them.
             wa_only = kind == "wa" and not info.get("site_read")
             add("delivery", "Delivery and returns",
                 "Shown because you ticked \"Explain delivery and returns\"" if wa_only
-                else ("Read from your website" if info.get("site_read")
+                else ("So it can answer delivery and returns questions" if info.get("site_read")
                       else "Your AI Agent also reads the delivery and returns pages on your website"),
                 [(s("dl"), "Delivery"), (s("rt"), "Returns")] if wa_only else None,
-                auto=bool(info.get("site_read")) and not wa_only,
                 hidden="delivery" not in do, show_if="delivery")
         if sells in ("services", "both"):
             breq = []

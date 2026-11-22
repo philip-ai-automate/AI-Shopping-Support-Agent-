@@ -1,4 +1,6 @@
 {# One section of "Tell your AI Agent about your business". Needs: s, _open, p, info, prod, web, ... from about_business.html #}
+{% set site_name = (((web.url if web else '') or 'your website')|replace('https://', '')|replace('http://', '')|replace('www.', '')).rstrip('/') %}
+{% set site_read_line = 'Your AI Agent has read your website, ' ~ site_name ~ ', and uses it to answer customers.' %}
 {% macro err(id, msg) %}<div class="ab-err" id="e-{{ id }}" hidden>{{ msg }}</div>{% endmacro %}
 <div class="ab-sec{% if s.status == 'auto' %} isauto{% endif %}" id="sec-{{ s.key }}"{% if s.show_if %} data-show-if="{{ s.show_if }}"{% endif %}{% if s.hidden %} hidden{% endif %}>
   <button class="ab-sh" type="button" aria-expanded="{{ 'true' if _open else 'false' }}" data-tog="b-{{ s.key }}">
@@ -38,14 +40,15 @@
         {% for r in prod.rows %}<tr><td>{{ r.title }}</td><td class="r">{% if r.price_min %}{{ r.currency or '' }} {{ '%.2f'|format(r.price_min) }}{% else %}–{% endif %}</td></tr>{% endfor %}
       </tbody></table></div>{% endif %}
     {% else %}
-      {% if k == 'wa' and info.site_read %}<div class="ab-ok">Your AI Agent reads your {{ 'products, services' if p.sells == 'both' else what_word }} and prices from {{ (((web.url if web else '') or 'your website')|replace('https://', '')|replace('http://', '')|replace('www.', '')).rstrip('/') }}{% if web and web.last_read_at %} ({{ web.pages_read or 0 }} pages, read {{ web.last_read_at.strftime('%-d %b %Y') }}){% endif %}.</div>
+      {% if k == 'wa' and info.site_read %}
       {% elif k == 'wa' %}<div data-f="products"><span class="ab-l ab-req">At least one {{ 'product or service' if p.sells == 'both' else ('service' if svc else 'product') }}</span>
         <div class="ab-warn">Your AI Agent doesn't know any of your {{ what_word }} yet, so it can't give prices.</div>{{ err('products', 'Add at least one product or service.' if p.sells == 'both' else ('Add at least one service.' if svc else 'Add at least one product.')) }}</div>
       {% elif k == 'woo' %}<div class="ab-note">Your WooCommerce products reach your AI Agent through the PhiXtra plugin. In the plugin's Products tab, choose All published products and click Save.</div>
       {% elif k == 'shopify' %}<div class="ab-note">Your products come from your Shopify store through the PhiXtra app. They usually arrive within a few minutes of installing it.</div>
       {% else %}<div class="ab-note">Your AI Agent can read your products from your website, or you can upload a list.</div>{% endif %}
     {% endif %}
-    {% if k in ('wa', 'custom') and info.site_read %}<div class="ab-note">Prices often out of date on your website? Add them in My Products &amp; Services or upload a list. Those win over your website.</div>{% endif %}
+    {% if k in ('wa', 'custom') and info.site_read %}<div class="ab-note">{{ site_read_line }}<br><b>If any of your {{ 'products, services' if p.sells == 'both' else what_word }} or prices are not on your website, add them below.</b></div>
+    <div class="ab-hint">If anything you add here is different from your website, your AI Agent uses what you add here.</div>{% endif %}
     {% if k in ('wa', 'custom') %}
     <div class="ab-acts">
       {% if p.sells in ('products', 'both') %}<a class="ab-btn line sm" href="{{ url_for('portal.product_add') }}">Add a product</a>{% endif %}
@@ -67,12 +70,13 @@
     {% endif %}
 
 {% elif s.key == 'hours' %}
+    {% if info.site_read %}<div class="ab-note"><b>Please add your hours below, even if they are on your website, so your AI Agent always knows when your team will reply.</b></div>{% endif %}
     <div data-f="hours"><span class="ab-l ab-req">{{ 'Opening hours' if svc else 'When your team replies' }} (at least one day)</span>
       <div class="ab-hours">{% for d in days %}<span>{{ d }}</span><input class="ab-in" name="h{{ loop.index0 }}" maxlength="80" aria-label="{{ d }} hours" value="{{ p.hours[loop.index0] }}" placeholder="{{ '9:00 am – 5:30 pm' if loop.index0 < 5 else 'Closed' }}">{% endfor %}</div>
       {{ err('hours', 'Add your hours for at least one day.') }}</div>
     <div data-f="addr"><label class="ab-l{% if svc %} ab-req{% endif %}" for="f-addr">Address{% if not svc %} (optional for online and trade businesses){% endif %}</label>
       <input class="ab-in" id="f-addr" name="addr" maxlength="300" value="{{ p.addr }}" placeholder="Street, town, postcode">{% if svc %}{{ err('addr', 'Add your address so customers can find you.') }}{% endif %}</div>
-    {% if info.site_read %}<div class="ab-note"><b>If this is different from your website, your AI Agent uses what you write here.</b></div>{% endif %}
+    {% if info.site_read %}<div class="ab-hint">If anything you write here is different from your website, your AI Agent uses what you write here.</div>{% endif %}
 
 {% elif s.key == 'trade' %}
     <div class="ab-two">
@@ -99,20 +103,21 @@
 
 {% elif s.key == 'delivery' %}
     {% set dreq = k == 'wa' and not info.site_read %}
-    {% if info.site_read %}<span class="ab-l">Change or add to what your website says (optional)</span>
+    {% if info.site_read %}<div class="ab-note">{{ site_read_line }}<br><b>If your delivery or returns details are not on your website, add them below.</b></div>
     {% elif k != 'wa' %}<div class="ab-hint" style="margin:0">Add anything your website doesn't say.</div>{% endif %}
     <div class="ab-two">
-      <div data-f="dl"><label class="ab-l{% if dreq %} ab-req{% endif %}" for="f-dl">Delivery</label><input class="ab-in" id="f-dl" name="dl" maxlength="500" value="{{ p.dl }}" placeholder="{{ 'Leave empty to use your website' if info.site_read else 'UK, 2–3 working days, free over £50' }}">{% if dreq %}{{ err('dl', 'Add where you deliver, the cost and how long it takes.') }}{% endif %}</div>
-      <div data-f="rt"><label class="ab-l{% if dreq %} ab-req{% endif %}" for="f-rt">Returns</label><input class="ab-in" id="f-rt" name="rt" maxlength="500" value="{{ p.rt }}" placeholder="{{ 'Leave empty to use your website' if info.site_read else '30 days, unused, in original packaging' }}">{% if dreq %}{{ err('rt', 'Add your returns rule.') }}{% endif %}</div>
+      <div data-f="dl"><label class="ab-l{% if dreq %} ab-req{% endif %}" for="f-dl">Delivery</label><input class="ab-in" id="f-dl" name="dl" maxlength="500" value="{{ p.dl }}" placeholder="{{ 'Leave empty if this is on your website' if info.site_read else 'UK, 2–3 working days, free over £50' }}">{% if dreq %}{{ err('dl', 'Add where you deliver, the cost and how long it takes.') }}{% endif %}</div>
+      <div data-f="rt"><label class="ab-l{% if dreq %} ab-req{% endif %}" for="f-rt">Returns</label><input class="ab-in" id="f-rt" name="rt" maxlength="500" value="{{ p.rt }}" placeholder="{{ 'Leave empty if this is on your website' if info.site_read else '30 days, unused, in original packaging' }}">{% if dreq %}{{ err('rt', 'Add your returns rule.') }}{% endif %}</div>
     </div>
-    {% if info.site_read %}<div class="ab-note"><b>If this is different from your website, your AI Agent uses what you write here.</b></div>{% endif %}
+    {% if info.site_read %}<div class="ab-hint">If anything you write here is different from your website, your AI Agent uses what you write here.</div>{% endif %}
 
 {% elif s.key == 'pay' %}
     {% if k in ('woo', 'shopify') %}<div class="ab-hint" style="margin:0">Your checkout in {{ 'WooCommerce' if k == 'woo' else 'Shopify' }} still decides how people actually pay. This only lets your AI Agent answer the question.</div>{% endif %}
+    {% if info.site_read %}<div class="ab-note">{{ site_read_line }}<br><b>If the ways customers can pay are not on your website, tick them below.</b></div>{% endif %}
     <input type="hidden" name="pay_shown" value="1">
     <div class="ab-chk">{% for key, label in pay_opts %}<label><input type="checkbox" name="pay_{{ key }}" value="1"{% if (p.pay or {}).get(key) %} checked{% endif %}><span>{{ label }}</span></label>{% endfor %}</div>
     <div><label class="ab-l" for="f-pay_other">Anything to add</label><input class="ab-in" id="f-pay_other" name="pay_other" maxlength="300" value="{{ p.pay_other }}" placeholder="{{ 'For example: Payment plans for treatments over £500' if svc else 'For example: No cash on delivery outside the UK' }}"></div>
-    {% if info.site_read %}<div class="ab-note"><b>If this is different from your website, your AI Agent uses what you write here.</b></div>{% endif %}
+    {% if info.site_read %}<div class="ab-hint">If anything you tick here is different from your website, your AI Agent uses what you tick here.</div>{% endif %}
 
 {% elif s.key == 'faq' %}
     <div class="ab-hint" style="margin:0">Add the questions your team answers again and again. Your AI Agent uses your exact answer.</div>
