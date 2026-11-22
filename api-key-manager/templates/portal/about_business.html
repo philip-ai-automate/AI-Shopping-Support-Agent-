@@ -1,0 +1,297 @@
+{% extends "portal/base.html" %}
+{% block title %}About your business — PhiXtra Portal{% endblock %}
+{# Tell your AI Agent about your business (22 Nov 2026, approved mock-up
+   https://claude.ai/artifact/Ezcv1MKrGfRY5Wc3KU7c51). Sections change with
+   the sign-up type (info.kind: wa / custom / woo / shopify) and B2B / B2C.
+   Logic: about_business.py, routes: about_business_routes.py. #}
+{% block content %}
+{% set svc = (p.sells == 'services') %}
+{% set b2b = (info.model == 'b2b') %}
+{% set k = info.kind %}
+<style>
+.ab{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
+.ab-main{display:flex;flex-direction:column;gap:14px;min-width:0}
+.ab-h{display:flex;flex-direction:column;gap:8px}
+.ab-pill{display:inline-flex;font-size:11.5px;font-weight:700;color:#5B21B6;background:#EDE9FE;border-radius:999px;padding:2px 9px;align-self:flex-start}
+.ab-h h1{margin:0;font-size:22px;font-weight:800;color:#0B1D40}
+.ab-h p{margin:0;color:#1d2939;max-width:68ch;font-size:14px;line-height:1.55}
+.ab-ready{background:#F4F7FB;border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.ab-row{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;font-size:13px}
+.ab-row b{color:#0B1D40}
+.ab-bar{height:6px;border-radius:99px;background:#E3E8EF;overflow:hidden}
+.ab-bar span{display:block;height:100%;background:#7C3AED;transition:width .3s}
+.ab-ready small{font-size:12px;color:#5d6b82}
+.ab-pl{font-size:11px;font-weight:700;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.ab-pl.done,.ab-pl.auto{background:#DCFCE7;color:#166534}.ab-pl.need{background:#FEF3C7;color:#92400E}.ab-pl.opt{background:#F2F5F9;color:#5d6b82}
+.ab-gl{font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#5d6b82;margin-top:6px}
+.ab-sec{border:2px solid #C3CCD9;border-radius:14px;background:#fff;overflow:hidden}
+.ab-sec.isauto{background:#FBFDFB}
+.ab-sh{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:12px;align-items:center;padding:13px 16px;background:none;border:0;width:100%;text-align:left;font:inherit;cursor:pointer;color:inherit}
+.ab-sh:hover{background:#FAFBFD}
+.ab-ic{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;background:#E8EEF8;color:#0B1D40}
+.ab-st{font-weight:750;color:#0B1D40;font-size:14.5px;display:block}
+.ab-ss{font-size:12px;color:#8a96a8;display:block}
+.ab-sb{padding:2px 16px 16px 60px;display:flex;flex-direction:column;gap:12px}
+.ab-sb[hidden]{display:none}
+.ab-l{font-size:12.5px;font-weight:700;color:#000;display:block;margin-bottom:4px}
+.ab-req::after{content:" *";color:#DC2626;font-weight:800}
+.ab-in,.ab-ta{font:inherit;font-size:13.5px;width:100%;border:1px solid #D5DCE6;border-radius:10px;padding:9px 11px;color:#030C18;background:#fff;box-sizing:border-box}
+.ab-ta{min-height:72px;resize:vertical}
+.ab-in.bad,.ab-ta.bad{border-color:#DC2626;background:#FEF2F2}
+.ab-err{font-size:12px;color:#B91C1C;margin-top:4px;font-weight:600}
+.ab-err[hidden]{display:none}
+.ab-hint{font-size:12px;color:#8a96a8;margin-top:4px}
+.ab-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.ab-chk{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ab-chk label,.ab-rad label{display:flex;gap:9px;align-items:flex-start;border:1px solid #E3E8EF;border-radius:10px;padding:9px 11px;font-size:13px;cursor:pointer;margin:0;color:#000}
+.ab-chk input,.ab-rad input{accent-color:#0B1D40;margin:2px 0 0;width:16px;height:16px;flex:0 0 16px;padding:0}
+.ab-rad{display:flex;gap:8px;flex-wrap:wrap}
+.ab-ok{font-size:12.5px;background:#DCFCE7;color:#166534;border-radius:10px;padding:9px 12px}
+.ab-note{font-size:12.5px;background:#EAF1FF;color:#1E3A8A;border-radius:10px;padding:9px 12px}
+.ab-warn{font-size:12.5px;background:#FEF3C7;color:#92400E;border-radius:10px;padding:9px 12px}
+.ab-hours{display:grid;grid-template-columns:100px minmax(0,1fr);gap:6px 12px;font-size:13px;align-items:center}
+.ab-hours span{color:#000;font-weight:600}
+.ab-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.ab-tbl th{text-align:left;font-size:11.5px;color:#fff;background:#2563EB;padding:7px 10px}
+.ab-tbl td{padding:8px 10px;border-bottom:1px solid #E3E8EF}
+.ab-tbl .r{text-align:right;font-variant-numeric:tabular-nums}
+.ab-tw{overflow-x:auto;border:1px solid #E3E8EF;border-radius:10px}
+.ab-btn{font:inherit;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:38px;padding:0 15px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;border:1px solid #0B1D40;background:#0B1D40;color:#fff;white-space:nowrap;text-decoration:none}
+.ab-btn:hover{text-decoration:none;color:#fff;opacity:.92}
+.ab-btn.line{background:#fff;color:#0B1D40;border-color:#D5DCE6}
+.ab-btn.line:hover{color:#0B1D40}
+.ab-btn.go{background:#16A34A;border-color:#16A34A}
+.ab-btn.sm{min-height:32px;font-size:12.5px;padding:0 12px}
+.ab-btn[disabled],.ab-btn[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
+.ab-acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ab-item{border:1px solid #E3E8EF;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.ab-foot{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center;border-top:1px solid #E3E8EF;padding-top:16px}
+.ab-foot p{margin:0;font-size:12.5px;color:#5d6b82;max-width:52ch}
+.ab-key{font-size:12px;color:#5d6b82}
+.ab-ifnot{margin:8px 0 0;padding-left:18px;font-size:12px;color:#5d6b82;display:flex;flex-direction:column;gap:2px}
+.ab-ifnot:empty{display:none}
+.ab-sec[hidden],[data-show-if][hidden]{display:none}
+.ab-link{font:inherit;font-size:12px;font-weight:700;color:#2563EB;background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}
+/* test chat */
+.ab-chat{position:sticky;top:72px;margin-top:56px;display:flex;flex-direction:column;gap:8px}
+.ab-chat-h b{color:#0B1D40;font-size:14.5px;display:block}
+.ab-chat-h small{color:#5d6b82;font-size:12px}
+.ab-ph{border-radius:16px;overflow:hidden;border:1px solid #E3E8EF;display:flex;flex-direction:column}
+.ab-ph.wa{background:#EFEAE2}.ab-ph.web{background:#fff;border-color:#FED7AA}
+.ab-phh{color:#fff;padding:10px 12px;display:flex;gap:10px;align-items:center}
+.wa .ab-phh{background:#075E54}.web .ab-phh{background:#F97316}
+.ab-av{width:32px;height:32px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0}
+.wa .ab-av{color:#075E54}.web .ab-av{color:#EA580C}
+.ab-phh b{display:block;font-size:13px}.ab-phh small{font-size:11px;opacity:.9}
+.ab-msgs{padding:12px 10px;display:flex;flex-direction:column;gap:8px;min-height:280px;max-height:420px;overflow-y:auto}
+.ab-m{max-width:86%;padding:7px 10px;border-radius:9px;font-size:13px;line-height:1.45;box-shadow:0 1px 1px rgba(0,0,0,.08);white-space:pre-wrap;overflow-wrap:anywhere}
+.wa .ab-m.in{background:#fff;align-self:flex-end}.wa .ab-m.out{background:#D9FDD3;align-self:flex-start}
+.web .ab-m.in{background:#F97316;color:#fff;align-self:flex-end}.web .ab-m.out{background:#F4F5F7;align-self:flex-start}
+.ab-m .who{display:block;font-size:10.5px;font-weight:700;color:#5B21B6;margin-bottom:2px}
+.ab-m .src{display:block;font-size:10.5px;color:#991B1B;margin-top:4px;border-top:1px dashed #d8b4b4;padding-top:3px}
+.ab-m.sys{align-self:center;background:#FEF3C7;color:#92400E;font-size:12px;box-shadow:none}
+.ab-send{display:flex;gap:6px;padding:8px;border-top:1px solid #e3e3e3;background:#F0F2F5}
+.ab-send input{flex:1;min-width:0;font:inherit;font-size:13px;border:1px solid #D5DCE6;border-radius:999px;padding:8px 12px}
+.ab-send button{font:inherit;font-size:13px;font-weight:700;border:0;border-radius:999px;padding:0 14px;background:#0B1D40;color:#fff;cursor:pointer}
+.ab-send button[disabled]{opacity:.5}
+.ab-chat-f{font-size:12px;color:#5d6b82}
+@media (max-width:1000px){.ab{grid-template-columns:1fr}.ab-chat{position:static;margin-top:0}}
+@media (max-width:640px){.ab-two,.ab-chk{grid-template-columns:1fr}.ab-sb{padding-left:16px}}
+</style>
+
+<div class="ab">
+<form class="ab-main" method="POST" action="{{ url_for('about.page') }}" id="abForm" novalidate>
+  <div class="ab-h">
+    <span class="ab-pill">AI Agent</span>
+    <h1>Tell your AI Agent about your business</h1>
+    <p>{% if k == 'wa' %}Your AI Agent answers your customers on WhatsApp day and night. It only knows what you add here.
+       {% else %}Your AI Agent answers your website visitors day and night. Some of what it needs comes from {{ 'your website' if k == 'custom' else ('WooCommerce and your website' if k == 'woo' else 'your Shopify store') }}. Check it, and add what's missing.{% endif %}</p>
+    {% if p._from_store_info %}<div class="ab-note">We filled in what you wrote before in Store Information. Check it and press Save.</div>{% endif %}
+    {% if ai_off %}<div class="ab-warn">Your plan doesn't include the AI Agent yet. You can fill this in now; your AI Agent uses it once you start your free trial or choose a plan.</div>{% endif %}
+  </div>
+
+  <div class="ab-ready" id="abReady">
+    <div class="ab-row"><b id="abReadyTxt"></b><span id="abReadyPill"></span></div>
+    <div class="ab-bar"><span id="abReadyBar"></span></div>
+    <small id="abReadySmall"></small>
+  </div>
+
+
+  {% set autos = secs|selectattr('status', 'equalto', 'auto')|list %}
+  {% if autos %}<div class="ab-gl">Already known · check if you like</div>{% endif %}
+  {% for s in secs %}{% if s.status == 'auto' %}{% set _open = false %}{% include "portal/_about_business_section.html" %}{% endif %}{% endfor %}
+  {% if autos %}<div class="ab-gl">From you</div>{% endif %}
+  {% for s in secs %}{% if s.status != 'auto' %}{% set _open = s.status == 'need' or s.key == 'about' or (k == 'wa' and s.key == 'products') %}{% include "portal/_about_business_section.html" %}{% endif %}{% endfor %}
+
+  <div class="ab-key"><b style="color:#DC2626">*</b> Must be filled before your AI Agent answers customers</div>
+
+  <div class="ab-foot">
+    <p>{% if ready %}Your AI Agent is answering customers. Changes are used from the next message.{% else %}When you turn it on, your AI Agent starts answering new {{ 'WhatsApp messages' if k == 'wa' else 'chats' }}. Your team can still take over any chat from the Inbox.{% endif %}</p>
+    {% if can_edit %}
+    <div class="ab-acts">
+      <button type="submit" class="ab-btn line">Save</button>
+      {% if not ready %}<button type="submit" class="ab-btn go" name="turn_on" value="1" id="abTurnOn">Turn on AI Agent</button>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+</form>
+
+<aside class="ab-chat" aria-label="Test chat">
+  <div class="ab-chat-h"><b>Try a test chat</b><small>Ask what your customers ask. Only you see this chat. Your AI Agent answers with what is saved, so press Save first after a change.</small></div>
+  <div class="ab-ph {{ 'wa' if k == 'wa' else 'web' }}">
+    <div class="ab-phh"><span class="ab-av">{{ (p.business_name or info.name or 'AI')[:2]|upper }}</span><span><b>{{ p.business_name or info.name }}</b><small>{{ 'WhatsApp · test chat' if k == 'wa' else 'Chat box · test chat' }}</small></span></div>
+    <div class="ab-msgs" id="abMsgs" aria-live="polite"></div>
+    <form class="ab-send" id="abSend"><input id="abQ" maxlength="1000" placeholder="Type a customer question" aria-label="Test message" autocomplete="off"><button type="submit" id="abGo">Send</button></form>
+  </div>
+  <div class="ab-chat-f">If your AI Agent passes a question to your team, add the answer to this page (for example in Common questions) and ask again.</div>
+</aside>
+</div>
+
+{# Documents and corrections have their own small forms, outside the main form. #}
+<form id="docDel" method="POST" action="{{ url_for('about.document') }}" hidden><input type="hidden" name="action" value="delete"><input type="hidden" name="doc_id" id="docDelId"></form>
+<form id="fixDel" method="POST" action="{{ url_for('about.correction') }}" hidden><input type="hidden" name="action" value="delete"><input type="hidden" name="doc_id" id="fixDelId"></form>
+<form id="docUp" method="POST" action="{{ url_for('about.document') }}" enctype="multipart/form-data" hidden><input type="hidden" name="action" value="upload"></form>
+{% for f in fixes %}<form id="fixForm{{ loop.index }}" method="POST" action="{{ url_for('about.correction') }}" hidden><input type="hidden" name="action" value="edit"><input type="hidden" name="doc_id" value="{{ f.id }}"></form>{% endfor %}
+
+<script>
+(function(){
+  var form=document.getElementById('abForm');
+  // If/then rules (22 Nov 2026): what is required follows the ticks in section 1.
+  var KIND={{ k|tojson }}, SELLS={{ (p.sells or 'products')|tojson }}, B2B={{ b2b|tojson }}, CAN_EDIT={{ can_edit|tojson }};
+  if(!CAN_EDIT){ form.querySelectorAll('input,textarea,select').forEach(function(x){x.disabled=true}); }
+  var IFNOT={{ if_not|tojson }};
+  function ticked(key){var c=form.querySelector('[name="do"][value="'+key+'"]');return !!(c&&c.checked)}
+  function reqFor(k){
+    if(k==='about'){var r=[['business_name','text','Add your business name.'],['what','text','Add one or two lines about what you do.'],['do','ticks','Tick at least one thing for your AI Agent to do.']];if(B2B)r.push(['bp','radio','Choose what your AI Agent does when a buyer asks for a price.']);return r}
+    if(k==='products')return KIND==='wa'?[['products','fixed','']]:[];
+    if(k==='hours'){var h=[['hours','hours','']];if(SELLS==='services')h.push(['addr','text',''])
+      ;return h}
+    if(k==='trade')return ticked('terms')?[['moq','moq',''],['lead','text',''],['del','text','']]:[];
+    if(k==='delivery')return (KIND==='wa'&&ticked('delivery'))?[['dl','text',''],['rt','text','']]:[];
+    if(k==='bookings'){var b=[];if(ticked('bookings'))b.push(['book','text','']);if(SELLS==='services'&&ticked('cancellations'))b.push(['canc','text','']);return b}
+    return [];
+  }
+  var PRODUCTS_OK = {{ (prod.count > 0)|tojson }};
+  var READY = {{ ready|tojson }};
+  var TITLES = {{ secs|map(attribute='title')|list|tojson }};
+  var KEYS = {{ secs|map(attribute='key')|list|tojson }};
+  var touched={};
+  var STATIC = {}; KEYS.forEach(function(k){var el=document.getElementById('pill-'+k);STATIC[k]=el?el.dataset.static:'opt'});
+  function val(n){var el=form.querySelector('[name="'+n+'"]');return el?String(el.value||'').trim():''}
+  function ok(r){
+    var id=r[0],kind=r[1];
+    if(kind==='text')return val(id)!=='';
+    if(kind==='radio')return !!form.querySelector('[name="'+id+'"]:checked');
+    if(kind==='ticks')return !!form.querySelector('[name="do"]:checked');
+    if(kind==='hours'){for(var i=0;i<7;i++){if(val('h'+i))return true}return false}
+    if(kind==='moq'){var n=form.querySelector('[name="moq_none"]');return (n&&n.checked)||val('moq')!==''}
+    if(kind==='fixed')return PRODUCTS_OK;
+    return true;
+  }
+  function shown(k){var el=document.getElementById('sec-'+k);return !(el&&el.hidden)}
+  function applyRules(){
+    // show/hide sections and fields that depend on a tick
+    form.querySelectorAll('[data-show-if]').forEach(function(el){el.hidden=!ticked(el.dataset.showIf)});
+    var sb=document.getElementById('sub-bookings');if(sb)sb.textContent='How customers book'+((SELLS==='both'||ticked('cancellations'))?' and your cancellation rule':'');
+    var lb=document.getElementById('lblBook');if(lb){lb.classList.toggle('ab-req',ticked('bookings'));
+      var hb=document.getElementById('hintBook');if(hb)hb.textContent=ticked('bookings')?'Your AI Agent takes booking requests: say what it should ask for.':'Your AI Agent explains this to customers.'}
+    var n=0;form.querySelectorAll('.ab-sec').forEach(function(el){if(!el.hidden){n++;var ic=el.querySelector('.ab-ic');if(ic)ic.textContent=n}});
+    var ul=document.getElementById('abIfNot');
+    if(ul){ul.innerHTML='';form.querySelectorAll('[name="do"]').forEach(function(c){if(!c.checked&&IFNOT[c.value]){var li=document.createElement('li');var b=document.createElement('b');b.textContent=c.parentElement.innerText.trim();li.appendChild(b);li.appendChild(document.createTextNode(' not ticked: '+IFNOT[c.value]));ul.appendChild(li)}})}
+  }
+  function status(k){
+    if(!shown(k))return 'hidden';
+    if(STATIC[k]==='auto')return 'auto';
+    var r=reqFor(k);
+    if(!r.length)return 'opt';
+    return r.every(ok)?'added':'need';
+  }
+  var PILL={added:'<span class="ab-pl done">Added</span>',auto:'<span class="ab-pl auto">Done for you</span>',need:'<span class="ab-pl need">Needed</span>',opt:'<span class="ab-pl opt">Optional</span>'};
+  function refresh(){
+    var req=0,doneN=0,needs=[],missing=0;
+    applyRules();
+    KEYS.forEach(function(k,i){
+      var s=status(k);var el=document.getElementById('pill-'+k);if(el&&PILL[s])el.innerHTML=PILL[s];
+      if(s!=='opt'&&s!=='hidden'){req++;if(s!=='need')doneN++;else needs.push(TITLES[i]);}
+      if(s==='hidden')return;
+      (reqFor(k)).forEach(function(r){
+        if(STATIC[k]==='auto')return;
+        var bad=!ok(r);if(bad)missing++;
+        var e=document.getElementById('e-'+r[0]);if(!e)return;
+        var show=!!(bad&&touched[r[0]]);e.hidden=!show;
+        var ins=r[1]==='hours'?[0,1,2,3,4,5,6].map(function(i){return form.querySelector('[name="h'+i+'"]')}):[form.querySelector('[name="'+r[0]+'"]')];
+        ins.forEach(function(x){if(x&&x.classList)x.classList.toggle('bad',show)});
+      });
+    });
+    form.querySelectorAll('.ab-err').forEach(function(e){var id=e.id.slice(2);var still=KEYS.some(function(k){return shown(k)&&reqFor(k).some(function(r){return r[0]===id})});if(!still){e.hidden=true;var x=form.querySelector('[name="'+id+'"]');if(x&&x.classList)x.classList.remove('bad')}});
+    document.getElementById('abReadyTxt').textContent=doneN+' of '+req+' sections ready';
+    document.getElementById('abReadyBar').style.width=(req?Math.round(doneN/req*100):100)+'%';
+    document.getElementById('abReadyPill').innerHTML=needs.length?'<span class="ab-pl need">'+missing+' required '+(missing===1?'field':'fields')+' empty</span>':'<span class="ab-pl done">'+(READY?'On · answering customers':'Ready to turn on')+'</span>';
+    document.getElementById('abReadySmall').innerHTML=needs.length?'Before your AI Agent can answer: '+needs.map(function(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;')}).join(', ')+'. <button type="button" class="ab-link" id="abMiss">Show me what\'s missing</button>':(READY?'Your AI Agent is on.':'Everything needed is in. Try the test chat, then turn it on.');
+    // Turn on stays clickable but dimmed: clicking it shows what's missing.
+    var t=document.getElementById('abTurnOn');if(t)t.setAttribute('aria-disabled',needs.length>0?'true':'false');
+  }
+  function showMissing(){
+    var first=null;
+    KEYS.forEach(function(k){if(STATIC[k]==='auto'||!shown(k))return;(reqFor(k)).forEach(function(r){touched[r[0]]=true;if(!ok(r)){
+      var b=document.getElementById('b-'+k);if(b&&b.hidden){b.hidden=false;var h=document.querySelector('[data-tog="b-'+k+'"]');if(h)h.setAttribute('aria-expanded','true')}
+      if(!first)first=document.querySelector('[data-f="'+r[0]+'"]');
+    }})});
+    refresh();
+    if(first){first.scrollIntoView({behavior:'smooth',block:'center'});var f=first.querySelector('input:not([disabled]):not([type=hidden]),textarea');if(f)setTimeout(function(){f.focus({preventScroll:true})},400);}
+  }
+  form.addEventListener('input',function(e){refresh()});
+  form.addEventListener('change',function(e){
+    var n=e.target.name||'';
+    if(n==='do'||n==='bp'||n==='moq_none'){touched[n==='moq_none'?'moq':n]=true}
+    if(n==='moq_none'){var m=form.querySelector('[name="moq"]');if(m)m.disabled=e.target.checked}
+    if(n==='sells'&&CAN_EDIT){
+      // The sections below depend on this answer: save quietly and show the page for the new choice.
+      var sw=document.getElementById('abSwitch'); if(sw){sw.value='1'; var m=form.querySelector('[name="moq"]'); if(m)m.disabled=false; form.submit(); return;}
+    }
+    refresh();
+  });
+  form.addEventListener('focusout',function(e){var n=e.target.name||'';if(!n)return;touched[/^h\d$/.test(n)?'hours':n]=true;refresh()});
+  document.addEventListener('click',function(e){
+    var b=e.target.closest('[data-tog]');
+    if(b){var el=document.getElementById(b.dataset.tog);el.hidden=!el.hidden;b.setAttribute('aria-expanded',String(!el.hidden));return}
+    if(e.target.id==='abMiss'){showMissing();return}
+    if(e.target.id==='faqAdd'){
+      var list=document.getElementById('faqList'),tpl=document.getElementById('faqTpl');
+      var node=tpl.content.firstElementChild.cloneNode(true);list.appendChild(node);node.querySelector('input').focus();return}
+    var rm=e.target.closest('[data-faqrm]');if(rm){rm.closest('.ab-item').remove();return}
+    var dd=e.target.closest('[data-docdel]');if(dd){document.getElementById('docDelId').value=dd.dataset.docdel;document.getElementById('docDel').submit();return}
+    var fd=e.target.closest('[data-fixdel]');if(fd){document.getElementById('fixDelId').value=fd.dataset.fixdel;document.getElementById('fixDel').submit();return}
+    var fe=e.target.closest('[data-fixedit]');if(fe){var f=document.getElementById(fe.dataset.fixedit);f.hidden=!f.hidden;return}
+  });
+  form.addEventListener('submit',function(e){
+    if(e.submitter&&e.submitter.id==='abTurnOn'&&e.submitter.getAttribute('aria-disabled')==='true'){e.preventDefault();showMissing();return}
+    var m=form.querySelector('[name="moq"]');if(m)m.disabled=false;
+  });
+  refresh();
+
+  // ── Test chat ──
+  var msgs=document.getElementById('abMsgs'),sid=Math.random().toString(36).slice(2,14);
+  function add(cls,text,who,note){
+    var d=document.createElement('div');d.className='ab-m '+cls;
+    if(who){var w=document.createElement('span');w.className='who';w.textContent=who;d.appendChild(w)}
+    d.appendChild(document.createTextNode(text));
+    if(note){var s=document.createElement('span');s.className='src';s.textContent=note;d.appendChild(s)}
+    msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight;return d;
+  }
+  add('sys','Send a message to see how your AI Agent answers.');
+  document.getElementById('abSend').addEventListener('submit',function(e){
+    e.preventDefault();
+    var q=document.getElementById('abQ'),go=document.getElementById('abGo'),t=q.value.trim();if(!t)return;
+    add('in',t);q.value='';go.disabled=true;var wait=add('out','…','AI Agent');
+    fetch('{{ url_for("about.test_chat") }}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:t,sid:sid})})
+      .then(function(r){return r.json()}).then(function(d){
+        wait.remove();
+        if(d.ok)add('out',d.reply,'AI Agent',d.handed_over?'Your AI Agent passed this to your team. Add the answer to this page so it can answer next time.':null);
+        else add('sys',d.error||'Something went wrong. Please try again.');
+      }).catch(function(){wait.remove();add('sys','Something went wrong. Please try again.')})
+      .finally(function(){go.disabled=false;q.focus()});
+  });
+})();
+</script>
+{% endblock %}

@@ -24,8 +24,10 @@ def _steps():
                                    ensure_wa_usage_column, ensure_handoff_text_columns, ensure_inbox_done_table)
     from school_migrations import ensure_school_tables
     import shopify_app
+    import about_business   # AI Agent › About your business (22 Nov 2026)
     return [ensure_portal_tables, ensure_b2b_tables, ensure_coexist_tables, ensure_wa_usage_column,
-            ensure_handoff_text_columns, ensure_school_tables, shopify_app.ensure_tables, ensure_inbox_done_table]
+            ensure_handoff_text_columns, ensure_school_tables, shopify_app.ensure_tables, ensure_inbox_done_table,
+            about_business.ensure_tables, about_business.update_default_wording]
 
 
 def _run_once():

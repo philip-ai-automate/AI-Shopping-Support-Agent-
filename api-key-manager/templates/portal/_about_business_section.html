@@ -1,0 +1,170 @@
+{# One section of "Tell your AI Agent about your business". Needs: s, _open, p, info, prod, web, ... from about_business.html #}
+{% macro err(id, msg) %}<div class="ab-err" id="e-{{ id }}" hidden>{{ msg }}</div>{% endmacro %}
+<div class="ab-sec{% if s.status == 'auto' %} isauto{% endif %}" id="sec-{{ s.key }}"{% if s.show_if %} data-show-if="{{ s.show_if }}"{% endif %}{% if s.hidden %} hidden{% endif %}>
+  <button class="ab-sh" type="button" aria-expanded="{{ 'true' if _open else 'false' }}" data-tog="b-{{ s.key }}">
+    <span class="ab-ic">{{ s.n }}</span>
+    <span><span class="ab-st">{{ s.title }}</span><span class="ab-ss" id="sub-{{ s.key }}">{{ s.sub }}</span></span>
+    <span id="pill-{{ s.key }}" data-static="{{ s.status }}">{% if s.status == 'auto' %}<span class="ab-pl auto">Done for you</span>{% elif s.status == 'need' %}<span class="ab-pl need">Needed</span>{% elif s.status == 'added' %}<span class="ab-pl done">Added</span>{% else %}<span class="ab-pl opt">Optional</span>{% endif %}</span>
+  </button>
+  <div class="ab-sb" id="b-{{ s.key }}"{% if not _open %} hidden{% endif %}>
+
+{% if s.key == 'about' %}
+    <div class="ab-two">
+      <div data-f="business_name"><label class="ab-l ab-req" for="f-business_name">Business name</label>
+        <input class="ab-in" id="f-business_name" name="business_name" maxlength="200" value="{{ p.business_name }}">{{ err('business_name', 'Add your business name.') }}</div>
+      <div><span class="ab-l{% if k in ('wa', 'custom') %} ab-req{% endif %}">What do you offer?</span>
+        <div class="ab-rad">{% if k in ('woo', 'shopify') %}<label><input type="radio" checked disabled> Products (from {{ 'WooCommerce' if k == 'woo' else 'Shopify' }})</label>
+        {% else %}{% for v, l in [('products', 'Products'), ('services', 'Services'), ('both', 'Products and services')] %}<label><input type="radio" name="sells" value="{{ v }}"{% if p.sells == v %} checked{% endif %}> {{ l }}</label>{% endfor %}{% endif %}</div>
+        <input type="hidden" name="switch_offer" id="abSwitch" value=""></div>
+    </div>
+    <div data-f="what"><label class="ab-l ab-req" for="f-what">What does your business do? (one or two lines)</label>
+      <textarea class="ab-ta" id="f-what" name="what" maxlength="1500" placeholder="{{ 'For example: Private dental clinic in Leeds. Check-ups, whitening and emergency appointments.' if svc else ('For example: Wholesale packaging for food businesses across the UK.' if b2b else 'For example: Homeware shop selling kitchenware, bedding and candles, delivered across the UK.') }}">{{ p.what }}</textarea>{{ err('what', 'Add one or two lines about what you do.') }}</div>
+    <div data-f="do"><span class="ab-l ab-req">What should your AI Agent do?</span>
+      <div class="ab-chk">{% for key, label in tasks %}<label><input type="checkbox" name="do" value="{{ key }}"{% if key in (p.do or []) %} checked{% endif %}><span>{{ label }}</span></label>{% endfor %}</div>{{ err('do', 'Tick at least one thing for your AI Agent to do.') }}
+      <ul class="ab-ifnot" id="abIfNot"></ul></div>
+    {% if b2b %}
+    <div data-f="bp"><span class="ab-l ab-req">When a buyer asks for a price</span>
+      <div class="ab-rad"><label><input type="radio" name="bp" value="list"{% if p.bp == 'list' %} checked{% endif %}> Give the price from my list</label><label><input type="radio" name="bp" value="quote"{% if p.bp == 'quote' %} checked{% endif %}> Collect a quotation request</label></div>{{ err('bp', 'Choose what your AI Agent does when a buyer asks for a price.') }}</div>
+    {% endif %}
+
+{% elif s.key == 'products' %}
+    {% set what_word = 'products and services' if p.sells == 'both' else ('services' if svc else 'products') %}
+    {% if prod.count %}
+      {% if k == 'woo' %}<div class="ab-ok">{{ prod.count }} products come from WooCommerce through the PhiXtra plugin. New products, price and stock changes reach your AI Agent by themselves.</div>
+      {% elif k == 'shopify' %}<div class="ab-ok">{{ prod.count }} products come from your Shopify store{{ ', including your B2B catalogues,' if b2b else '' }} and update by themselves.</div>
+      {% else %}<div class="ab-ok">Your AI Agent knows {{ prod.count }} {{ what_word }}.</div>{% endif %}
+      {% if prod.rows and k not in ('woo', 'shopify') %}
+      <div class="ab-tw"><table class="ab-tbl"><thead><tr><th>{{ 'Product or service' if p.sells == 'both' else ('Service' if svc else 'Product') }}</th><th class="r">Price</th></tr></thead><tbody>
+        {% for r in prod.rows %}<tr><td>{{ r.title }}</td><td class="r">{% if r.price_min %}{{ r.currency or '' }} {{ '%.2f'|format(r.price_min) }}{% else %}–{% endif %}</td></tr>{% endfor %}
+      </tbody></table></div>{% endif %}
+    {% else %}
+      {% if k == 'wa' %}<div data-f="products"><span class="ab-l ab-req">At least one {{ 'product or service' if p.sells == 'both' else ('service' if svc else 'product') }}</span>
+        <div class="ab-warn">Your AI Agent doesn't know any of your {{ what_word }} yet, so it can't give prices.</div>{{ err('products', 'Add at least one product or service.' if p.sells == 'both' else ('Add at least one service.' if svc else 'Add at least one product.')) }}</div>
+      {% elif k == 'woo' %}<div class="ab-note">Your WooCommerce products reach your AI Agent through the PhiXtra plugin. In the plugin's Products tab, choose All published products and click Save.</div>
+      {% elif k == 'shopify' %}<div class="ab-note">Your products come from your Shopify store through the PhiXtra app. They usually arrive within a few minutes of installing it.</div>
+      {% else %}<div class="ab-note">Your AI Agent can read your products from your website, or you can upload a list.</div>{% endif %}
+    {% endif %}
+    {% if k in ('wa', 'custom') %}
+    <div class="ab-acts">
+      {% if p.sells in ('products', 'both') %}<a class="ab-btn line sm" href="{{ url_for('portal.product_add') }}">Add a product</a>{% endif %}
+      {% if p.sells in ('services', 'both') %}<a class="ab-btn line sm" href="{{ url_for('portal.product_add', service=1) }}">Add a service</a>{% endif %}
+      <a class="ab-btn line sm" href="{{ url_for('portal.data_sources') }}">Upload a list (Excel or CSV)</a>
+      {% if prod.count %}<a class="ab-btn line sm" href="{{ url_for('portal.products') }}">See them all</a>{% endif %}
+    </div>{% endif %}
+
+{% elif s.key == 'website' %}
+    {% if web and web.last_read_at %}
+      <div class="ab-ok">{% if k == 'shopify' %}Read your store's pages{% else %}Read {{ web.pages_read or 0 }} pages of {{ (web.url or '')|replace('https://', '')|replace('http://', '') }}{% endif %} on {{ web.last_read_at.strftime('%-d %b %Y') }}.</div>
+      <div class="ab-acts"><a class="ab-btn line sm" href="{{ url_for('portal.store_info_website_sync') }}">Read it again</a></div>
+    {% elif web %}
+      <div class="ab-note">Your website is connected but hasn't been read yet.</div>
+      <div class="ab-acts"><a class="ab-btn line sm" href="{{ url_for('portal.store_info_website_sync') }}">Read my website</a></div>
+    {% else %}
+      <p class="ab-hint" style="margin:0">If you have a website, your AI Agent reads its pages and keeps up with changes.</p>
+      <div class="ab-acts"><a class="ab-btn line sm" href="{{ url_for('portal.store_info_website_connect') }}">Connect your website</a></div>
+    {% endif %}
+
+{% elif s.key == 'hours' %}
+    <div data-f="hours"><span class="ab-l ab-req">{{ 'Opening hours' if svc else 'When your team replies' }} (at least one day)</span>
+      <div class="ab-hours">{% for d in days %}<span>{{ d }}</span><input class="ab-in" name="h{{ loop.index0 }}" maxlength="80" aria-label="{{ d }} hours" value="{{ p.hours[loop.index0] }}" placeholder="{{ '9:00 am – 5:30 pm' if loop.index0 < 5 else 'Closed' }}">{% endfor %}</div>
+      {{ err('hours', 'Add your hours for at least one day.') }}</div>
+    <div data-f="addr"><label class="ab-l{% if svc %} ab-req{% endif %}" for="f-addr">Address{% if not svc %} (optional for online and trade businesses){% endif %}</label>
+      <input class="ab-in" id="f-addr" name="addr" maxlength="300" value="{{ p.addr }}" placeholder="Street, town, postcode">{% if svc %}{{ err('addr', 'Add your address so customers can find you.') }}{% endif %}</div>
+
+{% elif s.key == 'trade' %}
+    <div class="ab-two">
+      <div data-f="moq"><label class="ab-l ab-req" for="f-moq">Minimum order</label>
+        <div class="ab-acts"><input class="ab-in" id="f-moq" name="moq" maxlength="200" style="flex:1;min-width:150px" value="{{ p.moq }}" placeholder="£250 before VAT"{% if p.moq_none %} disabled{% endif %}>
+          <label style="font-size:13px;display:flex;gap:6px;align-items:center;color:#000"><input type="checkbox" name="moq_none" value="1" style="width:16px;height:16px;margin:0;flex:0 0 16px"{% if p.moq_none %} checked{% endif %}> No minimum</label></div>{{ err('moq', 'Add your minimum order, or tick No minimum.') }}</div>
+      <div data-f="lead"><label class="ab-l ab-req" for="f-lead">Lead time</label><input class="ab-in" id="f-lead" name="lead" maxlength="300" value="{{ p.lead }}" placeholder="Stock items 2 working days">{{ err('lead', 'Add how long orders take to go out.') }}</div>
+    </div>
+    <div class="ab-two">
+      <div data-f="del"><label class="ab-l ab-req" for="f-del">Where you deliver</label><input class="ab-in" id="f-del" name="del" maxlength="300" value="{{ p.del }}" placeholder="UK mainland and Ireland">{{ err('del', 'Add where you deliver.') }}</div>
+      <div><label class="ab-l" for="f-pay">Payment terms</label><input class="ab-in" id="f-pay" value="{{ payment_terms or 'Not set yet' }}" readonly>
+        <div class="ab-hint">From your quotation settings (Quotations › Design), the same terms your quotations use.</div></div>
+    </div>
+
+{% elif s.key == 'bookings' %}
+    <div data-f="book"><label class="ab-l{% if 'bookings' in (p.do or []) %} ab-req{% endif %}" for="f-book" id="lblBook">How do customers book?</label>
+      <textarea class="ab-ta" id="f-book" name="book" maxlength="800" placeholder="For example: Take their name, phone number and the treatment they want. Reception calls back within 2 working hours.">{{ p.book }}</textarea>
+      <div class="ab-hint" id="hintBook">{{ 'Your AI Agent takes booking requests: say what it should ask for.' if 'bookings' in (p.do or []) else 'Your AI Agent explains this to customers.' }}</div>{{ err('book', 'Add how customers book.') }}</div>
+    {% if p.sells == 'services' %}
+    <div data-f="canc" data-show-if="cancellations"{% if 'cancellations' not in (p.do or []) %} hidden{% endif %}><label class="ab-l ab-req" for="f-canc">Cancellation rule</label><input class="ab-in" id="f-canc" name="canc" maxlength="300" value="{{ p.canc }}" placeholder="48 hours' notice, or a £30 fee">{{ err('canc', 'Add your cancellation rule.') }}</div>
+    {% else %}
+    <div><label class="ab-l" for="f-canc">Cancellation rule (optional)</label><input class="ab-in" id="f-canc" name="canc" maxlength="300" value="{{ p.canc }}" placeholder="48 hours' notice, or a £30 fee"></div>
+    {% endif %}
+
+{% elif s.key == 'delivery' %}
+    {% if k != 'wa' %}<div class="ab-hint" style="margin:0">Add anything your website doesn't say.</div>{% endif %}
+    <div class="ab-two">
+      <div data-f="dl"><label class="ab-l{% if k == 'wa' %} ab-req{% endif %}" for="f-dl">Delivery</label><input class="ab-in" id="f-dl" name="dl" maxlength="500" value="{{ p.dl }}" placeholder="UK, 2–3 working days, free over £50">{% if k == 'wa' %}{{ err('dl', 'Add where you deliver, the cost and how long it takes.') }}{% endif %}</div>
+      <div data-f="rt"><label class="ab-l{% if k == 'wa' %} ab-req{% endif %}" for="f-rt">Returns</label><input class="ab-in" id="f-rt" name="rt" maxlength="500" value="{{ p.rt }}" placeholder="30 days, unused, in original packaging">{% if k == 'wa' %}{{ err('rt', 'Add your returns rule.') }}{% endif %}</div>
+    </div>
+
+{% elif s.key == 'pay' %}
+    {% if k in ('woo', 'shopify') %}<div class="ab-hint" style="margin:0">Your checkout in {{ 'WooCommerce' if k == 'woo' else 'Shopify' }} still decides how people actually pay. This only lets your AI Agent answer the question.</div>{% endif %}
+    <input type="hidden" name="pay_shown" value="1">
+    <div class="ab-chk">{% for key, label in pay_opts %}<label><input type="checkbox" name="pay_{{ key }}" value="1"{% if (p.pay or {}).get(key) %} checked{% endif %}><span>{{ label }}</span></label>{% endfor %}</div>
+    <div><label class="ab-l" for="f-pay_other">Anything to add</label><input class="ab-in" id="f-pay_other" name="pay_other" maxlength="300" value="{{ p.pay_other }}" placeholder="{{ 'For example: Payment plans for treatments over £500' if svc else 'For example: No cash on delivery outside the UK' }}"></div>
+
+{% elif s.key == 'faq' %}
+    <div class="ab-hint" style="margin:0">Add the questions your team answers again and again. Your AI Agent uses your exact answer.</div>
+    <div id="faqList" style="display:flex;flex-direction:column;gap:10px">
+      {% for f in p.faqs or [] %}
+      <div class="ab-item"><div><label class="ab-l">Question</label><input class="ab-in" name="faq_q" maxlength="300" value="{{ f.q }}"></div>
+        <div><label class="ab-l">Your answer</label><textarea class="ab-ta" name="faq_a" maxlength="1200" style="min-height:56px">{{ f.a }}</textarea></div>
+        <div><button class="ab-btn line sm" type="button" data-faqrm>Remove</button></div></div>
+      {% endfor %}
+    </div>
+    <div><button class="ab-btn line sm" type="button" id="faqAdd">Add a question</button></div>
+    <template id="faqTpl"><div class="ab-item"><div><label class="ab-l">Question</label><input class="ab-in" name="faq_q" maxlength="300" placeholder="{{ 'Do you take NHS patients?' if svc else ('Can you print our logo on boxes?' if b2b else 'Can I return a candle I\'ve lit?') }}"></div>
+      <div><label class="ab-l">Your answer</label><textarea class="ab-ta" name="faq_a" maxlength="1200" style="min-height:56px"></textarea></div>
+      <div><button class="ab-btn line sm" type="button" data-faqrm>Remove</button></div></div></template>
+    <div style="border-top:1px solid #E3E8EF;padding-top:12px;display:flex;flex-direction:column;gap:8px">
+      <span class="ab-l" style="margin:0">Your corrections</span>
+      <div class="ab-hint" style="margin-top:-4px">Answers you fixed in the Inbox with "Fix this answer". Your AI Agent uses these instead of what it said before.</div>
+      {% for f in fixes %}
+      <div class="ab-item">
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start">
+          <div><b style="color:#0B1D40;font-size:13px">{{ f.title }}</b><div style="font-size:13px;color:#1d2939;white-space:pre-wrap">{{ f.content }}</div>
+            <div class="ab-hint">Fixed {{ f.updated_at.strftime('%-d %b %Y') if f.updated_at else '' }}</div></div>
+          {% if can_edit %}<div class="ab-acts"><button class="ab-btn line sm" type="button" data-fixedit="fx{{ loop.index }}">Edit</button><button class="ab-btn line sm" type="button" data-fixdel="{{ f.id }}">Delete</button></div>{% endif %}
+        </div>
+        <div id="fx{{ loop.index }}" hidden>
+          <div class="ab-fixform" data-doc="{{ f.id }}" style="display:flex;flex-direction:column;gap:8px">
+            <input class="ab-in" form="fixForm{{ loop.index }}" name="question" maxlength="250" value="{{ f.title }}" aria-label="Question">
+            <textarea class="ab-ta" form="fixForm{{ loop.index }}" name="answer" maxlength="4000" aria-label="Answer">{{ f.content }}</textarea>
+            <div><button class="ab-btn sm" type="submit" form="fixForm{{ loop.index }}">Save correction</button></div>
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <div class="ab-hint">None yet. When you fix an answer in the Inbox with "Fix this answer", it shows here.</div>
+      {% endfor %}
+    </div>
+
+{% elif s.key == 'docs' %}
+    {% for d in docs %}
+    <div class="ab-item" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center">
+      <div><b style="color:#0B1D40;font-size:13px">{{ d.title }}</b><div class="ab-hint" style="margin:0">{{ d.file_name or '' }}{% if d.updated_at %} · added {{ d.updated_at.strftime('%-d %b %Y') }}{% endif %}</div></div>
+      {% if can_edit %}<button class="ab-btn line sm" type="button" data-docdel="{{ d.id }}">Remove</button>{% endif %}
+    </div>
+    {% endfor %}
+    {% if can_edit %}
+    <div class="ab-acts">
+      <input class="ab-in" form="docUp" name="doc_title" maxlength="200" placeholder="Name, for example Price list 2026" style="flex:1;min-width:180px" aria-label="Document name">
+      <input form="docUp" type="file" name="doc_file" accept=".pdf,.docx,.txt,.csv,.json,.xml" aria-label="Choose a file" style="font-size:12.5px">
+      <button class="ab-btn line sm" type="submit" form="docUp">Add document</button>
+    </div>{% endif %}
+
+{% elif s.key == 'else' %}
+    <div><label class="ab-l" for="f-else">Write it the way you would tell a new member of staff</label>
+      <textarea class="ab-ta" id="f-else" name="else_text" maxlength="20000" style="min-height:100px" placeholder="{{ 'For example: We don\'t sell to consumers. Custom printed boxes need artwork before we can quote.' if b2b else ('For example: We don\'t offer NHS treatment. Never give medical advice; offer an appointment instead.' if svc else 'For example: We don\'t ship outside the UK. Gift wrapping is free on request.') }}">{{ p.else_text }}</textarea></div>
+    {% for o in owns %}
+    <div><label class="ab-l" for="f-{{ o.field }}">{{ o.label }}</label>
+      <textarea class="ab-ta" id="f-{{ o.field }}" name="{{ o.field }}" maxlength="20000" style="min-height:180px;font-size:12.5px">{{ o.text }}</textarea>
+      <div class="ab-hint">You wrote this instruction yourself, so your AI Agent keeps following it. Change it here if you need to.</div></div>
+    {% endfor %}
+{% endif %}
+  </div>
+</div>

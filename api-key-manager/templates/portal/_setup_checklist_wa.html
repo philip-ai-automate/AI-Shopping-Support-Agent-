@@ -9,6 +9,11 @@
 {% set num = (setup.wa_number if setup.wa_number.startswith('+') else '+' ~ setup.wa_number) if setup.wa_number else '' %}
 <style>
 .sw-card{border:1px solid var(--line);border-radius:18px;background:#fff;margin-bottom:20px;overflow:hidden}
+.sw-off{display:flex;gap:10px;align-items:flex-start;background:#FEF3C7;color:#92400E;padding:12px 22px;font-size:13px;line-height:1.5;border-bottom:1px solid #FDE68A}
+.sw-off b{color:#78350F}
+.sw-known{display:flex;flex-wrap:wrap;gap:6px}
+.sw-known span{font-size:12px;border-radius:999px;padding:3px 10px;font-weight:600;background:#DCFCE7;color:#166534}
+.sw-known span.need{background:#FEF3C7;color:#92400E}
 .sw-top{padding:18px 22px 16px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
 .sw-top .sw-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
 .sw-title{font-size:17px;font-weight:800;color:#0B1D40;margin:0}
@@ -102,6 +107,9 @@
                   'none': 'Customers message this number and your team and AI Agent answer in PhiXtra. Have a phone that can get one text or call.'}.get(u, s1.text) %}
 
 <div class="sw-card" id="getSetUp">
+  {% if setup.about and not setup.about.ready %}
+  <div class="sw-off" role="status"><span aria-hidden="true">●</span><div><b>Your AI Agent is not answering customers yet.</b> New WhatsApp messages go to your Inbox for your team. Tell your AI Agent about your business (about {{ setup.about.minutes }} minutes) and it answers day and night.</div></div>
+  {% endif %}
   <div class="sw-top">
     <div class="sw-row"><h2 class="sw-title">Get set up</h2>
       <span class="sw-count">{{ setup.done }} of {{ setup.total }} done{% if setup.minutes_left %} · about {{ setup.minutes_left }} minutes left{% endif %}</span></div>
@@ -117,7 +125,7 @@
     <button class="sw-h" type="button" aria-expanded="{{ 'true' if is_next else 'false' }}" aria-controls="swB{{ i }}">
       <span class="sw-dot">{% if st.done %}✓{% else %}{{ st.n }}{% endif %}</span>
       <span><span class="sw-name">{% if st.key == 'whatsapp' and num and not st.done %}Connect {{ num|phone_display }}{% else %}{{ st.title }}{% endif %}</span>
-        <span class="sw-sub">{% if st.key == 'whatsapp' %}{{ 'Connected' if st.done else wa_sub }}{% elif st.key == 'products' %}{{ st.text if st.done else 'Upload a list or add them one by one · about 5 min' }}{% else %}14 days free · no card needed{% endif %}</span></span>
+        <span class="sw-sub">{% if st.key == 'whatsapp' %}{{ 'Connected' if st.done else wa_sub }}{% elif st.key == 'about' %}{{ 'Your AI Agent is answering customers' if st.done else 'Your products or services, prices, hours and more · about ' ~ setup.about.minutes ~ ' min' }}{% else %}14 days free · no card needed{% endif %}</span></span>
       {% if st.done %}<span class="sw-pill done">Done</span>{% elif is_next %}<span class="sw-pill next">Next</span>{% else %}<span></span>{% endif %}
     </button>
     <div class="sw-b" id="swB{{ i }}"{% if not is_next %} hidden{% endif %}>
@@ -125,9 +133,11 @@
         <p>{{ 'Your WhatsApp number is connected.' if st.done else wa_text }}</p>
         {% if not st.done %}<div class="sw-acts"><a class="sw-btn" href="{{ st.url }}">{{ st.action }}</a>
           <button type="button" class="sw-how" data-sw-open="0">{{ how_icon }}Show me how</button></div>{% endif %}
-      {% elif st.key == 'products' %}
-        <p>{{ st.text if st.done else 'Tell your AI Agent what you sell and your prices, so it can answer customers. Until then, it passes price questions to your team.' }}</p>
-        {% if not st.done %}<div class="sw-acts"><a class="sw-btn" href="{{ st.url }}">{{ st.action }}</a><a class="sw-btn line" href="{{ st.url2 }}">{{ st.action2 }}</a>
+      {% elif st.key == 'about' %}
+        <p>{{ st.text }}</p>
+        {% if not st.done %}
+        {% if setup.about.needs %}<div class="sw-known">{% for n in setup.about.needs %}<span class="need">Needed: {{ n }}</span>{% endfor %}</div>{% endif %}
+        <div class="sw-acts"><a class="sw-btn" href="{{ st.url }}">{{ st.action }}</a>
           <button type="button" class="sw-how" data-sw-open="1">{{ how_icon }}Show me how</button></div>{% endif %}
       {% else %}
         <p>{{ 'Your free trial has started.' if st.done else 'Your AI Agent answers WhatsApp customers for 14 days, free. Until then your team answers from the Inbox.' }}</p>
@@ -205,21 +215,21 @@
         </div>
       </div>
 
-      {# Page 2 — Products #}
-      <div class="swp-pg" data-pg="1" data-title="Add your products or services" data-chips="About 5 min|Excel or CSV" hidden>
-        <p>So your AI Agent can answer "how much?" and "do you have…?" questions. Until then, it passes them to your team.</p>
-        <div class="swp-file">
-          <span class="ic">XLS</span>
-          <span><b>Product template</b><small>Only Name and Price are needed. Delete our 3 example rows and add yours.</small></span>
-          <div class="fa"><a class="solid" href="{{ url_for('static', filename='portal/phixtra_product_template.xlsx') }}?v=2" download>⬇ Excel</a><a href="{{ url_for('static', filename='portal/phixtra_product_template.csv') }}?v=2" download>⬇ CSV</a></div>
-        </div>
+      {# Page 2 — Tell your AI Agent about your business (22 Nov 2026) #}
+      <div class="swp-pg" data-pg="1" data-title="Tell your AI Agent about your business" data-chips="About 10 min|One page" hidden>
+        <p>Your AI Agent can only answer from what you tell it. Without your prices and details it can't answer customers, and enquiries are missed. Until you turn it on, your team answers from the Inbox.</p>
         <div><span class="swp-l">What to do</span>
           <ol class="swp-steps">
-            <li><span><span class="swp-where">In Excel</span>Fill in the template, or use your own list. One row per product or service.</span></li>
-            <li><span><span class="swp-where">In PhiXtra</span>Press <b>Upload a list</b> and choose the file.</span></li>
-            <li><span><span class="swp-where">In PhiXtra</span>Choose which column is the name and which is the price, then save.</span></li>
+            <li><span><span class="swp-where">In PhiXtra</span>Press <b>Tell your AI Agent about your business</b>.</span></li>
+            <li><span><span class="swp-where">On that page</span>Fill in every box marked with a red <b style="color:#DC2626">*</b>: what you do, your products or services and prices, your hours, and how you deliver or take bookings.</span></li>
+            <li><span><span class="swp-where">On that page</span>Ask the test chat a few questions your customers ask.</span></li>
+            <li><span><span class="swp-where">On that page</span>Press <b>Turn on AI Agent</b>.</span></li>
           </ol></div>
-        <div class="swp-hint">Only a few? Add them one by one in My Products &amp; Services. Sell services? Press <b>I sell services</b>; a name and a price is enough. No stock column means always available.</div>
+        <div class="swp-file">
+          <span class="ic">XLS</span>
+          <span><b>Have a price list?</b><small>Upload it as Excel or CSV. Only Name and Price are needed. Or add them one by one.</small></span>
+          <div class="fa"><a class="solid" href="{{ url_for('static', filename='portal/phixtra_product_template.xlsx') }}?v=2" download>⬇ Excel template</a><a href="{{ url_for('static', filename='portal/phixtra_product_template.csv') }}?v=2" download>⬇ CSV</a></div>
+        </div>
       </div>
 
       {# Page 3 — Trial #}
@@ -227,7 +237,7 @@
         <p>Your AI Agent answers your WhatsApp customers in their language, day and night, for 14 days. Free, and no card needed.</p>
         <div class="swp-ready"><span class="swp-l">Best done first</span>
           <label><input type="checkbox"{% if s1.done %} checked{% endif %}><span>Step 1: your WhatsApp number is connected</span></label>
-          <label><input type="checkbox"{% if s2.done %} checked{% endif %}><span>Step 2: your products and prices are added</span></label></div>
+          <label><input type="checkbox"{% if s2.done %} checked{% endif %}><span>Step 2: your AI Agent knows about your business</span></label></div>
         <div><span class="swp-l">What happens</span>
           <ol class="swp-steps">
             <li><span>Press <b>Start free trial</b>. It starts straight away.</span></li>
@@ -242,7 +252,7 @@
       <div><button class="swp-nav" type="button" id="swpPrev">← Back</button><button class="swp-nav" type="button" id="swpNext">Next →</button></div>
       <div class="go">
         <div class="swp-go" data-go="0">{% if not s1.done %}<a class="sw-btn" href="{{ s1.url }}">{{ s1.action }}</a>{% endif %}</div>
-        <div class="swp-go" data-go="1" hidden>{% if not s2.done %}<span class="sw-acts"><a class="sw-btn line" href="{{ s2.url2 }}">{{ s2.action2 }}</a><a class="sw-btn" href="{{ s2.url }}">{{ s2.action }}</a></span>{% endif %}</div>
+        <div class="swp-go" data-go="1" hidden>{% if not s2.done %}<a class="sw-btn" href="{{ s2.url }}">{{ s2.action }}</a>{% endif %}</div>
         <div class="swp-go" data-go="2" hidden>{% if not s3.done and s3.trial %}<form method="POST" action="{{ url_for('portal.billing_start_ai_trial') }}"><button type="submit" class="sw-btn">Start free trial</button></form>{% endif %}</div>
       </div>
     </div>

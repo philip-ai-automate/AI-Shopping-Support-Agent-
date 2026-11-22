@@ -111,6 +111,62 @@ except Exception as _e:
     print("⚠️ expire_stale_queue_entries on startup failed:", _e)
 
 
+def _ab_not_ready(tenant_id: int) -> bool:
+    """True while the business hasn't pressed "Turn on AI Agent" (22 Nov 2026).
+    Demo accounts always answer. Unknown → False (never silence the AI by mistake)."""
+    conn = get_db_connection()
+    if not conn:
+        return False
+    cur = conn.cursor()
+    try:
+        cur.execute("""SELECT COALESCE((to_jsonb(t)->>'ai_agent_ready')::boolean, TRUE) OR COALESCE(t.is_demo, FALSE)
+                         FROM tenants t WHERE t.id=%s""", (tenant_id,))
+        r = cur.fetchone()
+        return bool(r) and r[0] is False
+    except Exception as e:
+        conn.rollback()
+        print(f"⚠️ _ab_not_ready tenant={tenant_id}: {e}")
+        return False
+    finally:
+        cur.close(); conn.close()
+
+
+def _ab_block(tenant_id: int) -> str:
+    """What the business wrote in AI Agent › About your business, as instructions."""
+    conn = get_db_connection()
+    if not conn:
+        return ""
+    cur = conn.cursor()
+    try:
+        cur.execute("""SELECT p.data, COALESCE((SELECT cp.is_b2b FROM company_profiles cp WHERE cp.tenant_id=p.tenant_id), FALSE)
+                         FROM ai_business_profile p WHERE p.tenant_id=%s""", (tenant_id,))
+        r = cur.fetchone()
+        if not r or not isinstance(r[0], dict) or not r[0]:
+            return ""
+        data = dict(r[0])
+        data["model"] = "b2b" if r[1] else "b2c"   # today's answer, not the one saved with the page
+        if r[1]:
+            try:   # payment terms as they are now in Quotations › Design
+                cur.execute("SELECT settings FROM quote_design WHERE tenant_id=%s", (tenant_id,))
+                q = cur.fetchone()
+                settings = q[0] if q else None
+                if isinstance(settings, str):
+                    import json as _json
+                    settings = _json.loads(settings or "{}")
+                if isinstance(settings, dict):
+                    data["payment_terms"] = (settings.get("payment_terms") or "").strip()
+            except Exception:
+                conn.rollback()
+        import about_business_prompt as _abp
+        return _abp.build_block(data)
+    except Exception as e:
+        conn.rollback()
+        print(f"⚠️ _ab_block tenant={tenant_id}: {e}")
+        return ""
+    finally:
+        cur.close(); conn.close()
+
+
 class ChatRequest(BaseModel):
     api_key: str
     message: str
@@ -679,7 +735,9 @@ def _chat(req: ChatRequest):
     _sid0 = (req.session_id or "")
     if (req.channel or "") != "whatsapp" and not _sid0.startswith(("wa-", "cw-")):
         from web_team_chat import ai_is_off as _tc_ai_off, plugin_reply as _tc_plugin_reply
-        if _tc_ai_off(int(tenant_id)):
+        if _tc_ai_off(int(tenant_id)) or (not _sid0.startswith("playground-") and _ab_not_ready(int(tenant_id))):
+            # 22 Nov 2026: also while the business hasn't turned its AI Agent on
+            # (AI Agent › About your business); the portal's test chat still answers.
             _tc_msg = (req.message or "").strip()
             if not _tc_msg:
                 raise HTTPException(status_code=400, detail="Please type a message")
@@ -732,6 +790,7 @@ def _chat(req: ChatRequest):
     # Businesses not on naira: their selling currency overrides any naira
     # wording in their instruction (2026-10-11). Empty for naira businesses.
     system_prompt += _sc.pricing_override(int(tenant_id))
+    system_prompt += _ab_block(int(tenant_id))   # AI Agent › About your business (22 Nov 2026)
 
     # Pending-order context from WA gateway — appended to whichever prompt is active
     if req.system_addon:
@@ -2450,7 +2509,8 @@ def _w_site(site_key: str, request) -> tuple:
     try:
         cur.execute("""
             SELECT t.id AS tenant_id, t.name, t.domain, t.status, t.ai_enabled, t.source_type,
-                   t.signup_channel, COALESCE(p.slug, 'free') AS plan_slug
+                   t.signup_channel, COALESCE(p.slug, 'free') AS plan_slug,
+                   (COALESCE((to_jsonb(t)->>'ai_agent_ready')::boolean, TRUE) OR COALESCE(t.is_demo, FALSE)) AS ai_ready
               FROM site_widget_keys k JOIN tenants t ON t.id = k.tenant_id
               LEFT JOIN plans p ON p.id = t.plan_id
              WHERE k.site_key = %s
@@ -2486,7 +2546,8 @@ def _w_site(site_key: str, request) -> tuple:
         row["via_link"] = via_link
         row["shopify_shop"] = shopify_shop
         row["api_key"] = k["api_key_plain"] if k else None
-        row["ai_on"] = bool(row["api_key"]) and row["plan_slug"] not in _W_AI_OFF_PLANS and row["ai_enabled"] is not False
+        row["ai_on"] = (bool(row["api_key"]) and row["plan_slug"] not in _W_AI_OFF_PLANS and row["ai_enabled"] is not False
+                        and row["ai_ready"] is not False)
         return row, None
     finally:
         cur.close(); conn.close()
@@ -2813,7 +2874,8 @@ def widget_plugin_config(key: str, request: _WRequest, lang: str = ""):
         return _WJSON({"enabled": False, "detail": "Please try again in a moment"}, status_code=503)
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
-        cur.execute("""SELECT t.id AS tenant_id, t.name, t.ai_enabled, COALESCE(p.slug, 'free') AS plan_slug
+        cur.execute("""SELECT t.id AS tenant_id, t.name, t.ai_enabled, COALESCE(p.slug, 'free') AS plan_slug,
+                              (COALESCE((to_jsonb(t)->>'ai_agent_ready')::boolean, TRUE) OR COALESCE(t.is_demo, FALSE)) AS ai_ready
                          FROM api_keys ak JOIN tenants t ON t.id = ak.tenant_id LEFT JOIN plans p ON p.id = t.plan_id
                         WHERE ak.api_key_plain = %s AND ak.is_active AND t.status IN ('active', 'pending') LIMIT 1""", (k,))
         r = cur.fetchone()
@@ -2823,7 +2885,7 @@ def widget_plugin_config(key: str, request: _WRequest, lang: str = ""):
         return _WJSON({"enabled": False, "detail": "Unknown key"}, status_code=403)
     row = dict(r)
     row["api_key"] = k
-    row["ai_on"] = row["plan_slug"] not in _W_AI_OFF_PLANS and row["ai_enabled"] is not False
+    row["ai_on"] = row["plan_slug"] not in _W_AI_OFF_PLANS and row["ai_enabled"] is not False and row["ai_ready"] is not False
     return _widget_look(row, lang)
 
 

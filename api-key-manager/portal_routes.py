@@ -6915,6 +6915,20 @@ def _product_sources(tenant_id: int, cur=None) -> dict:
             "source": "list" if n_lists else ("shop" if shop else ("site" if (reading or site) else ("own" if own else None)))}
 
 
+def _about_setup_status(cur, tenant_id: int):
+    """The "Tell your AI Agent about your business" step (22 Nov 2026), or None if it can't be read."""
+    try:
+        import about_business as _ab
+        return _ab.setup_status(cur, tenant_id)
+    except Exception as e:
+        print("⚠️ _about_setup_status:", e)
+        try:
+            cur.connection.rollback()
+        except Exception:
+            pass
+        return None
+
+
 def _wa_step_title(t) -> str:
     num = (t.get("wa_number") or "").strip()
     return f"Connect {num if num.startswith('+') else '+' + num}" if num else "Connect your WhatsApp number"
@@ -6933,7 +6947,7 @@ def _wa_step_text(t) -> str:
             "About 5 minutes; have a phone that can get one text or call, and a Facebook account.")
 
 
-def _wa_setup_checklist(t, wa_on: bool, prod: dict):
+def _wa_setup_checklist(t, wa_on: bool, prod: dict, about: dict | None = None):
     """The Dashboard "Get set up" steps for WhatsApp sign-ups (2026-10-25).
 
     Before this they got no steps, so nothing told them to add products and
@@ -6945,17 +6959,22 @@ def _wa_setup_checklist(t, wa_on: bool, prod: dict):
         dict(key="whatsapp", title=_wa_step_title(t), done=wa_on,
              text="Connected." if wa_on else _wa_step_text(t),
              action="Connect WhatsApp", url=url_for("portal.whatsapp_connect")),
-        dict(key="products", title="Add your products or services", done=prod["source"] is not None,
-             text=(f"Your AI Agent knows {n_prod} of your products and services." if prod["source"] else
-                   "Tell your AI Agent what you sell and your prices, so it can answer customers. Upload a list (Excel or CSV), "
-                   "or add them one by one in My Products & Services. Until then, the AI Agent passes these questions to your team."),
-             action="Upload a list", url=url_for("portal.data_sources"),
-             action2="I sell services", url2=url_for("portal.product_add", service=1)),
+        # 22 Nov 2026: "Tell your AI Agent about your business" replaces
+        # "Add your products or services" (about_business.py).
+        dict(key="about", title="Tell your AI Agent about your business", done=bool(about and about["done"]),
+             text=("Your AI Agent is answering customers." if (about and about["done"]) else
+                   ("Your AI Agent is answering customers. Add the missing details so it can answer more of their questions."
+                    if (about and about["ready"]) else
+                    "Your AI Agent can only answer from what you tell it. Without your prices and details it can't "
+                    "answer customers, and enquiries are missed.")
+                   if not (about and about["complete"]) else
+                   "Everything needed is in. Try the test chat, then press Turn on AI Agent."),
+             action="Tell your AI Agent about your business", url=url_for("about.page")),
         dict(key="trial", title="Start your free trial", done=bool(t["trial_granted_at"]) or paid,
              text="Your AI Agent answers WhatsApp customers for 14 days, free, no card needed. Until then your team answers from the Inbox.",
              trial=not t["trial_granted_at"] and not paid),
     ]
-    _howto = {"whatsapp": "set-whatsapp", "products": "set-list", "trial": "set-trial"}
+    _howto = {"whatsapp": "set-whatsapp", "about": "set-list", "trial": "set-trial"}
     nxt = next((i for i, st in enumerate(steps) if not st["done"]), None)
     if nxt is None:
         return None
@@ -6969,12 +6988,12 @@ def _wa_setup_checklist(t, wa_on: bool, prod: dict):
     # 12 Nov 2026 (approved mock-up 1QHkB3gVpqgSb23yyLBb8E): WhatsApp sign-ups get
     # their own set-up box (_setup_checklist_wa.html) with a "Show me how" popup.
     usage = {"biz_app": "app", "normal": "normal", "new": "none"}.get(t.get("wa_number_usage") or "", "")
-    mins = {"whatsapp": 10 if usage == "normal" else 5, "products": 5, "trial": 0}
+    mins = {"whatsapp": 10 if usage == "normal" else 5, "about": (about or {}).get("minutes", 10), "trial": 0}
     return {"steps": steps, "extras": [], "done": done, "total": len(steps), "complete": False,
             "chatbox_code": None, "checking": False, "domain": t["domain"],
             "kind": "whatsapp", "wa_usage": usage, "wa_number": (t.get("wa_number") or "").strip(),
             "minutes_left": sum(mins[st["key"]] for st in steps if not st["done"]),
-            "next_i": nxt, "product_count": n_prod}
+            "next_i": nxt, "product_count": n_prod, "about": about}
 
 
 # Hand-added products reach the AI straight after any change (2026-10-25);
@@ -7078,8 +7097,9 @@ def _setup_checklist(tenant_id: int):
             cur.execute("SELECT 1 FROM wa_tenants WHERE tenant_id=%s AND active LIMIT 1", (tenant_id,))
             wa_on = cur.fetchone() is not None
             prod = _product_sources(tenant_id, cur)
+            about = _about_setup_status(cur, tenant_id)
             cur.close(); conn.close()
-            return _wa_setup_checklist(t, wa_on, prod)
+            return _wa_setup_checklist(t, wa_on, prod, about)
         if not t or t["signup_channel"] not in ("website", "both"):
             cur.close(); conn.close()
             return None
@@ -7093,6 +7113,7 @@ def _setup_checklist(tenant_id: int):
         prod = _product_sources(tenant_id, cur)
         b2b = _is_b2b_tenant(tenant_id, cur)
         shopify_shop = _store_shopify(cur, tenant_id)
+        about = _about_setup_status(cur, tenant_id)
         if shopify_shop and not src:
             # Linked through the Shopify app: the store counts as connected (2026-11-02).
             import shopify_app as _sa
@@ -7147,6 +7168,20 @@ def _setup_checklist(tenant_id: int):
                                 else "Your AI Agent reads your website's public pages (about, delivery, prices, FAQs)."),
                           action="Sync now", url=url_for("portal.store_info_website_sync"), post_sync=True))
 
+    # 2b. Tell your AI Agent about your business (22 Nov 2026, decision C1):
+    # straight after Sync, before the chat box goes on the website.
+    if about is not None:
+        _ab_done = bool(about["done"])
+        steps.append(dict(key="about", title="Tell your AI Agent about your business", done=_ab_done,
+                          text=("Your AI Agent is answering customers." if _ab_done else
+                                ("Your AI Agent is answering customers. Add the missing details so it can answer more of "
+                                 "their questions: " + ", ".join(about["needs"]) + ".") if (about["ready"] and not about["complete"]) else
+                                ("Everything needed is in. Try the test chat, then press Turn on AI Agent." if about["complete"] else
+                                 (("Your AI Agent already knows some things from your " + ("Shopify store" if shopify_shop else "website")
+                                   + ". Check it and add what's missing: ") if about["autos"] else
+                                  "Tell your AI Agent what it needs to answer customers: ") + ", ".join(about["needs"]) + ".")),
+                          action="Tell your AI Agent about your business", url=url_for("about.page")))
+
     # 3. Chat box (WordPress: the plugin is step 1, put first below).
     if wp:
         steps.insert(0, dict(key="chatbox", title="Install the PhiXtra plugin", done=bool(t["chatbox_seen_at"]),
@@ -7182,7 +7217,7 @@ def _setup_checklist(tenant_id: int):
                       trial=not t["trial_granted_at"] and not paid))
 
     # "How to" links into the Website Set-up guide (2026-10-18).
-    _howto = {"website": "set-connect", "sync": "set-sync", "trial": "set-trial",
+    _howto = {"website": "set-connect", "sync": "set-sync", "trial": "set-trial", "about": "set-overview",
               "chatbox": "set-wordpress" if wp else "set-chatbox"}
     for st in steps:
         st["howto"] = url_for("portal.tutorials", topic="setup") + "#" + _howto.get(st["key"], "set-overview")
@@ -7236,7 +7271,7 @@ def _setup_checklist(tenant_id: int):
     if any(st.get("guide") and not st["done"] and not st["locked"] for st in steps):
         chatbox_code = f'<script src="{WIDGET_SCRIPT_URL}" data-site="{_site_widget_key(tenant_id)}" async></script>'
     return {"steps": steps, "extras": extras, "done": done, "total": len(steps), "complete": done == len(steps),
-            "chatbox_code": chatbox_code,
+            "chatbox_code": chatbox_code, "about": about,
             "checking": any(st.get("state") == "checking" for st in steps), "domain": t["domain"]}
 
 
@@ -9405,6 +9440,8 @@ def _whatsapp_numbers_for_instruction(tenant_id: int) -> list:
 def ai_instruction_whatsapp():
     r = _require_login()
     if r: return r
+    if request.method == "GET":   # 22 Nov 2026: this page moved into AI Agent › About your business
+        return redirect(url_for("about.page"))
     _rperm = _require_team_permission(
         "ai.instructions_edit" if request.method == "POST" else "ai.instructions_view")
     if _rperm: return _rperm
@@ -9416,6 +9453,8 @@ def ai_instruction_whatsapp():
 def ai_instruction_website():
     r = _require_login()
     if r: return r
+    if request.method == "GET":   # 22 Nov 2026: this page moved into AI Agent › About your business
+        return redirect(url_for("about.page"))
     _rperm = _require_team_permission(
         "ai.instructions_edit" if request.method == "POST" else "ai.instructions_view")
     if _rperm: return _rperm
@@ -9429,6 +9468,8 @@ def ai_instruction():
     page. A save from a tab left open on the old page still works."""
     r = _require_login()
     if r: return r
+    if request.method == "GET":   # 22 Nov 2026: this page moved into AI Agent › About your business
+        return redirect(url_for("about.page"))
     _rperm = _require_team_permission(
         "ai.instructions_edit" if request.method == "POST" else "ai.instructions_view")
     if _rperm: return _rperm
@@ -33694,6 +33735,8 @@ def ai_correction_create():
 def store_info():
     r = _require_login()
     if r: return r
+    if request.method == "GET":   # 22 Nov 2026: this page moved into AI Agent › About your business
+        return redirect(url_for("about.page"))
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")
@@ -33834,6 +33877,8 @@ def store_info():
 def store_info_create():
     r = _require_login()
     if r: return r
+    if request.method == "GET":   # 22 Nov 2026: this page moved into AI Agent › About your business
+        return redirect(url_for("about.page"))
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")
@@ -33882,6 +33927,8 @@ def store_info_modify():
     module was asked to be laid out."""
     r = _require_login()
     if r: return r
+    if request.method == "GET":   # 22 Nov 2026: this page moved into AI Agent › About your business
+        return redirect(url_for("about.page"))
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")
@@ -33927,6 +33974,8 @@ def store_info_modify():
 def store_info_modify_entry(entry_id):
     r = _require_login()
     if r: return r
+    if request.method == "GET":   # 22 Nov 2026: this page moved into AI Agent › About your business
+        return redirect(url_for("about.page"))
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")
@@ -34019,6 +34068,8 @@ def store_info_delete():
     sections can never be deleted (Meta sync keys off their fixed ids)."""
     r = _require_login()
     if r: return r
+    if request.method == "GET":   # 22 Nov 2026: this page moved into AI Agent › About your business
+        return redirect(url_for("about.page"))
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
     r2 = _require_plan_sub_feature(customer, "store.info", "Store Information")

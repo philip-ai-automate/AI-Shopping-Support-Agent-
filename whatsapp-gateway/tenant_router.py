@@ -77,7 +77,9 @@ def get_tenant_by_phone_number_id(phone_number_id: str) -> dict | None:
             SELECT wt.tenant_id, wt.phixtra_api_key, wt.access_token, wt.verify_token, wt.waba_id,
                    wt.app_secret, wt.typing_ack_text, wt.agent_id,
                    -- business switch AND this number's own switch (2026-10-01)
-                   (COALESCE(t.ai_enabled, TRUE) AND COALESCE(wt.ai_enabled, TRUE)) AS ai_enabled,
+                   -- …and the business has turned its AI Agent on (AI Agent › About your business, 22 Nov 2026)
+                   (COALESCE(t.ai_enabled, TRUE) AND COALESCE(wt.ai_enabled, TRUE)
+                    AND (COALESCE((to_jsonb(t)->>'ai_agent_ready')::boolean, TRUE) OR COALESCE(t.is_demo, FALSE))) AS ai_enabled,
                    COALESCE(t.campaign_reply_auto_actions, TRUE) AS campaign_reply_auto_actions
             FROM wa_tenants wt
             JOIN tenants t ON t.id = wt.tenant_id

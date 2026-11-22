@@ -121,7 +121,7 @@ def _seed_demo_data(cur, tenant_id: int, customer_id: int, first_name: str):
     conversations = [
         ("2348031234567", [
             ("inbound",  "Hello, do you have iPhone 15 Pro Max 256GB?", 72, "text"),
-            ("outbound", f"Welcome to {business}! I'm your AI shopping assistant. May I have your name please?", 72, "ai_reply"),
+            ("outbound", f"Welcome to {business}! I'm the AI Agent. May I have your name please?", 72, "ai_reply"),
             ("inbound",  "My name is Chukwuemeka", 71, "text"),
             ("outbound", "Thank you Mr. Chukwuemeka! Yes, we have the iPhone 15 Pro Max 256GB in Black Titanium and Natural Titanium. It's priced at ₦1,249,000. Would you like to know more?", 71, "ai_reply"),
             ("inbound",  "What about 512GB?", 71, "text"),
@@ -132,7 +132,7 @@ def _seed_demo_data(cur, tenant_id: int, customer_id: int, first_name: str):
         ]),
         ("2348121234568", [
             ("inbound",  "Good morning, I need a laptop for my daughter starting university", 48, "text"),
-            ("outbound", f"Welcome to {business}! I'm your AI shopping assistant. May I have your name please?", 48, "ai_reply"),
+            ("outbound", f"Welcome to {business}! I'm the AI Agent. May I have your name please?", 48, "ai_reply"),
             ("inbound",  "Adaeze", 47, "text"),
             ("outbound", "Good morning Ms. Adaeze! Congratulations to your daughter. For a university student I'd recommend the HP Pavilion 15 or the Lenovo IdeaPad 3. Both have 8GB RAM and 512GB SSD. The HP is ₦425,000 and the Lenovo is ₦389,000. Which would you prefer I tell you more about?", 47, "ai_reply"),
             ("inbound",  "Tell me more about the HP", 46, "text"),
@@ -144,7 +144,7 @@ def _seed_demo_data(cur, tenant_id: int, customer_id: int, first_name: str):
         ]),
         ("2348051234569", [
             ("inbound",  "Do you sell Samsung Galaxy S24 Ultra?", 120, "text"),
-            ("outbound", f"Welcome to {business}! I'm your AI shopping assistant. May I have your name please?", 120, "ai_reply"),
+            ("outbound", f"Welcome to {business}! I'm the AI Agent. May I have your name please?", 120, "ai_reply"),
             ("inbound",  "Babatunde", 119, "text"),
             ("outbound", "Hello Mr. Babatunde! Yes, we carry the Samsung Galaxy S24 Ultra in Titanium Black and Titanium Gray. Starting at ₦999,000 for 256GB. Are you interested in the 256GB or 512GB variant?", 119, "ai_reply"),
             ("inbound",  "512GB how much?", 118, "text"),
@@ -154,7 +154,7 @@ def _seed_demo_data(cur, tenant_id: int, customer_id: int, first_name: str):
         ]),
         ("2348091234570", [
             ("inbound",  "Hi, what earbuds do you have?", 168, "text"),
-            ("outbound", f"Welcome to {business}! I'm your AI shopping assistant. May I have your name please?", 168, "ai_reply"),
+            ("outbound", f"Welcome to {business}! I'm the AI Agent. May I have your name please?", 168, "ai_reply"),
             ("inbound",  "Ngozi", 167, "text"),
             ("outbound", "Hello Ms. Ngozi! We have AirPods Pro 2nd Gen (₦189,000), Samsung Galaxy Buds2 Pro (₦129,000), and JBL Tune 230NC (₦45,000). What's your budget range?", 167, "ai_reply"),
             ("inbound",  "Around 100k", 166, "text"),
@@ -176,7 +176,7 @@ def _seed_demo_data(cur, tenant_id: int, customer_id: int, first_name: str):
         ]),
         ("2348141234572", [
             ("inbound",  "Hello do you have power banks?", 36, "text"),
-            ("outbound", f"Welcome to {business}! I'm your AI shopping assistant. May I have your name please?", 36, "ai_reply"),
+            ("outbound", f"Welcome to {business}! I'm the AI Agent. May I have your name please?", 36, "ai_reply"),
             ("inbound",  "Chioma", 35, "text"),
             ("outbound", "Hello Ms. Chioma! Yes we stock Anker and Romoss power banks. The Anker PowerCore 20000 (₦28,000) and Romoss 30000mAh (₦22,000) are our bestsellers. Which capacity do you need?", 35, "ai_reply"),
             ("inbound",  "20000 is fine, I'll take the Anker", 34, "text"),

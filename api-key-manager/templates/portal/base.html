@@ -1304,7 +1304,7 @@
     <!-- ── AI Agent group — not part of PhiXtra Connect. Store Information
          moved in as a sub-menu 2026-10-24 (it's what the AI reads). ── -->
     {% set _si_group = request.endpoint and (request.endpoint == 'portal.store_info' or request.endpoint.startswith('portal.store_info_')) %}
-    {% set _ai_group = _si_group or request.endpoint in ('portal.chat_archive', 'portal.chat_archive_session') or request.endpoint in ('portal.api_keys', 'portal.ai_instruction', 'portal.ai_instruction_whatsapp', 'portal.ai_instruction_website', 'portal.handoff_rules', 'portal.ai_agents', 'portal.ai_agents_new', 'portal.ai_agents_edit') or (request.endpoint == 'portal.verified_specs_settings' and customer is defined and customer and customer.tenant_source_type != 'whatsapp') %}
+    {% set _ai_group = _si_group or request.endpoint == 'about.page' or request.endpoint in ('portal.chat_archive', 'portal.chat_archive_session') or request.endpoint in ('portal.api_keys', 'portal.ai_instruction', 'portal.ai_instruction_whatsapp', 'portal.ai_instruction_website', 'portal.handoff_rules', 'portal.ai_agents', 'portal.ai_agents_new', 'portal.ai_agents_edit') or (request.endpoint == 'portal.verified_specs_settings' and customer is defined and customer and customer.tenant_source_type != 'whatsapp') %}
     <div class="sb-group">
       <div class="sb-group-toggle {% if _ai_group %}open{% endif %}"
            data-tour="nav-ai" onclick="sbToggle(this)">
@@ -1314,6 +1314,11 @@
         <span class="sb-arrow">▾</span>
       </div>
       <div class="sb-sub sb-sub-tall {% if _ai_group %}open{% endif %}">
+        {# About your business (22 Nov 2026): one page for everything the AI Agent knows;
+           replaces Store Information and the WhatsApp / Website AI Instruction pages. #}
+        {% if staff_can_open('about.page') %}
+        <a href="{{ url_for('about.page') }}" class="{% if request.endpoint == 'about.page' %}active{% endif %}">About your business</a>
+        {% endif %}
         {% if _store_platform != 'shopify' and staff_can_open('portal.api_keys') %}
         <a href="{{ url_for('portal.api_keys') }}"
            class="{% if request.endpoint == 'portal.api_keys' %}active{% endif %}">
@@ -1326,23 +1331,6 @@
            class="{% if request.endpoint in ('portal.ai_agents','portal.ai_agents_new','portal.ai_agents_edit') %}active{% endif %}">
           AI Agent Profiles
           {% if 'ai.agent_profiles_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
-        </a>
-        {% endif %}
-        {# Two AI Instruction pages (2026-10-12): only Dual plans have both; the
-           other one stays visible with a padlock and opens the Dual upgrade page. #}
-        {% set _ai_ch = ai_instruction_channels or ['whatsapp'] %}
-        {% if staff_can_open('portal.ai_instruction_whatsapp') %}
-        <a href="{{ url_for('portal.ai_instruction_whatsapp') }}"
-           class="{% if request.endpoint == 'portal.ai_instruction_whatsapp' %}active{% endif %}">
-          WhatsApp AI Instruction
-          {% if 'legacy:feat_advanced_ai' not in granted_features or 'whatsapp' not in _ai_ch %}<span class="sb-lock" title="{{ 'Part of the Website + WhatsApp plans' if 'whatsapp' not in _ai_ch else 'Upgrade to unlock' }}">🔒</span>{% endif %}
-        </a>
-        {% endif %}
-        {% if staff_can_open('portal.ai_instruction_website') %}
-        <a href="{{ url_for('portal.ai_instruction_website') }}"
-           class="{% if request.endpoint == 'portal.ai_instruction_website' %}active{% endif %}">
-          Website AI Instruction
-          {% if 'legacy:feat_advanced_ai' not in granted_features or 'web' not in _ai_ch %}<span class="sb-lock" title="{{ 'Part of the Website + WhatsApp plans' if 'web' not in _ai_ch else 'Upgrade to unlock' }}">🔒</span>{% endif %}
         </a>
         {% endif %}
         {% if staff_can_open('portal.handoff_rules') %}
@@ -1377,36 +1365,6 @@
           {% if 'woo.chat_archive_view' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}
         </a>
         {% endif %}
-        <div class="sb-subgroup">
-          <button type="button" class="sb-subtoggle {% if _si_group %}open{% endif %}"
-                  onclick="sbSubToggle(this)" aria-expanded="{{ 'true' if _si_group else 'false' }}">
-            <span>Store Information{% if 'store.info' not in granted_features %}<span class="sb-lock" title="Upgrade to unlock">🔒</span>{% endif %}</span>
-            <span class="sb-arrow" aria-hidden="true">▾</span>
-          </button>
-          <div class="sb-sub2 {% if _si_group %}open{% endif %}">
-            {% if staff_can_open('portal.store_info') %}
-            <a href="{{ url_for('portal.store_info') }}" class="{% if request.endpoint == 'portal.store_info' %}active{% endif %}">List Store Information</a>
-            {% endif %}
-            {% if staff_can_open('portal.store_info_create') %}
-            <a href="{{ url_for('portal.store_info_create') }}" class="{% if request.endpoint == 'portal.store_info_create' %}active{% endif %}">Create</a>
-            {% endif %}
-            {% if staff_can_open('portal.store_info_modify') %}
-            <a href="{{ url_for('portal.store_info_modify') }}" class="{% if request.endpoint and request.endpoint.startswith('portal.store_info_modify') %}active{% endif %}">Modify</a>
-            {% endif %}
-            {% if staff_can_open('portal.store_info_delete') %}
-            <a href="{{ url_for('portal.store_info_delete') }}" class="{% if request.endpoint and request.endpoint.startswith('portal.store_info_delete') %}active{% endif %}">Delete</a>
-            {% endif %}
-            {% if staff_can_open('portal.store_info_website_connect') %}
-            <a href="{{ url_for('portal.store_info_website_connect') }}" class="{% if request.endpoint == 'portal.store_info_website_connect' %}active{% endif %}">Connect Website{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Website + WhatsApp plans">🔒</span>{% endif %}</a>
-            {% endif %}
-            {% if staff_can_open('portal.store_info_website_sync') %}
-            <a href="{{ url_for('portal.store_info_website_sync') }}" class="{% if request.endpoint == 'portal.store_info_website_sync' %}active{% endif %}">Sync Website{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Website + WhatsApp plans">🔒</span>{% endif %}</a>
-            {% endif %}
-            {% if staff_can_open('portal.store_info_website_delete') %}
-            <a href="{{ url_for('portal.store_info_website_delete') }}" class="{% if request.endpoint == 'portal.store_info_website_delete' %}active{% endif %}">Delete Website{% if 'store.website_connect' not in granted_features %}<span class="sb-lock" title="Website + WhatsApp plans">🔒</span>{% endif %}</a>
-            {% endif %}
-          </div>
-        </div>
       </div>
     </div>
 
@@ -2128,18 +2086,13 @@
     { icon:'👤', title:'My Customers',           desc:'View your customer list and profiles',         url:'{{ url_for("portal.customers") }}',                  tags:'customers buyers profiles crm list' },
     { icon:'💰', title:'Discount Settings',      desc:'Set WhatsApp discount offers',                 url:'{{ url_for("portal.wa_discount_settings") }}',       tags:'discount promo offer coupon price sale' },
     {% if _excel_products_ok %}{ icon:'🗂️', title:'Add products from Excel', desc:'Import your product list from an Excel or CSV file',    url:'{{ url_for("portal.data_sources") }}',               tags:'upload files csv excel spreadsheet product import catalogue' },{% endif %}
-    { icon:'🏬', title:'Store Information',      desc:'Update your business name and details',        url:'{{ url_for("portal.store_info") }}',                 tags:'business name address details profile store info list' },
-    { icon:'➕', title:'Create Store Information', desc:'Add your own custom knowledge base entry',   url:'{{ url_for("portal.store_info_create") }}',          tags:'business store info create new custom entry' },
-    { icon:'✏️', title:'Modify Store Information', desc:'Edit or rename a Store Information entry',   url:'{{ url_for("portal.store_info_modify") }}',          tags:'business store info edit modify rename' },
-    { icon:'🗑️', title:'Delete Store Information', desc:'Remove a custom Store Information entry',    url:'{{ url_for("portal.store_info_delete") }}',          tags:'business store info delete remove' },
+    { icon:'🏬', title:'About your business', desc:'Tell your AI Agent what you sell, your prices, hours and more', url:'{{ url_for("about.page") }}', tags:'about business store information knowledge ai agent instruction prices hours delivery returns payment faq documents corrections turn on' },
     { icon:'🌐', title:'Connect Website', desc:'Let your AI learn from your website',               url:'{{ url_for("portal.store_info_website_connect") }}', tags:'website connect read crawl site pages wix shopify ai knowledge' },
     { icon:'🎨', title:'Chat Box',        desc:'Put the chat box on your website and set its colour, font, logo, button position and hours', url:'{{ url_for("portal.settings_chatbox") }}', tags:'add chat box install code embed shopify wix squarespace wordpress look customise customize colour color font logo avatar position button welcome message business hours style widget settings' },
     { icon:'🔄', title:'Sync Website',    desc:'See and refresh the pages your AI uses',             url:'{{ url_for("portal.store_info_website_sync") }}',    tags:'website sync refresh pages read again schedule' },
     { icon:'🗑️', title:'Delete Website',  desc:'Disconnect your website from your AI',              url:'{{ url_for("portal.store_info_website_delete") }}',  tags:'website delete disconnect remove pages' },
     { icon:'💳', title:'Payment Gateways',       desc:'Connect Stripe or Paystack',                   url:'{{ url_for("portal.payment_settings") }}',           tags:'payment gateway stripe paystack checkout' },
     { icon:'🔑', title:'API Keys',               desc:'Manage your AI integration keys',              url:'{{ url_for("portal.api_keys") }}',                   tags:'api keys developer integration access token' },
-    { icon:'🤖', title:'WhatsApp AI Instruction', desc:'What your AI says to customers on WhatsApp',  url:'{{ url_for("portal.ai_instruction_whatsapp") }}',    tags:'ai bot personality system prompt instruction custom behaviour whatsapp' },
-    { icon:'🌐', title:'Website AI Instruction',  desc:'What your AI says in your website chat box',  url:'{{ url_for("portal.ai_instruction_website") }}',     tags:'ai bot personality system prompt instruction custom behaviour website web chat' },
     { icon:'🔀', title:'Handoff Rules',          desc:'When the AI should pass to a human agent',    url:'{{ url_for("portal.handoff_rules") }}',              tags:'handoff rules human agent escalate transfer live' },
     {% if _store_platform in ('shopify', 'woocommerce') and not _is_b2b %}{ icon:'🏷️', title:'Discounts in Chat',      desc:'Let your AI Agent give a one-time discount code, inside your limits', url:'{{ url_for("portal.ai_discounts") }}', tags:'discount code coupon offer price shopify woocommerce ai agent' },{% endif %}
     {% if customer is defined and customer and customer.tenant_source_type != 'whatsapp' %}

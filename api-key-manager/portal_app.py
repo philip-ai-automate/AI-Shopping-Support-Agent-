@@ -61,6 +61,8 @@ def create_app():
     flask_app.register_blueprint(sage_bp)
     from report_builder_routes import reports_bp   # Reports › report builder R1 (2026-11-19)
     flask_app.register_blueprint(reports_bp)
+    from about_business_routes import about_bp     # AI Agent › About your business (2026-11-22)
+    flask_app.register_blueprint(about_bp)
     # AI outreach drafts in Outlook (2026-11-04, PhiXtra pilot): CRM › AI Email Drafts.
     import outreach_drafts
     flask_app.register_blueprint(outreach_drafts.outreach_bp)
