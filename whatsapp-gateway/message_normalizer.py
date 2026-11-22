@@ -116,6 +116,8 @@ def normalize(payload: dict) -> Optional[dict]:
                 elif btn_id == "more_props":
                     action_type = "more_props"
                     text = "Please show me more properties"
+                elif btn_id == "sq_team":   # starter button (22 Nov 2026)
+                    text = "I would like to talk to a person from your team, please."
                 else:
                     text = btn_title or btn_id
 

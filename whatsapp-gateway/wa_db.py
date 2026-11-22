@@ -1515,3 +1515,31 @@ def wa_locked_for_tenant(tenant_id: int) -> tuple[bool, int | None]:
     finally:
         cur.close()
         conn.close()
+
+
+def starter_buttons(tenant_id: int, phone_number_id: str, customer_phone: str) -> list:
+    """Buttons for the AI Agent's first reply to a new customer (About your
+    business › Starter questions, 22 Nov 2026). [] when off, not set, or this
+    customer already had a reply from this number."""
+    conn = get_db_connection()
+    if not conn:
+        return []
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT data FROM ai_business_profile WHERE tenant_id=%s", (tenant_id,))
+        r = cur.fetchone()
+        d = r[0] if r and isinstance(r[0], dict) else {}
+        btns = [b for b in (d.get("wa_btns") or []) if isinstance(b, str) and b.strip()][:3]
+        if not (d.get("starter_saved") and d.get("wa_btn_on") and btns):
+            return []
+        cur.execute("""SELECT 1 FROM wa_message_log WHERE tenant_id=%s AND phone_number_id=%s
+                         AND customer_phone=%s AND direction <> 'inbound' LIMIT 1""",
+                    (tenant_id, phone_number_id, customer_phone))
+        return [] if cur.fetchone() else btns
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ starter_buttons:", e)
+        return []
+    finally:
+        cur.close()
+        conn.close()

@@ -1134,8 +1134,20 @@ async def receive_webhook(
     if products:
         cache_products(session_id, products)
 
-    # Send reply + interactive messages (list or buttons depending on product count)
-    await dispatch_response(phone_number_id, access_token, customer_phone, reply, products, session_id)
+    # Send reply + interactive messages (list or buttons depending on product count).
+    # First reply to a new customer: with the business's starter buttons (22 Nov 2026).
+    _sent = False
+    if reply and not products and not handoff_triggered:
+        try:
+            from wa_db import starter_buttons
+            from meta_sender import send_reply_buttons
+            _btns = starter_buttons(tenant_id, phone_number_id, customer_phone)
+            if _btns:
+                _sent = await send_reply_buttons(phone_number_id, access_token, customer_phone, reply, _btns)
+        except Exception as _sb_err:
+            print(f"⚠️ starter buttons: {_sb_err}")
+    if not _sent:
+        await dispatch_response(phone_number_id, access_token, customer_phone, reply, products, session_id)
 
     # Log the outbound reply for analytics
     log_label = f"[{len(products)} product(s) + reply]" if products else reply

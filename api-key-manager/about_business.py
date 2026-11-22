@@ -154,7 +154,9 @@ def _blank(info: dict, prod: dict) -> dict:
     defaults_on = list(DEFAULT_TASKS[group])
     return {"business_name": info["name"] or "", "what": "", "sells": sells, "do": defaults_on, "bp": "",
             "hours": [""] * 7, "addr": "", "moq": "", "moq_none": False, "lead": "", "del": "",
-            "book": "", "canc": "", "dl": "", "rt": "", "pay": {}, "pay_other": "", "faqs": [], "else_text": ""}
+            "book": "", "canc": "", "dl": "", "rt": "", "pay": {}, "pay_other": "", "faqs": [], "else_text": "",
+            # Starter questions (22 Nov 2026): see starter_questions.py
+            "starter_qs": [], "starter_saved": False, "wa_btn_on": False, "wa_btns": []}
 
 
 def _legacy_store_info(cur, tenant_id: int) -> dict:
@@ -226,6 +228,10 @@ def _clean(p: dict) -> dict:
     p["faqs"] = [{"q": str(f.get("q") or ""), "a": str(f.get("a") or "")}
                  for f in (p.get("faqs") if isinstance(p.get("faqs"), list) else []) if isinstance(f, dict)]
     p["moq_none"] = bool(p.get("moq_none"))
+    for k in ("starter_qs", "wa_btns"):
+        p[k] = [str(x) for x in p.get(k) if isinstance(x, str)] if isinstance(p.get(k), list) else []
+    p["starter_saved"] = bool(p.get("starter_saved"))
+    p["wa_btn_on"] = bool(p.get("wa_btn_on"))
     return p
 
 
@@ -355,6 +361,7 @@ def sections(info: dict, p: dict, prod: dict, web: dict | None, can_web: bool) -
     if model == "b2c":
         add("pay", "How customers can pay", "So it can answer questions about paying")
     add("faq", "Common questions", "Questions customers ask, with your answers")
+    add("starter", "Starter questions", "Questions customers can tap instead of typing")
     add("docs", "Documents", "Price lists, brochures, FAQs · PDF, Word, text, CSV")
     add("else", "Anything else your AI Agent should know", "Rules and things you don't do")
     # The page shows the "Done for you" sections first; number them in that order.

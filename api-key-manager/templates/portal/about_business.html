@@ -95,6 +95,16 @@
 .ab-from .nf b{color:#991B1B}
 .ab-from button,.ab-from a{font:inherit;font-size:11px;font-weight:700;color:#2563EB;background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}
 .web .ab-m.out .ab-from{border-top-color:#d5dce6}
+.sq-list{display:flex;flex-direction:column;gap:8px}
+.sq-row{display:grid;grid-template-columns:22px minmax(0,1fr) 56px;gap:8px;align-items:center}
+.sq-row b{color:#8a96a8;font-size:12px;text-align:center}
+.sq-cnt{font-size:11px;color:#8a96a8;text-align:right;font-variant-numeric:tabular-nums;display:block}
+.sq-btns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ab-chkrow{display:flex!important;grid-template-columns:none!important;gap:9px;align-items:flex-start;border:1px solid #E3E8EF;border-radius:10px;padding:9px 11px;font-size:13px;cursor:pointer;color:#1d2939}
+.ab-chkrow input{accent-color:#0B1D40;margin:2px 0 0;width:auto!important;flex:none}
+.ab-chkrow > span{flex:1;min-width:0}
+.ab-chkrow b{color:#0B1D40}
+@media (max-width:620px){.sq-btns{grid-template-columns:1fr}.sq-row{grid-template-columns:18px minmax(0,1fr)}.sq-row .sq-cnt{grid-column:2}}
 .ab-m.sys{align-self:center;background:#FEF3C7;color:#92400E;font-size:12px;box-shadow:none}
 .ab-send{display:flex;gap:6px;padding:8px;border-top:1px solid #e3e3e3;background:#F0F2F5}
 .ab-send input{flex:1;min-width:0;font:inherit;font-size:13px;border:1px solid #D5DCE6;border-radius:999px;padding:8px 12px}
@@ -276,6 +286,16 @@
     var m=form.querySelector('[name="moq"]');if(m)m.disabled=false;
   });
   refresh();
+
+  // Starter questions: letter counts + "Use the suggested questions again" (22 Nov 2026)
+  function sqCount(inp){var c=inp.parentElement.querySelector('.sq-cnt');if(c)c.textContent=inp.value.length+' / '+inp.dataset.count}
+  form.querySelectorAll('[data-count]').forEach(function(i){sqCount(i);i.addEventListener('input',function(){sqCount(i)})});
+  var sqr=document.getElementById('sqReset');
+  if(sqr)sqr.addEventListener('click',function(){
+    var qs=JSON.parse(sqr.dataset.qs||'[]'),bs=JSON.parse(sqr.dataset.btns||'[]');
+    form.querySelectorAll('[name="sq"]').forEach(function(i,n){i.value=qs[n]||'';sqCount(i)});
+    form.querySelectorAll('[name="sq_btn"]').forEach(function(i,n){i.value=bs[n]||'';sqCount(i)});
+  });
 
   // ── Test chat ──
   var msgs=document.getElementById('abMsgs'),sid=Math.random().toString(36).slice(2,14);

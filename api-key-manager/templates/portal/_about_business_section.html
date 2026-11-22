@@ -155,6 +155,26 @@
       {% endfor %}
     </div>
 
+{% elif s.key == 'starter' %}
+    {% set sq = starter %}
+    <input type="hidden" name="sq_shown" value="1">
+    <div class="ab-note">{% if sq.has_box and sq.has_wa %}Customers see these when they open your website chat box, and the first time they open a WhatsApp chat with you.{% elif sq.has_box %}Customers see these when they open your website chat box.{% else %}Customers see these the first time they open a WhatsApp chat with you{% if not sq.has_wa %}, once your WhatsApp number is connected{% endif %}.{% endif %} When they tap one, it is sent as their message and your AI Agent answers it.</div>
+    {% if sq.suggested %}<div class="ab-hint" style="margin:0">Suggested for your business. Change them if you like, then press Save to use them.</div>{% endif %}
+    <div>
+      <span class="ab-l">Up to 4 questions</span>
+      <div class="sq-list">
+        {% for i in range(4) %}<div class="sq-row"><b>{{ i + 1 }}</b><input class="ab-in" name="sq" maxlength="40" data-count="40" aria-label="Starter question {{ i + 1 }}" value="{{ sq.qs[i] if i < sq.qs|length else '' }}"><span class="sq-cnt"></span></div>{% endfor %}
+      </div>
+      <div class="ab-hint" style="margin-top:6px">Short and in your customers' words works best. Up to 40 letters each, no emojis.</div>
+    </div>
+    {% if sq.has_wa or not sq.has_box %}
+    <label class="ab-chkrow"><input type="checkbox" name="sq_btn_on" value="1"{% if sq.btn_on %} checked{% endif %}> <span><b>Add buttons under your AI Agent's first WhatsApp reply</b><br><span class="ab-hint">Up to 3 short buttons (20 letters each), shown under the first reply to each new customer, so they can carry on without typing.</span></span></label>
+    <div class="sq-btns">
+      {% for i in range(3) %}<div><label class="ab-l" for="f-sqb{{ i }}">Button {{ i + 1 }}</label><input class="ab-in" id="f-sqb{{ i }}" name="sq_btn" maxlength="20" data-count="20" value="{{ sq.btns[i] if i < sq.btns|length else '' }}"><span class="sq-cnt"></span></div>{% endfor %}
+    </div>
+    {% endif %}
+    <div class="ab-acts"><button class="ab-btn line sm" type="button" id="sqReset" data-qs="{{ sq.sug_qs|tojson|forceescape }}" data-btns="{{ sq.sug_btns|tojson|forceescape }}">Use the suggested questions again</button></div>
+
 {% elif s.key == 'docs' %}
     {% for d in docs %}
     <div class="ab-item" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center">

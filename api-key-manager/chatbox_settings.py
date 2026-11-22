@@ -111,6 +111,25 @@ def safe_name(fname: str) -> bool:
     return bool(_NAME_RE.match(fname or ""))
 
 
+def _starter_qs(tenant_id: int) -> list:
+    """No Chat Box settings yet: the starter questions saved on About your
+    business (22 Nov 2026), so both pages show the same list."""
+    try:
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT data FROM ai_business_profile WHERE tenant_id=%s", (int(tenant_id),))
+            r = cur.fetchone()
+        finally:
+            conn.close()
+        d = (r["data"] if isinstance(r, dict) else r[0]) if r else {}
+        if isinstance(d, dict) and d.get("starter_saved"):
+            return [q for q in (d.get("starter_qs") or []) if isinstance(q, str)][:4]
+    except Exception:
+        pass
+    return []
+
+
 def get(tenant_id: int) -> dict:
     """The business's settings with defaults filled in (never None)."""
     row = {}
@@ -149,7 +168,8 @@ def get(tenant_id: int) -> dict:
         "btn_style": "words" if row.get("btn_style") == "words" else "round",
         "btn_words": row.get("btn_words") or "",
         "show_on_phones": True if row.get("show_on_phones") is None else bool(row.get("show_on_phones")),
-        "quick_qs": [q for q in (row.get("quick_qs") or []) if isinstance(q, str)][:4],
+        "quick_qs": ([q for q in (row.get("quick_qs") or []) if isinstance(q, str)][:4] if row
+                     else _starter_qs(tenant_id)),
         "hours_on": bool(row.get("hours_on")),
         "hours": _clean_hours(row.get("hours")),
         "tz": tz_name(tenant_id),
@@ -317,6 +337,15 @@ def save(tenant_id: int, form, files, actor: str) -> list:
         if old_texts != (welcome or None, btn_words or None, quick_qs):
             cur.execute("DELETE FROM chatbox_welcome_tr WHERE tenant_id=%s", (int(tenant_id),))
         conn.commit()
+        # Same questions on WhatsApp as starter questions (22 Nov 2026).
+        if old_texts[2] != quick_qs:
+            try:
+                import starter_questions
+                for num, e in starter_questions.push_whatsapp(cur, int(tenant_id), quick_qs):
+                    if e:
+                        print(f"⚠️ chatbox starter questions on WhatsApp {num}: {e}")
+            except Exception as e:
+                print("⚠️ chatbox starter questions on WhatsApp:", e)
     finally:
         conn.close()
     if logo != old_logo:

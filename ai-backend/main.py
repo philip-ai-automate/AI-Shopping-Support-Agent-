@@ -2764,6 +2764,34 @@ _CB_CACHE: dict = {}          # tenant_id -> (time, settings row) — 60 s
 _CB_PORTAL = os.getenv("PORTAL_BASE_URL", "https://portal.phixtra.com").rstrip("/")
 
 
+_SQ_CACHE: dict = {}          # tenant_id -> (time, starter questions) — 60 s
+
+
+def _starter_qs(tenant_id: int) -> list:
+    """Starter questions kept with the About your business answers (businesses
+    without their own Chat Box settings)."""
+    hit = _SQ_CACHE.get(tenant_id)
+    if hit and _w_time.time() - hit[0] < 60:
+        return hit[1]
+    qs = []
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT data FROM ai_business_profile WHERE tenant_id=%s", (tenant_id,))
+            r = cur.fetchone()
+            d = r[0] if r and isinstance(r[0], dict) else {}
+            if d.get("starter_saved"):
+                qs = [q for q in (d.get("starter_qs") or []) if isinstance(q, str) and q.strip()][:4]
+            cur.close()
+        except Exception:
+            conn.rollback()
+        finally:
+            conn.close()
+    _SQ_CACHE[tenant_id] = (_w_time.time(), qs)
+    return qs
+
+
 def _cb_settings(tenant_id: int) -> dict:
     """The business's own chat box look (Customise chat box, 9 Nov 2026), or {}."""
     hit = _CB_CACHE.get(tenant_id)
@@ -2927,6 +2955,8 @@ def _widget_look(row: dict, lang: str) -> dict:
     own = (cb.get("welcome") or "").strip()
     words_own = (cb.get("btn_words") or "").strip() if cb.get("btn_style") == "words" else ""
     qs = [q for q in (cb.get("quick_qs") or []) if isinstance(q, str) and q.strip()][:4]
+    if not cb:
+        qs = _starter_qs(tid)   # saved on About your business, no Chat Box settings yet (22 Nov 2026)
     custom = bool(own or words_own or qs)
     src = {"welcome": own or default_greet}
     if cb.get("btn_style") == "words":

@@ -303,6 +303,32 @@ async def send_interactive_buttons(
     })
 
 
+async def send_reply_buttons(
+    phone_number_id: str,
+    access_token: str,
+    to: str,
+    body: str,
+    labels: list,
+) -> bool:
+    """The AI Agent's reply with up to 3 tap buttons under it (starter
+    buttons, 22 Nov 2026). Meta: body ≤1024, ≤3 buttons, title ≤20 chars.
+    A button whose words mention the team (or a person) asks for a person."""
+    buttons = []
+    for i, lab in enumerate([l for l in labels if (l or "").strip()][:3]):
+        lab = _trunc(lab.strip(), 20)
+        bid = "sq_team" if any(w in lab.lower() for w in ("team", "person", "human", "someone", "staff")) else f"sq_{i}"
+        buttons.append({"type": "reply", "reply": {"id": bid, "title": lab}})
+    if not buttons or not body or len(body) > 1024:
+        return False
+    return await _send(phone_number_id, access_token, {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to,
+        "type": "interactive",
+        "interactive": {"type": "button", "body": {"text": body}, "action": {"buttons": buttons}},
+    })
+
+
 # ── Product image with caption ───────────────────────────────────────────────
 
 async def send_image_with_caption(

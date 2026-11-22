@@ -99,9 +99,22 @@ def page():
             from portal_routes import _store_info_actor, _kick_reembed, sync_all_to_meta, _WIZARD_MARKER, insert_audit_log
             actor = _store_info_actor(customer)
             newp = AB.from_form(request.form, info, p)
+            import starter_questions as SQ
+            old_sq = SQ.current(cur, tenant_id, p, info)
+            sq_errs = SQ.from_form(request.form, newp)
+            if sq_errs:
+                flash("Starter questions not saved: " + " ".join(sq_errs), "warning")
             if info["model"] == "b2b":
                 newp["payment_terms"] = _payment_terms(tenant_id)
             AB.save(conn, tenant_id, newp, actor["audit_username"], first, keep_old=bool(first and p.get("_old_too_long")))
+            if request.form.get("sq_shown") == "1" and not sq_errs:
+                new_qs = newp.get("starter_qs") or []
+                SQ.save(conn, tenant_id, newp)
+                if (old_sq["suggested"] or old_sq["qs"] != new_qs) and info.get("wa_on"):
+                    bad = [f"{num}: {e}" for num, e in SQ.push_whatsapp(cur, tenant_id, new_qs) if e]
+                    if bad:
+                        flash("WhatsApp didn't take the starter questions for " + "; ".join(bad)
+                              + ". The website chat box and the buttons still work.", "warning")
             prompt_changed = None
             for o in owns:
                 if o["field"] not in request.form:
@@ -148,6 +161,7 @@ def page():
             tasks=TASKS[group], if_not=IF_NOT, pay_opts=pay_options(p.get("sells") or "products"),
             days=DAYS, fixes=AB.corrections(cur, tenant_id), docs=AB.documents(cur, tenant_id),
             payment_terms=_payment_terms(tenant_id) if info["model"] == "b2b" else "",
+            starter=__import__("starter_questions").current(cur, tenant_id, p, info),
             complete=AB.complete(secs), ready=bool(info["ai_agent_ready"] or info["is_demo"]),
             ai_off=_ai_off_by_plan(info), can_edit=_can(EDIT_KEYS),
         )
