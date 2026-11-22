@@ -82,7 +82,8 @@ def current(cur, tenant_id: int, p: dict, info: dict) -> dict:
     return {"qs": sug_qs if suggested else qs, "suggested": suggested,
             "btn_on": bool(p.get("wa_btn_on")) if saved else True,
             "btns": btns if saved else sug_btns, "sug_qs": sug_qs, "sug_btns": sug_btns,
-            "has_box": info["kind"] != "wa", "has_wa": bool(info.get("wa_on"))}
+            # WhatsApp-only sign-ups that later connected their website usually have the chat box too.
+            "has_box": info["kind"] != "wa" or bool(info.get("site_read")), "has_wa": bool(info.get("wa_on"))}
 
 
 def from_form(form, p: dict) -> list:
