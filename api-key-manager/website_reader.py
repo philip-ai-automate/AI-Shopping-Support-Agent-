@@ -126,6 +126,245 @@ EXTRACT_JS = r"""
 }
 """
 
+# ── Reading what a visitor actually sees (2026-11-22) ───────────────────────
+# EXTRACT_JS reads a detached copy of the page, which has no layout: hidden
+# text comes along and words from different boxes run together. On a page
+# with switches (UK £ / International $, Monthly / Yearly, B2B / Retail …)
+# every hidden price ended up glued together ("£249$330£212$281") and the AI
+# couldn't tell which price was which (phixtra.com/pricing). So information
+# pages are now read in the real page: only visible text, with real line
+# breaks, once per switch choice, plus hidden text no choice ever shows
+# (collapsed answers and the like).
+LIVE_SETUP_JS = r"""
+() => {
+  const kill = 'script,style,noscript,svg,iframe,template,nav,header,footer,aside,form,' +
+               '[role=navigation],[role=banner],[role=contentinfo],[role=dialog],' +
+               '.menu,.nav,.navbar,.site-header,.site-footer,.breadcrumb,.breadcrumbs,.sidebar,.widget-area,' +
+               '.elementor-location-header,.elementor-location-footer,#header,#footer,#masthead,#colophon,' +
+               '[id^="phixtra-welcome"],[id^="phixtra-chat"],[class*="phixtra-widget"],[class*="phixtra-chat"],[class*="phixtra-msg"],' +
+               '[id^="phixaish"],[class*="phixaish"],[class*="breadcrumb"],.woocommerce-breadcrumb,[aria-label="breadcrumb" i],[aria-label="breadcrumbs" i]';
+  document.querySelectorAll(kill).forEach(e => e.setAttribute('data-phx-kill', '1'));
+  document.querySelectorAll('[id],[class]').forEach(e => {
+    const k = ((e.id || '') + ' ' + (typeof e.className === 'string' ? e.className : '')).toLowerCase();
+    if (/(cookie|consent|gdpr|newsletter-popup|chat-widget)/.test(k)) e.setAttribute('data-phx-kill', '1');
+  });
+  const st = document.createElement('style');
+  st.textContent = '[data-phx-kill]{display:none!important}';
+  (document.head || document.documentElement).appendChild(st);
+  // Closed <details> (FAQ answers): open them so they are read as text.
+  document.querySelectorAll('details').forEach(d => { d.open = true; });
+
+  // Main content: the candidate box holding the most visible text.
+  const bodyLen = (document.body.innerText || '').length;
+  let main = null, best = 0;
+  document.querySelectorAll('main, [role=main], article, #content, .site-content, #main, .entry-content, .post-content, .page-content, #page-wrap').forEach(e => {
+    if (e.closest('[data-phx-kill]')) return;
+    const n = (e.innerText || '').length;
+    if (n > best) { best = n; main = e; }
+  });
+  if (!main || best < bodyLen * 0.35) main = document.body;
+  main.setAttribute('data-phx-main', '1');
+
+  // Switches: 2–6 buttons / tabs side by side with short, different labels.
+  // Not menus, accordions, forms, sliders or the chat box.
+  const bad = 'header,footer,form,dialog,[role=dialog],[role=menu],[role=menubar],.site-header,.site-footer,' +
+              '#header,#footer,#masthead,#colophon,[id^="phixtra-"],[id^="phixaish"],[class*="phixaish"],' +
+              '[class*="phixtra-widget"],[class*="phixtra-chat"],[class*="cookie"],[id*="cookie"],[class*="consent"],' +
+              '[class*="slick"],[class*="swiper"],[class*="carousel"],[class*="slider"]';
+  const arrows = /^(prev|previous|next|back|more|less|show more|show less|load more|read more|‹|›|<|>|←|→|«|»|\+|-|−|×|✕)$/i;
+  const label = el => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+  const parents = new Set();
+  document.querySelectorAll('button,[role=tab],[role=radio]').forEach(el => { if (el.parentElement) parents.add(el.parentElement); });
+  const byKey = new Map();
+  for (const par of parents) {
+    if (par.closest(bad)) continue;
+    const kids = Array.from(par.children).filter(c => c.matches('button,[role=tab],[role=radio]'));
+    if (kids.length < 2 || kids.length > 6) continue;
+    if (kids.some(k => k.disabled || k.type === 'submit' || k.hasAttribute('aria-expanded') || k.hasAttribute('aria-haspopup'))) continue;
+    if (kids.some(k => k.tagName === 'A' && !/^#/.test(k.getAttribute('href') || '#'))) continue;
+    const labels = kids.map(label);
+    if (labels.some(l => !l || l.length > 40 || arrows.test(l))) continue;
+    if (new Set(labels).size !== labels.length) continue;
+    const key = labels.join('\u0001');
+    if (!byKey.has(key)) byKey.set(key, { labels: labels, members: [] });
+    byKey.get(key).members.push(kids);
+  }
+  const groups = [];
+  Array.from(byKey.values()).slice(0, 6).forEach((g, gi) => {
+    g.members.forEach(kids => kids.forEach((k, i) => k.setAttribute('data-phx-sw', gi + '-' + i)));
+    groups.push(g.labels);
+  });
+  return { groups: groups };
+}
+"""
+
+LIVE_CLICK_JS = r"""
+(ids) => {
+  ids.forEach(id => document.querySelectorAll('[data-phx-sw="' + id + '"]').forEach(el => {
+    try { el.click(); } catch (e) {}
+  }));
+  return location.href;
+}
+"""
+
+LIVE_READ_JS = r"""
+() => {
+  const main = document.querySelector('[data-phx-main]') || document.body;
+  main.querySelectorAll('*').forEach(e => {
+    if (e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden') e.setAttribute('data-phx-seen', '1');
+  });
+  return main.innerText || '';
+}
+"""
+
+# Hidden text that no switch choice ever showed (collapsed accordions …):
+# one line per box, so nothing runs together.
+LIVE_LEFTOVER_JS = r"""
+() => {
+  const main = document.querySelector('[data-phx-main]') || document.body;
+  const out = [];
+  const w = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
+  let n, cur = null, buf = '';
+  while ((n = w.nextNode())) {
+    const p = n.parentElement;
+    if (!p || p.closest('[data-phx-kill],script,style,noscript,template')) continue;
+    if (p.hasAttribute('data-phx-seen')) continue;
+    const t = (n.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!t) continue;
+    if (p !== cur) { if (buf) out.push(buf); buf = t; cur = p; } else { buf += ' ' + t; }
+  }
+  if (buf) out.push(buf);
+  return out;
+}
+"""
+
+MAX_SWITCH_STATES = 48       # every combination of switch choices, up to this many
+PART_CHARS = 5500            # the AI is given at most RAG_INFO_MAX_CHARS (6000) per document
+
+
+def _tidy(text: str) -> list:
+    text = re.sub(r"[ \t]+", " ", text or "")
+    return [ln.strip() for ln in text.splitlines()]
+
+
+def _new_lines(parent: list, child: list, context: int = 6) -> list:
+    """The parts of child that differ from parent, each with up to `context`
+    lines before it (usually the plan or product name), as lists of lines."""
+    import difflib
+    a = [x for x in parent if x]
+    b = [x for x in child if x]
+    hunks = []
+    for tag, _i1, _i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        if tag in ("replace", "insert"):
+            start = max(0, j1 - context)
+            if hunks and start <= hunks[-1][1]:
+                hunks[-1][1] = j2
+            else:
+                hunks.append([start, j2])
+    return [b[s:e] for s, e in hunks]
+
+
+def read_visible(page) -> str:
+    """Visible text of the page's main content, once per switch choice.
+    Returns '' when the page can't be read this way (caller keeps the old text)."""
+    import itertools
+    import difflib
+    info = page.evaluate(LIVE_SETUP_JS)
+    groups = info.get("groups") or []
+    start_url = page.url
+
+    def read():
+        return _tidy(page.evaluate(LIVE_READ_JS))
+
+    if not groups:
+        lines = read()
+    else:
+        combos = list(itertools.product(*[range(len(g)) for g in groups]))
+        if len(combos) > MAX_SWITCH_STATES:     # too many: change one switch at a time
+            combos = [tuple(0 for _ in groups)] + [
+                tuple(i if gi == g else 0 for gi in range(len(groups)))
+                for g in range(len(groups)) for i in range(1, len(groups[g]))]
+        states = []          # (choice, lines)
+        current = [None] * len(groups)
+        for choice in combos:
+            ids = [f"{gi}-{ci}" for gi, ci in enumerate(choice) if current[gi] != ci]
+            href = page.evaluate(LIVE_CLICK_JS, ids)
+            current = list(choice)
+            if urldefrag(href)[0] != urldefrag(start_url)[0]:
+                return ""    # a "switch" opened another page: not a switch after all
+            page.wait_for_timeout(150)
+            states.append((choice, read()))
+
+        def names(ch):
+            return ", ".join(groups[gi][ci] for gi, ci in enumerate(ch))
+        summary = "; ".join(" / ".join(g) for g in groups)
+        lines = [f"This page has choices to switch between: {summary}. "
+                 f"Below is what it shows for each choice.", "",
+                 f"Shown with: {names(states[0][0])}"] + states[0][1]
+        seen = [states[0][1]]
+        for k in range(1, len(states)):
+            choice, cur = states[k]
+            if any(cur == s for s in seen):
+                continue
+            # Compare with the earlier view it is most like; keep only what's new.
+            parent = max((states[j][1] for j in range(k)),
+                         key=lambda p: difflib.SequenceMatcher(None, p, cur, autojunk=False).ratio())
+            seen.append(cur)
+            hunks = _new_lines(parent, cur)
+            if not hunks:
+                continue
+            lines += ["", f"Shown with: {names(choice)}"]
+            for h in hunks:
+                lines += h + [""]
+    have = {ln for ln in lines if ln}
+    # Short hidden scraps are screen-reader labels ("Share on X (Opens in new
+    # window)", "Home: About Me"), not information.
+    extra = [t for t in page.evaluate(LIVE_LEFTOVER_JS)
+             if t not in have and len(t) >= 25 and not re.search(r"opens in (a )?new (window|tab)|^share on ", t, re.I)]
+    if extra:
+        lines += ["", "Also on this page:"] + extra
+    text = "\n".join(lines)
+    return re.sub(r"\n\s*\n+", "\n\n", text).strip()
+
+
+def split_parts(text: str, limit: int = PART_CHARS) -> list:
+    """Long page text → parts of at most `limit` characters, cut between lines.
+    A part that starts in the middle of a "Shown with:" block repeats that
+    line, so every price keeps the choice it belongs to."""
+    if len(text) <= limit:
+        return [text]
+    parts, cur, size, header = [], [], 0, None
+
+    def flush():
+        nonlocal cur, size
+        if "\n".join(cur).strip():
+            parts.append("\n".join(cur).strip())
+        cur, size = [], 0
+
+    for para in text.split("\n\n"):
+        plines = para.split("\n")
+        if plines[0].startswith("Shown with:"):
+            header = plines[0]
+        elif plines[0].startswith("Also on this page:"):
+            header = None
+        for ln in plines + [""]:
+            while len(ln) > limit:                       # one very long line
+                cut = ln.rfind(" ", 0, limit)
+                cut = cut if cut > limit // 2 else limit
+                if cur:
+                    flush()
+                parts.append(ln[:cut].strip())
+                ln = ln[cut:].lstrip()
+            if size + len(ln) + 1 > limit and cur:
+                flush()
+                if header and ln != header:
+                    cur.append(f"{header} (continued)")
+                    size = len(cur[0]) + 1
+            cur.append(ln)
+            size += len(ln) + 1
+    flush()
+    return [p for p in parts if p]
+
 
 def db():
     return psycopg2.connect(
@@ -309,7 +548,18 @@ def read_site(tenant_id: int, start_url: str, removed: set, progress, read_produ
             if (kind == "product" and n_prod >= MAX_PRODUCT_PAGES) or (kind == "page" and n_info >= MAX_PAGES):
                 skipped[final] = "page limit reached"
                 continue
-            text = re.sub(r"[ \t]+", " ", data.get("text") or "")
+            raw = data.get("text") or ""
+            if kind == "page":
+                # What a visitor sees, per switch choice (2026-11-22). Kept
+                # only when it isn't much shorter than the old way of reading.
+                try:
+                    live = read_visible(page)
+                except Exception as e:
+                    live = ""
+                    print(f"   visible read failed {final}: {type(e).__name__}: {(str(e).splitlines() or [''])[0][:160]}", flush=True)
+                if live and len(re.sub(r"\s+", "", live)) >= 0.6 * len(re.sub(r"\s+", "", raw)):
+                    raw = live
+            text = re.sub(r"[ \t]+", " ", raw)
             text = re.sub(r"\n\s*\n+", "\n\n", text).strip()
             if len(text) < 80:
                 skipped[final] = "almost no text on the page"
@@ -570,6 +820,23 @@ def _next_days(tenant_id: int, frequency: str):
     return str(FREQ_DAYS[frequency])
 
 
+def _save_doc(cur, did, tenant_id, p, title, text, site_url, price, currency, in_stock):
+    cur.execute("""
+        INSERT INTO documents (id, tenant_id, type, title, content, url, site_url, updated_by, updated_at, embedding,
+                               price_min, price_max, currency, in_stock)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, 'website_reader', NOW(), NULL, %s, %s, %s, %s)
+        ON CONFLICT (id) DO UPDATE SET
+            type = EXCLUDED.type, title = EXCLUDED.title, url = EXCLUDED.url, site_url = EXCLUDED.site_url,
+            updated_by = EXCLUDED.updated_by, updated_at = NOW(),
+            price_min = EXCLUDED.price_min, price_max = EXCLUDED.price_max,
+            currency = EXCLUDED.currency, in_stock = EXCLUDED.in_stock,
+            embedding = CASE WHEN documents.content IS DISTINCT FROM EXCLUDED.content
+                               OR documents.title IS DISTINCT FROM EXCLUDED.title THEN NULL ELSE documents.embedding END,
+            content = EXCLUDED.content
+    """, (did, tenant_id, p.get("kind") or "page", title, text, p["url"], site_url,
+          price, price, currency, in_stock))
+
+
 def run_tenant(tenant_id: int) -> None:
     conn = db()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -631,22 +898,15 @@ def run_tenant(tenant_id: int) -> None:
     keep_ids = set()
     for p in pages:
         did = doc_id_for(tenant_id, p["url"])
-        keep_ids.add(did)
         price, currency, in_stock = _offer_fields(p.get("offer"))
-        cur.execute("""
-            INSERT INTO documents (id, tenant_id, type, title, content, url, site_url, updated_by, updated_at, embedding,
-                                   price_min, price_max, currency, in_stock)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'website_reader', NOW(), NULL, %s, %s, %s, %s)
-            ON CONFLICT (id) DO UPDATE SET
-                type = EXCLUDED.type, title = EXCLUDED.title, url = EXCLUDED.url, site_url = EXCLUDED.site_url,
-                updated_by = EXCLUDED.updated_by, updated_at = NOW(),
-                price_min = EXCLUDED.price_min, price_max = EXCLUDED.price_max,
-                currency = EXCLUDED.currency, in_stock = EXCLUDED.in_stock,
-                embedding = CASE WHEN documents.content IS DISTINCT FROM EXCLUDED.content
-                                   OR documents.title IS DISTINCT FROM EXCLUDED.title THEN NULL ELSE documents.embedding END,
-                content = EXCLUDED.content
-        """, (did, tenant_id, p.get("kind") or "page", p["title"], p["text"], p["url"], site_url,
-              price, price, currency, in_stock))
+        # The AI is given at most ~6000 characters of one document, so a long
+        # information page is saved in parts: <id>, <id>-p2, <id>-p3 … (2026-11-22).
+        texts = split_parts(p["text"]) if (p.get("kind") or "page") == "page" else [p["text"]]
+        for n, part in enumerate(texts, start=1):
+            pid = did if n == 1 else f"{did}-p{n}"
+            keep_ids.add(pid)
+            ptitle = p["title"] if n == 1 else f"{p['title']} (part {n})"[:250]
+            _save_doc(cur, pid, tenant_id, p, ptitle, part, site_url, price, currency, in_stock)
         cur.execute("""
             INSERT INTO website_pages (tenant_id, url, title, doc_id, status, skip_reason, last_read_at)
             VALUES (%s, %s, %s, %s, 'read', NULL, NOW())

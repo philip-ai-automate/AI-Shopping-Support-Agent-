@@ -13602,7 +13602,9 @@ def store_info_website_sync():
             pg = cur.fetchone()
             if pg and action == "remove":
                 if pg.get("doc_id"):
-                    cur.execute("DELETE FROM documents WHERE id=%s AND tenant_id=%s", (pg["doc_id"], tenant_id))
+                    # A long page is saved in parts (<id>-p2, -p3 …): remove them all.
+                    cur.execute("DELETE FROM documents WHERE tenant_id=%s AND (id=%s OR id LIKE %s)",
+                                (tenant_id, pg["doc_id"], pg["doc_id"] + "-p%"))
                 cur.execute("UPDATE website_pages SET status='removed', doc_id=NULL WHERE id=%s", (page_id,))
                 conn.commit()
                 insert_audit_log(admin_username=actor["audit_username"], action="website_page_removed",
