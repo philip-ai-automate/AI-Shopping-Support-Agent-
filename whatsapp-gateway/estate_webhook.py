@@ -759,7 +759,7 @@ async def handle_estate_message(
             _store_buyer_message(tenant_id, customer_phone, "🎤 Voice note (couldn't be turned into text, play it here)")
             return
         text, voice_note = heard, True
-        print(f"   🎤 [ESTATE VOICE] heard: {text[:120]}")
+        print(f"   🎤 [ESTATE VOICE] heard ({len(text or '')} chars)")
 
     # ── STOP / START: buyer opts out of follow-ups and broadcasts (or back in) ─
     if action_type is None and not voice_note:

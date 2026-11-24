@@ -194,7 +194,7 @@ async def chatwoot_webhook(
     account_id = str((payload.get("account") or {}).get("id") or _CHATWOOT_ACCOUNT_ID)
 
     session_id = f"cw-{conversation_id}"
-    print(f"✅ [CW] conv={conversation_id} session={session_id}: {content[:80]}")
+    print(f"✅ [CW] conv={conversation_id} session={session_id} ({len(content or '')} chars)")
 
     # ── Keyword-triggered human escalation ────────────────────────────────────
     if _wants_human(content):

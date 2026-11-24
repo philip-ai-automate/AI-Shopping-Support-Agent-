@@ -243,7 +243,7 @@ def _wants_setup(text: str) -> bool:
 
 async def _reply(phone: str, message: str):
     if not _SETUP_PHONE_NUMBER_ID or not _SETUP_ACCESS_TOKEN:
-        print(f"   [ONBOARDING] (no creds) → {phone}: {message[:80]}")
+        print(f"   [ONBOARDING] (no creds) → {phone}: ({len(message or '')} chars)")
         return
     await send_text(_SETUP_PHONE_NUMBER_ID, _SETUP_ACCESS_TOKEN, phone, message)
 

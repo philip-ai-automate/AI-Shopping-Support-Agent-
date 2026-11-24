@@ -135,4 +135,4 @@ async def handle_messenger_webhook(payload: dict, body: bytes, sig_header: str) 
             mid = message.get("mid") or None
             ok = _log_message(tenant_id, page_id, psid, "inbound", text, message_type, mid)
             if ok:
-                print(f"📩 [MESSENGER] tenant={tenant_id} page={page_id} psid={psid}: {text[:80]}")
+                print(f"📩 [MESSENGER] tenant={tenant_id} page={page_id} psid={psid} ({len(text or '')} chars)")

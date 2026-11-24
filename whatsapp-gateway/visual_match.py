@@ -64,7 +64,7 @@ async def evaluate_visual_match(
     media_id: str,
     caption: str,
 ) -> dict:
-    print(f"   [VISUAL_MATCH] evaluate tenant_id={tenant_id} media_id={media_id!r} caption={caption!r}")
+    print(f"   [VISUAL_MATCH] evaluate tenant_id={tenant_id} media_id={media_id!r} caption_len={len(caption or '')}")
 
     settings = get_visual_match_settings(tenant_id)
     if not settings["enabled"]:
@@ -72,7 +72,7 @@ async def evaluate_visual_match(
         return {"branch": "skip"}
 
     if not _looks_like_product_ask(caption):
-        print(f"   [VISUAL_MATCH] skip — caption {caption!r} didn't pass the product-ask guard")
+        print(f"   [VISUAL_MATCH] skip — caption didn't pass the product-ask guard")
         return {"branch": "skip"}
 
     image_bytes = await resolve_and_download_media(media_id, access_token)

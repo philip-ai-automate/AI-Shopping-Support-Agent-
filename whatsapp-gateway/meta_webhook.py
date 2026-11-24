@@ -652,7 +652,7 @@ async def receive_webhook(
         )
         if not logged:
             return {"status": "ok", "reason": "duplicate"}
-        print(f"📋 [ONBOARDING] {customer_phone}: {text[:80]}")
+        print(f"📋 [ONBOARDING] {customer_phone}: ({len(text or '')} chars)")
         await handle_onboarding_message(msg)
         return {"status": "ok"}
 
@@ -708,7 +708,7 @@ async def receive_webhook(
         print(f"   [META] Duplicate message_id={meta_message_id} — skipped")
         return {"status": "ok", "reason": "duplicate"}
 
-    print(f"✅ [META] session={session_id} from={customer_phone} action={action_type or 'text'}: {text[:80]}")
+    print(f"✅ [META] session={session_id} from={customer_phone} action={action_type or 'text'} ({len(text or '')} chars)")
 
     # ── Account Manager check-in buttons (2026-11-06): only for a customer
     # Kelvin is handling (am_wa_quiet). The tap is already logged above. ──
@@ -941,7 +941,7 @@ async def receive_webhook(
     visual_match_ctx = ""
     media_caption = msg.get("media_caption", "")
     if msg.get("message_type") == "image":
-        print(f"   [META] inbound image message_type={msg.get('message_type')!r} media_url={msg.get('media_url')!r} media_caption={media_caption!r}")
+        print(f"   [META] inbound image message_type={msg.get('message_type')!r} media_url={msg.get('media_url')!r} caption_len={len(media_caption or '')}")
     if msg.get("message_type") == "image" and msg.get("media_url"):
         try:
             vm_result = await evaluate_visual_match(
