@@ -969,6 +969,112 @@ def due_count(username: str) -> int:
         cur.close(); conn.close()
 
 
+# ── "seen" for the red menu numbers (24 Nov 2026) ─────────────────────────
+# A red number goes away for a staff member once they open the task (the
+# account page) or click the menu link that lists it. It comes back only when
+# something new happens (new follow-up date, new support/set-up request).
+# The task itself stays in its list until it is done.
+
+_seen_ready = False
+
+
+def _ensure_seen(cur):
+    global _seen_ready
+    if _seen_ready:
+        return
+    cur.execute("""CREATE TABLE IF NOT EXISTS am_badge_seen (
+                       admin_user VARCHAR(200) NOT NULL,
+                       kind       VARCHAR(20)  NOT NULL,
+                       ref_id     INTEGER      NOT NULL,
+                       stamp      VARCHAR(40)  NOT NULL DEFAULT '',
+                       seen_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                       PRIMARY KEY (admin_user, kind, ref_id))""")
+    _seen_ready = True
+
+
+def mark_seen(username: str, kind: str, items) -> None:
+    """items = [(ref_id, stamp), ...]; kind = due | support | setup."""
+    items = [(int(r), str(st or "")) for r, st in (items or [])]
+    if not username or not items:
+        return
+    conn, cur = _db()
+    try:
+        _ensure_seen(cur)
+        for ref_id, stamp in items:
+            cur.execute("""INSERT INTO am_badge_seen (admin_user, kind, ref_id, stamp) VALUES (%s,%s,%s,%s)
+                           ON CONFLICT (admin_user, kind, ref_id)
+                           DO UPDATE SET stamp = EXCLUDED.stamp, seen_at = NOW()""",
+                        (username, kind, ref_id, stamp))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print("⚠️ am_badge_seen mark:", e)
+    finally:
+        cur.close(); conn.close()
+
+
+def mark_due_seen(username: str, tenant_id=None) -> None:
+    """Follow-ups due for this person: one account, or all of them."""
+    conn, cur = _db()
+    try:
+        q = """SELECT tenant_id, next_follow_up FROM am_account_state
+                WHERE next_follow_up <= CURRENT_DATE AND status NOT IN ('set_up','lost')
+                  AND (assigned_admin = %s OR assigned_admin IS NULL)"""
+        args = [username]
+        if tenant_id is not None:
+            q += " AND tenant_id = %s"
+            args.append(tenant_id)
+        cur.execute(q, args)
+        items = [(r["tenant_id"], r["next_follow_up"].isoformat()) for r in cur.fetchall()]
+    finally:
+        cur.close(); conn.close()
+    mark_seen(username, "due", items)
+
+
+def unseen_due_count(username: str) -> int:
+    ensure_tables()
+    conn, cur = _db()
+    try:
+        _ensure_seen(cur); conn.commit()
+        cur.execute("""SELECT COUNT(*) AS n FROM am_account_state s
+                        WHERE s.next_follow_up <= CURRENT_DATE AND s.status NOT IN ('set_up','lost')
+                          AND (s.assigned_admin = %s OR s.assigned_admin IS NULL)
+                          AND NOT EXISTS (SELECT 1 FROM am_badge_seen b
+                                           WHERE b.admin_user = %s AND b.kind = 'due'
+                                             AND b.ref_id = s.tenant_id
+                                             AND b.stamp = s.next_follow_up::text)""", (username, username))
+        return int(cur.fetchone()["n"])
+    finally:
+        cur.close(); conn.close()
+
+
+def unseen_count(username: str, kind: str, ids) -> int:
+    """How many of these request ids (support / setup) this person has not opened yet."""
+    ids = sorted({int(i) for i in (ids or [])})
+    if not ids:
+        return 0
+    conn, cur = _db()
+    try:
+        _ensure_seen(cur); conn.commit()
+        cur.execute("""SELECT COUNT(*) AS n FROM am_badge_seen
+                        WHERE admin_user = %s AND kind = %s AND ref_id = ANY(%s)""", (username, kind, ids))
+        return len(ids) - int(cur.fetchone()["n"])
+    finally:
+        cur.close(); conn.close()
+
+
+def _open_support_ids() -> list:
+    conn, cur = _db()
+    try:
+        cur.execute("SELECT to_regclass('support_requests') IS NOT NULL AS ok")
+        if not cur.fetchone()["ok"]:
+            return []
+        cur.execute("SELECT id FROM support_requests WHERE status = 'open'")
+        return [r["id"] for r in cur.fetchall()]
+    finally:
+        cur.close(); conn.close()
+
+
 # ── state + log ───────────────────────────────────────────────────────────
 
 def _upsert_state(cur, tenant_id, by, **cols):
@@ -1197,10 +1303,18 @@ def register(bp, require_admin, admin_user):
             try:
                 if not session.get("portal_admin_logged_in"):
                     return 0
+                return unseen_due_count(admin_user())
+            except Exception:
+                return 0
+
+        def am_due_total():
+            try:
+                if not session.get("portal_admin_logged_in"):
+                    return 0
                 return due_count(admin_user())
             except Exception:
                 return 0
-        return {"am_due_count": am_due_count}
+        return {"am_due_count": am_due_count, "am_due_total": am_due_total}
 
     @bp.route("/accounts/settings/signature", methods=["POST"])
     def am_signature_save():
@@ -1393,6 +1507,8 @@ def register(bp, require_admin, admin_user):
         if r: return r
         me = admin_user()
         L = list_view(me, request.args)
+        if request.args.get("view") == "due":
+            mark_due_seen(me)
         try:
             limit = max(25, min(1000, int(request.args.get("limit") or 50)))
         except ValueError:
@@ -1500,6 +1616,8 @@ def register(bp, require_admin, admin_user):
         sup_open = sup if sup and sup["status"] == "open" else None
         if sup_open:
             SR.mark_opened(sup_open, me)
+            mark_seen(me, "support", [(sup_open["id"], "")])
+        mark_due_seen(me, tenant_id)
         probs = SR.account_problems(tenant_id)
         nb = next_best(a, window, _replied, _ready or window, sup_open)
         _items = timeline(tenant_id, a["phone_number"]) + journey(a)
@@ -1733,7 +1851,7 @@ def register_support(bp, require_admin, admin_user):
             try:
                 if not session.get("portal_admin_logged_in"):
                     return 0
-                return len(SR.open_tenant_ids())
+                return unseen_count(admin_user(), "support", _open_support_ids())
             except Exception:
                 return 0
         return {"am_support_count": am_support_count}
@@ -1746,6 +1864,8 @@ def register_support(bp, require_admin, admin_user):
         reqs = SR.list_requests(show)
         mgr = request.args.get("mgr") or "all"
         me = admin_user()
+        if show == "open":
+            mark_seen(me, "support", [(x["id"], "") for x in reqs])
         if mgr == "me":
             reqs = [x for x in reqs if x["assigned_admin"] == me]
         elif mgr == "none":

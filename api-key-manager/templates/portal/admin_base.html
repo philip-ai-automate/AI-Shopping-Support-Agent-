@@ -258,6 +258,7 @@
       {% if _am_inb %}<span style="margin-left:auto;background:#25D366;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px" title="Customers waiting for a reply">{{ _am_inb }}</span>{% endif %}
     </a>
     {% set _am_due = am_due_count() if am_due_count is defined else 0 %}
+    {% set _am_due_all = am_due_total() if am_due_total is defined else _am_due %}
     {% set _am_ep = request.endpoint or '' %}
     {% set _am_sup = am_support_count() if am_support_count is defined else 0 %}
     {% set _am_group = (_am_ep.startswith('portal_admin.am_') and not _am_ep.startswith('portal_admin.am_inbox') and _am_ep != 'portal_admin.am_support_alerts') or _am_ep.startswith('portal_admin.inactive_accounts') or _am_ep.startswith('portal_admin.whos_online') or _am_ep.startswith('portal_admin.setup_requests') %}
@@ -265,7 +266,7 @@
     <div class="asb-group-toggle {% if _am_group %}open{% endif %}" onclick="asbGroupToggle(this)">
       <span class="asb-gtitle"><span class="asb-icon">🤝</span> Accounts
         {% set _am_all = (_am_sup or 0) + (_am_due or 0) + (_sr_new or 0) %}
-        {% if _am_all %}<span style="background:#F04438;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px" title="{{ [(_am_sup ~ ' waiting for a person') if _am_sup, (_am_due ~ ' follow-up' ~ ('s' if _am_due != 1) ~ ' due') if _am_due, (_sr_new ~ ' new set-up request' ~ ('s' if _sr_new != 1)) if _sr_new]|select|join(' · ') }}">{{ _am_all }}</span>{% endif %}</span>
+        {% if _am_all %}<span style="background:#F04438;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px" title="{{ [(_am_sup ~ ' new support request' ~ ('s' if _am_sup != 1)) if _am_sup, (_am_due ~ ' new follow-up' ~ ('s' if _am_due != 1) ~ ' due') if _am_due, (_sr_new ~ ' new set-up request' ~ ('s' if _sr_new != 1)) if _sr_new]|select|join(' · ') }}">{{ _am_all }}</span>{% endif %}</span>
       <span class="asb-arrow">▾</span>
     </div>
     <div class="asb-sub {% if _am_group %}open{% endif %}">
@@ -274,9 +275,9 @@
       <a href="{{ url_for('portal_admin.am_accounts') }}"
          style="display:flex;justify-content:space-between;align-items:center"
          class="{% if _am_group and not (request.args.get('view') == 'due' and request.args.get('mgr') == 'mine_none') and _am_ep not in ('portal_admin.am_settings', 'portal_admin.am_dashboard', 'portal_admin.am_support') and not _am_ep.startswith('portal_admin.inactive_accounts') and not _am_ep.startswith('portal_admin.whos_online') and not _am_ep.startswith('portal_admin.setup_requests') %}active{% endif %}">All accounts</a>
-      {% if _am_due %}<a href="{{ url_for('portal_admin.am_accounts', view='due', mgr='mine_none') }}" style="display:flex;justify-content:space-between;align-items:center"
+      {% if _am_due_all %}<a href="{{ url_for('portal_admin.am_accounts', view='due', mgr='mine_none') }}" style="display:flex;justify-content:space-between;align-items:center"
          class="{% if _am_ep == 'portal_admin.am_accounts' and request.args.get('view') == 'due' and request.args.get('mgr') == 'mine_none' %}active{% endif %}"
-         title="Follow-ups due for you or not assigned to anyone">Follow-ups due<span style="background:#F04438;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;margin-left:6px">{{ _am_due }}</span></a>{% endif %}
+         title="Follow-ups due for you or not assigned to anyone">Follow-ups due{% if _am_due %}<span style="background:#F04438;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;margin-left:6px">{{ _am_due }}</span>{% endif %}</a>{% endif %}
       <a href="{{ url_for('portal_admin.am_support') }}" style="display:flex;justify-content:space-between;align-items:center"
          class="{% if _am_ep == 'portal_admin.am_support' %}active{% endif %}">Support requests{% if _am_sup %}<span style="background:#B42318;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;margin-left:6px">{{ _am_sup }}</span>{% endif %}</a>
       <a href="{{ url_for('portal_admin.inactive_accounts') }}"

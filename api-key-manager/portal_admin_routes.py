@@ -6240,6 +6240,10 @@ def setup_requests_page():
     rid = request.args.get("id", type=int)
     route = request.args.get("route") or ""
     rows, counts = SR.for_admin(view, route, rid)
+    try:   # opening the page clears the red number for this person (24 Nov 2026)
+        _admin_accounts.mark_seen(_admin_user(), "setup", [(i, "") for i in _setup_new_ids()])
+    except Exception as e:
+        print("⚠️ setup seen:", e)
     return render_template("portal/admin_setup_requests.html", rows=rows, counts=counts, view=view,
                            rid=rid, route=route, sr=SR)
 
@@ -6265,11 +6269,21 @@ def _setup_requests_badge():
         try:
             if not session.get("portal_admin_logged_in"):
                 return 0
-            import setup_requests as SR
-            return SR.new_count()
+            return _admin_accounts.unseen_count(_admin_user(), "setup", _setup_new_ids())
         except Exception:
             return 0
     return {"setup_requests_new": setup_requests_new}
+
+
+def _setup_new_ids() -> list:
+    """Set-up requests still marked new (red number counts the ones this person hasn't opened)."""
+    import setup_requests as SR
+    conn, cur = SR._db(False)
+    try:
+        cur.execute("SELECT id FROM setup_requests WHERE status='new'")
+        return [r[0] for r in cur.fetchall()]
+    finally:
+        cur.close(); conn.close()
 
 
 @portal_admin_bp.route("/backups")
