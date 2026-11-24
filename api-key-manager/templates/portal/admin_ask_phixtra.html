@@ -3,7 +3,7 @@
 {% block content %}
 {# Admin › Ask PhiXtra (18 Nov 2026): only the questions Ask PhiXtra could not answer,
    or that the person marked Not helpful — so the team sees where the portal is unclear.
-   Nothing here is written or approved: Ask PhiXtra reads the live portal itself. #}
+   Ask PhiXtra reads the live portal itself. 24 Nov 2026: Knowledge tab (owner only), see ask_phixtra_kb.py. #}
 <style>
   .apa{display:flex;flex-direction:column;gap:16px}
   .apa-crumb{font-size:12px;color:var(--muted)}
@@ -21,16 +21,52 @@
   .apa-act a.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
   .apa-empty{padding:28px;text-align:center;color:var(--muted)}
   .apa-foot{font-size:13px;color:var(--muted)}
+  .apa-act a.kb{color:#175CD3;border-color:#84CAFF;font-weight:600}
+  .apa-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+  .apa-new{background:var(--ink);color:#fff;border-radius:8px;padding:10px 16px;font-weight:700;text-decoration:none;min-height:44px;box-sizing:border-box;display:flex;align-items:center}
+  .apa-new:hover{color:#fff;text-decoration:none}
+  .apa-sum{color:var(--muted);font-size:13px;margin-top:2px}
+  .apa-on{background:#ECFDF3;color:#067647;font-weight:600;font-size:12px;padding:3px 10px;border-radius:999px}
+  .apa-off{background:#F2F4F7;color:#344054;font-weight:600;font-size:12px;padding:3px 10px;border-radius:999px}
 </style>
 <div class="apa">
   <div class="apa-crumb">Admin › Ask PhiXtra</div>
   <h1 class="section-title" style="margin:0">Ask PhiXtra</h1>
-  <div class="apa-intro">Ask PhiXtra answers businesses by <b>reading the live portal</b>: menus, pages, buttons, settings and plans, always up to date after every change ({{ map_size }} pages mapped now). This page only lists the questions it <b>could not answer</b>, or that the person marked <b>Not helpful</b>, so you can see where the portal is unclear. Nothing here is written or approved.</div>
+  {% set is_owner = session.get('portal_admin_role', 'owner') == 'owner' %}
+  <div class="apa-intro">Ask PhiXtra answers businesses by <b>reading the live portal</b>: menus, pages, buttons, settings and plans, always up to date after every change ({{ map_size }} pages mapped now). The Unanswered tab lists the questions it <b>could not answer</b>, or that the person marked <b>Not helpful</b>, so you can see where the portal is unclear. For things outside the portal, such as Meta's rules, it also uses the <b>Knowledge</b> written by the PhiXtra owner.</div>
 
   <div class="apa-tabs">
-    <a class="apa-tab {% if show != 'dismissed' %}on{% endif %}" href="{{ url_for('askphx.admin_page') }}">Unanswered{% if show != 'dismissed' %} ({{ rows|length }}){% endif %}</a>
+    <a class="apa-tab {% if show not in ('dismissed', 'knowledge') %}on{% endif %}" href="{{ url_for('askphx.admin_page') }}">Unanswered ({{ n_open }})</a>
     <a class="apa-tab {% if show == 'dismissed' %}on{% endif %}" href="{{ url_for('askphx.admin_page', show='dismissed') }}">Dismissed</a>
+    {% if is_owner %}<a class="apa-tab {% if show == 'knowledge' %}on{% endif %}" href="{{ url_for('askphx.admin_knowledge') }}">Knowledge{% if kb is defined %} ({{ kb|length }}){% endif %}</a>{% endif %}
   </div>
+  {% if show == 'knowledge' %}
+  <div class="apa-head">
+    <div class="apa-intro">Write facts about things the portal can't show. Don't write portal steps: Ask PhiXtra reads the portal itself and always follows it. It picks the entries that fit each question by meaning, so any wording or language works.</div>
+    <a class="apa-new" href="{{ url_for('askphx.admin_knowledge_edit') }}">+ New entry</a>
+  </div>
+  <div class="apa-box">
+    {% if kb %}
+    <table>
+      <thead><tr><th style="width:46%">Entry</th><th>Status</th><th>Last used in an answer</th><th>Last edited</th><th></th></tr></thead>
+      <tbody>
+      {% for k in kb %}
+        <tr>
+          <td><div style="font-weight:600">{{ k.title }}</div><div class="apa-sum">{{ k.facts|replace('\n', ' ')|truncate(150) }}</div></td>
+          <td>{% if k.active %}<span class="apa-on">On</span>{% else %}<span class="apa-off">Off</span>{% endif %}</td>
+          <td>{{ k.last_used_at.strftime('%d %b %Y, %H:%M') if k.last_used_at else 'Not used yet' }}</td>
+          <td>{{ k.updated_by or '' }}{% if k.updated_at %} · {{ k.updated_at.strftime('%d %b %Y') }}{% endif %}</td>
+          <td><div class="apa-act"><a class="pri" href="{{ url_for('askphx.admin_knowledge_edit', kid=k.id) }}">Edit</a></div></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <div class="apa-empty">No knowledge yet. Press <b>+ New entry</b>, or <b>Add to knowledge</b> on an unanswered question.</div>
+    {% endif %}
+  </div>
+  <div class="apa-foot">PhiXtra owner only. Businesses never see this page. "Off" keeps the entry, but Ask PhiXtra stops using it. Every save is recorded with who and when.</div>
+  {% else %}
 
   <div class="apa-box">
     {% if rows %}
@@ -48,6 +84,7 @@
           <td>
             <div class="apa-act">
               {% if r.tenant_id %}<a class="pri" href="{{ url_for('portal_admin.am_account', tenant_id=r.tenant_id) }}#support">Open account</a>{% endif %}
+              {% if is_owner and show != 'dismissed' and not r.person %}<a class="kb" href="{{ url_for('askphx.admin_knowledge_edit', q=r.question, ids=r.ids|join(',')) }}">Add to knowledge</a>{% endif %}
               <form method="post" action="{{ url_for('askphx.admin_dismiss') }}" style="margin:0">
                 <input type="hidden" name="ids" value="{{ r.ids|join(',') }}">
                 {% if show == 'dismissed' %}<input type="hidden" name="undo" value="1"><button type="submit">Bring back</button>
@@ -64,5 +101,6 @@
     {% endif %}
   </div>
   <div class="apa-foot">PhiXtra admin only. Businesses never see this page. "Open account" opens the business's page in Accounts (Timeline, contact, support request). When someone asks for a person, it becomes a support request in Accounts › Support requests.</div>
+  {% endif %}
 </div>
 {% endblock %}

@@ -1,0 +1,54 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Knowledge entry — Ask PhiXtra — PhiXtra Admin{% endblock %}
+{% block content %}
+{# Admin › Ask PhiXtra › Knowledge › add / edit one entry (24 Nov 2026, owner only). #}
+<style>
+  .ake{display:flex;flex-direction:column;gap:16px;max-width:900px}
+  .ake-crumb{font-size:12px;color:var(--muted)}
+  .ake-from{background:#FFFAEB;border:1px solid #FEDF89;border-radius:10px;padding:10px 14px;color:#93370D}
+  .ake-form{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:8px}
+  .ake-form label.l{font-weight:700;margin-top:6px}
+  .ake-form input[type=text],.ake-form textarea{font:inherit;border:1px solid #D0D5DD;border-radius:8px;padding:10px 12px;box-sizing:border-box;width:100%}
+  .ake-form input[type=text]{min-height:44px}
+  .ake-form textarea{resize:vertical;line-height:1.55}
+  .ake-help{font-size:12px;color:var(--muted)}
+  .ake-on{display:flex;gap:10px;align-items:center;min-height:44px;font-weight:600;margin-top:6px}
+  .ake-on input{width:18px;height:18px}
+  .ake-btns{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+  .ake-save{font:inherit;font-weight:700;background:var(--ink);color:#fff;border:0;border-radius:8px;padding:10px 18px;min-height:44px;cursor:pointer}
+  .ake-del{font:inherit;font-weight:600;background:#fff;color:#B42318;border:1px solid #FECDCA;border-radius:8px;padding:10px 16px;min-height:44px;cursor:pointer}
+</style>
+<div class="ake">
+  <div class="ake-crumb"><a href="{{ url_for('askphx.admin_knowledge') }}">Admin › Ask PhiXtra › Knowledge</a> › {{ 'Edit entry' if entry else 'New entry' }}</div>
+  <h1 class="section-title" style="margin:0">{{ entry.title if entry else 'New knowledge entry' }}</h1>
+  {% set started = from_q or (entry.from_question if entry) %}
+  {% if started %}<div class="ake-from">Started from a question Ask PhiXtra couldn't answer: <b>"{{ started }}"</b></div>{% endif %}
+
+  <form class="ake-form" method="post" action="{{ url_for('askphx.admin_knowledge_save') }}">
+    <input type="hidden" name="id" value="{{ entry.id if entry else '' }}">
+    <input type="hidden" name="from_q" value="{{ from_q }}">
+    <input type="hidden" name="from_ids" value="{{ from_ids }}">
+    <label class="l" for="kt">Title</label>
+    <input type="text" id="kt" name="title" maxlength="200" required value="{{ entry.title if entry else '' }}">
+    <div class="ake-help">What the entry is about, in a few words. Ask PhiXtra uses it to choose the right entries for each question.</div>
+
+    <label class="l" for="kf">Facts</label>
+    <textarea id="kf" name="facts" rows="14" maxlength="6000" required>{{ entry.facts if entry else '' }}</textarea>
+    <div class="ake-help">Plain facts, one per line. Ask PhiXtra writes the answer in its own words. Don't write portal menus or buttons: it reads those from the live portal.</div>
+
+    <label class="ake-on"><input type="checkbox" name="active" value="1" {% if not entry or entry.active %}checked{% endif %}> On: Ask PhiXtra may use this entry</label>
+
+    <div class="ake-btns">
+      <button type="submit" class="ake-save">Save</button>
+      <a href="{{ url_for('askphx.admin_knowledge') }}" style="font-weight:600;padding:10px 14px">Cancel</a>
+    </div>
+  </form>
+  {% if entry %}
+  <form method="post" action="{{ url_for('askphx.admin_knowledge_delete', kid=entry.id) }}"
+        onsubmit="return confirm('Delete this entry? Ask PhiXtra will stop using it. This cannot be undone.');">
+    <button type="submit" class="ake-del">Delete entry</button>
+  </form>
+  {% endif %}
+  <div class="ake-help">{% if entry %}Last edited by {{ entry.updated_by or '—' }}{% if entry.updated_at %}, {{ entry.updated_at.strftime('%d %b %Y, %H:%M') }}{% endif %}.{% else %}Saving removes the question it started from from the Unanswered tab.{% endif %}</div>
+</div>
+{% endblock %}

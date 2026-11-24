@@ -4,7 +4,7 @@ ask_phixtra.py — Ask PhiXtra, the help panel inside the customer portal (18 No
 A business's staff ask "how do I…" and get short steps plus a "Take me there"
 link. Approved mock-up: https://claude.ai/artifact/CQzpZv56Fv8v86CotpCbML
 
-Where the answers come from (no help articles are written):
+Where the answers come from (plus Knowledge the owner writes in Admin, see ask_phixtra_kb.py):
   1. A map of the portal, rebuilt by itself whenever the portal's pages change:
      every side-menu item (with its menu path and plan lock), the portal search
      catalogue (titles, descriptions, keywords) and the headings, buttons and
@@ -404,7 +404,7 @@ def _person(customer: dict, tenant_id: int, cands: list) -> dict:
 # 3. The answer
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _prompt(question: str, here: str, cands: list, who: dict, business: str, problems=None) -> str:
+def _prompt(question: str, here: str, cands: list, who: dict, business: str, problems=None, knowledge=None) -> str:
     rows = []
     for pg in cands:
         plan = "yes"
@@ -419,7 +419,7 @@ def _prompt(question: str, here: str, cands: list, who: dict, business: str, pro
 You help the staff of the business "{business}" use the PhiXtra portal. You are NOT the sales AI Agent that talks to buyers.
 
 Rules:
-- Answer ONLY from the PORTAL MAP and the ACCOUNT facts below. Never invent a menu, page, button, setting, plan or price.
+- Answer ONLY from the PORTAL MAP, the ACCOUNT facts and the PHIXTRA KNOWLEDGE below. Never invent a menu, page, button, setting, plan or price.
 - Only name a button or link if its exact words appear in the PORTAL MAP text. If you are not sure a button exists, don't name it.
 - If ACCOUNT PROBLEMS are listed and the question could be about them (messages not sending, account locked, WhatsApp not working), explain the problem first in plain words.
 - If they ask to talk to a person, a human, support or management, set "answered" to false (the panel then connects them to the PhiXtra team).
@@ -428,6 +428,7 @@ Rules:
 - If the page they need says "On their plan: NO", that IS an answer (answered true): say it is not included in their current plan, name the plans that include it (only if listed), say the account owner can change plan in **Settings › Subscription Plans**, and set "link" to the Subscription Plans page if it is in the map.
 - Only if a page says "Their role may open it: NO", tell them to ask the account owner and give no steps for it. Otherwise never mention asking the account owner.
 - For "why isn't … working" questions, use the SET-UP STATUS facts.
+- PHIXTRA KNOWLEDGE is written by the PhiXtra team about things outside the portal. Use it only when it fits the question, in your own plain words. Name menus, pages and buttons of the portal only from the PORTAL MAP; if knowledge and the PORTAL MAP disagree, follow the PORTAL MAP. If the knowledge answers the question, that IS an answer (answered true).
 - Never talk about buyers' chats or customer details; you cannot see them.
 - If the map does not answer the question, set "answered" to false and say in one sentence that you don't have an answer yet.
 - Reply in the language the question is written in.
@@ -444,6 +445,9 @@ SET-UP STATUS
 
 ACCOUNT PROBLEMS
 {chr(10).join('- ' + p for p in (problems or [])) or '- none found'}
+
+PHIXTRA KNOWLEDGE
+{chr(10).join('## ' + t + chr(10) + f for t, f in (knowledge or [])) or '- none for this question'}
 
 PORTAL MAP (only the pages that may matter)
 {chr(10).join(rows) or '(nothing matched)'}
@@ -575,9 +579,10 @@ def ask():
     answered, answer, link = False, "", None
     try:
         who = _person(cust, tenant_id, cands)
+        import ask_phixtra_kb as KB   # Knowledge written in Admin (24 Nov 2026)
         out = _llm(_prompt(question, here["path"] if here else page, cands, who,
                            cust.get("company_name") or "this business",
-                           [SR.problem_sentence(p) for p in probs]))
+                           [SR.problem_sentence(p) for p in probs], KB.pick(question, _llm)))
         answered = bool(out.get("answered")) and bool((out.get("answer") or "").strip())
         answer = (out.get("answer") or "").strip()[:3000]
         pid = (out.get("link") or "").strip().strip("[]")
@@ -894,9 +899,25 @@ def admin_page():
     for r_ in rows:
         pg = _page_for_endpoint(pages, r_["endpoint"] or "")
         r_["where"] = pg["path"].split(" › ")[0] if pg else (r_["page"] or "")
+        r_["person"] = bool(_PERSON_Q.search(r_["question"] or ""))   # already handed over, not knowledge
     from portal_admin_routes import _disk_warning_ctx
     return render_template("portal/admin_ask_phixtra.html", rows=rows, show=show, map_size=len(pages),
-                           **_disk_warning_ctx())
+                           n_open=open_count(), **_disk_warning_ctx())
+
+
+def open_count() -> int:
+    """Questions on the Unanswered tab (grouped the same way)."""
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("""SELECT COUNT(DISTINCT LOWER(TRIM(question))) FROM ask_phixtra_questions
+                        WHERE (answered IS NOT TRUE OR helpful = -1) AND dismissed = FALSE""")
+        return cur.fetchone()[0]
+    finally:
+        cur.close(); conn.close()
+
+
+import ask_phixtra_kb as _KB   # Admin › Ask PhiXtra › Knowledge (24 Nov 2026)
+_KB.register(ask_bp)
 
 
 @ask_bp.route("/admin/ask-phixtra/dismiss", methods=["POST"])
