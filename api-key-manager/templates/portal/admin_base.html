@@ -259,19 +259,26 @@
     </a>
     {% set _am_due = am_due_count() if am_due_count is defined else 0 %}
     {% set _am_ep = request.endpoint or '' %}
-    {% set _am_group = (_am_ep.startswith('portal_admin.am_') and not _am_ep.startswith('portal_admin.am_inbox')) or _am_ep.startswith('portal_admin.inactive_accounts') or _am_ep.startswith('portal_admin.whos_online') or _am_ep.startswith('portal_admin.setup_requests') %}
+    {% set _am_sup = am_support_count() if am_support_count is defined else 0 %}
+    {% set _am_group = (_am_ep.startswith('portal_admin.am_') and not _am_ep.startswith('portal_admin.am_inbox') and _am_ep != 'portal_admin.am_support_alerts') or _am_ep.startswith('portal_admin.inactive_accounts') or _am_ep.startswith('portal_admin.whos_online') or _am_ep.startswith('portal_admin.setup_requests') %}
     {% set _sr_new = setup_requests_new() if setup_requests_new is defined else 0 %}
     <div class="asb-group-toggle {% if _am_group %}open{% endif %}" onclick="asbGroupToggle(this)">
       <span class="asb-gtitle"><span class="asb-icon">🤝</span> Accounts
-        {% if _am_due %}<span style="background:#F04438;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px" title="Follow-ups due">{{ _am_due }}</span>{% endif %}
-        {% if _sr_new %}<span style="background:#F04438;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px" title="New set-up requests">{{ _sr_new }}</span>{% endif %}</span>
+        {% set _am_all = (_am_sup or 0) + (_am_due or 0) + (_sr_new or 0) %}
+        {% if _am_all %}<span style="background:#F04438;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px" title="{{ [(_am_sup ~ ' waiting for a person') if _am_sup, (_am_due ~ ' follow-up' ~ ('s' if _am_due != 1) ~ ' due') if _am_due, (_sr_new ~ ' new set-up request' ~ ('s' if _sr_new != 1)) if _sr_new]|select|join(' · ') }}">{{ _am_all }}</span>{% endif %}</span>
       <span class="asb-arrow">▾</span>
     </div>
     <div class="asb-sub {% if _am_group %}open{% endif %}">
       <a href="{{ url_for('portal_admin.am_dashboard') }}"
          class="{% if _am_ep == 'portal_admin.am_dashboard' %}active{% endif %}">Dashboard</a>
       <a href="{{ url_for('portal_admin.am_accounts') }}"
-         class="{% if _am_group and _am_ep not in ('portal_admin.am_settings', 'portal_admin.am_dashboard') and not _am_ep.startswith('portal_admin.inactive_accounts') and not _am_ep.startswith('portal_admin.whos_online') and not _am_ep.startswith('portal_admin.setup_requests') %}active{% endif %}">All accounts</a>
+         style="display:flex;justify-content:space-between;align-items:center"
+         class="{% if _am_group and not (request.args.get('view') == 'due' and request.args.get('mgr') == 'mine_none') and _am_ep not in ('portal_admin.am_settings', 'portal_admin.am_dashboard', 'portal_admin.am_support') and not _am_ep.startswith('portal_admin.inactive_accounts') and not _am_ep.startswith('portal_admin.whos_online') and not _am_ep.startswith('portal_admin.setup_requests') %}active{% endif %}">All accounts</a>
+      {% if _am_due %}<a href="{{ url_for('portal_admin.am_accounts', view='due', mgr='mine_none') }}" style="display:flex;justify-content:space-between;align-items:center"
+         class="{% if _am_ep == 'portal_admin.am_accounts' and request.args.get('view') == 'due' and request.args.get('mgr') == 'mine_none' %}active{% endif %}"
+         title="Follow-ups due for you or not assigned to anyone">Follow-ups due<span style="background:#F04438;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;margin-left:6px">{{ _am_due }}</span></a>{% endif %}
+      <a href="{{ url_for('portal_admin.am_support') }}" style="display:flex;justify-content:space-between;align-items:center"
+         class="{% if _am_ep == 'portal_admin.am_support' %}active{% endif %}">Support requests{% if _am_sup %}<span style="background:#B42318;color:#fff;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;margin-left:6px">{{ _am_sup }}</span>{% endif %}</a>
       <a href="{{ url_for('portal_admin.inactive_accounts') }}"
          class="{% if _am_ep.startswith('portal_admin.inactive_accounts') %}active{% endif %}">Inactive accounts</a>
       <a href="{{ url_for('portal_admin.whos_online') }}"
@@ -356,13 +363,14 @@
     {# Settings group (13 Nov 2026): General + Team, Access log, Privacy requests (owner only) #}
     {% set _st_ep = request.endpoint or '' %}
     {% set _st_general = _st_ep in ('portal_admin.admin_settings', 'portal_admin.admin_save_trial_days', 'portal_admin.admin_change_password') %}
-    {% set _st_group = _st_general or _st_ep.startswith('portal_admin.admin_team') or _st_ep.startswith('portal_admin.access_log') or _st_ep.startswith('portal_admin.privacy') %}
+    {% set _st_group = _st_general or _st_ep == 'portal_admin.am_support_alerts' or _st_ep.startswith('portal_admin.admin_team') or _st_ep.startswith('portal_admin.access_log') or _st_ep.startswith('portal_admin.privacy') %}
     <div class="asb-group-toggle {% if _st_group %}open{% endif %}" onclick="asbGroupToggle(this)">
       <span class="asb-gtitle"><span class="asb-icon">⚙️</span> Settings</span>
       <span class="asb-arrow">▾</span>
     </div>
     <div class="asb-sub {% if _st_group %}open{% endif %}">
       <a href="{{ url_for('portal_admin.admin_settings') }}" class="{% if _st_general %}active{% endif %}">General</a>
+      <a href="{{ url_for('portal_admin.am_support_alerts') }}" class="{% if _st_ep == 'portal_admin.am_support_alerts' %}active{% endif %}">Support alerts</a>
       {% if session.get('portal_admin_role','owner') == 'owner' %}
       <a href="{{ url_for('portal_admin.admin_team') }}" class="{% if _st_ep.startswith('portal_admin.admin_team') %}active{% endif %}">Team</a>
       <a href="{{ url_for('portal_admin.access_log') }}" class="{% if _st_ep.startswith('portal_admin.access_log') %}active{% endif %}">Access log</a>
@@ -442,6 +450,8 @@
   var INDEX = [
     { icon:'👥', title:'Customers',          desc:'View and manage all merchant accounts',      url:'{{ url_for("portal_admin.customers") }}',           tags:'customers users merchants tenants accounts list find' },
     { icon:'💬', title:'Inbox',              desc:'WhatsApp chats with customers who signed up', url:'{{ url_for("portal_admin.am_inbox") }}',            tags:'inbox whatsapp chat reply customer account manager messages' },
+    { icon:'🆘', title:'Support requests',   desc:'Businesses that asked for a person in Ask PhiXtra', url:'{{ url_for("portal_admin.am_support") }}', tags:'support requests ask phixtra human person help urgent needs a person handover' },
+    { icon:'🔔', title:'Settings › Support alerts', desc:'Phone notification and WhatsApp alerts when a business asks for a person', url:'{{ url_for("portal_admin.am_support_alerts") }}', tags:'support alerts push phone notification whatsapp alert reminder settings' },
     { icon:'🤝', title:'Accounts',           desc:'Follow up sign-ups that did not finish set-up', url:'{{ url_for("portal_admin.am_accounts") }}',        tags:'accounts account manager onboarding churn follow up stalled sign ups whatsapp call email' },
     { icon:'📊', title:'Accounts Dashboard', desc:'What needs doing today, set-up funnel, where sign-ups stop', url:'{{ url_for("portal_admin.am_dashboard") }}', tags:'accounts dashboard account manager funnel trials follow ups never contacted' },
     { icon:'⚙️', title:'Accounts Settings',  desc:'Reply alerts and check-in button settings', url:'{{ url_for("portal_admin.am_settings") }}',          tags:'accounts settings reply alerts email account manager follow up days' },

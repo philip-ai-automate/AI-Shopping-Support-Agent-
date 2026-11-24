@@ -31,6 +31,14 @@ accounts_bp.context_processor(_inject_granted_features)
 VIEW, NOTES, SEE_ALL = "accounts.view", "accounts.notes", "accounts.see_all"
 
 
+@accounts_bp.before_request
+def _old_page_off():
+    """23 Nov 2026: page switched off (accounts_core.OLD_PORTAL_PAGE_ON)."""
+    if not A.OLD_PORTAL_PAGE_ON:
+        flash("Accounts has moved to Admin › Accounts.", "info")
+        return redirect(url_for("portal.dashboard"))
+
+
 def _gate():
     """Logged in AND the platform business (everyone else: 404). Each route
     then checks its own Roles tick with _require_team_permission."""
@@ -172,6 +180,8 @@ def account_note(tenant_id: int):
 
 def assigned_count_for_menu():
     """Number of not-yet-onboarded accounts for the sidebar badge (cheap: no step checks)."""
+    if not A.OLD_PORTAL_PAGE_ON:
+        return None  # page switched off → no menu item
     try:
         customer = _get_customer(_customer_id())
         if not customer or not A.is_platform_tenant(customer.get("tenant_id")):

@@ -182,7 +182,7 @@
   {% endif %}
 
   <div>
-  {% if can_modify %}
+  {% if am_is_owner %}
   <form method="post" action="{{ url_for('portal_admin.am_bulk') }}" id="bulkForm">
     <input type="hidden" name="back" value="{{ request.full_path }}">
     <div class="al-bulk" id="bulk" role="region" aria-label="Bulk actions">
@@ -215,7 +215,7 @@
   <div class="al-tbl-wrap">
     <table class="al-tbl">
       <thead><tr>
-        <th scope="col">{% if can_modify %}<input type="checkbox" id="selAll" aria-label="Select all shown">{% endif %}</th>
+        <th scope="col">{% if am_is_owner %}<input type="checkbox" id="selAll" aria-label="Select all shown">{% endif %}</th>
         <th scope="col">Business</th><th scope="col">Set-up</th><th scope="col">Status</th>
         <th scope="col">Last contact</th><th scope="col">Next step</th><th scope="col">Manager</th>
         <th scope="col" style="text-align:right;padding-right:14px">Contact</th>
@@ -224,9 +224,10 @@
       {% for x in rows %}
       {% set has_phone = x.phone_digits and x.phone_digits|length >= 8 %}
       <tr>
-        <td>{% if can_modify %}<input type="checkbox" name="ids" value="{{ x.tenant_id }}" form="bulkForm" class="sel" aria-label="Select {{ x.business }}">{% endif %}</td>
+        <td>{% if am_is_owner %}<input type="checkbox" name="ids" value="{{ x.tenant_id }}" form="bulkForm" class="sel" aria-label="Select {{ x.business }}">{% endif %}</td>
         <td class="al-biz">
           <a href="{{ url_for('portal_admin.am_account', tenant_id=x.tenant_id) }}">{{ x.business or '—' }}</a>
+          {% if x.support_open %}<a href="{{ url_for('portal_admin.am_account', tenant_id=x.tenant_id) }}#support" style="display:inline-block;margin-left:6px;background:#FEF3F2;color:#B42318;font-size:11.5px;font-weight:750;padding:1px 8px;border-radius:999px;text-decoration:none">Needs a person</a>{% endif %}
           <div class="al-sub">{{ x.contact or x.email }}{% if x.country %} · {{ x.country }}{% endif %} · {{ x.plan_name.replace('PhiXtra Connect (Free)', 'Free') }}</div>
           <div class="al-sub">Signed up {% if x.days_since_signup == 0 %}today{% elif x.days_since_signup == 1 %}yesterday{% else %}{{ x.days_since_signup }} days ago{% endif %} · {% if x.last_login_at %}last log-in {{ x.last_login_at.strftime('%-d %b') }}{% else %}never logged in{% endif %}</div>
         </td>

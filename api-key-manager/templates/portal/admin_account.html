@@ -36,7 +36,30 @@
   .ap-side{display:flex;flex-direction:column;gap:16px;min-width:0}
 
   .ap-next{background:var(--ink);color:#fff;border-radius:16px;padding:20px 22px}
-  .ap-next.good{background:#05603A} .ap-next.plain{background:#344054}
+  .ap-next.good{background:#05603A} .ap-next.plain{background:#344054} .ap-next.support{background:#B42318}
+  /* Support request (23 Nov 2026) */
+  .sr-card{border:1.5px solid #FECDCA}
+  .sr-prob{background:#FEF3F2;border:1px solid #FECDCA;border-radius:10px;padding:10px 12px;color:#7A271A;font-size:13.5px;line-height:1.5;margin-bottom:12px}
+  .sr-prob b{color:#B42318}
+  .sr-key{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:#374151;margin-bottom:10px}
+  .sr-key span{display:inline-flex;align-items:center;gap:6px}
+  .sr-key i{width:12px;height:12px;border-radius:3px;display:inline-block}
+  .sr-th{display:flex;flex-direction:column;gap:10px}
+  .sr-m{display:flex;gap:10px;align-items:flex-start;max-width:86%}
+  .sr-m.b{align-self:flex-end;flex-direction:row-reverse}
+  .sr-av{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:750;font-size:12px}
+  .sr-m.c .sr-av{background:#F1F5F9;border:1px solid rgba(3,12,24,.15)}
+  .sr-m.b .sr-av{background:#EDE9FE;border:1px solid #C4B5FD}
+  .sr-w{display:flex;flex-direction:column;gap:2px}
+  .sr-m.b .sr-w{align-items:flex-end}
+  .sr-who{font-size:12.5px} .sr-who span{color:var(--muted)}
+  .sr-txt{font-size:13.5px;line-height:1.5;padding:7px 12px;white-space:pre-wrap}
+  .sr-m.c .sr-txt{background:#fff;border:1px solid rgba(3,12,24,.18);border-radius:4px 12px 12px 12px}
+  .sr-m.b .sr-txt{background:#F5F3FF;border:1px solid #DDD6FE;border-radius:12px 4px 12px 12px}
+  .sr-close{border-top:1px solid rgba(3,12,24,.08);margin-top:14px;padding-top:12px}
+  .sr-ready{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .sr-ready span{font-size:12.5px;color:var(--muted)}
+  .ap-chip.bad{background:#FEF3F2;color:#B42318}
   .ap-next .eb{margin:0 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.7);font-weight:750}
   .ap-next h2{margin:0 0 6px;font-size:18px;font-weight:750;color:#fff}
   .ap-next p{margin:0 0 16px;font-size:13.5px;color:rgba(255,255,255,.85);line-height:1.55}
@@ -119,6 +142,8 @@
             {% else %}<span class="ap-chip">Free plan</span>{% endif %}
             <span class="ap-chip {{ a.status }}">{{ a.status_label }}</span>
             {% if replied %}<span class="ap-chip good">Replied: waiting for you</span>{% endif %}
+            {% if support_open %}<a href="#support" class="ap-chip bad" style="text-decoration:none">Needs a person · waiting {{ waiting_text(support_open.created_at) }}</a>{% endif %}
+            {% for p in problems %}<span class="ap-chip bad">{{ 'WhatsApp locked by Meta' if 'locked' in p.title else 'WhatsApp not sending' }}</span>{% endfor %}
             {% if not a.last_login_at %}<span class="ap-chip warn">Never logged in</span>{% endif %}
           </div>
         </div>
@@ -128,7 +153,7 @@
           <select class="ap-in" name="status" form="stateForm" data-auto {% if not can_modify %}disabled{% endif %}>{% for k, l in statuses %}<option value="{{ k }}" {{ 'selected' if a.status==k }}>{{ l }}</option>{% endfor %}</select>
         </label>
         <label>Account Manager
-          <select class="ap-in" name="assigned_admin" form="stateForm" data-auto {% if not can_modify %}disabled{% endif %}><option value="">Unassigned</option>{% for u in admins %}<option value="{{ u.username }}" {{ 'selected' if a.assigned_admin==u.username }}>{{ manager_name(u.username) }}{{ ' (me)' if u.username == me }}</option>{% endfor %}</select>
+          <select class="ap-in" name="assigned_admin" form="stateForm" data-auto {% if not am_is_owner %}disabled title="Only the owner can change the Account Manager"{% endif %}><option value="">Unassigned</option>{% for u in admins %}<option value="{{ u.username }}" {{ 'selected' if a.assigned_admin==u.username }}>{{ manager_name(u.username) }}{{ ' (me)' if u.username == me }}</option>{% endfor %}</select>
         </label>
       </div>
     </div>
@@ -150,8 +175,8 @@
 
   <div class="ap-grid">
     <div class="ap-main">
-      <section class="ap-next {{ nb.tone if nb.tone in ('good', 'plain') }}" aria-labelledby="nb-h">
-        <p class="eb">Next best step</p>
+      <section class="ap-next {{ nb.tone if nb.tone in ('good', 'plain', 'support') }}" aria-labelledby="nb-h">
+        <p class="eb">Next best step{% if nb.tone == 'support' %} · Support request{% endif %}</p>
         <h2 id="nb-h">{{ nb.title }}</h2>
         <p>{{ nb.why }}</p>
         {% if can_modify and nb.primary != 'none' %}
@@ -163,6 +188,48 @@
         </div>
         {% endif %}
       </section>
+
+      {% if support_open %}
+      {% set sfirst = (support_open.person_name or a.first_name or 'They').split(' ')[0] %}
+      <section class="ap-card sr-card" id="support" aria-labelledby="sr-h">
+        <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline;margin-bottom:10px">
+          <h2 id="sr-h" style="margin:0">Support request</h2>
+          <span class="ac-meta">From Ask PhiXtra · {{ uk_day_time(support_open.created_at) }} UK · prefers {{ 'WhatsApp' if support_open.via == 'whatsapp' else 'email' }} ({{ support_open.contact or '—' }})</span>
+        </div>
+        {% if support_open.problem %}<div class="sr-prob"><b>{{ support_open.problem.split('.')[0] }}.</b> {{ support_open.problem.split('.', 1)[1] if '.' in support_open.problem else '' }}{% if 'locked' in support_open.problem or 'restricted' in support_open.problem %} PhiXtra can't unlock it; {{ sfirst }} must request a review in Meta Business Suite › Account Quality.{% endif %}</div>{% endif %}
+        {% if support_open.note %}<p style="margin:0 0 10px;font-size:13.5px"><b>Their note:</b> {{ support_open.note }}</p>{% endif %}
+        <div class="sr-key" aria-label="Key">
+          <span><i style="background:#fff;border:1px solid rgba(3,12,24,.3)"></i>{{ sfirst }} (business)</span>
+          <span><i style="background:#EDE9FE;border:1px solid #C4B5FD"></i>Ask PhiXtra (automatic answer)</span>
+        </div>
+        <div class="sr-th">
+          {% for m in support_conv %}
+          <div class="sr-m {{ m.k }}">
+            <span class="sr-av" aria-hidden="true">{% if m.k == 'c' %}{{ sfirst[:1]|upper }}{% else %}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5B21B6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01"/></svg>{% endif %}</span>
+            <div class="sr-w">
+              <span class="sr-who">{% if m.k == 'c' %}<b>{{ sfirst }}</b> <span>· business · {{ uk_time(m.at) }}</span>{% else %}<b style="color:#5B21B6">Ask PhiXtra</b> <span>· automatic answer · {{ uk_time(m.at) }}</span>{% endif %}</span>
+              <div class="sr-txt">{{ m.text }}</div>
+            </div>
+          </div>
+          {% else %}<p class="ac-meta">No questions saved.</p>{% endfor %}
+        </div>
+        <p class="ac-note">Reply with the WhatsApp, WhatsApp call or Email tabs below. Replies go on the Timeline and into {{ sfirst }}'s chat in Admin Inbox, like every other contact.</p>
+        {% if can_modify %}
+        <form method="POST" action="{{ url_for('portal_admin.am_support_close', tenant_id=a.tenant_id, rid=support_open.id) }}" class="sr-close ap-f" id="srClose">
+          <b style="font-size:13.5px">Close the request</b>
+          <div class="ap-outs" style="margin-top:8px">{% for k, l in support_outcomes %}<label class="ap-out"><input type="radio" name="outcome" value="{{ k }}" required><span>{{ l }}</span></label>{% endfor %}</div>
+          <div class="ap-outs" id="srFu" style="margin-top:8px;display:none;align-items:center"><span style="font-size:12.5px;font-weight:650;color:#3B4552">Follow up in Accounts:</span>
+            {% for d, l in [(1, 'Tomorrow'), (2, 'In 2 days'), (7, 'In 1 week')] %}<label class="ap-out"><input type="radio" name="follow_up_days" value="{{ d }}" {{ 'checked' if d == 2 }}><span>{{ l }}</span></label>{% endfor %}</div>
+          <div class="ap-fu"><span class="ac-meta">Alerts stop for everyone. Saved on the Timeline.</span><button class="ap-save">Mark as handled</button></div>
+        </form>
+        {% endif %}
+      </section>
+      {% elif support and support.status == 'handled' and can_modify %}
+      <section class="ap-card" id="support" style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:13.5px">Last support request: <b>{{ support_outcome_label.get(support.outcome, support.outcome) }}</b> · closed by {{ manager_name(support.handled_by) if support.handled_by and '@' in support.handled_by else support.handled_by }} {{ uk_day_time(support.handled_at) }}</span>
+        <form method="POST" action="{{ url_for('portal_admin.am_support_reopen', tenant_id=a.tenant_id, rid=support.id) }}"><button class="ap-q">Reopen</button></form>
+      </section>
+      {% endif %}
 
       {% if can_modify %}
       <section class="ap-card ap-rec" id="log" aria-label="Contact and record">
@@ -180,12 +247,14 @@
           {% elif wa_window %}
           <form method="POST" action="{{ url_for('portal_admin.am_whatsapp', tenant_id=a.tenant_id) }}" id="waTextForm">
             <input type="hidden" name="mode" value="text">
+            {% if ready_texts %}<div class="sr-ready"><span>Ready texts for the support request:</span>{% for l, t in ready_texts %}<button type="button" class="ap-q" data-fill="waText" data-text="{{ t }}">{{ l }}</button>{% endfor %}</div>{% endif %}
             <label class="l" for="waText">Message to {{ a.phone_number }} from {{ wa_numbers[0].display_phone_number }}</label>
             <textarea name="text" id="waText" placeholder="Write your message"></textarea>
             <div class="ap-fu"><button type="button" class="ap-save" id="waTextPreview">Preview</button></div>
           </form>
           <p class="ac-note">They messaged in the last 24 hours, so you can write freely. Their replies show here and in Admin › Inbox.</p>
           {% else %}
+          {% if support_open %}<div class="ac-warn">{{ (a.first_name or 'They')|trim }} hasn't messaged PhiXtra's WhatsApp in the last 24 hours, so WhatsApp only allows an approved template. To answer the support request, use <b>WhatsApp call</b> or <b>Email</b> (ready texts are there).</div>{% endif %}
           {% set tpl_action = url_for('portal_admin.am_whatsapp', tenant_id=a.tenant_id) %}
           {% include "portal/_am_tpl_picker.html" %}
           {% endif %}
@@ -218,6 +287,7 @@
             <label class="l">To</label><input value="{{ a.email }}" disabled>
             <label class="l" for="em_rt">Replies go to</label><input id="em_rt" name="reply_to" value="{{ reply_to }}">
             <label class="l" for="em_s">Subject</label><input id="em_s" name="subject" value="{{ email_subject }}" required>
+            {% if ready_texts %}<div class="sr-ready" style="margin-top:12px"><span>Ready texts for the support request:</span>{% for l, t in ready_texts %}<button type="button" class="ap-q" data-fill="em_b" data-text="{{ t }}" data-subject="Your PhiXtra support request">{{ l }}</button>{% endfor %}</div>{% endif %}
             <label class="l" for="em_b">Message</label><textarea id="em_b" name="body" style="min-height:220px" required>{{ email_body }}</textarea>
             {% if my_sig %}
             <label class="ap-sig"><input type="checkbox" name="with_sig" value="1" checked> Add my signature
@@ -290,14 +360,15 @@
               <span class="dot"></span>
               <span><span class="t">{{ i.title }}</span>{% if i.sub %}<span class="s">{{ i.sub }}</span>{% endif %}</span>
             {% else %}
-              <span class="dot {{ 'st' if i.kind == 'status' else 'out' }}"></span>
+              <span class="dot {{ 'bad' if i.kind in ('support', 'problem') and not (i.subject or '').startswith('Support request closed') else ('in' if i.kind == 'support' else ('st' if i.kind == 'status' else 'out')) }}"></span>
               <span><span class="t">
                 {%- if i.kind == 'call' %}{{ 'WhatsApp call' if i.channel == 'whatsapp_call' else 'Phone call' }}: {{ call_outcome_label.get(i.outcome, i.outcome) }}
                 {%- elif i.kind == 'email' %}Email{% if i.subject %}: {{ i.subject }}{% endif %}{% if i.ok == false %} <span class="bad">not sent</span>{% endif %}
                 {%- elif i.kind == 'whatsapp' %}WhatsApp sent{% if i.ok == false %} <span class="bad">failed</span>{% endif %}
                 {%- elif i.kind == 'status' %}{{ i.body }}
+                {%- elif i.kind in ('support', 'problem') %}{{ i.subject }}
                 {%- else %}Note{% endif -%}</span>
-                <span class="s">{{ manager_name(i.by_admin) if i.by_admin and '@' in i.by_admin else (i.by_admin or '') }}{% if i.follow_up_on %} · follow up {{ i.follow_up_on.strftime('%-d %b') }}{% endif %}</span>
+                <span class="s">{{ manager_name(i.by_admin) if i.by_admin and '@' in i.by_admin else (i.by_admin or ('From Ask PhiXtra' if i.kind == 'support' else 'Found by PhiXtra' if i.kind == 'problem' else '')) }}{% if i.follow_up_on %} · follow up {{ i.follow_up_on.strftime('%-d %b') }}{% endif %}</span>
                 {% if i.body and i.kind != 'status' %}<span class="b">{{ i.body }}</span>{% endif %}</span>
             {% endif %}
           </li>
@@ -346,10 +417,12 @@
           {% if a.trial_ends_at %}<dt>Trial ends</dt><dd>{{ a.trial_ends_at.strftime('%a %-d %b %Y') }}</dd>{% endif %}
           <dt>Signed up as</dt><dd>{{ a.setup.type or '—' }}</dd>
           <dt>Website</dt><dd>{{ a.domain or 'None' }}{% if a.website_platform %} <small>({{ a.website_platform }})</small>{% endif %}</dd>
+          {% for p in problems %}<dt>Business WhatsApp</dt><dd style="color:#B42318">{{ p.number }} · {{ 'locked by Meta' if 'locked' in p.title else 'not sending' }} since {{ uk_day_time(p.since) }}</dd>{% endfor %}
           <dt>Last log-in</dt><dd>{{ a.last_login_at.strftime('%-d %b %Y, %H:%M') if a.last_login_at else 'Never' }}</dd>
           <dt>Came from</dt><dd>{{ (a.hear_about_us or 'Not given')|replace('_',' ')|capitalize }}</dd>
         </dl>
         <p style="margin:14px 0 0"><a href="{{ url_for('portal_admin.customer_detail', customer_id=a.customer_id) }}" style="font-size:13px;font-weight:650">Open customer record →</a></p>
+        <p style="margin:6px 0 0"><a href="{{ url_for('portal_admin.impersonate', customer_id=a.customer_id, next=(support_open.page if support_open and support_open.page else '/dashboard')) }}" style="font-size:13px;font-weight:650">Open their account{% if support_open and support_open.page %} at {{ support_open.page.strip('/').split('/')[0]|replace('-', ' ')|capitalize or 'Dashboard' }}{% endif %} →</a></p>
       </section>
     </div>
   </div>
@@ -357,6 +430,26 @@
 
 {% include "portal/_am_preview.html" %}
 <script src="{{ url_for('static', filename='portal/admin-calls.js') }}?v=2" defer></script>
+<script>
+// Support request (23 Nov 2026): ready texts fill the message box; follow-up choice when waiting on someone
+(function(){
+  document.querySelectorAll('[data-fill]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var box = document.getElementById(b.getAttribute('data-fill')); if (!box) return
+      box.value = b.getAttribute('data-text'); box.focus()
+      var subj = b.getAttribute('data-subject'), es = document.getElementById('em_s')
+      if (subj && es && box.id === 'em_b') es.value = subj
+    })
+  })
+  var f = document.getElementById('srClose'), fu = document.getElementById('srFu')
+  if (f && fu) f.addEventListener('change', function(){
+    var o = f.querySelector('input[name=outcome]:checked')
+    fu.style.display = (o && (o.value === 'meta' || o.value === 'customer')) ? 'flex' : 'none'
+    fu.querySelectorAll('input').forEach(function(i){ i.disabled = fu.style.display === 'none' })
+  })
+  if (fu) fu.querySelectorAll('input').forEach(function(i){ i.disabled = true })
+})();
+</script>
 <script>
 (function(){
   // WhatsApp previews

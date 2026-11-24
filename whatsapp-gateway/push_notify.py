@@ -185,3 +185,88 @@ async def push_test(req: _TestReq, authorization: str = Header(default="")):
                          url="/inbox", tag="phixtra-test",
                          only_endpoint=req.endpoint or None)
     return {"sent": sent}
+
+
+# ── Admin (PhiXtra staff) phone notifications — support requests (23 Nov 2026) ──
+class _AdminPushReq(BaseModel):
+    usernames: list[str]
+    title: str
+    body: str
+    url: str
+    tag: str = "phixtra-support"
+
+
+def _admin_devices(usernames) -> list:
+    conn = get_db_connection()
+    if not conn:
+        return []
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""SELECT id, endpoint, p256dh, auth FROM admin_push_devices WHERE admin_username = ANY(%s)""",
+                    (list(usernames or []),))
+        return [dict(r) for r in cur.fetchall() or []]
+    except Exception as e:
+        print(f"⚠️ [PUSH] admin device lookup: {e}")
+        return []
+    finally:
+        cur.close(); conn.close()
+
+
+def _admin_record(device_id: int, ok: bool, error: str = "", gone: bool = False) -> None:
+    conn = get_db_connection()
+    if not conn:
+        return
+    cur = conn.cursor()
+    try:
+        if gone:
+            cur.execute("DELETE FROM admin_push_devices WHERE id=%s", (device_id,))
+        elif ok:
+            cur.execute("UPDATE admin_push_devices SET last_sent_at=NOW(), fail_count=0, last_error=NULL WHERE id=%s", (device_id,))
+        else:
+            cur.execute("UPDATE admin_push_devices SET fail_count=fail_count+1, last_error=%s WHERE id=%s", ((error or "")[:300], device_id))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"⚠️ [PUSH] admin record device={device_id}: {e}")
+    finally:
+        cur.close(); conn.close()
+
+
+def _admin_send_one(dev: dict, payload: dict) -> bool:
+    from pywebpush import webpush, WebPushException
+    if not endpoint_ok(dev.get("endpoint")):
+        return False
+    priv, subject = _keys()
+    try:
+        webpush(subscription_info={"endpoint": dev["endpoint"], "keys": {"p256dh": dev["p256dh"], "auth": dev["auth"]}},
+                data=json.dumps(payload), vapid_private_key=priv, vapid_claims={"sub": subject},
+                ttl=6 * 3600, headers={"Urgency": "high"}, timeout=10)
+        _admin_record(dev["id"], True)
+        return True
+    except WebPushException as e:
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        _admin_record(dev["id"], False, f"{status} {e}", gone=status in (404, 410))
+        print(f"⚠️ [PUSH] admin device={dev['id']} failed ({status}): {str(e)[:160]}")
+        return False
+    except Exception as e:
+        _admin_record(dev["id"], False, str(e))
+        return False
+
+
+@router.post("/internal/admin-push")
+async def admin_push(req: _AdminPushReq, authorization: str = Header(default="")):
+    token = authorization.removeprefix("Bearer ").strip()
+    expected = os.getenv("PHIXTRA_INTERNAL_TOKEN", "")
+    if not expected or token != expected:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not enabled():
+        return {"sent": 0}
+    devs = _admin_devices(req.usernames)
+    if not devs:
+        return {"sent": 0}
+    url = req.url if req.url.startswith(_PORTAL + "/admin") else _PORTAL + "/admin/accounts/support"
+    payload = {"title": (req.title or "PhiXtra")[:120], "body": (req.body or "")[:180], "url": url, "tag": req.tag[:120]}
+    results = await asyncio.gather(*(asyncio.to_thread(_admin_send_one, d, payload) for d in devs))
+    sent = sum(1 for r in results if r)
+    print(f"✅ [PUSH] admin '{payload['title'][:50]}' → {sent}/{len(devs)} device(s)")
+    return {"sent": sent}

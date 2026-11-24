@@ -31,6 +31,14 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     M.ensure_tables()
+    # Support requests (23 Nov 2026): delayed WhatsApp alert + reminders, every minute,
+    # whatever the reply-alert settings below say.
+    if not a.dry_run:
+        try:
+            import support_requests as SR
+            SR.tick()
+        except Exception as e:
+            print("⚠️ support tick:", e)
     st = M.get_settings()
     if st["alerts_on"] != "1" and not a.dry_run:
         print("reply alerts are switched off in Admin › Accounts › Settings")

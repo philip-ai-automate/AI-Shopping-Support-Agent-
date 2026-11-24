@@ -47,7 +47,7 @@
           <td>{{ r.last_at.strftime('%d %b %Y, %H:%M') if r.last_at else '' }}</td>
           <td>
             <div class="apa-act">
-              {% if r.page %}<a class="pri" href="{{ r.page }}" target="_blank" rel="noopener">Open page</a>{% endif %}
+              {% if r.tenant_id %}<a class="pri" href="{{ url_for('portal_admin.am_account', tenant_id=r.tenant_id) }}#support">Open account</a>{% endif %}
               <form method="post" action="{{ url_for('askphx.admin_dismiss') }}" style="margin:0">
                 <input type="hidden" name="ids" value="{{ r.ids|join(',') }}">
                 {% if show == 'dismissed' %}<input type="hidden" name="undo" value="1"><button type="submit">Bring back</button>
@@ -63,6 +63,6 @@
       <div class="apa-empty">{% if show == 'dismissed' %}Nothing dismissed.{% else %}No unanswered questions. Ask PhiXtra has answered everything so far.{% endif %}</div>
     {% endif %}
   </div>
-  <div class="apa-foot">PhiXtra admin only. Businesses never see this page. "Open page" opens the page the person was on (you see it as admin). A question is also emailed to support@phixtra.com when the person pressed Email PhiXtra Support.</div>
+  <div class="apa-foot">PhiXtra admin only. Businesses never see this page. "Open account" opens the business's page in Accounts (Timeline, contact, support request). When someone asks for a person, it becomes a support request in Accounts › Support requests.</div>
 </div>
 {% endblock %}

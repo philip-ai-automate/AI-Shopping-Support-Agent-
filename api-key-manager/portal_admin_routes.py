@@ -2223,6 +2223,10 @@ def impersonate(customer_id: int):
     insert_audit_log(admin_username=_admin_user(), action="impersonate_start",
                      details={"customer_id": customer_id})
     flash("Impersonating customer — you see the portal as they do.", "warning")
+    # 23 Nov 2026: open at the page they were on (e.g. from a support request)
+    nxt = (request.args.get("next") or "")[:300]
+    if nxt.startswith("/") and not nxt.startswith("//") and not nxt.startswith("/admin") and "\\" not in nxt:
+        return redirect(nxt)
     return redirect(url_for("portal.dashboard"))
 
 
@@ -6699,6 +6703,7 @@ import admin_accounts as _admin_accounts
 _admin_accounts.register(portal_admin_bp, _require_admin, _admin_user)
 _admin_accounts.register_calls(portal_admin_bp, _require_admin, _admin_user)
 _admin_accounts.register_inbox(portal_admin_bp, _require_admin, _admin_user)
+_admin_accounts.register_support(portal_admin_bp, _require_admin, _admin_user)
 
 
 def _am_assignments(tenant_ids) -> dict:

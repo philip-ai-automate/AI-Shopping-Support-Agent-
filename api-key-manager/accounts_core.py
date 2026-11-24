@@ -30,6 +30,13 @@ FREE_PLAN_SLUGS = ("connect", "web_free")
 
 _tables_ready = False
 
+# 23 Nov 2026: the old "Accounts" page in PhiXtra's own portal login is
+# switched OFF. Account managers work in Admin › Accounts (am_account_state),
+# which this page never read, so assignments made in Admin didn't show here.
+# False = menu item hidden, /accounts links go to the dashboard, Roles ticks
+# hidden. Data (platform_account_assignments, notes) is kept. True brings it back.
+OLD_PORTAL_PAGE_ON = False
+
 
 def platform_tenant_id():
     raw = (os.environ.get("PLATFORM_TENANT_ID") or "").strip()

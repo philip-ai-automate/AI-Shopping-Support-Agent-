@@ -404,7 +404,7 @@ def _person(customer: dict, tenant_id: int, cands: list) -> dict:
 # 3. The answer
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _prompt(question: str, here: str, cands: list, who: dict, business: str) -> str:
+def _prompt(question: str, here: str, cands: list, who: dict, business: str, problems=None) -> str:
     rows = []
     for pg in cands:
         plan = "yes"
@@ -420,6 +420,9 @@ You help the staff of the business "{business}" use the PhiXtra portal. You are 
 
 Rules:
 - Answer ONLY from the PORTAL MAP and the ACCOUNT facts below. Never invent a menu, page, button, setting, plan or price.
+- Only name a button or link if its exact words appear in the PORTAL MAP text. If you are not sure a button exists, don't name it.
+- If ACCOUNT PROBLEMS are listed and the question could be about them (messages not sending, account locked, WhatsApp not working), explain the problem first in plain words.
+- If they ask to talk to a person, a human, support or management, set "answered" to false (the panel then connects them to the PhiXtra team).
 - Name menus and buttons exactly as written, in **bold**, with the menu path like **Settings › Team**.
 - Give short numbered steps (at most 6), plain words, no jargon. One short line before the steps is fine.
 - If the page they need says "On their plan: NO", that IS an answer (answered true): say it is not included in their current plan, name the plans that include it (only if listed), say the account owner can change plan in **Settings › Subscription Plans**, and set "link" to the Subscription Plans page if it is in the map.
@@ -438,6 +441,9 @@ Page they are on now: {here or 'unknown'}
 
 SET-UP STATUS
 {chr(10).join('- ' + s for s in who['setup']) or '- unknown'}
+
+ACCOUNT PROBLEMS
+{chr(10).join('- ' + p for p in (problems or [])) or '- none found'}
 
 PORTAL MAP (only the pages that may matter)
 {chr(10).join(rows) or '(nothing matched)'}
@@ -532,6 +538,28 @@ def ask():
         return jsonify(ok=False, error="That's a lot of questions in one hour. Please try again a little later, "
                                         "or use Email PhiXtra Support.")
 
+    # 23 Nov 2026: asking for a person hands over at once; account problems answered plainly.
+    import support_requests as SR
+    if _wants_person(question):
+        qid = _save_q(tenant_id, cid, tm, page, endpoint, question,
+                      "I'll pass you to the PhiXtra team now. They'll see everything you asked here.", True)
+        return jsonify(ok=True, id=qid, answered=True, person=True, handover=_handover_options(cust, tenant_id),
+                       answer="I'll pass you to the PhiXtra team now. They'll see everything you asked here, so you don't need to repeat it.")
+    probs = []
+    try:
+        probs = SR.account_problems(tenant_id)
+    except Exception as e:
+        print("⚠️ Ask PhiXtra problems:", e)
+    if probs and _PROBLEM_Q.search(question):
+        ans = _problem_answer(probs[0], cust, tenant_id, cid, tm, page, question)
+        qid = _save_q(tenant_id, cid, tm, page, endpoint, question, ans, True)
+        try:
+            _auto_request(cust, tenant_id, cid, tm, page, qid)
+        except Exception as e:
+            print("⚠️ Ask PhiXtra auto request:", e)
+        return jsonify(ok=True, id=qid, answered=True, answer=ans, offer_person=True,
+                       handover=_handover_options(cust, tenant_id))
+
     pages = portal_map()
     cands = _relevant(pages, question, endpoint)
     if _best_score(pages, question) < 3:
@@ -548,7 +576,8 @@ def ask():
     try:
         who = _person(cust, tenant_id, cands)
         out = _llm(_prompt(question, here["path"] if here else page, cands, who,
-                           cust.get("company_name") or "this business"))
+                           cust.get("company_name") or "this business",
+                           [SR.problem_sentence(p) for p in probs]))
         answered = bool(out.get("answered")) and bool((out.get("answer") or "").strip())
         answer = (out.get("answer") or "").strip()[:3000]
         pid = (out.get("link") or "").strip().strip("[]")
@@ -580,15 +609,146 @@ def ask():
         print("⚠️ Ask PhiXtra answer:", e)
         answered, answer = False, ""
     if not answered:
-        answer = answer or "I don't have an answer for this yet, so I don't want to guess. The PhiXtra team can check your account."
+        answer = "I don't have an answer for this yet, so I don't want to guess. Would you like to talk to a person at PhiXtra?"
 
+    qid = _save_q(tenant_id, cid, tm, page, endpoint, question, answer, answered)
+    return jsonify(ok=True, id=qid, answered=answered, answer=answer, link=link,
+                   offer_person=not answered, handover=None if answered else _handover_options(cust, tenant_id))
+
+
+# ── Hand-over to the PhiXtra team (23 Nov 2026) ───────────────────────────
+_PERSON_Q = re.compile(r"\b(human|real person|advis[eo]rs?|live agent|support team|customer care|call me|"
+                       r"(?:talk|speak)\s+(?:to|with)\s+(?:a\s+)?(?:person|someone|somebody|human|support|phixtra|"
+                       r"the team|your team|you|staff|management|manager|agent)|"
+                       r"contact\s+(?:you|phixtra|management|support|the team|your team))\b", re.I)
+_PROBLEM_Q = re.compile(r"lock|block|ban|restrict|suspend|disabl|whatsapp|not send|n't send|cannot send|can't send|"
+                        r"deliver|fail|stopp|error|not working|isn't working|doesn't work", re.I)
+
+
+def _wants_person(q: str) -> bool:
+    return bool(_PERSON_Q.search(q or ""))
+
+
+def _save_q(tenant_id, cid, tm, page, endpoint, question, answer, answered) -> int:
     conn = get_db_connection(); cur = conn.cursor()
     cur.execute("""INSERT INTO ask_phixtra_questions (tenant_id, customer_id, team_member_id, page, endpoint, question, answer, answered)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
                 (tenant_id, cid, tm, page, endpoint, question, answer, answered))
     qid = cur.fetchone()[0]
     conn.commit(); cur.close(); conn.close()
-    return jsonify(ok=True, id=qid, answered=answered, answer=answer, link=link)
+    return qid
+
+
+def _contact(cust, tenant_id):
+    """(person name, phone, email) of whoever is asking."""
+    tm = session.get("team_member_id")
+    if tm:
+        conn = get_db_connection(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        try:
+            cur.execute("SELECT * FROM team_members WHERE id=%s AND tenant_id=%s", (int(tm), tenant_id))
+            r = cur.fetchone() or {}
+        finally:
+            cur.close(); conn.close()
+        phone = r.get("phone") or r.get("phone_number") or r.get("whatsapp_number") or ""
+        return (r.get("name") or "").strip(), phone, r.get("email") or ""
+    name = " ".join(x for x in [(cust.get("first_name") or "").strip(), (cust.get("last_name") or "").strip()] if x)
+    return name, cust.get("phone_number") or "", cust.get("email") or ""
+
+
+def _handover_options(cust, tenant_id) -> dict:
+    import support_requests as SR
+    name, phone, email = _contact(cust, tenant_id)
+    req = SR.open_request(tenant_id)
+    return {"phone": phone, "email": email,
+            "open": ({"at": SR.uk_time(req["created_at"]), "via": req["via"]} if req else None)}
+
+
+def _manager_first(tenant_id) -> str:
+    try:
+        import admin_accounts as M
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("SELECT assigned_admin FROM am_account_state WHERE tenant_id=%s", (tenant_id,))
+        r = cur.fetchone()
+        cur.close(); conn.close()
+        return M.manager_name(r[0]) if r and r[0] else ""
+    except Exception:
+        return ""
+
+
+def _problem_answer(p, cust, tenant_id, cid, tm, page, question) -> str:
+    import support_requests as SR
+    am = _manager_first(tenant_id)
+    since = SR.uk_day_time(p["since"])
+    meta = "locked" in p["title"] or "restricted" in p["title"]
+    lines = [f"**{p['title'].replace('the WhatsApp', 'your WhatsApp')}.**",
+             f"Since {since} (UK time), WhatsApp messages{(' from ' + p['number']) if p.get('number') else ''} are not being sent."
+             + (" This was done by Meta (WhatsApp), not by PhiXtra." if meta else f" Meta's message: {p['error']}")]
+    if meta:
+        lines += ["To ask Meta to review it:",
+                  "1. Open **Meta Business Suite › Account Quality** (business.facebook.com).",
+                  "2. Choose the WhatsApp account and press **Request review**.",
+                  "3. Meta will email you their decision."]
+    lines.append("We've told the PhiXtra team. " + (f"**{am}**, your Account Manager, will contact you to help."
+                                                    if am else "Someone from PhiXtra will contact you to help."))
+    return "\n".join(lines)
+
+
+def _auto_request(cust, tenant_id, cid, tm, page, qid):
+    """An account problem the person asked about: open a request so staff are alerted."""
+    import support_requests as SR
+    name, phone, email = _contact(cust, tenant_id)
+    req, created = SR.create(tenant_id, cid, tm, name, "whatsapp" if phone else "email", phone or email,
+                             "", page, SR.recent_question_ids(tenant_id, cid, tm) or [qid])
+    if created:
+        SR.send_email(req)
+        SR.send_alerts(req, "first")
+
+
+@ask_bp.route("/ask-phixtra/handover-options")
+@any_team_member
+def handover_options():
+    cust, tenant_id, err = _guard()
+    if err:
+        return err
+    return jsonify(ok=True, handover=_handover_options(cust, tenant_id))
+
+
+@ask_bp.route("/ask-phixtra/handover", methods=["POST"])
+@any_team_member
+def handover():
+    """Talk to a person: opens (or adds to) the business's support request,
+    emails support@ + the Account Manager and alerts staff on their phones."""
+    import support_requests as SR
+    cust, tenant_id, err = _guard()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    ensure_tables()
+    cid, tm = _who_ids()
+    name, phone, email = _contact(cust, tenant_id)
+    via = "whatsapp" if data.get("via") == "whatsapp" and phone else "email"
+    contact = phone if via == "whatsapp" else email
+    note = (data.get("note") or "").strip()[:1000]
+    page = _safe_path(data.get("page"))
+    qids = SR.recent_question_ids(tenant_id, cid, tm)
+    try:
+        if data.get("id"):
+            qids = sorted(set(qids + [int(data["id"])]))
+    except (TypeError, ValueError):
+        pass
+    req, created = SR.create(tenant_id, cid, tm, name, via, contact, note, page, qids)
+    if not created:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("UPDATE support_requests SET via=%s, contact=%s WHERE id=%s", (via, contact, req["id"]))
+        conn.commit(); cur.close(); conn.close()
+        return jsonify(ok=True, already=True, at=SR.uk_time(req["created_at"]),
+                       message=f"The PhiXtra team already has your request (sent at {SR.uk_time(req['created_at'])} UK time). "
+                               f"We'll reply on {'WhatsApp' if via == 'whatsapp' else 'email'}.")
+    ok = SR.send_email(req)
+    SR.send_alerts(req, "first")
+    return jsonify(ok=True, at=SR.uk_time(req["created_at"]), emailed=ok,
+                   message=f"Sent at {SR.uk_time(req['created_at'])} (UK time). The PhiXtra team has been alerted. "
+                           f"We'll reply on {'WhatsApp' if via == 'whatsapp' else 'email'}.")
 
 
 def _own_question(cur, qid: int, tenant_id: int):
@@ -619,6 +779,11 @@ def feedback():
 @ask_bp.route("/ask-phixtra/email-support", methods=["POST"])
 @any_team_member
 def email_support():
+    """Old button (pages opened before 23 Nov 2026): now the same hand-over."""
+    return handover()
+
+
+def _old_email_support():
     """Sends the question, the page and who asked to PhiXtra Support; replies go to the person."""
     import portal_routes as PR
     from portal_utils import send_email
@@ -715,6 +880,7 @@ def admin_page():
                BOOL_OR(q.helpful = -1) AS not_helpful, BOOL_OR(q.emailed) AS emailed,
                (ARRAY_AGG(q.page ORDER BY q.created_at DESC))[1] AS page,
                (ARRAY_AGG(q.endpoint ORDER BY q.created_at DESC))[1] AS endpoint,
+               (ARRAY_AGG(q.tenant_id ORDER BY q.created_at DESC))[1] AS tenant_id,
                (ARRAY_AGG(COALESCE(t.name, 'Business ' || q.tenant_id::text)
                           ORDER BY q.created_at DESC))[1] AS business,
                ARRAY_AGG(q.id) AS ids

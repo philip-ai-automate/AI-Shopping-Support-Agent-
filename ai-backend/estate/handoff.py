@@ -280,7 +280,7 @@ def _send_alert_email(
 
 # ── KeyLand alerts (Phase 4, 2026-10-22) ───────────────────────────────────────
 
-_PORTAL_DIR = "/root/phixtra-app/api-key-manager"
+_PORTAL_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "api-key-manager"))
 
 
 def _alerts_on(tenant_id: int) -> bool:

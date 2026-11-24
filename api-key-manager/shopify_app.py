@@ -378,9 +378,12 @@ def ensure_website_source(shop: str):
     finally:
         cur.close(); conn.close()
     if new:
-        import subprocess
-        subprocess.Popen(f"cd /root/phixtra-app/api-key-manager && /usr/bin/python3 website_reader.py --tenant {int(row['tenant_id'])} "
-                         f">> /var/log/website_reader.log 2>&1", shell=True, start_new_session=True)
+        import subprocess, shlex
+        _wr_dir = os.path.dirname(os.path.abspath(__file__))
+        _wr_py = os.getenv("WEBSITE_READER_PYTHON", "/usr/bin/python3")
+        _wr_log = os.getenv("WEBSITE_READER_LOG", "/var/log/website_reader.log")
+        subprocess.Popen(f"cd {shlex.quote(_wr_dir)} && {shlex.quote(_wr_py)} website_reader.py --tenant {int(row['tenant_id'])} "
+                         f">> {shlex.quote(_wr_log)} 2>&1", shell=True, start_new_session=True)
 
 
 def subscribe_uninstall(shop: str):

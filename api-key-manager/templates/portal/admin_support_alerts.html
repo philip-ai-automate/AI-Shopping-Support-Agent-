@@ -1,0 +1,241 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Support alerts — Settings — PhiXtra Admin{% endblock %}
+{% block content %}
+{# Admin › Settings › Support alerts (23 Nov 2026). How PhiXtra staff are alerted when a
+   business asks for a person in Ask PhiXtra. Owner changes the settings; everyone can turn
+   on phone notifications on their own phone. Mock-up: claude.ai/artifact/Tr234G8h9Cun71J692Qt34 #}
+{% set ro = not is_owner %}
+{% set usewa = st.method in ('wa', 'both') %}
+<style>
+  .sa{display:flex;flex-direction:column;gap:16px;max-width:1240px}
+  .sa-crumb{margin:0;font-size:13px;color:var(--muted)}
+  .sa-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .sa-card h2{margin:0 0 4px;font-size:16px}
+  .sa-sub{color:var(--muted);font-size:13.5px;margin:0 0 12px}
+  .sa-status{display:flex;flex-direction:column;gap:10px}
+  .sa-pill{display:inline-flex;align-items:center;gap:6px;background:#ECFDF3;color:#05603A;border-radius:999px;padding:4px 12px;font-weight:750;font-size:13.5px}
+  .sa-pill i{width:8px;height:8px;border-radius:50%;background:#12B76A}
+  .sa-warn{display:flex;gap:10px;align-items:center;background:#FFFAEB;border-radius:10px;padding:10px 12px;color:#93370D;font-size:13.5px;flex-wrap:wrap}
+  .sa-info{display:flex;gap:10px;align-items:center;background:#F1F5F9;border-radius:10px;padding:10px 12px;color:#374151;font-size:13.5px}
+  .sa-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px;align-items:start}
+  .sa-methods{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .sa-m{position:relative}
+  .sa-m input{position:absolute;opacity:0;width:1px;height:1px}
+  .sa-m span{display:flex;flex-direction:column;gap:6px;min-height:100px;border:1px solid rgba(3,12,24,.16);border-radius:12px;padding:14px;cursor:pointer;background:#fff}
+  .sa-m b{font-size:15px}
+  .sa-m small{font-size:13px;color:var(--muted);line-height:1.45}
+  .sa-m input:checked + span{border:2px solid var(--ink);padding:13px;background:#F8FAFC}
+  .sa-m input:focus-visible + span{outline:2px solid var(--ink);outline-offset:2px}
+  .sa-m input:disabled + span{cursor:default}
+  .sa-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .sa-c{position:relative}
+  .sa-c input{position:absolute;opacity:0;width:1px;height:1px}
+  .sa-c span{display:inline-flex;align-items:center;min-height:40px;padding:0 14px;border-radius:999px;border:1px solid rgba(3,12,24,.16);font-size:13.5px;font-weight:650;cursor:pointer;background:#fff}
+  .sa-c input:checked + span{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .sa-c input:focus-visible + span{outline:2px solid var(--ink);outline-offset:2px}
+  .sa-lab{font-weight:700;font-size:14px;margin-top:16px}
+  .sa-people{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .sa-p{border:1px solid rgba(3,12,24,.12);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;font-size:13.5px}
+  .sa-p.warn{border-color:#FEC84B}
+  .sa-av{width:40px;height:40px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-weight:750;flex:none}
+  .sa-row{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+  .sa-row .k{color:var(--muted)}
+  .sa-p input[type=tel]{font:inherit;font-size:13.5px;min-height:36px;width:170px;border:1px solid rgba(3,12,24,.16);border-radius:8px;padding:0 8px}
+  .sa-p .on{color:#05603A;font-weight:700} .sa-p .off{color:#B54708;font-weight:700}
+  .sa-tl{list-style:none;margin:0;padding:0}
+  .sa-tl li{display:flex;gap:12px}
+  .sa-tl .w{display:flex;flex-direction:column;align-items:center}
+  .sa-tl .w b{min-width:54px;text-align:center;font-size:12px;border-radius:999px;padding:3px 8px;background:#F1F5F9}
+  .sa-tl .w b.now{background:var(--ink);color:#fff} .sa-tl .w b.done{background:#ECFDF3;color:#05603A}
+  .sa-tl .w i{flex:1;width:2px;background:rgba(3,12,24,.12);min-height:14px}
+  .sa-tl .t{padding-bottom:14px;display:flex;flex-direction:column;gap:2px;font-size:13.5px}
+  .sa-tl .t span{color:var(--muted);font-size:13px}
+  .sa-prev-push{background:#1F2937;color:#fff;border-radius:14px;padding:12px 14px;font-size:13.5px}
+  .sa-prev-push small{color:#D1D5DB;font-size:12px}
+  .sa-prev-wa{background:#E7FFDB;border-radius:10px;padding:10px 12px;font-size:13.5px;line-height:1.45;margin-top:10px}
+  .sa-btn{font:inherit;font-size:14px;font-weight:700;min-height:44px;padding:0 18px;border-radius:10px;border:0;background:var(--ink);color:#fff;cursor:pointer}
+  .sa-btn.ghost{background:#fff;color:var(--ink);border:1px solid rgba(3,12,24,.2)}
+  .sa-btn:disabled{opacity:.6;cursor:default}
+  .sa-dev{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;border-top:1px solid var(--line);padding-top:8px}
+  .sa-save{position:sticky;bottom:12px;background:var(--ink);color:#fff;border-radius:12px;padding:10px 12px 10px 18px;display:none;align-items:center;gap:12px;flex-wrap:wrap;font-size:14px;z-index:20}
+  .sa-save.show{display:flex}
+  .sa-save .sa-btn{background:#fff;color:var(--ink);min-height:40px}
+  .sa-save .sa-btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.35)}
+  @media (max-width:980px){ .sa-grid{grid-template-columns:1fr} .sa-methods,.sa-people{grid-template-columns:1fr} }
+</style>
+<div class="sa">
+  <p class="sa-crumb">Admin › Settings › Support alerts</p>
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap">
+    <div>
+      <h1 class="section-title" style="margin:0">Support alerts</h1>
+      <p class="sa-sub" style="margin:4px 0 0;max-width:680px">When a business asks for a person in Ask PhiXtra, the right PhiXtra staff are alerted on their phone, 24 hours a day.{% if ro %} Only the owner can change these settings.{% endif %}</p>
+    </div>
+    <button type="button" class="sa-btn ghost" id="saTest">Send me a test alert</button>
+  </div>
+
+  {% set off_people = people|selectattr('alerts_on')|rejectattr('devices')|list %}
+  <section class="sa-card sa-status" aria-label="Status">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span class="sa-pill"><i></i>Alerts on</span>
+      <b id="saSummary"></b>
+    </div>
+    {% for p in off_people %}
+    <div class="sa-warn"><span style="flex:1 1 260px"><b>{{ p.name }}</b> hasn't turned on phone notifications, so {{ 'you' if p.username == me else 'they' }} won't get alerts on {{ 'your' if p.username == me else 'their' }} phone yet.{% if p.username != me %} Ask {{ p.name.split(' ')[0] }} to open this page on their phone and press <b>Turn on phone notifications</b>.{% endif %}</span></div>
+    {% endfor %}
+    {% if usewa and tpl_status != 'APPROVED' %}
+    <div class="sa-info">WhatsApp alerts start once Meta approves the alert message ({{ {'PENDING': 'waiting for Meta', 'REJECTED': 'Meta refused it', 'NOT_SUBMITTED': 'not sent to Meta yet'}.get(tpl_status, 'checking') }}). Until then, phone notifications still go out.</div>
+    {% endif %}
+  </section>
+
+  <form method="POST" id="saForm" class="sa-grid">
+    <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+      <section class="sa-card">
+        <h2>1. How to alert staff</h2>
+        <p class="sa-sub">Pick one. You can change it any time.</p>
+        <div class="sa-methods" role="radiogroup" aria-label="How to alert staff">
+          <label class="sa-m"><input type="radio" name="method" value="phone" {{ 'checked' if st.method == 'phone' }} {{ 'disabled' if ro }}><span><b>Phone notification</b><small>Pops up on the phone from PhiXtra Admin. Free.</small></span></label>
+          <label class="sa-m"><input type="radio" name="method" value="wa" {{ 'checked' if st.method == 'wa' }} {{ 'disabled' if ro }}><span><b>WhatsApp</b><small>A WhatsApp message from PhiXtra's number to each person.</small></span></label>
+          <label class="sa-m"><input type="radio" name="method" value="both" {{ 'checked' if st.method == 'both' }} {{ 'disabled' if ro }}><span><b>Both</b><small>Phone notification first, then WhatsApp as back-up.</small></span></label>
+        </div>
+        <div id="saDelay">
+          <div class="sa-lab">Send the WhatsApp</div>
+          <div class="sa-chips" role="radiogroup" aria-label="When to send the WhatsApp">
+            {% for v, l in [(0, 'At the same time'), (5, 'If not opened in 5 min'), (15, 'If not opened in 15 min'), (30, 'If not opened in 30 min')] %}
+            <label class="sa-c"><input type="radio" name="delay" value="{{ v }}" {{ 'checked' if st.delay == v }} {{ 'disabled' if ro }}><span>{{ l }}</span></label>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="sa-lab">If nobody marks it handled, remind again after</div>
+        <div class="sa-chips" role="radiogroup" aria-label="Reminder">
+          {% for v, l in [(30, '30 minutes'), (60, '1 hour'), (120, '2 hours'), (0, 'Never')] %}
+          <label class="sa-c"><input type="radio" name="remind" value="{{ v }}" {{ 'checked' if st.remind == v }} {{ 'disabled' if ro }}><span>{{ l }}</span></label>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="sa-card">
+        <h2>2. Who gets alerted</h2>
+        <p class="sa-sub">The business's Account Manager, plus everyone switched on below.</p>
+        <div class="sa-people">
+          {% for p in people %}
+          <div class="sa-p {{ 'warn' if p.alerts_on and not p.devices }}">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span class="sa-av" aria-hidden="true">{{ p.name[:1]|upper }}</span>
+              <span style="flex:1;display:flex;flex-direction:column"><b>{{ p.name }}{{ ' (you)' if p.username == me }}</b><span class="sa-sub" style="margin:0;font-size:12.5px">{{ 'Owner' if p.is_owner else 'Accounts' }}</span></span>
+              <label style="display:flex;align-items:center;gap:6px;font-weight:650"><input type="checkbox" name="on_{{ p.username }}" value="1" {{ 'checked' if p.alerts_on }} {{ 'disabled' if ro }} style="width:18px;height:18px"> Alerts</label>
+            </div>
+            <div class="sa-row"><span class="k">Phone notification</span>{% if p.devices %}<span class="on">On · {{ p.devices|map(attribute='device_label')|join(', ') }}</span>{% else %}<span class="off">Not turned on yet</span>{% endif %}</div>
+            <label class="sa-row sa-wa"><span class="k">WhatsApp number</span><input type="tel" name="wa_{{ p.username }}" value="{{ p.wa_number }}" placeholder="Add number, e.g. +44…" {{ 'disabled' if ro }}></label>
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+    </div>
+
+    <aside style="display:flex;flex-direction:column;gap:16px;min-width:0">
+      <section class="sa-card">
+        <h2 style="margin-bottom:12px">What happens when a business asks for a person</h2>
+        <ol class="sa-tl" id="saTl"></ol>
+      </section>
+      <section class="sa-card">
+        <h2 style="margin-bottom:10px">Preview</h2>
+        <div class="sa-prev-push" id="saPrevPush"><small>PhiXtra Admin · now</small><div style="font-weight:700">Phenomenal Solutions needs a person</div><div>Daniel: asked for a person · Meta has locked the WhatsApp Business Account</div></div>
+        <div class="sa-prev-wa" id="saPrevWa"><div style="font-weight:700">PhiXtra support alert</div><div>Phenomenal Solutions needs a person. Waiting since 03:01. Open Admin to reply.</div><div style="border-top:1px solid rgba(3,12,24,.1);margin-top:6px;padding-top:6px;text-align:center;color:#1D4ED8;font-weight:650">Open request</div></div>
+        <p class="sa-sub" style="margin:10px 0 0;font-size:12.5px">Tapping either opens the business's account in Admin.</p>
+      </section>
+      <section class="sa-card" id="saPhone">
+        <h2>This phone</h2>
+        <p class="sa-sub">Get alerts on this phone, even when Admin is closed.</p>
+        <button type="button" class="sa-btn" id="saOn" style="width:100%">Turn on phone notifications</button>
+        <p class="sa-sub" id="saPhoneMsg" style="margin:8px 0 0;font-size:12.5px">iPhone: first add PhiXtra Admin to your Home Screen (Share › Add to Home Screen), then open it from there.</p>
+        {% set mine = (people|selectattr('username', 'equalto', me)|list) %}
+        {% if mine and mine[0].devices %}
+        {% for d in mine[0].devices %}
+        <div class="sa-dev"><span>{{ d.device_label }} · since {{ d.created_at.strftime('%-d %b') }}</span></div>
+        {% endfor %}
+        {% endif %}
+      </section>
+    </aside>
+
+    {% if not ro %}
+    <div class="sa-save" id="saSave" style="grid-column:1/-1">
+      <span style="flex:1 1 200px;font-weight:650">You have unsaved changes</span>
+      <button type="reset" class="sa-btn ghost">Undo</button>
+      <button type="submit" class="sa-btn">Save changes</button>
+    </div>
+    {% endif %}
+  </form>
+</div>
+
+<script>
+(function(){
+  var f = document.getElementById('saForm');
+  function val(n){ var i = f.querySelector('input[name=' + n + ']:checked'); return i ? i.value : ''; }
+  function render(){
+    var m = val('method') || '{{ st.method }}', d = parseInt(val('delay') || '{{ st.delay }}', 10), r = parseInt(val('remind') || '{{ st.remind }}', 10);
+    var push = m !== 'wa', wa = m !== 'phone', both = m === 'both';
+    document.getElementById('saDelay').style.display = both ? '' : 'none';
+    document.querySelectorAll('.sa-wa').forEach(function(x){ x.style.display = wa ? '' : 'none'; });
+    document.getElementById('saPrevPush').style.display = push ? '' : 'none';
+    document.getElementById('saPrevWa').style.display = wa ? '' : 'none';
+    var n = f.querySelectorAll('input[type=checkbox][name^=on_]:checked').length;
+    document.getElementById('saSummary').textContent = (m === 'phone' ? 'Phone notification' : m === 'wa' ? 'WhatsApp' :
+      (d === 0 ? 'Phone notification and WhatsApp together' : 'Phone notification, then WhatsApp after ' + d + ' min if not opened')) +
+      ' · Account Manager + ' + n + ' ' + (n === 1 ? 'person' : 'people');
+    var s = [];
+    if (push) s.push(['now', 'Now', 'Phone notification', 'To the Account Manager and everyone switched on.']);
+    if (wa && (!both || d === 0)) s.push(['now', 'Now', 'WhatsApp message', "From PhiXtra's number to the same people."]);
+    if (both && d > 0) s.push(['', d + ' min', 'WhatsApp, if nobody has opened it', 'Skipped if someone already opened the request.']);
+    if (r > 0) s.push(['', r >= 60 ? (r / 60) + ' h' : r + ' min', 'Reminder, if not handled', 'Sent again the same way until someone marks it handled.']);
+    s.push(['done', 'Done', 'Someone marks it handled', 'Alerts stop and the request moves to Handled.']);
+    var tl = document.getElementById('saTl'); tl.innerHTML = '';
+    s.forEach(function(x){
+      var li = document.createElement('li');
+      li.innerHTML = '<div class="w"><b class="' + x[0] + '"></b><i></i></div><div class="t"><b></b><span></span></div>';
+      li.querySelector('.w b').textContent = x[1]; li.querySelector('.t b').textContent = x[2]; li.querySelector('.t span').textContent = x[3];
+      tl.appendChild(li);
+    });
+  }
+  var save = document.getElementById('saSave');
+  f.addEventListener('change', function(){ render(); if (save) save.classList.add('show'); });
+  f.addEventListener('input', function(){ if (save) save.classList.add('show'); });
+  f.addEventListener('reset', function(){ setTimeout(function(){ render(); if (save) save.classList.remove('show'); }, 0); });
+  render();
+
+  // Phone notifications for this Admin login (web push, same service worker as the portal)
+  var KEY = {{ public_key|tojson }}, btn = document.getElementById('saOn'), msg = document.getElementById('saPhoneMsg');
+  function keyBytes(b64){ var p = '='.repeat((4 - b64.length % 4) % 4), raw = atob((b64 + p).replace(/-/g,'+').replace(/_/g,'/'));
+    var out = new Uint8Array(raw.length); for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i); return out; }
+  var supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  if (!supported || !KEY){ btn.disabled = true; btn.textContent = 'Not available in this browser'; }
+  btn.addEventListener('click', function(){
+    btn.disabled = true; btn.textContent = 'Turning on…';
+    Notification.requestPermission().then(function(perm){
+      if (perm !== 'granted') throw new Error('blocked');
+      return navigator.serviceWorker.register('/sw.js', {scope:'/'}).then(function(){ return navigator.serviceWorker.ready; });
+    }).then(function(reg){
+      return reg.pushManager.getSubscription().then(function(sub){
+        return sub || reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: keyBytes(KEY)});
+      });
+    }).then(function(sub){
+      return fetch('{{ url_for("portal_admin.am_push_add") }}', {method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json'}, body: JSON.stringify({subscription: sub.toJSON()})}).then(function(r){ return r.json(); });
+    }).then(function(r){
+      if (!r.ok) throw new Error(r.error || 'failed');
+      btn.textContent = 'On for this phone'; msg.textContent = 'Done. Press "Send me a test alert" to check it.';
+      setTimeout(function(){ location.reload(); }, 1500);
+    }).catch(function(e){
+      btn.disabled = false; btn.textContent = 'Turn on phone notifications';
+      msg.textContent = e && e.message === 'blocked' ? 'Notifications are blocked for this site. Allow them in the browser settings, then try again.' : "It didn't work on this browser. Try again, or use Chrome on Android.";
+    });
+  });
+  document.getElementById('saTest').addEventListener('click', function(){
+    var t = this; t.disabled = true; t.textContent = 'Sending…';
+    fetch('{{ url_for("portal_admin.am_push_test") }}', {method:'POST', credentials:'same-origin'}).then(function(r){ return r.json(); })
+      .then(function(r){ t.textContent = r.ok ? 'Sent to ' + r.sent + ' device' + (r.sent === 1 ? '' : 's') : 'No phone turned on yet'; })
+      .catch(function(){ t.textContent = "Didn't send"; })
+      .then(function(){ setTimeout(function(){ t.disabled = false; t.textContent = 'Send me a test alert'; }, 4000); });
+  });
+})();
+</script>
+{% endblock %}

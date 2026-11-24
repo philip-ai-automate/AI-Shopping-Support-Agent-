@@ -1863,6 +1863,8 @@ def _feature_catalog_for_actor(acting_is_owner: bool, tenant_id=None) -> dict:
     fc = _feature_catalog_for_actor_all(acting_is_owner)
     if not accounts_core.is_platform_tenant(tenant_id):
         fc = {m: f for m, f in fc.items() if m not in PLATFORM_ONLY_MODULES}
+    elif not accounts_core.OLD_PORTAL_PAGE_ON:
+        fc = {m: f for m, f in fc.items() if m != "Accounts"}  # old page off (23 Nov)
     return fc
 
 
@@ -13429,11 +13431,18 @@ def _website_source(tenant_id: int):
     return row
 
 
+# Website reader: runs from this file's folder (works on production and the dev server);
+# its Python and log file can be set per server with WEBSITE_READER_PYTHON / WEBSITE_READER_LOG.
+_WR_DIR = os.path.dirname(os.path.abspath(__file__))
+_WR_PY = os.getenv("WEBSITE_READER_PYTHON", "/usr/bin/python3")
+_WR_LOG = os.getenv("WEBSITE_READER_LOG", "/var/log/website_reader.log")
+
+
 def _start_website_reader(tenant_id: int):
-    import subprocess
+    import subprocess, shlex
     subprocess.Popen(
-        f"cd /root/phixtra-app/api-key-manager && /usr/bin/python3 website_reader.py --tenant {int(tenant_id)} "
-        f">> /var/log/website_reader.log 2>&1",
+        f"cd {shlex.quote(_WR_DIR)} && {shlex.quote(_WR_PY)} website_reader.py --tenant {int(tenant_id)} "
+        f">> {shlex.quote(_WR_LOG)} 2>&1",
         shell=True, start_new_session=True,
     )
 
@@ -13443,8 +13452,8 @@ def _check_website_connection(raw: str) -> dict:
     the system python (it has the headless browser). Never raises."""
     import subprocess, json as _json
     try:
-        out = subprocess.run(["/usr/bin/python3", "website_reader.py", "--check", raw],
-                             cwd="/root/phixtra-app/api-key-manager", capture_output=True,
+        out = subprocess.run([_WR_PY, "website_reader.py", "--check", raw],
+                             cwd=_WR_DIR, capture_output=True,
                              text=True, timeout=75)
         lines = [ln for ln in (out.stdout or "").splitlines() if ln.startswith("{")]
         if lines:

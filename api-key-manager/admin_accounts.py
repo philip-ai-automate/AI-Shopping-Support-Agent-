@@ -257,6 +257,10 @@ SETTING_DEFAULTS = {
     "alert_fallback": "",        # comma list of admin logins for unassigned accounts; empty = every admin login that is an email
     "later_days": "14",          # "Not right now" button → follow up after this many days
     "am_number": "",             # phone_number_id Account Managers send / call from; empty = PhiXtra's first number
+    # Support alerts (23 Nov 2026, Admin › Settings › Support alerts, owner-only)
+    "support_method": "both",    # phone | wa | both
+    "support_wa_delay": "15",    # with both: WhatsApp after N min if nobody opened it (0 = same time)
+    "support_remind": "60",      # remind again after N min if not handled (0 = never)
 }
 
 
@@ -385,7 +389,13 @@ def rows(only_tenant=None) -> list:
         cur.close(); conn.close()
     steps = A.setup_steps_many([r["tenant_id"] for r in out])
     today = date.today()
+    try:
+        import support_requests as SR
+        _sup = SR.open_tenant_ids()
+    except Exception:
+        _sup = set()
     for r in out:
+        r["support_open"] = r["tenant_id"] in _sup
         r["setup"] = steps.get(r["tenant_id"]) or {"type": "", "steps": [], "done": 0, "total": 0, "complete": False, "stuck": None}
         r["contact"] = " ".join(x for x in [(r["first_name"] or "").strip(), (r["last_name"] or "").strip()] if x)
         r["country"] = country_name(r["business_country"]) or (r["business_country"] or "")
@@ -441,6 +451,8 @@ def priority(x, reply_ids=()):
     now = datetime.now(timezone.utc)
     sc, tags = 0, []
     end = _d(x.get("trial_ends_at"))
+    if x.get("support_open"):
+        sc += 300; tags.append(("Needs a person", "bad"))
     if x["tenant_id"] in reply_ids:
         sc += 100; tags.append(("Replied: waiting for you", "good"))
     if is_paid_trial_ending(x):
@@ -547,7 +559,9 @@ def dashboard(me: str, who: str = "all", period: int = 30) -> dict:
         sources[k] = sources.get(k, 0) + 1
     sources = sorted(sources.items(), key=lambda kv: -kv[1])
 
+    support = [x for x in R if x.get("support_open")]
     return {
+        "support": len(support),
         "total": total, "replies": len(replies), "due": len(due), "overdue": len(overdue),
         "never": len(never), "never_week": len(never_week), "trials": len(trials),
         "trials_not_setup": sum(1 for x in trials if not x["setup"]["complete"]),
@@ -570,7 +584,7 @@ def dashboard(me: str, who: str = "all", period: int = 30) -> dict:
 
 # ── All accounts list (2026-11-06): views + dropdown filters with live counts ─
 
-LIST_VIEWS = [("priority", "Priority"), ("due", "Follow-ups due"), ("new", "Never contacted"), ("trials", "Paid trials"),
+LIST_VIEWS = [("priority", "Priority"), ("support", "Needs a person"), ("due", "Follow-ups due"), ("new", "Never contacted"), ("trials", "Paid trials"),
               ("stuck_wa", "Stuck at Connect WhatsApp"), ("week", "New this week"), ("none", "Unassigned"),
               ("set_up", "Set up"), ("lost", "Lost"), ("all", "All")]
 HIDDEN_VIEWS = {"nophone": "No phone number", "nologin": "Never logged in"}
@@ -584,7 +598,8 @@ SORTS = [("priority", "Priority"), ("newest", "Newest sign-up"), ("waiting", "Ol
 
 def _in_view(x, v):
     open_ = x["status"] not in ("set_up", "lost")
-    if v == "priority": return open_
+    if v == "priority": return open_ or x.get("support_open")
+    if v == "support": return x.get("support_open")
     if v == "due": return open_ and x["follow_up_due"]
     if v == "new": return x["status"] == "not_contacted"
     if v == "trials": return is_paid_trial_ending(x)
@@ -616,6 +631,7 @@ def _facets(x, me):
     elif n <= today + timedelta(days=7): fu.add("week")
     mgr = {"all", x["assigned_admin"] or "none"}
     if x["assigned_admin"] == me: mgr.add("me")
+    if x["assigned_admin"] == me or not x["assigned_admin"]: mgr.add("mine_none")   # menu badge (23 Nov 2026)
     stuck = x["setup"].get("stuck")
     return {
         "mgr": mgr, "act": act, "fu": fu,
@@ -630,6 +646,8 @@ def _facets(x, me):
 def next_step(x, reply_ids):
     """(text, kind) shown in the Next step column."""
     today = date.today()
+    if x.get("support_open"):
+        return ("Needs a person: open now", "due")
     if x["status"] in ("set_up", "lost"):
         return ("—", "plain")
     if x["tenant_id"] in reply_ids:
@@ -715,7 +733,7 @@ def list_view(me: str, args) -> dict:
         filters.append({"key": key, "label": label, "title": title or label, "kind": kind, "options": o,
                         "value": value, "active": active, "search": search})
 
-    add("mgr", "Manager", "radio", [("all", "Everyone"), ("me", "Me")] + [(u, manager_name(u)) for u in managers] + [("none", "Unassigned")],
+    add("mgr", "Manager", "radio", [("all", "Everyone"), ("me", "Me"), ("mine_none", "Me + unassigned")] + [(u, manager_name(u)) for u in managers] + [("none", "Unassigned")],
         title="Account Manager")
     add("st", "Status", "checkbox", [(k, STATUS_LABEL[k]) for k in status_order])
     stops = counts("stop")
@@ -756,12 +774,32 @@ def list_view(me: str, args) -> dict:
 
 # ── One account page (2026-11-06) ─────────────────────────────────────────
 
-def next_best(a: dict, window: bool, replied: bool, tpl_ready: bool) -> dict:
+def next_best(a: dict, window: bool, replied: bool, tpl_ready: bool, support=None) -> dict:
     """One suggestion for the Account Manager: {title, why, primary, label}.
     primary = the action panel to open: wa | call | email | logcall | followup | none."""
     today = date.today()
     first = (a.get("first_name") or "").strip() or a.get("contact") or "them"
     phone = len(a.get("phone_digits") or "") >= 8
+    if support and support.get("status") == "open":
+        import support_requests as SR
+        who = (support.get("person_name") or first).split(" ")[0] or first
+        prob = (support.get("problem") or "").split(".")[0]
+        never = a["status"] == "not_contacted"
+        if phone:
+            primary, label = ("wa", "Reply on WhatsApp") if window else ("call", "WhatsApp call")
+        else:
+            primary, label = "email", "Write an email"
+        why = f"Waiting {SR.waiting_text(support['created_at'])}. "
+        if "Meta has locked" in prob or "restricted" in prob:
+            why += f"PhiXtra can't unlock it; only Meta can. Help {who} request a review in Meta Business Suite › Account Quality. "
+        if never:
+            why += "Nobody has contacted this business since sign-up. "
+        why += f"{who} prefers {'WhatsApp' if support.get('via') == 'whatsapp' else 'email'}."
+        if support.get("via") == "whatsapp" and phone and not window:
+            why += " WhatsApp only allows a free message within 24 hours of their last message, so call, send a template or email."
+        short = ("WhatsApp locked by Meta" if "locked" in prob else "WhatsApp restricted by Meta" if "restricted" in prob else prob)
+        return {"title": f"{who} asked for a person" + (f": {short}" if short else ""),
+                "why": why, "primary": primary, "label": label, "tone": "support"}
     stuck = a["setup"].get("stuck")
     stuck_txt = f"they stopped at {STEP_SHORT.get(stuck, stuck)}" if stuck else "they haven't finished set-up"
     seen = ""
@@ -1137,6 +1175,22 @@ def register(bp, require_admin, admin_user):
     def _gate(action="view"):
         return require_admin("accounts", action)
 
+    # 23 Nov 2026 (user): reassigning, bulk actions, Accounts Settings and the
+    # calling switch are OWNER-ONLY — never part of the "Modify" tick.
+    def _is_owner():
+        return session.get("portal_admin_role", "owner") == "owner"
+
+    def _owner_only():
+        r = _gate("view")
+        if r: return r
+        if not _is_owner():
+            return redirect(url_for("portal_admin.forbidden"))
+        return None
+
+    @bp.app_context_processor
+    def _am_owner_flag():
+        return {"am_is_owner": _is_owner() if session.get("portal_admin_logged_in") else False}
+
     @bp.app_context_processor
     def _am_badge():
         def am_due_count():
@@ -1199,7 +1253,7 @@ def register(bp, require_admin, admin_user):
         """Account Managers' WhatsApp calls on/off for the Account Manager
         number — here in Admin, because Account Managers have no PhiXtra
         portal login. Outgoing only: customers can't ring this number."""
-        r = _gate("modify")
+        r = _owner_only()
         if r: return r
         import calls_routes as C
         me = admin_user()
@@ -1252,7 +1306,7 @@ def register(bp, require_admin, admin_user):
 
     @bp.route("/accounts/settings", methods=["GET", "POST"])
     def am_settings():
-        r = _gate("modify" if request.method == "POST" else "view")
+        r = _owner_only() if request.method == "POST" else _gate("view")
         if r: return r
         me = admin_user()
         st = get_settings()
@@ -1314,7 +1368,7 @@ def register(bp, require_admin, admin_user):
                                saved=saved, last_run=last_run, sent7=sent7, now=datetime.now(timezone.utc),
                                numbers=numbers, cur_num=(cur_num or {}).get("phone_number_id"), am_calls=am_calls,
                                my_sig=get_signature(me),
-                               can_modify=(require_admin("accounts", "modify") is None))
+                               can_modify=_is_owner())
 
     @bp.route("/accounts/dashboard")
     def am_dashboard():
@@ -1358,7 +1412,7 @@ def register(bp, require_admin, admin_user):
 
     @bp.route("/accounts/bulk", methods=["POST"])
     def am_bulk():
-        r = _gate("modify")
+        r = _owner_only()
         if r: return r
         me = admin_user()
         f = request.form
@@ -1441,7 +1495,13 @@ def register(bp, require_admin, admin_user):
         window = wa_window_open(a["phone_number"])
         _ready = (not window and checkin_template_ready())
         _replied = any(c["tenant_id"] == tenant_id and c["needs_reply"] for c in conversations())
-        nb = next_best(a, window, _replied, _ready or window)
+        import support_requests as SR
+        sup = SR.last_for_tenant(tenant_id)
+        sup_open = sup if sup and sup["status"] == "open" else None
+        if sup_open:
+            SR.mark_opened(sup_open, me)
+        probs = SR.account_problems(tenant_id)
+        nb = next_best(a, window, _replied, _ready or window, sup_open)
         _items = timeline(tenant_id, a["phone_number"]) + journey(a)
         _aware = lambda t: (t if getattr(t, "tzinfo", None) else (t.replace(tzinfo=timezone.utc) if isinstance(t, datetime)
                             else datetime(t.year, t.month, t.day, tzinfo=timezone.utc)))
@@ -1459,7 +1519,11 @@ def register(bp, require_admin, admin_user):
             call_ask_preview=call_ask_text((a["first_name"] or "").strip()),
             today=date.today(), can_modify=(require_admin("accounts", "modify") is None),
             call_outcome_label=CALL_OUTCOME_LABEL, reason_label=REASON_LABEL, status_label=STATUS_LABEL,
-            manager_name=manager_name)
+            manager_name=manager_name,
+            support=sup, support_open=sup_open, support_conv=SR.conversation(sup) if sup_open else [],
+            support_outcomes=SR.OUTCOMES, support_outcome_label=SR.OUTCOME_LABEL, problems=probs,
+            uk_time=SR.uk_time, uk_day_time=SR.uk_day_time, waiting_text=SR.waiting_text,
+            ready_texts=support_ready_texts(a, me, probs) if sup_open else [])
 
     def _back(tid):
         return redirect(url_for("portal_admin.am_account", tenant_id=tid) + "#log")
@@ -1488,6 +1552,8 @@ def register(bp, require_admin, admin_user):
             ensure_tables()
             cur.execute("SELECT * FROM am_account_state WHERE tenant_id=%s", (tenant_id,))
             old = cur.fetchone() or {}
+            if not _is_owner():
+                assigned = old.get("assigned_admin")   # only the owner reassigns
             _upsert_state(cur, tenant_id, me, status=status or old.get("status") or "not_contacted",
                           reason=reason, reason_note=(f.get("reason_note") or "").strip()[:500] or None,
                           assigned_admin=assigned, next_follow_up=fu)
@@ -1632,6 +1698,170 @@ def register(bp, require_admin, admin_user):
 # wa-calls.js / calls_routes (permission → connect with the browser's SDP
 # offer → poll for the answer SDP the webhook stores → terminate), made from
 # PhiXtra's own number and recorded as the Account Manager. ────────────────
+
+def support_ready_texts(a: dict, me: str, probs: list) -> list:
+    """[(label, text)] for a support request — used in the WhatsApp and Email tabs."""
+    first = (a.get("first_name") or "").strip() or "there"
+    name = manager_name(me).split(" ")[0] if "@" in (me or "") else "the PhiXtra team"
+    out = []
+    if probs and ("locked" in probs[0]["title"] or "restricted" in probs[0]["title"]):
+        out.append(("Meta lock: review steps",
+                    f"Hi {first}, this is {name} from PhiXtra. Meta (WhatsApp) has locked your WhatsApp Business Account, "
+                    f"which is why your messages stopped sending.\nTo ask Meta to unlock it:\n"
+                    f"1. Open Meta Business Suite › Account Quality (business.facebook.com).\n"
+                    f"2. Choose the locked WhatsApp account and press Request review.\n"
+                    f"I can call you and do it with you. What time suits you?"))
+    out.append(("Can I call you now?", f"Hi {first}, this is {name} from PhiXtra. I have your message. Can I call you on WhatsApp now?"))
+    out.append(("I'm looking into it", f"Hi {first}, this is {name} from PhiXtra. I'm looking into this now and will update you within the hour."))
+    return out
+
+
+def register_support(bp, require_admin, admin_user):
+    """Admin › Accounts › Support requests (list) + close/reopen + Settings ›
+    Support alerts + Admin phone notifications (23 Nov 2026)."""
+    import support_requests as SR
+
+    def _gate(action="view"):
+        return require_admin("accounts", action)
+
+    def _is_owner():
+        return session.get("portal_admin_role", "owner") == "owner"
+
+    @bp.app_context_processor
+    def _sup_badge():
+        def am_support_count():
+            try:
+                if not session.get("portal_admin_logged_in"):
+                    return 0
+                return len(SR.open_tenant_ids())
+            except Exception:
+                return 0
+        return {"am_support_count": am_support_count}
+
+    @bp.route("/accounts/support")
+    def am_support():
+        r = _gate()
+        if r: return r
+        show = request.args.get("show") if request.args.get("show") in ("open", "handled") else "open"
+        reqs = SR.list_requests(show)
+        mgr = request.args.get("mgr") or "all"
+        me = admin_user()
+        if mgr == "me":
+            reqs = [x for x in reqs if x["assigned_admin"] == me]
+        elif mgr == "none":
+            reqs = [x for x in reqs if not x["assigned_admin"]]
+        for x in reqs:
+            x["waiting"] = SR.waiting_text(x["created_at"])
+            x["manager"] = manager_name(x["assigned_admin"] or "") if x["assigned_admin"] else ""
+            x["first"] = (x.get("person_name") or "").split(" ")[0]
+        return render_template("portal/admin_support_requests.html", reqs=reqs, show=show, mgr=mgr,
+                               n_open=len(SR.open_tenant_ids()), outcome_label=SR.OUTCOME_LABEL,
+                               uk_day_time=SR.uk_day_time)
+
+    @bp.route("/accounts/<int:tenant_id>/support/<int:rid>/close", methods=["POST"])
+    def am_support_close(tenant_id, rid):
+        r = _gate("modify")
+        if r: return r
+        me = admin_user()
+        try:
+            days = int(request.form.get("follow_up_days") or 0)
+        except ValueError:
+            days = 0
+        outcome = request.form.get("outcome") or ""
+        if outcome not in SR.OUTCOME_LABEL:
+            flash("Pick what happened first.", "warning")
+        elif SR.close(rid, outcome, me, days if days in (1, 2, 3, 7) else 0):
+            flash("Support request closed: " + SR.OUTCOME_LABEL[outcome] + ". Alerts stopped.", "success")
+        else:
+            flash("That request was already closed.", "info")
+        return redirect(url_for("portal_admin.am_account", tenant_id=tenant_id) + "#support")
+
+    @bp.route("/accounts/<int:tenant_id>/support/<int:rid>/reopen", methods=["POST"])
+    def am_support_reopen(tenant_id, rid):
+        r = _gate("modify")
+        if r: return r
+        if SR.reopen(rid, admin_user()):
+            flash("Support request reopened.", "success")
+        return redirect(url_for("portal_admin.am_account", tenant_id=tenant_id) + "#support")
+
+    # ── Settings › Support alerts (owner-only to change) ───────────────────
+    @bp.route("/settings/support-alerts", methods=["GET", "POST"])
+    def am_support_alerts():
+        r = _gate()
+        if r: return r
+        me = admin_user()
+        if request.method == "POST":
+            if not _is_owner():
+                return redirect(url_for("portal_admin.forbidden"))
+            f = request.form
+            method = f.get("method") if f.get("method") in ("phone", "wa", "both") else "both"
+            delay = f.get("delay") if f.get("delay") in ("0", "5", "15", "30") else "15"
+            remind = f.get("remind") if f.get("remind") in ("0", "30", "60", "120") else "60"
+            save_settings({"support_method": method, "support_wa_delay": delay, "support_remind": remind}, me)
+            prefs = {}
+            for p in SR.people():
+                u = p["username"]
+                prefs[u] = {"alerts_on": f.get("on_" + u) == "1", "wa_number": f.get("wa_" + u, p["wa_number"])}
+            SR.save_people(prefs, me)
+            insert_audit_log(admin_username=me, action="support_alerts_saved",
+                             details={"method": method, "delay": delay, "remind": remind})
+            flash("Support alerts saved.", "success")
+            return redirect(url_for("portal_admin.am_support_alerts"))
+        import os as _os
+        return render_template("portal/admin_support_alerts.html", st=SR.alert_settings(), people=SR.people(),
+                               me=me, is_owner=_is_owner(), tpl_status=SR.alert_template_status(),
+                               public_key=_os.getenv("VAPID_PUBLIC_KEY", ""))
+
+    @bp.route("/push/devices", methods=["POST"])
+    def am_push_add():
+        r = _gate()
+        if r: return {"ok": False, "error": "Please log in again."}, 401
+        import portal_routes as PR
+        data = request.get_json(silent=True) or {}
+        sub = data.get("subscription") or {}
+        endpoint = (sub.get("endpoint") or "").strip()
+        keys = sub.get("keys") or {}
+        p256dh, auth = (keys.get("p256dh") or "").strip(), (keys.get("auth") or "").strip()
+        if not PR._push_endpoint_ok(endpoint) or not p256dh or not auth or len(p256dh) > 200 or len(auth) > 100:
+            return {"ok": False, "error": "This browser gave us a device address we can't use."}, 400
+        me = admin_user()
+        label = PR._push_device_label(request.headers.get("User-Agent", ""))
+        SR.ensure_tables()
+        conn, cur = _db()
+        try:
+            cur.execute("""INSERT INTO admin_push_devices (admin_username, endpoint, p256dh, auth, device_label)
+                           VALUES (%s,%s,%s,%s,%s) ON CONFLICT (endpoint) DO UPDATE SET admin_username=EXCLUDED.admin_username,
+                           p256dh=EXCLUDED.p256dh, auth=EXCLUDED.auth, device_label=EXCLUDED.device_label,
+                           fail_count=0, last_error=NULL, created_at=NOW()""", (me, endpoint, p256dh, auth, label))
+            conn.commit()
+        finally:
+            cur.close(); conn.close()
+        insert_audit_log(admin_username=me, action="admin_push_device_added", details={"device": label})
+        return {"ok": True}
+
+    @bp.route("/push/devices/remove", methods=["POST"])
+    def am_push_remove():
+        r = _gate()
+        if r: return r
+        me = admin_user()
+        conn, cur = _db()
+        try:
+            cur.execute("DELETE FROM admin_push_devices WHERE id=%s AND admin_username=%s",
+                        (int(request.form.get("device_id") or 0), me))
+            conn.commit()
+        finally:
+            cur.close(); conn.close()
+        flash("Device removed. It won't get phone notifications any more.", "success")
+        return redirect(url_for("portal_admin.am_support_alerts"))
+
+    @bp.route("/push/test", methods=["POST"])
+    def am_push_test():
+        r = _gate()
+        if r: return {"ok": False}, 401
+        sent = SR._push([admin_user()], "PhiXtra test alert", "Phone notifications are working on this device.",
+                        SR.PORTAL + "/admin/accounts/support", "phixtra-admin-test")
+        return {"ok": sent > 0, "sent": sent}
+
 
 def _call_number(cur):
     """PhiXtra's number Account Managers call from (Admin › Accounts › Settings)."""

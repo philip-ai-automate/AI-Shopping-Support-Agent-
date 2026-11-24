@@ -123,6 +123,9 @@
   <section aria-labelledby="ad-today">
     <h2 class="ad-h2" id="ad-today">To do today</h2>
     <div class="ad-today">
+      {% if d.support %}<a class="ad-act red" href="{{ url_for('portal_admin.am_support') }}">
+        <span class="l">Needs a person</span><span class="n">{{ d.support }}</span>
+        <span class="s">Asked in Ask PhiXtra · open now →</span></a>{% endif %}
       <a class="ad-act {{ 'ok' if not d.replies else 'red' }}" href="{{ url_for('portal_admin.am_inbox', show='reply') }}">
         <span class="l">Replies waiting</span><span class="n">{{ d.replies }}</span>
         <span class="s">{% if d.replies %}Answer in Inbox →{% else %}All caught up{% endif %}</span></a>
