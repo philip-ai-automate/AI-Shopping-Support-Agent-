@@ -2586,7 +2586,7 @@ def _send_welcome_trial_email_wa(
         <li><b>AI Sales Agent</b> — automatically answers customer questions, recommends products, and handles enquiries 24/7 over WhatsApp</li>
         <li><b>Built-in CRM</b> — every customer conversation is tracked, contacts are saved automatically, and you get a full view of your customer interactions in one place</li>
         <li><b>Bulk Messaging</b> — send promotions, announcements, and updates to all your customers or targeted segments directly over WhatsApp</li>
-        <li><b>Product Catalogue</b> — upload your products once and your AI Agent uses them to answer customer queries instantly</li>
+        <li><b>Product Catalogue</b> — upload your products once and your PhiXtra AI Agent uses them to answer customer queries instantly</li>
       </ul>
       <p style="margin:0 0 6px"><b>What to do next:</b></p>
       <ol style="margin:0 0 20px;padding-left:20px;line-height:1.9">
