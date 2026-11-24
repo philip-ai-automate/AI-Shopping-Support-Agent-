@@ -258,6 +258,27 @@
     {% endif %}
   </form>
 
+  <!-- Ready texts for WhatsApp problems (24 Nov 2026): saved in the database (am_ready_texts), owner edits -->
+  {% if ready_texts_rows %}
+  <form method="post" action="{{ url_for('portal_admin.am_ready_texts_save') }}" id="ready-texts" class="as-card" style="margin-bottom:24px">
+    <div class="as-card-h">
+      <div class="as-ico">📝</div>
+      <div class="as-grow">
+        <h2>Ready texts for WhatsApp problems</h2>
+        <p>Shown in the WhatsApp and Email tabs of an account when the WhatsApp health check finds a problem. {first} = their first name, {name} = your first name, {number} = their WhatsApp number.</p>
+      </div>
+    </div>
+    <div class="as-body" style="display:flex;flex-direction:column;gap:14px">
+      {% for t in ready_texts_rows %}
+      <label style="display:flex;flex-direction:column;gap:6px"><b>{{ t.label }}</b>
+        <textarea name="rt_{{ t.key }}" rows="6" maxlength="3000" {% if ro %}readonly{% endif %} style="font:inherit;border:1px solid #D0D5DD;border-radius:8px;padding:10px 12px;line-height:1.5">{{ t.body }}</textarea>
+        <small style="color:#5D6673">Last changed by {{ t.updated_by or '—' }}, {{ t.updated_at.strftime('%-d %b %Y, %H:%M') }}</small></label>
+      {% endfor %}
+      {% if not ro %}<div><button type="submit" class="btn btn-sm as-save">Save ready texts</button></div>{% endif %}
+    </div>
+  </form>
+  {% endif %}
+
   <!-- My email signature (each Account Manager their own) -->
   <form method="post" action="{{ url_for('portal_admin.am_signature_save') }}" enctype="multipart/form-data" id="signature" class="as-card" style="margin-bottom:90px">
     <div class="as-card-h">

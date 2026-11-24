@@ -17,6 +17,9 @@ load_dotenv()
 def create_app():
     flask_app = Flask(__name__, template_folder="templates", static_folder="static")
     flask_app.secret_key = os.getenv("PORTAL_SECRET_KEY", "change-this-secret-in-env")
+    # WhatsApp account health in the business portal (24 Nov 2026): bar, popup, Dashboard, WhatsApp Connect
+    import wa_health as _wa_health
+    _wa_health.register_portal(flask_app)
     # Page templates go live as soon as the file is saved, no restart (16 Nov 2026).
     flask_app.config["TEMPLATES_AUTO_RELOAD"] = True
     flask_app.jinja_env.auto_reload = True

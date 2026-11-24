@@ -148,6 +148,7 @@
 {% endblock %}
 
 {% block content %}
+{% include "portal/_wa_health_box.html" %}
 <div class="wai-hero">
   <div class="wai-hero-left">
     <div class="wai-hero-icon">💬</div>
@@ -372,6 +373,7 @@
   {% if not connections %}{% import "portal/_setup_help.html" as shx with context %}{% set sh = setup_help('wa_settings') %}
   <div style="margin:-6px 0 20px">{{ shx.box(sh, "Rather we connect it for you? It's free.") }}</div>{{ shx.modal(sh) }}{% endif %}
 
+  {% include "portal/_wa_meta_rules.html" %}
   {# "Keep my phone app" removed 2026-10-29 (it did not work); back 2026-11-09,
      rebuilt properly, shown only to businesses in WA_COEXIST_TENANTS until tested. #}
   {% if coexist_allowed %}

@@ -1309,7 +1309,7 @@
       <div class="sb-group-toggle {% if _ai_group %}open{% endif %}"
            data-tour="nav-ai" onclick="sbToggle(this)">
         <span class="sb-gtitle">
-          <span class="sb-icon">🤖</span> AI Agent
+          <span class="sb-icon">🤖</span> PhiXtra AI Agent
         </span>
         <span class="sb-arrow">▾</span>
       </div>
@@ -1716,6 +1716,45 @@
   {% endif %}
 
   <div class="{% block wrap_class %}page{% endblock %}">
+    {# WhatsApp account health (24 Nov 2026): Red/Yellow bar until fixed, Green for a day after it's fixed,
+       popup once per log-in. Facts from wa_health.py; the Dashboard and Settings › WhatsApp Connect show more. #}
+    {% set _wh = wa_health_ui() if (_logged_in and wa_health_ui is defined) else None %}
+    {% if _wh and (_wh.state in ('red', 'yellow') or _wh.green_recent) %}
+      {% set _whurl = url_for('portal.whatsapp_connect') ~ '#wa-health' %}
+      {% if _wh.state == 'red' %}
+      <div role="alert" class="wh-bar" style="background:#B42318;color:#fff;padding:12px 18px;border-radius:10px;margin:0 0 16px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;font-size:14px;line-height:1.45">
+        <span><b>{{ _wh.head }}.</b> {% if _wh.kind == 'lost_access' %}{% elif _wh.kind == 'disconnected' %}New WhatsApp enquiries aren't reaching your PhiXtra AI Agent.{% else %}Customers can't reach you on WhatsApp, so enquiries are being missed.{% endif %}</span>
+        <a href="{{ _whurl }}" style="background:#fff;color:#B42318;font-weight:700;text-decoration:none;padding:7px 14px;border-radius:8px;white-space:nowrap">Show me what to do</a>
+      </div>
+      {% elif _wh.state == 'yellow' %}
+      <div role="status" class="wh-bar" style="background:#FEF0C7;color:#7A2E0E;border:1px solid #FEC84B;padding:12px 18px;border-radius:10px;margin:0 0 16px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;font-size:14px;line-height:1.45">
+        <span><b>{{ _wh.head }}.</b> WhatsApp still works; act now to keep it that way.</span>
+        <a href="{{ _whurl }}" style="background:#fff;color:#7A2E0E;border:1px solid #FEC84B;font-weight:700;text-decoration:none;padding:7px 14px;border-radius:8px;white-space:nowrap">What to change</a>
+      </div>
+      {% else %}
+      <div role="status" class="wh-bar" id="whGreen" data-key="{{ _wh.key }}" style="background:#ECFDF3;color:#05603A;border:1px solid #A6F4C5;padding:8px 10px 8px 18px;border-radius:10px;margin:0 0 16px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;font-size:14px;line-height:1.45">
+        <span><b>Good news: your WhatsApp is working again.</b> Customers can reach you.</span>
+        <button type="button" aria-label="Close" onclick="try{localStorage.setItem('whGreen',this.parentNode.dataset.key)}catch(e){}this.parentNode.remove()" style="font:inherit;background:none;border:0;color:#05603A;font-size:20px;min-width:44px;min-height:44px;cursor:pointer">×</button>
+      </div>
+      <script>try{var _g=document.getElementById('whGreen');if(_g&&localStorage.getItem('whGreen')===_g.dataset.key)_g.remove();}catch(e){}</script>
+      {% endif %}
+      {% if _wh.state in ('red', 'yellow') and wa_health_popup() %}
+      <div id="whPop" role="dialog" aria-modal="true" aria-labelledby="whPopH" style="position:fixed;inset:0;z-index:10060;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px">
+        <div style="background:#fff;border-radius:14px;max-width:520px;width:100%;padding:24px;box-sizing:border-box;box-shadow:0 12px 40px rgba(11,29,64,.3);display:flex;flex-direction:column;gap:12px;font-size:14.5px;line-height:1.5;color:#101828">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+            <div id="whPopH" style="font-size:18px;font-weight:700;color:{{ '#B42318' if _wh.state == 'red' else '#B54708' }}">{% if _wh.state == 'red' %}{% if _wh.kind in ('lost_access', 'disconnected') %}Your WhatsApp enquiries aren't reaching your PhiXtra AI Agent{% else %}Customers can't reach you on WhatsApp{% endif %}{% else %}{{ _wh.head }}{% endif %}</div>
+            <button type="button" aria-label="Close" onclick="document.getElementById('whPop').remove()" style="font:inherit;font-size:22px;line-height:1;background:none;border:0;color:#667085;min-width:44px;min-height:44px;cursor:pointer">×</button>
+          </div>
+          <div style="color:#344054">{% if _wh.state == 'red' and _wh.kind not in ('lost_access', 'disconnected') %}{{ _wh.head }}. {% endif %}{{ _wh.text }}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px">
+            <a href="{{ _whurl }}" style="background:#0B2545;color:#fff;font-weight:600;text-decoration:none;padding:10px 16px;border-radius:8px">{{ 'Show me what to do' if _wh.state == 'red' else 'What to change' }}</a>
+            <button type="button" id="whPopPerson" hidden onclick="document.getElementById('whPop').remove();document.getElementById('apxPerson').click()" style="font:inherit;font-weight:600;background:#fff;color:#0B2545;border:1px solid #D0D5DD;border-radius:8px;padding:10px 16px;cursor:pointer">Talk to a person</button>
+            <script>document.addEventListener('DOMContentLoaded',function(){if(document.getElementById('apxPerson'))document.getElementById('whPopPerson').hidden=false;});</script>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    {% endif %}
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
@@ -1891,7 +1930,7 @@
       title: 'Products & Orders',
       body:  'Your products and prices, from your website, Shopify, WooCommerce or a list, so your AI Agent always gives the right price.' },
     { sel: '[data-tour="nav-ai"]', pos: 'right',
-      title: 'AI Agent',
+      title: 'PhiXtra AI Agent',
       body:  'Set how your AI Agent sells: what it knows, how it talks, when it hands over to your team, and your chat box.' },
     { sel: '[data-tour="nav-reports"]', pos: 'right',
       title: 'Reports',

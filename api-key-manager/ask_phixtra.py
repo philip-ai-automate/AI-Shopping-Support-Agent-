@@ -554,8 +554,9 @@ def ask():
         probs = SR.account_problems(tenant_id)
     except Exception as e:
         print("⚠️ Ask PhiXtra problems:", e)
-    if probs and _PROBLEM_Q.search(question):
-        ans = _problem_answer(probs[0], cust, tenant_id, cid, tm, page, question)
+    reds = [p for p in probs if p.get("state", "red") == "red"]   # a Yellow warning is answered by the AI as a fact
+    if reds and _PROBLEM_Q.search(question):
+        ans = _problem_answer(reds[0], cust, tenant_id, cid, tm, page, question)
         qid = _save_q(tenant_id, cid, tm, page, endpoint, question, ans, True)
         try:
             _auto_request(cust, tenant_id, cid, tm, page, qid)
@@ -664,7 +665,8 @@ def _handover_options(cust, tenant_id) -> dict:
     import support_requests as SR
     name, phone, email = _contact(cust, tenant_id)
     req = SR.open_request(tenant_id)
-    return {"phone": phone, "email": email,
+    import wa_health as WH
+    return {"phone": phone, "email": email, "wa_blocked": WH.wa_unreachable(tenant_id, phone),
             "open": ({"at": SR.uk_time(req["created_at"]), "via": req["via"]} if req else None)}
 
 
@@ -684,6 +686,25 @@ def _problem_answer(p, cust, tenant_id, cid, tm, page, question) -> str:
     import support_requests as SR
     am = _manager_first(tenant_id)
     since = SR.uk_day_time(p["since"])
+    if p.get("kind") == "health":       # Meta's real state (WhatsApp health check, 24 Nov 2026)
+        import wa_health as WH
+        h = p["health"]
+        lines = [f"**{p['title']}.**", f"Since {since} (UK time). {WH.KINDS[h][3]}"]
+        if h in ("banned", "locked", "blocked"):
+            lines += ["This was done by Meta (WhatsApp), not by PhiXtra. To ask Meta to review it:",
+                      "1. Open **Meta Business Suite › Account Quality** (business.facebook.com) with the Facebook login that owns your business.",
+                      "2. Choose the WhatsApp account and press **Request review**.",
+                      "3. Meta's answer shows in the same place. Meanwhile, call or email customers who were waiting; your website chat box keeps working."]
+        elif h in ("lost_access", "disconnected"):
+            lines += ["To bring your WhatsApp messages back into PhiXtra:",
+                      "1. Open **Settings › WhatsApp Connect**.",
+                      "2. Connect your WhatsApp number again."]
+        elif h == "quality_red":
+            lines += ["To bring it back up: only message customers who contacted you or agreed to hear from you, "
+                      "send fewer promotions, and make it easy to say no (your AI Agent stops when a customer replies STOP)."]
+        lines.append("We've told the PhiXtra team. " + (f"**{am}**, your Account Manager, will contact you to help."
+                                                        if am else "Someone from PhiXtra will contact you to help."))
+        return "\n".join(lines)
     meta = "locked" in p["title"] or "restricted" in p["title"]
     lines = [f"**{p['title'].replace('the WhatsApp', 'your WhatsApp')}.**",
              f"Since {since} (UK time), WhatsApp messages{(' from ' + p['number']) if p.get('number') else ''} are not being sent."
@@ -702,7 +723,12 @@ def _auto_request(cust, tenant_id, cid, tm, page, qid):
     """An account problem the person asked about: open a request so staff are alerted."""
     import support_requests as SR
     name, phone, email = _contact(cust, tenant_id)
-    req, created = SR.create(tenant_id, cid, tm, name, "whatsapp" if phone else "email", phone or email,
+    import wa_health as WH
+    if phone and WH.wa_unreachable(tenant_id, phone):      # their WhatsApp is the broken number (24 Nov 2026)
+        via, contact = ("email", email) if email else ("call", phone)
+    else:
+        via, contact = ("whatsapp", phone) if phone else ("email", email)
+    req, created = SR.create(tenant_id, cid, tm, name, via, contact,
                              "", page, SR.recent_question_ids(tenant_id, cid, tm) or [qid])
     if created:
         SR.send_email(req)
@@ -731,8 +757,11 @@ def handover():
     ensure_tables()
     cid, tm = _who_ids()
     name, phone, email = _contact(cust, tenant_id)
-    via = "whatsapp" if data.get("via") == "whatsapp" and phone else "email"
-    contact = phone if via == "whatsapp" else email
+    import wa_health as WH
+    via = data.get("via") if data.get("via") in ("whatsapp", "call") and phone else "email"
+    if via == "whatsapp" and WH.wa_unreachable(tenant_id, phone):
+        via = "email" if email else "call"      # their WhatsApp is the broken number (24 Nov 2026)
+    contact = phone if via in ("whatsapp", "call") else email
     note = (data.get("note") or "").strip()[:1000]
     page = _safe_path(data.get("page"))
     qids = SR.recent_question_ids(tenant_id, cid, tm)
@@ -748,12 +777,12 @@ def handover():
         conn.commit(); cur.close(); conn.close()
         return jsonify(ok=True, already=True, at=SR.uk_time(req["created_at"]),
                        message=f"The PhiXtra team already has your request (sent at {SR.uk_time(req['created_at'])} UK time). "
-                               f"We'll reply on {'WhatsApp' if via == 'whatsapp' else 'email'}.")
+                               + ("We'll call you." if via == "call" else f"We'll reply on {'WhatsApp' if via == 'whatsapp' else 'email'}."))
     ok = SR.send_email(req)
     SR.send_alerts(req, "first")
     return jsonify(ok=True, at=SR.uk_time(req["created_at"]), emailed=ok,
                    message=f"Sent at {SR.uk_time(req['created_at'])} (UK time). The PhiXtra team has been alerted. "
-                           f"We'll reply on {'WhatsApp' if via == 'whatsapp' else 'email'}.")
+                           + ("We'll call you." if via == "call" else f"We'll reply on {'WhatsApp' if via == 'whatsapp' else 'email'}."))
 
 
 def _own_question(cur, qid: int, tenant_id: int):
@@ -847,7 +876,7 @@ SUGGEST = {
     "Leads": ["How does lead scoring work?", "How do I find new leads?", "How do I move a lead to the Sales Pipeline?"],
     "Quotations": ["How do I send a quotation?", "How do I see quotes waiting for an answer?", "What happens when a buyer accepts?"],
     "Products & Orders": ["How do I add my products?", "How does my AI Agent learn my prices?", "How do I see my orders?"],
-    "AI Agent": ["How do I change what my AI Agent says?", "How do I put the chat box on my website?", "How do I set my opening hours?"],
+    "PhiXtra AI Agent": ["How do I change what my AI Agent says?", "How do I put the chat box on my website?", "How do I set my opening hours?"],
     "Reports": ["How do I build a report?", "How do I see quotes won this month?"],
     "Settings": ["How do I add a team member?", "How do I change my plan?", "How do I connect Xero?"],
 }

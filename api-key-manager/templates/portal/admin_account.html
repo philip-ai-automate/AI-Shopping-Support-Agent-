@@ -143,7 +143,7 @@
             <span class="ap-chip {{ a.status }}">{{ a.status_label }}</span>
             {% if replied %}<span class="ap-chip good">Replied: waiting for you</span>{% endif %}
             {% if support_open %}<a href="#support" class="ap-chip bad" style="text-decoration:none">Needs a person · waiting {{ waiting_text(support_open.created_at) }}</a>{% endif %}
-            {% for p in problems %}<span class="ap-chip bad">{{ 'WhatsApp locked by Meta' if 'locked' in p.title else 'WhatsApp not sending' }}</span>{% endfor %}
+            {% for p in problems %}<span class="ap-chip {{ 'warn' if p.state == 'yellow' else 'bad' }}">{% if p.kind == 'health' %}WhatsApp: {{ p.label }}{% else %}{{ 'WhatsApp locked by Meta' if 'locked' in p.title else 'WhatsApp not sending' }}{% endif %}</span>{% endfor %}
             {% if not a.last_login_at %}<span class="ap-chip warn">Never logged in</span>{% endif %}
           </div>
         </div>
@@ -182,7 +182,7 @@
         {% if can_modify and nb.primary != 'none' %}
         <div class="row">
           <button type="button" class="ap-go" data-go="{{ nb.primary }}">{{ nb.label }}</button>
-          {% for p, l in [('wa', 'WhatsApp'), ('call', 'WhatsApp call'), ('email', 'Email'), ('logcall', 'Log a call')] if p != nb.primary and (p not in ('wa', 'call') or has_phone) and (p != 'email' or a.email) %}
+          {% for p, l in [('wa', 'WhatsApp'), ('call', 'WhatsApp call'), ('email', 'Email'), ('logcall', 'Log a call')] if p != nb.primary and (p not in ('wa', 'call') or (has_phone and not wa_unreachable)) and (p != 'email' or a.email) %}
           <button type="button" class="ap-go ghost" data-go="{{ p }}">{{ l }}</button>
           {% endfor %}
         </div>
@@ -194,7 +194,7 @@
       <section class="ap-card sr-card" id="support" aria-labelledby="sr-h">
         <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline;margin-bottom:10px">
           <h2 id="sr-h" style="margin:0">Support request</h2>
-          <span class="ac-meta">From Ask PhiXtra · {{ uk_day_time(support_open.created_at) }} UK · prefers {{ 'WhatsApp' if support_open.via == 'whatsapp' else 'email' }} ({{ support_open.contact or '—' }})</span>
+          <span class="ac-meta">From Ask PhiXtra · {{ uk_day_time(support_open.created_at) }} UK · prefers {{ {'whatsapp': 'WhatsApp', 'call': 'a phone call'}.get(support_open.via, 'email') }} ({{ support_open.contact or '—' }})</span>
         </div>
         {% if support_open.problem %}<div class="sr-prob"><b>{{ support_open.problem.split('.')[0] }}.</b> {{ support_open.problem.split('.', 1)[1] if '.' in support_open.problem else '' }}{% if 'locked' in support_open.problem or 'restricted' in support_open.problem %} PhiXtra can't unlock it; {{ sfirst }} must request a review in Meta Business Suite › Account Quality.{% endif %}</div>{% endif %}
         {% if support_open.note %}<p style="margin:0 0 10px;font-size:13.5px"><b>Their note:</b> {{ support_open.note }}</p>{% endif %}
@@ -247,7 +247,7 @@
           {% elif wa_window %}
           <form method="POST" action="{{ url_for('portal_admin.am_whatsapp', tenant_id=a.tenant_id) }}" id="waTextForm">
             <input type="hidden" name="mode" value="text">
-            {% if ready_texts %}<div class="sr-ready"><span>Ready texts for the support request:</span>{% for l, t in ready_texts %}<button type="button" class="ap-q" data-fill="waText" data-text="{{ t }}">{{ l }}</button>{% endfor %}</div>{% endif %}
+            {% if ready_texts %}<div class="sr-ready"><span>Ready texts:</span>{% for l, t in ready_texts %}<button type="button" class="ap-q" data-fill="waText" data-text="{{ t }}">{{ l }}</button>{% endfor %}</div>{% endif %}
             <label class="l" for="waText">Message to {{ a.phone_number }} from {{ wa_numbers[0].display_phone_number }}</label>
             <textarea name="text" id="waText" placeholder="Write your message"></textarea>
             <div class="ap-fu"><button type="button" class="ap-save" id="waTextPreview">Preview</button></div>
@@ -287,7 +287,7 @@
             <label class="l">To</label><input value="{{ a.email }}" disabled>
             <label class="l" for="em_rt">Replies go to</label><input id="em_rt" name="reply_to" value="{{ reply_to }}">
             <label class="l" for="em_s">Subject</label><input id="em_s" name="subject" value="{{ email_subject }}" required>
-            {% if ready_texts %}<div class="sr-ready" style="margin-top:12px"><span>Ready texts for the support request:</span>{% for l, t in ready_texts %}<button type="button" class="ap-q" data-fill="em_b" data-text="{{ t }}" data-subject="Your PhiXtra support request">{{ l }}</button>{% endfor %}</div>{% endif %}
+            {% if ready_texts %}<div class="sr-ready" style="margin-top:12px"><span>Ready texts:</span>{% for l, t in ready_texts %}<button type="button" class="ap-q" data-fill="em_b" data-text="{{ t }}" data-subject="Your PhiXtra support request">{{ l }}</button>{% endfor %}</div>{% endif %}
             <label class="l" for="em_b">Message</label><textarea id="em_b" name="body" style="min-height:220px" required>{{ email_body }}</textarea>
             {% if my_sig %}
             <label class="ap-sig"><input type="checkbox" name="with_sig" value="1" checked> Add my signature
@@ -360,7 +360,7 @@
               <span class="dot"></span>
               <span><span class="t">{{ i.title }}</span>{% if i.sub %}<span class="s">{{ i.sub }}</span>{% endif %}</span>
             {% else %}
-              <span class="dot {{ 'bad' if i.kind in ('support', 'problem') and not (i.subject or '').startswith('Support request closed') else ('in' if i.kind == 'support' else ('st' if i.kind == 'status' else 'out')) }}"></span>
+              <span class="dot {{ 'bad' if i.kind in ('support', 'problem') and not (i.subject or '').startswith('Support request closed') and i.subject != 'WhatsApp working again' else ('in' if i.kind == 'support' else ('st' if i.kind == 'status' else 'out')) }}"></span>
               <span><span class="t">
                 {%- if i.kind == 'call' %}{{ 'WhatsApp call' if i.channel == 'whatsapp_call' else 'Phone call' }}: {{ call_outcome_label.get(i.outcome, i.outcome) }}
                 {%- elif i.kind == 'email' %}Email{% if i.subject %}: {{ i.subject }}{% endif %}{% if i.ok == false %} <span class="bad">not sent</span>{% endif %}
@@ -417,7 +417,23 @@
           {% if a.trial_ends_at %}<dt>Trial ends</dt><dd>{{ a.trial_ends_at.strftime('%a %-d %b %Y') }}</dd>{% endif %}
           <dt>Signed up as</dt><dd>{{ a.setup.type or '—' }}</dd>
           <dt>Website</dt><dd>{{ a.domain or 'None' }}{% if a.website_platform %} <small>({{ a.website_platform }})</small>{% endif %}</dd>
-          {% for p in problems %}<dt>Business WhatsApp</dt><dd style="color:#B42318">{{ p.number }} · {{ 'locked by Meta' if 'locked' in p.title else 'not sending' }} since {{ uk_day_time(p.since) }}</dd>{% endfor %}
+          {# Business WhatsApp: Meta's real state from the WhatsApp health check (24 Nov 2026) #}
+          {% for r in wa_rows %}{% set d = r.details or {} %}
+          <dt>Business WhatsApp</dt><dd>
+            <span style="font-weight:650;color:{{ {'red': '#B42318', 'yellow': '#B54708', 'green': '#067647'}.get(r.state, '#5D6673') }}">{{ r.display_number }} · {{ r.label if r.state != 'unknown' else 'not checked yet' }}{% if r.state in ('red', 'yellow') %} · found {{ uk_day_time(r.since) }}{% endif %}</span>
+            {% if d.review or d.name_status %}<br><small>Meta review: {{ (d.review or '—')|lower }} · Name: {{ (d.name_status or '—')|lower|replace('_', ' ') }} · Verified: {{ 'yes' if d.verified == 'verified' else 'no' }}</small>{% endif %}
+            {% if d.quality %}<br><small>Quality: {{ d.quality|lower if d.quality != 'UNKNOWN' else 'not rated yet' }} · PhiXtra access: {{ 'yes' if d.access != False else 'no' }}</small>{% endif %}
+            {% if r.meta_words %}<br><small>Meta's words: "{{ r.meta_words }}"</small>{% endif %}
+            <br><small style="color:#5D6673">Checked with Meta {{ uk_day_time(r.checked_at) if r.checked_at else 'not yet' }}{% if r.check_error %} (last try failed){% endif %}</small>
+          </dd>{% endfor %}
+          {% for p in problems if p.kind != 'health' %}<dt>Business WhatsApp</dt><dd style="color:#B42318">{{ p.number }} · {{ 'locked by Meta' if 'locked' in p.title else 'not sending' }} since {{ uk_day_time(p.since) }}</dd>{% endfor %}
+          {% if wa_rows %}<dt>High-risk</dt><dd>
+            {% if am_is_owner %}<form method="post" action="{{ url_for('portal_admin.am_wa_watch', tenant_id=a.tenant_id) }}" style="margin:0">
+              <input type="hidden" name="on" value="{{ '0' if wa_watch else '1' }}">
+              <label style="display:flex;gap:8px;align-items:center;min-height:36px;cursor:pointer"><input type="checkbox" {{ 'checked' if wa_watch }} onchange="this.form.submit()" style="width:18px;height:18px"> High-risk business</label>
+            </form>{% else %}{{ 'Yes' if wa_watch else 'No' }}{% endif %}
+            <small style="color:#5D6673">{% if wa_watch %}WhatsApp checked every hour · marked by {{ manager_name(wa_watch.set_by) if wa_watch.set_by and '@' in wa_watch.set_by else (wa_watch.set_by or '') }}{% else %}Tick to check WhatsApp every hour instead of daily. Put the reason in Notes.{% endif %}</small>
+          </dd>{% endif %}
           <dt>Last log-in</dt><dd>{{ a.last_login_at.strftime('%-d %b %Y, %H:%M') if a.last_login_at else 'Never' }}</dd>
           <dt>Came from</dt><dd>{{ (a.hear_about_us or 'Not given')|replace('_',' ')|capitalize }}</dd>
         </dl>

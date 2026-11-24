@@ -58,7 +58,7 @@
       {% for x in reqs %}
         <tr>
           <td>{% if show == 'open' %}<span class="sq-wait">{{ x.waiting }}</span>{% else %}{{ uk_day_time(x.handled_at) }}{% endif %}</td>
-          <td><b>{{ x.business }}</b><div class="sq-sub">{{ x.first or '—' }} · prefers {{ 'WhatsApp' if x.via == 'whatsapp' else 'email' }}</div></td>
+          <td><b>{{ x.business }}</b><div class="sq-sub">{{ x.first or '—' }} · prefers {{ {'whatsapp': 'WhatsApp', 'call': 'a phone call'}.get(x.via, 'email') }}</div></td>
           <td>{% if x.last_q %}"{{ x.last_q[:120] }}"{% else %}—{% endif %}<div class="sq-sub">{{ (x.question_ids or [])|length }} question{{ 's' if (x.question_ids or [])|length != 1 }} · {{ uk_day_time(x.created_at) }} UK</div></td>
           <td>{% if x.problem %}<span class="sq-prob">{{ 'WhatsApp locked by Meta' if 'locked' in x.problem else x.problem.split('.')[0][:60] }}</span>{% else %}<span class="sq-sub">None found</span>{% endif %}</td>
           <td>{{ x.manager or 'Unassigned' }}</td>

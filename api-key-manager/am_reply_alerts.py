@@ -39,6 +39,13 @@ def main():
             SR.tick()
         except Exception as e:
             print("⚠️ support tick:", e)
+        # WhatsApp account health (24 Nov 2026): Meta's warnings, 07:00 daily check,
+        # hourly for high-risk businesses — see wa_health.py.
+        try:
+            import wa_health as WH
+            WH.tick()
+        except Exception as e:
+            print("⚠️ wa_health tick:", e)
     st = M.get_settings()
     if st["alerts_on"] != "1" and not a.dry_run:
         print("reply alerts are switched off in Admin › Accounts › Settings")

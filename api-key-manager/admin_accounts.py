@@ -394,8 +394,14 @@ def rows(only_tenant=None) -> list:
         _sup = SR.open_tenant_ids()
     except Exception:
         _sup = set()
+    try:
+        import wa_health as WH
+        _wa = WH.problem_rows()
+    except Exception:
+        _wa = {}
     for r in out:
         r["support_open"] = r["tenant_id"] in _sup
+        r["wa"] = _wa.get(r["tenant_id"])      # worst red/yellow WhatsApp health row (24 Nov 2026)
         r["setup"] = steps.get(r["tenant_id"]) or {"type": "", "steps": [], "done": 0, "total": 0, "complete": False, "stuck": None}
         r["contact"] = " ".join(x for x in [(r["first_name"] or "").strip(), (r["last_name"] or "").strip()] if x)
         r["country"] = country_name(r["business_country"]) or (r["business_country"] or "")
@@ -453,6 +459,12 @@ def priority(x, reply_ids=()):
     end = _d(x.get("trial_ends_at"))
     if x.get("support_open"):
         sc += 300; tags.append(("Needs a person", "bad"))
+    if x.get("wa"):
+        w = x["wa"]
+        if w["state"] == "red":
+            sc += 250; tags.append(("WhatsApp: " + w["label"], "bad"))
+        else:
+            sc += 60; tags.append(("WhatsApp: " + w["label"], "warn"))
     if x["tenant_id"] in reply_ids:
         sc += 100; tags.append(("Replied: waiting for you", "good"))
     if is_paid_trial_ending(x):
@@ -562,6 +574,7 @@ def dashboard(me: str, who: str = "all", period: int = 30) -> dict:
     support = [x for x in R if x.get("support_open")]
     return {
         "support": len(support),
+        "wa": sum(1 for x in R if x.get("wa")),
         "total": total, "replies": len(replies), "due": len(due), "overdue": len(overdue),
         "never": len(never), "never_week": len(never_week), "trials": len(trials),
         "trials_not_setup": sum(1 for x in trials if not x["setup"]["complete"]),
@@ -584,7 +597,7 @@ def dashboard(me: str, who: str = "all", period: int = 30) -> dict:
 
 # ── All accounts list (2026-11-06): views + dropdown filters with live counts ─
 
-LIST_VIEWS = [("priority", "Priority"), ("support", "Needs a person"), ("due", "Follow-ups due"), ("new", "Never contacted"), ("trials", "Paid trials"),
+LIST_VIEWS = [("priority", "Priority"), ("support", "Needs a person"), ("wa", "WhatsApp problem"), ("due", "Follow-ups due"), ("new", "Never contacted"), ("trials", "Paid trials"),
               ("stuck_wa", "Stuck at Connect WhatsApp"), ("week", "New this week"), ("none", "Unassigned"),
               ("set_up", "Set up"), ("lost", "Lost"), ("all", "All")]
 HIDDEN_VIEWS = {"nophone": "No phone number", "nologin": "Never logged in"}
@@ -598,8 +611,9 @@ SORTS = [("priority", "Priority"), ("newest", "Newest sign-up"), ("waiting", "Ol
 
 def _in_view(x, v):
     open_ = x["status"] not in ("set_up", "lost")
-    if v == "priority": return open_ or x.get("support_open")
+    if v == "priority": return open_ or x.get("support_open") or bool(x.get("wa"))
     if v == "support": return x.get("support_open")
+    if v == "wa": return bool(x.get("wa"))
     if v == "due": return open_ and x["follow_up_due"]
     if v == "new": return x["status"] == "not_contacted"
     if v == "trials": return is_paid_trial_ending(x)
@@ -648,6 +662,8 @@ def next_step(x, reply_ids):
     today = date.today()
     if x.get("support_open"):
         return ("Needs a person: open now", "due")
+    if x.get("wa"):
+        return ("WhatsApp " + x["wa"]["phrase"] + ": contact them", "due" if x["wa"]["state"] == "red" else "todo")
     if x["status"] in ("set_up", "lost"):
         return ("—", "plain")
     if x["tenant_id"] in reply_ids:
@@ -780,15 +796,40 @@ def next_best(a: dict, window: bool, replied: bool, tpl_ready: bool, support=Non
     today = date.today()
     first = (a.get("first_name") or "").strip() or a.get("contact") or "them"
     phone = len(a.get("phone_digits") or "") >= 8
+    wa = a.get("wa")                      # worst red/yellow WhatsApp health row (24 Nov 2026)
+    unreach = bool(a.get("wa_unreachable"))  # their contact phone IS the broken WhatsApp number
     if support and support.get("status") == "open":
         import support_requests as SR
         who = (support.get("person_name") or first).split(" ")[0] or first
         prob = (support.get("problem") or "").split(".")[0]
         never = a["status"] == "not_contacted"
-        if phone:
+        if support.get("via") == "call":
+            primary, label = "logcall", "Log a call"
+        elif phone and not unreach:
             primary, label = ("wa", "Reply on WhatsApp") if window else ("call", "WhatsApp call")
-        else:
+        elif a.get("email"):
             primary, label = "email", "Write an email"
+        else:
+            primary, label = "logcall", "Log a call"
+        if wa and wa["state"] == "red":
+            why = f"Waiting {SR.waiting_text(support['created_at'])}. "
+            if wa["kind"] in ("banned", "locked", "blocked"):
+                why += f"Only Meta can lift it, not PhiXtra. Explain that to {who} and send the ready text so they can request a review in Meta Business Suite › Account Quality. "
+            elif wa["kind"] in ("lost_access", "disconnected"):
+                why += f"Help {who} connect WhatsApp again in Settings › WhatsApp Connect; until then new enquiries don't reach PhiXtra. "
+            else:
+                why += f"Customers are blocking or reporting {who}'s messages. Send the ready text on what to change. "
+            if unreach:
+                why += "Their WhatsApp is the broken number, so email or phone them. "
+            if support.get("via") == "call":
+                why += f"{who} asked for a call on {support.get('contact') or 'their phone'}."
+            if never:
+                why += " Nobody has contacted this business since sign-up."
+            title = (f"{who} wants a call: " if support.get("via") == "call" else
+                     (f"{who} asked for a person: " if (support.get("person_name") or "").strip() else "")) \
+                + f"WhatsApp {wa['phrase']}"
+            return {"title": title[0].upper() + title[1:], "why": why.strip(), "primary": primary, "label": label,
+                    "tone": "support"}
         why = f"Waiting {SR.waiting_text(support['created_at'])}. "
         if "Meta has locked" in prob or "restricted" in prob:
             why += f"PhiXtra can't unlock it; only Meta can. Help {who} request a review in Meta Business Suite › Account Quality. "
@@ -798,8 +839,20 @@ def next_best(a: dict, window: bool, replied: bool, tpl_ready: bool, support=Non
         if support.get("via") == "whatsapp" and phone and not window:
             why += " WhatsApp only allows a free message within 24 hours of their last message, so call, send a template or email."
         short = ("WhatsApp locked by Meta" if "locked" in prob else "WhatsApp restricted by Meta" if "restricted" in prob else prob)
-        return {"title": f"{who} asked for a person" + (f": {short}" if short else ""),
+        if support.get("via") == "call":
+            why += f" They asked for a call on {support.get('contact') or 'their phone'}."
+        return {"title": (f"{who} wants a call" if support.get("via") == "call" else f"{who} asked for a person")
+                         + (f": {short}" if short else ""),
                 "why": why, "primary": primary, "label": label, "tone": "support"}
+    if wa:
+        reach_ = ("call", "WhatsApp call") if phone and not unreach else (("email", "Write an email") if a.get("email") else ("logcall", "Log a call"))
+        if wa["state"] == "yellow":
+            return {"title": f"Meta has warned {first} about WhatsApp message quality",
+                    "why": "WhatsApp still works. More customers have blocked or reported their messages lately. Ask what they've been sending (promotions? people who never asked?) and send the ready text on what to change before it drops to Red.",
+                    "primary": reach_[0], "label": reach_[1], "tone": "warn"}
+        return {"title": f"Contact {first}: WhatsApp {wa['phrase']}",
+                "why": "Customers can't reach them on WhatsApp. " + ("Only Meta can lift it; help them request a review." if wa["kind"] in ("banned", "locked", "blocked") else "Help them connect WhatsApp again."),
+                "primary": reach_[0], "label": reach_[1], "tone": "urgent"}
     stuck = a["setup"].get("stuck")
     stuck_txt = f"they stopped at {STEP_SHORT.get(stuck, stuck)}" if stuck else "they haven't finished set-up"
     seen = ""
@@ -1418,6 +1471,20 @@ def register(bp, require_admin, admin_user):
             flash("Meta refused the calling settings: " + meta_status, "danger")
         return redirect(url_for("portal_admin.am_settings"))
 
+    def _ready_rows():
+        try:
+            import wa_health as WH
+            WH.ensure_tables()
+            conn, cur = _db()
+            try:
+                cur.execute("SELECT * FROM am_ready_texts ORDER BY key")
+                return cur.fetchall()
+            finally:
+                cur.close(); conn.close()
+        except Exception as e:
+            print("⚠️ ready texts:", e)
+            return []
+
     @bp.route("/accounts/settings", methods=["GET", "POST"])
     def am_settings():
         r = _owner_only() if request.method == "POST" else _gate("view")
@@ -1482,7 +1549,7 @@ def register(bp, require_admin, admin_user):
                                saved=saved, last_run=last_run, sent7=sent7, now=datetime.now(timezone.utc),
                                numbers=numbers, cur_num=(cur_num or {}).get("phone_number_id"), am_calls=am_calls,
                                my_sig=get_signature(me),
-                               can_modify=_is_owner())
+                               can_modify=_is_owner(), ready_texts_rows=_ready_rows())
 
     @bp.route("/accounts/dashboard")
     def am_dashboard():
@@ -1619,6 +1686,9 @@ def register(bp, require_admin, admin_user):
             mark_seen(me, "support", [(sup_open["id"], "")])
         mark_due_seen(me, tenant_id)
         probs = SR.account_problems(tenant_id)
+        import wa_health as WH                       # WhatsApp account health (24 Nov 2026)
+        wa_rows = WH.for_tenant(tenant_id)
+        a["wa_unreachable"] = WH.wa_unreachable(tenant_id, a["phone_number"])
         nb = next_best(a, window, _replied, _ready or window, sup_open)
         _items = timeline(tenant_id, a["phone_number"]) + journey(a)
         _aware = lambda t: (t if getattr(t, "tzinfo", None) else (t.replace(tzinfo=timezone.utc) if isinstance(t, datetime)
@@ -1641,10 +1711,50 @@ def register(bp, require_admin, admin_user):
             support=sup, support_open=sup_open, support_conv=SR.conversation(sup) if sup_open else [],
             support_outcomes=SR.OUTCOMES, support_outcome_label=SR.OUTCOME_LABEL, problems=probs,
             uk_time=SR.uk_time, uk_day_time=SR.uk_day_time, waiting_text=SR.waiting_text,
-            ready_texts=support_ready_texts(a, me, probs) if sup_open else [])
+            ready_texts=support_ready_texts(a, me, probs) if (sup_open or probs) else [],
+            wa_rows=wa_rows, wa_watch=WH.is_watched(tenant_id), wa_unreachable=a["wa_unreachable"],
+            wa_kinds=WH.KINDS)
 
     def _back(tid):
         return redirect(url_for("portal_admin.am_account", tenant_id=tid) + "#log")
+
+    @bp.route("/accounts/<int:tenant_id>/wa-watch", methods=["POST"])
+    def am_wa_watch(tenant_id):
+        """High-risk business: WhatsApp health checked every hour (owner only, 24 Nov 2026)."""
+        r = _owner_only()
+        if r: return r
+        import wa_health as WH
+        on = request.form.get("on") == "1"
+        WH.set_watch(tenant_id, on, admin_user())
+        if on:
+            try:
+                WH.check_all(tenant_id, "check (marked high-risk)")
+            except Exception as e:
+                print("⚠️ wa-watch check:", e)
+        flash("Marked as a high-risk business: WhatsApp is checked every hour." if on
+              else "High-risk mark removed: WhatsApp is checked daily.", "success")
+        return redirect(url_for("portal_admin.am_account", tenant_id=tenant_id))
+
+    @bp.route("/accounts/settings/ready-texts", methods=["POST"])
+    def am_ready_texts_save():
+        r = _owner_only()
+        if r: return r
+        import wa_health as WH
+        WH.ensure_tables()
+        me = admin_user()
+        conn, cur = _db()
+        try:
+            for k, label, body in WH.ready_texts():
+                new = (request.form.get("rt_" + k) or "").strip()[:3000]
+                if new and new != body:
+                    cur.execute("UPDATE am_ready_texts SET body=%s, updated_by=%s, updated_at=NOW() WHERE key=%s",
+                                (new, me, k))
+            conn.commit()
+        finally:
+            cur.close(); conn.close()
+        insert_audit_log(admin_username=me, action="am_ready_texts_saved")
+        flash("Ready texts saved.", "success")
+        return redirect(url_for("portal_admin.am_settings") + "#ready-texts")
 
     def _date(v):
         try:
@@ -1822,7 +1932,15 @@ def support_ready_texts(a: dict, me: str, probs: list) -> list:
     first = (a.get("first_name") or "").strip() or "there"
     name = manager_name(me).split(" ")[0] if "@" in (me or "") else "the PhiXtra team"
     out = []
-    if probs and ("locked" in probs[0]["title"] or "restricted" in probs[0]["title"]):
+    health = [p for p in (probs or []) if p.get("kind") == "health"]
+    if health:
+        import wa_health as WH
+        h = health[0]["health"]
+        key = "wa_banned" if h in ("banned", "locked", "blocked") else "wa_reconnect" if h in ("lost_access", "disconnected") else "wa_quality"
+        for k, label, body in WH.ready_texts([key]):
+            out.append((label, body.replace("{first}", first).replace("{name}", name)
+                        .replace("{number}", health[0].get("number") or "your WhatsApp number")))
+    elif probs and ("locked" in probs[0]["title"] or "restricted" in probs[0]["title"]):
         out.append(("Meta lock: review steps",
                     f"Hi {first}, this is {name} from PhiXtra. Meta (WhatsApp) has locked your WhatsApp Business Account, "
                     f"which is why your messages stopped sending.\nTo ask Meta to unlock it:\n"

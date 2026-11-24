@@ -126,6 +126,9 @@
       {% if d.support %}<a class="ad-act red" href="{{ url_for('portal_admin.am_support') }}">
         <span class="l">Needs a person</span><span class="n">{{ d.support }}</span>
         <span class="s">Asked in Ask PhiXtra · open now →</span></a>{% endif %}
+      {% if d.wa %}<a class="ad-act red" href="{{ url_for('portal_admin.am_accounts', view='wa') }}">
+        <span class="l">WhatsApp problem</span><span class="n">{{ d.wa }}</span>
+        <span class="s">Banned, locked, disconnected or warned by Meta · open list →</span></a>{% endif %}
       <a class="ad-act {{ 'ok' if not d.replies else 'red' }}" href="{{ url_for('portal_admin.am_inbox', show='reply') }}">
         <span class="l">Replies waiting</span><span class="n">{{ d.replies }}</span>
         <span class="s">{% if d.replies %}Answer in Inbox →{% else %}All caught up{% endif %}</span></a>

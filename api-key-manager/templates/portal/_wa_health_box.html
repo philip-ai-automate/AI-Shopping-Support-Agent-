@@ -1,0 +1,42 @@
+{# Your WhatsApp health: full details at the top of Settings › WhatsApp Connect (24 Nov 2026).
+   Facts from wa_health.py (checked with Meta daily, at once when Meta sends a warning). #}
+{% set _wb = wa_health_ui() if wa_health_ui is defined else None %}
+{% if _wb %}
+{% set _wbc = {'red': ('#FECDCA', '#B42318'), 'yellow': ('#FEDF89', '#B54708')}.get(_wb.state, ('#A6F4C5', '#067647')) %}
+<section id="wa-health" aria-label="Your WhatsApp health" style="background:#fff;border:1px solid {{ _wbc[0] }};border-radius:12px;padding:20px;margin:0 0 20px;display:flex;flex-direction:column;gap:12px;font-size:14.5px;line-height:1.5;color:#101828">
+  <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:center">
+    <div style="font-size:16px;font-weight:700;color:{{ _wbc[1] }}">{% if _wb.state == 'green' %}WhatsApp is working: customers can reach you{% else %}{{ _wb.head }}{% endif %}</div>
+    <span style="font-size:12px;color:#667085">{% if _wb.number %}{{ _wb.number }} · {% endif %}Checked with Meta {{ _wb.checked }}</span>
+  </div>
+  {% if _wb.state == 'green' %}
+    <div style="color:#344054">Message quality: {{ (_wb.quality|capitalize) if _wb.quality not in ('', 'UNKNOWN') else 'not rated yet' }}. We check with Meta every day and tell you at once if anything changes.</div>
+  {% elif _wb.kind in ('banned', 'locked', 'blocked') %}
+    <div style="color:#344054">{{ _wb.text }} First found {{ _wb.since }}. PhiXtra can't change Meta's decision. Your chats and customers are safe in PhiXtra.</div>
+    <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;color:#344054">
+      <li>Open Meta Business Suite › Account Quality, with the Facebook login that owns your business, to see Meta's reason.</li>
+      <li>If you think Meta got it wrong, choose the WhatsApp account and press "Request review". Meta's answer shows in the same place.</li>
+      <li>Meanwhile, call or email customers who were waiting. Your website chat box keeps working.</li>
+    </ol>
+    <div style="display:flex;flex-wrap:wrap;gap:10px">
+      <a href="https://business.facebook.com/accountquality" target="_blank" rel="noopener" style="background:#0B2545;color:#fff;font-weight:600;text-decoration:none;padding:10px 16px;border-radius:8px">Open Meta Account Quality</a>
+      <button type="button" class="whTalk" hidden onclick="document.getElementById('apxPerson').click()" style="font:inherit;background:#fff;color:#0B2545;border:1px solid #D0D5DD;font-weight:600;padding:10px 16px;border-radius:8px;cursor:pointer">Talk to a person</button>
+    </div>
+  {% elif _wb.kind in ('lost_access', 'disconnected') %}
+    <div style="color:#344054">{{ _wb.text }} First found {{ _wb.since }}. Chats you received before stay in PhiXtra.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px">
+      <a href="#waRules" style="background:#0B2545;color:#fff;font-weight:600;text-decoration:none;padding:10px 16px;border-radius:8px">Connect WhatsApp again</a>
+      <button type="button" class="whTalk" hidden onclick="document.getElementById('apxPerson').click()" style="font:inherit;background:#fff;color:#0B2545;border:1px solid #D0D5DD;font-weight:600;padding:10px 16px;border-radius:8px;cursor:pointer">Talk to a person</button>
+    </div>
+  {% else %}
+    <div style="color:#344054">{{ _wb.text }} First found {{ _wb.since }}.</div>
+    <ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;color:#344054">
+      <li>Only message customers who contacted you or agreed to hear from you.</li>
+      <li>Send fewer promotions, and make each one useful to the person getting it.</li>
+      <li>Make it easy to say no: your AI Agent already stops messaging a customer who replies STOP.</li>
+    </ul>
+    <div style="color:#475467;font-size:13px">It goes back to Green as fewer people block or report your messages.</div>
+    <div><button type="button" class="whTalk" hidden onclick="document.getElementById('apxPerson').click()" style="font:inherit;background:#fff;color:#0B2545;border:1px solid #D0D5DD;font-weight:600;padding:10px 16px;border-radius:8px;cursor:pointer">Talk to a person</button></div>
+  {% endif %}
+</section>
+<script>document.addEventListener('DOMContentLoaded',function(){if(document.getElementById('apxPerson'))document.querySelectorAll('.whTalk').forEach(function(b){b.hidden=false;});});</script>
+{% endif %}

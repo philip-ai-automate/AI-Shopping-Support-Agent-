@@ -48,6 +48,7 @@ OUTCOME_LABEL = dict(OUTCOMES)
 
 # Alert settings live in am_settings (admin_accounts.SETTING_DEFAULTS)
 METHODS = [("phone", "Phone notification"), ("wa", "WhatsApp"), ("both", "Both")]
+VIA_LABEL = {"whatsapp": "WhatsApp", "email": "email", "call": "a phone call"}   # how the business wants a reply
 
 _ready = False
 
@@ -131,9 +132,24 @@ def _problem_title(err: str) -> str:
 
 
 def account_problems(tenant_id: int) -> list:
-    """[{kind, title, error, since, last_ok, number, week}] — WhatsApp sends
-    from this business that started failing and haven't worked since."""
+    """[{kind, title, error, since, last_ok, number, week}] — WhatsApp problems.
+    24 Nov 2026: first Meta's real state from the WhatsApp health check
+    (kind 'health', with state red/yellow and the health kind), then WhatsApp
+    sends that started failing and haven't worked since."""
     out = []
+    try:
+        import wa_health as WH
+        for r in WH.for_tenant(tenant_id):
+            if r["state"] in ("red", "yellow"):
+                out.append({"kind": "health", "state": r["state"], "health": r["kind"], "title": r["head"],
+                            "label": r["label"], "error": r.get("meta_words") or "", "since": r["since"],
+                            "last_ok": None, "number": r["display_number"] or "", "week": 0,
+                            "sentence": WH.sentence(r)})
+        out.sort(key=lambda p: p["state"] != "red")
+    except Exception as e:
+        print("⚠️ support_requests health problems:", e)
+    if any(p.get("state") == "red" for p in out):
+        return out          # Meta's own answer already explains failed sends
     conn, cur = _db()
     try:
         cur.execute("""
@@ -170,6 +186,8 @@ def account_problems(tenant_id: int) -> list:
 
 
 def problem_sentence(p: dict) -> str:
+    if p.get("kind") == "health":
+        return p["sentence"]
     since = uk_day_time(p["since"])
     s = f"{p['title']}. WhatsApp messages{(' from ' + p['number']) if p.get('number') else ''} have not been sent since {since}"
     if p.get("last_ok"):
@@ -291,7 +309,7 @@ def create(tenant_id: int, customer_id, team_member_id, person_name: str, via: s
         _log(cur, tenant_id, "support", None,
              subject="Asked for a person in Ask PhiXtra",
              body=(f"{person_name or 'Someone'} · {n} question{'s' if n != 1 else ''} · prefers "
-                   f"{'WhatsApp' if via == 'whatsapp' else 'email'} ({contact or 'no contact given'})"
+                   f"{VIA_LABEL.get(via, 'email')} ({contact or 'no contact given'})"
                    + (f"\nNote: {note}" if note else "")))
         if question_ids:
             cur.execute("UPDATE ask_phixtra_questions SET emailed=TRUE WHERE id = ANY(%s)", (list(question_ids),))
@@ -299,6 +317,29 @@ def create(tenant_id: int, customer_id, team_member_id, person_name: str, via: s
     finally:
         cur.close(); conn.close()
     insert_audit_log(action="support_request_opened", tenant_id=tenant_id, details={"id": req["id"], "via": via})
+    return req, True
+
+
+def create_auto(tenant_id: int, problem: str) -> tuple:
+    """(request, created): opened by the WhatsApp health check (24 Nov 2026),
+    nobody asked. Replies go to the owner's email (WhatsApp may be the problem)."""
+    ensure_tables()
+    existing = open_request(tenant_id)
+    if existing:
+        return existing, False
+    conn, cur = _db()
+    try:
+        cur.execute("""SELECT email FROM customers WHERE tenant_id=%s ORDER BY id LIMIT 1""", (tenant_id,))
+        email = (cur.fetchone() or {}).get("email") or ""
+        cur.execute("""INSERT INTO support_requests (tenant_id, person_name, via, contact, problem)
+                       VALUES (%s,'','email',%s,%s) RETURNING *""", (tenant_id, email, problem))
+        req = _dec(cur.fetchone())
+        _log(cur, tenant_id, "support", None, subject="Support request opened by the WhatsApp health check",
+             body=problem)
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    insert_audit_log(action="support_request_opened", tenant_id=tenant_id, details={"id": req["id"], "via": "auto"})
     return req, True
 
 
@@ -595,8 +636,9 @@ def send_alerts(req: dict, stage: str = "first") -> dict:
     if use_push:
         title = (f"Reminder: {business} still needs a person" if stage == "remind" else f"{business} needs a person")
         body = (req.get("problem") or "").split(".")[0] or f"{first} asked for a person in Ask PhiXtra"
-        res["push"] = _push([p["username"] for p in who], title, f"{first}: asked for a person · {body}"[:170],
-                            url, f"support-{req['id']}")
+        text = (f"{first}: asked for a person · {body}" if (req.get("person_name") or "").strip()
+                else f"WhatsApp problem found · {body}")
+        res["push"] = _push([p["username"] for p in who], title, text[:170], url, f"support-{req['id']}")
     if wa_now and alert_template_ready():
         res["wa"] = _wa_alert([p["wa_number"] for p in who if p["wa_number"]], business, since, req["tenant_id"])
     conn, cur = _db()
@@ -660,6 +702,7 @@ def send_email(req: dict) -> bool:
                     f'<div style="white-space:pre-wrap">{e(m["text"])}</div></div>')
     url = f"{PORTAL}/admin/accounts/{req['tenant_id']}#support"
     contact_line = (f"WhatsApp {e(req['contact'])} (their choice)" if req["via"] == "whatsapp"
+                    else f"Call them on {e(req['contact'] or '')} (their choice)" if req["via"] == "call"
                     else f"Email {e(req['contact'] or '')} (their choice)")
     body = f"""<div style="font-family:Arial,sans-serif;font-size:14px;color:#030C18;max-width:640px">
 <div style="background:#030C18;color:#fff;padding:14px 18px;border-radius:10px 10px 0 0;font-size:17px;font-weight:bold">{e(first)} asked for a person · {uk_day_time(req['created_at'])} UK</div>

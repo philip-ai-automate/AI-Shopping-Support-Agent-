@@ -142,8 +142,12 @@
     ho = ho || {};
     var box = document.createElement('div'); box.className = 'apx-ho';
     var opts = '';
-    if (ho.phone) opts += '<label class="opt"><input type="radio" name="apxVia" value="whatsapp" checked> WhatsApp · ' + esc(ho.phone) + '</label>';
-    if (ho.email) opts += '<label class="opt"><input type="radio" name="apxVia" value="email"' + (ho.phone ? '' : ' checked') + '> Email · ' + esc(ho.email) + '</label>';
+    // 24 Nov 2026: no WhatsApp when their contact number IS the WhatsApp number with the problem; "Call me" added.
+    var waOk = ho.phone && !ho.wa_blocked;
+    if (waOk) opts += '<label class="opt"><input type="radio" name="apxVia" value="whatsapp" checked> WhatsApp · ' + esc(ho.phone) + '</label>';
+    if (ho.email) opts += '<label class="opt"><input type="radio" name="apxVia" value="email"' + (waOk ? '' : ' checked') + '> Email · ' + esc(ho.email) + '</label>';
+    if (ho.phone) opts += '<label class="opt"><input type="radio" name="apxVia" value="call"' + (waOk || ho.email ? '' : ' checked') + '> Call me · ' + esc(ho.phone) + '</label>';
+    if (ho.phone && ho.wa_blocked) opts += '<p class="apx-note">WhatsApp isn&rsquo;t offered: ' + esc(ho.phone) + ' is the WhatsApp number with the problem, so our reply wouldn&rsquo;t reach you there.</p>';
     box.innerHTML = (ho.open ? '<p class="apx-note">The PhiXtra team already has your request (sent at ' + esc(ho.open.at) + ' UK time). You can add to it here.</p>' : '')
       + (opts ? '<fieldset><legend>How should we contact you?</legend>' + opts + '</fieldset>' : '')
       + '<label class="nt">Anything to add? (optional)<textarea rows="2" maxlength="1000" placeholder="e.g. best time to call"></textarea></label>'

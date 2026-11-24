@@ -565,6 +565,15 @@ async def receive_webhook(
         await handle_messenger_webhook(payload, body, x_hub_signature_256 or "")
         return {"status": "ok"}
 
+    # Meta account-health warnings (24 Nov 2026): banned/restricted, quality,
+    # reviews, alerts. Kept for the portal's health check (meta_health_events.py);
+    # until now they fell through to "ignored" below.
+    from meta_health_events import is_health_payload, only_health, store_health_events
+    if is_health_payload(payload):
+        store_health_events(payload, body, x_hub_signature_256 or "")
+        if only_health(payload):
+            return {"status": "ok", "reason": "health"}
+
     # WhatsApp calls (2026-10-20): call events, call statuses and replies to
     # "Can we call you?" — see wa_calls.py. Handled before message statuses
     # because outgoing-call statuses use the same "statuses" list.
