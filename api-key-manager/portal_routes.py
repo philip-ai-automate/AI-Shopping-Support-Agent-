@@ -36986,7 +36986,7 @@ def my_inbox():
     )
 
 
-INBOX_UI2_FOR_ALL = False   # new Inbox design for every business (17 Nov 2026) — flip after the owner's test
+INBOX_UI2_FOR_ALL = True    # new Inbox design for every business (17 Nov 2026), on for everyone 25 Nov 2026
 
 
 @portal_bp.route("/inbox/api/customer")
