@@ -17,6 +17,9 @@ load_dotenv()
 def create_app():
     flask_app = Flask(__name__, template_folder="templates", static_folder="static")
     flask_app.secret_key = os.getenv("PORTAL_SECRET_KEY", "change-this-secret-in-env")
+    # Form security (CSRF): every form/action needs this session's token (QA Lead, live 25 Nov 2026)
+    import csrf_protect
+    csrf_protect.init_app(flask_app)
     # WhatsApp account health in the business portal (24 Nov 2026): bar, popup, Dashboard, WhatsApp Connect
     import wa_health as _wa_health
     _wa_health.register_portal(flask_app)
