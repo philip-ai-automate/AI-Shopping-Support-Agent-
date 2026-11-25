@@ -25,11 +25,14 @@ that doesn't line up. It runs at every portal start (logged) and live on
 
 UPDATE POLICY — every new or changed feature, no exceptions:
   1. Label the route (above). An unlabelled route is flagged.
-  2. Any new permission key goes in PLAN_FEATURE_CATALOG + ROLE_FORM_GRID.
+  2. Any new permission key goes in PLAN_FEATURE_CATALOG + ROLE_FORM_GRID,
+     and in plan_catalog.KEY_HOME with the menu page it lives on.
   3. The route checks its key(s) in-route (_require_team_permission etc.).
-  4. New keys are granted to every existing plan automatically (see
-     sync_new_feature_keys_to_plans) but are NEVER auto-ticked on existing
-     team roles — the business owner decides who gets them.
+  4. New keys start PENDING (25 Nov 2026, plan_catalog.py): on no plan and
+     hidden from every business until an admin chooses plans in Admin › Plans.
+     (Until then they were granted to every plan by itself — that is how new
+     features leaked into the free plan.) They are NEVER auto-ticked on
+     existing team roles — the business owner decides who gets them.
   5. Features are sold through Plans only (Plan editor tick-boxes). Credit
      Packages sell extra AI-message credits and nothing else (2026-09-23).
   6. Every "does the plan include X" check uses a Plan editor tick-box key,
@@ -222,7 +225,10 @@ def check_feature_access(app, catalog, role_grid, plan_only_keys, granted_keys=N
 
 
 def sync_new_feature_keys_to_plans(catalog, get_db_connection):
-    """Policy rule 4: the first time a catalog key is ever seen, grant it to
+    """NO LONGER CALLED (25 Nov 2026) — replaced by plan_catalog.sync_state,
+    which keeps new keys pending instead of granting them. Kept for reference.
+
+    Old policy rule 4: the first time a catalog key is ever seen, grant it to
     every existing plan (same 'don't take away what was open' rule every
     earlier catalog expansion followed by hand in portal_migrations.py).
     Remembers which keys it has seen in feature_catalog_seen, so a key an

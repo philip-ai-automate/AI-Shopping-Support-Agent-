@@ -487,6 +487,9 @@ PLAN_FEATURE_CATALOG = {
                                    "(staff see only the people who report to them)"),
         ("quotes.approve", "Quotations: approve quotations that need a manager's OK, and send without asking "
                            "(AI Sales Agent for B2B)"),
+        # Quotations got its own plan tick (25 Nov 2026, plan_catalog.py); it used
+        # to borrow AI Lead Qualification. quote_requests.allowed() reads it.
+        ("quotes.page", "Quotations — requests to quote, quotation design and settings (plan unlock)"),
     ],
     # Lead Finder (pilot 2026-10-19, lead_finder_routes.py): find business
     # decision-makers through Prospeo and add them to Leads. Platform business
@@ -688,6 +691,9 @@ PLAN_FEATURE_CATALOG = {
         ("settings.business_edit","Edit business/billing legal information"),
         ("settings.password",     "Change password"),
         ("settings.cancel_plan",  "Cancel subscription plan"),
+        # Settings › Chat Box got its own plan tick (25 Nov 2026, plan_catalog.py);
+        # it used to borrow Store Information + Connect Website.
+        ("settings.chatbox",      "Chat Box — put the chat box on the website and set its look (plan unlock)"),
     ],
 }
 
@@ -751,6 +757,7 @@ ROLE_FORM_GRID = {
          "other": ["crm.columns_own"]},
         {"label": "Team performance", "view": "leads.team_performance"},
         {"label": "Quotations: approve quotations", "other": ["quotes.approve"]},
+        {"label": "Quotations (plan unlock)", "other": ["quotes.page"]},
     ],
     "Lead Finder": [
         {"label": "Find New Leads", "view": "leadfinder.search", "create": "leadfinder.add"},
@@ -872,6 +879,7 @@ ROLE_FORM_GRID = {
         {"label": "Video Tutorials",  "view": "help.videos"},
     ],
     "Settings": [
+        {"label": "Chat Box (plan unlock)", "other": ["settings.chatbox"]},
         {"label": "Account Settings", "view": "settings.account"},
         {"label": "Profile",          "edit": "settings.profile_edit",   "needs_view": "settings.account"},
         {"label": "Business Info",    "edit": "settings.business_edit",  "needs_view": "settings.account"},
@@ -897,6 +905,8 @@ PLAN_ONLY_FEATURE_KEYS = {
     "leads.see_all", "crm.contacts_see_all", "inbox.see_all",
     # Approvals (2026-11-10): read in code, not a page.
     "quotes.approve",
+    # Plan ticks of their own (25 Nov 2026): Quotations and Settings › Chat Box.
+    "quotes.page", "settings.chatbox",
     # Saved Emails: which saved emails a team member sees (2026-10-08).
     "campaigns_email.saved_see_all",
     # Read when an email campaign sends (2026-10-08), not a page of its own.
@@ -7372,8 +7382,7 @@ def settings_chatbox():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information") \
-        or _require_plan_sub_feature(customer, "store.website_connect", "Connect Website")
+    r2 = _require_plan_sub_feature(customer, "settings.chatbox", "Chat Box")
     if r2: return r2
     r3 = _require_team_permission("store.info")
     if r3: return r3
@@ -7444,8 +7453,7 @@ def store_info_website_chatbox_customise():
     if r: return r
     customer  = _get_customer(_customer_id())
     tenant_id = int(customer["tenant_id"])
-    r2 = _require_plan_sub_feature(customer, "store.info", "Store Information") \
-        or _require_plan_sub_feature(customer, "store.website_connect", "Connect Website")
+    r2 = _require_plan_sub_feature(customer, "settings.chatbox", "Chat Box")
     if r2: return r2
     r3 = _require_team_permission("store.info")
     if r3: return r3

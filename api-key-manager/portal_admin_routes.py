@@ -5404,10 +5404,112 @@ def admin_plans():
     tenants = cur.fetchall() or []
     cur.close(); conn.close()
 
+    # New features waiting for plans + ticks that left the portal (plan_catalog).
+    import plan_catalog
+    from flask import current_app
+    conn = get_db_connection(); pcur = conn.cursor()
+    try:
+        pc_pending = plan_catalog.pending_rows(current_app, PLAN_EDITOR_CATALOG, pcur, PLAN_LOCK_CODE_PATHS)
+        pc_removed = plan_catalog.removed_rows(pcur)
+        conn.commit()
+    finally:
+        pcur.close(); conn.close()
+
     return render_template("portal/admin_plans.html",
                            plans=plans, tenants=tenants,
+                           pc_pending=pc_pending, pc_removed=pc_removed,
+                           pc_can_modify=_is_owner() or bool(
+                               session.get("portal_admin_permissions", {}).get("plans", {}).get("modify")),
                            can_delete_plans=_is_owner() or bool(
                                session.get("portal_admin_permissions", {}).get("plans", {}).get("delete")))
+
+
+@portal_admin_bp.route("/plans/new-features", methods=["POST"])
+def admin_plans_new_features():
+    """Plans page box: choose plans for features that were just added to the
+    portal. Saving decides every feature in the box — the ones given no plan
+    then show with a padlock on every plan instead of being hidden."""
+    r = _require_admin("plans", "modify")
+    if r: return r
+    import plan_catalog
+    from flask import current_app
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        rows = plan_catalog.pending_rows(current_app, PLAN_EDITOR_CATALOG, cur, PLAN_LOCK_CODE_PATHS)
+        keys = [x["key"] for x in rows]
+        cur.execute("SELECT id FROM plans")
+        plan_ids = [x[0] for x in cur.fetchall()]
+        given = []
+        for k in keys:
+            for pid in plan_ids:
+                if request.form.get(f"g::{k}::{pid}") == "on":
+                    if k.startswith("legacy:"):
+                        cur.execute(f"UPDATE plans SET {k.split(':', 1)[1]} = TRUE WHERE id=%s", (pid,))
+                    else:
+                        cur.execute("INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s,%s) "
+                                    "ON CONFLICT DO NOTHING", (pid, k))
+                    given.append((k, pid))
+        plan_catalog.mark_decided(cur, keys, _admin_user())
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    insert_audit_log(action="plan_new_features_decided", admin_username=_admin_user(),
+                     details={"features": keys, "given": [f"{k}@{p}" for k, p in given]})
+    flash(f"Saved. {len(keys)} new feature{'s' if len(keys) != 1 else ''} now show to businesses "
+          f"(with a padlock where the plan doesn't include them).", "success")
+    return redirect(url_for("portal_admin.admin_plans"))
+
+
+@portal_admin_bp.route("/plans/removed/clean-up", methods=["POST"])
+def admin_plans_removed_cleanup():
+    """Plans page box: take ticks whose page left the portal off every plan."""
+    r = _require_admin("plans", "modify")
+    if r: return r
+    import plan_catalog
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        rows = plan_catalog.removed_rows(cur)
+        keys = [x["key"] for x in rows]
+        if keys:
+            cur.execute("DELETE FROM plan_feature_grants WHERE feature_key = ANY(%s)", (keys,))
+            cur.execute("UPDATE plan_catalog_state SET status='cleaned' WHERE feature_key = ANY(%s)", (keys,))
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    insert_audit_log(action="plan_removed_features_cleaned", admin_username=_admin_user(),
+                     details={"features": keys})
+    flash(f"Cleaned up {len(keys)} tick{'s' if len(keys) != 1 else ''} from every plan.", "success")
+    return redirect(url_for("portal_admin.admin_plans"))
+
+
+@portal_admin_bp.route("/plans/check")
+def admin_plans_check():
+    """Plan check: everything out of step between plans, the portal menu and
+    the pricing page. The same check runs on every portal update."""
+    r = _require_admin("plans", "view")
+    if r: return r
+    import plan_catalog, pricing_lines
+    from flask import current_app
+    res = plan_catalog.check(current_app, PLAN_EDITOR_CATALOG, PLAN_LOCK_CODE_PATHS)
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        pending = plan_catalog.pending_rows(current_app, PLAN_EDITOR_CATALOG, cur, PLAN_LOCK_CODE_PATHS)
+        price_issues = pricing_lines.issues(cur)
+        # Plan ticks switched on in the database that Plan management doesn't show.
+        shown = {k for _l in PLAN_FEATURE_CATALOG.values() for k, _x in _l}
+        cur.execute("""SELECT g.feature_key, COUNT(*) FROM plan_feature_grants g
+                       GROUP BY 1 ORDER BY 1""")
+        for k, n in cur.fetchall():
+            if k not in shown:
+                res["warnings"].append({"area": "Hidden plan switch",
+                                        "item": f"{k} (on {n} plan{'s' if n != 1 else ''})",
+                                        "fix": "Some code checks this plan key, but Plan management doesn't show it. "
+                                               "Add it to PLAN_FEATURE_CATALOG + KEY_HOME, or remove the check"})
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    return render_template("portal/admin_plans_check.html", res=res, pending=pending,
+                           price_issues=price_issues)
 
 
 # Flattened (feature_key, label) pairs across every group in the catalog —
@@ -5472,9 +5574,54 @@ def _granted_feature_keys(form) -> list:
             if not key.startswith("legacy:") and form.get(key) == "on"]
 
 
-def _save_plan_feature_grants(conn, plan_id: int, granted_keys: list) -> None:
+# ── Plan editor list from the live portal (plan_catalog.py, 25 Nov 2026) ────
+def _plan_form_render(**kw):
+    """admin_plan_form.html with the Features card built from the live menu:
+    groups and page names follow the portal, NEW / RENAMED / MOVED labels,
+    and ticks that left the portal listed under Removed."""
+    import plan_catalog
+    from flask import current_app
+    plan = kw.get("plan") or {}
+    granted = set(kw.get("granted_keys") or ())
+    for key, _label in _ALL_CATALOG_ITEMS:
+        if key.startswith("legacy:") and plan.get(key.split(":", 1)[1]):
+            granted.add(key)
+    conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("DELETE FROM plan_feature_grants WHERE plan_id=%s", (plan_id,))
+    try:
+        groups, removed, counts = plan_catalog.editor_groups(
+            current_app, PLAN_EDITOR_CATALOG, cur, plan.get("id"), granted, PLAN_LOCK_CODE_PATHS)
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    kw.update(pc_groups=groups, pc_removed=removed, pc_counts=counts,
+              pc_total=sum(g["total"] for g in groups))
+    return render_template("portal/admin_plan_form.html", **kw)
+
+
+def _plan_after_save(plan_id, granted_keys):
+    """Remember when this plan was saved (labels count from then) and mark any
+    waiting feature ticked here as decided — it is no longer hidden."""
+    import plan_catalog
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        plan_catalog.record_save(cur, plan_id)
+        pend = plan_catalog.pending_keys()
+        plan_catalog.mark_decided(cur, [k for k in granted_keys if k in pend], _admin_user())
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+
+
+def _save_plan_feature_grants(conn, plan_id: int, granted_keys: list) -> None:
+    # Only the ticks Plan management shows are rewritten. Keys it doesn't show
+    # (e.g. ecom.catalogue_*) used to be wiped by every save — found 25 Nov
+    # 2026; they are kept now and listed by Plan check instead.
+    cur = conn.cursor()
+    editor_keys = [k for k, _l in _ALL_CATALOG_ITEMS if not k.startswith("legacy:")]
+    cur.execute("DELETE FROM plan_feature_grants WHERE plan_id=%s AND feature_key = ANY(%s)",
+                (plan_id, editor_keys))
     for key in granted_keys:
         cur.execute(
             "INSERT INTO plan_feature_grants (plan_id, feature_key) VALUES (%s, %s) ON CONFLICT DO NOTHING",
@@ -5499,7 +5646,7 @@ def admin_plans_new():
         if not data["slug"] or not data["name"]:
             flash("Plan name and slug are required.", "danger")
             cur.close(); conn.close()
-            return render_template("portal/admin_plan_form.html", plan=data,
+            return _plan_form_render( plan=data,
                                     parent_candidates=parent_candidates,
                                     feature_catalog=PLAN_EDITOR_CATALOG,
                                     granted_keys=_granted_feature_keys(request.form), is_new=True)
@@ -5514,6 +5661,7 @@ def admin_plans_new():
             conn.commit()
             cur2.close()
             _save_plan_feature_grants(conn, new_id, _granted_feature_keys(request.form))
+            _plan_after_save(new_id, _granted_feature_keys(request.form))
             cur.close(); conn.close()
             insert_audit_log(action="plan_create", admin_username=_admin_user(),
                              details={"plan_id": new_id, "slug": data["slug"]})
@@ -5523,7 +5671,7 @@ def admin_plans_new():
             conn.rollback()
             cur.close(); conn.close()
             flash(f"A plan with slug \"{data['slug']}\" already exists — choose a different slug.", "danger")
-            return render_template("portal/admin_plan_form.html", plan=data,
+            return _plan_form_render( plan=data,
                                     parent_candidates=parent_candidates,
                                     feature_catalog=PLAN_EDITOR_CATALOG,
                                     granted_keys=_granted_feature_keys(request.form), is_new=True)
@@ -5540,7 +5688,7 @@ def admin_plans_new():
     for feature_key, _label in _ALL_CATALOG_ITEMS:
         if feature_key.startswith("legacy:"):
             blank[feature_key.split(":", 1)[1]] = False
-    return render_template("portal/admin_plan_form.html", plan=blank,
+    return _plan_form_render( plan=blank,
                             parent_candidates=parent_candidates,
                             feature_catalog=PLAN_EDITOR_CATALOG,
                             granted_keys=set(), is_new=True)
@@ -5561,7 +5709,7 @@ def admin_plans_edit(plan_id: int):
         if not data["slug"] or not data["name"]:
             flash("Plan name and slug are required.", "danger")
             cur.close(); conn.close()
-            return render_template("portal/admin_plan_form.html", plan=dict(data, id=plan_id),
+            return _plan_form_render( plan=dict(data, id=plan_id),
                                     parent_candidates=parent_candidates,
                                     feature_catalog=PLAN_EDITOR_CATALOG,
                                     granted_keys=_granted_feature_keys(request.form), is_new=False)
@@ -5575,6 +5723,7 @@ def admin_plans_edit(plan_id: int):
             conn.commit()
             cur2.close()
             _save_plan_feature_grants(conn, plan_id, _granted_feature_keys(request.form))
+            _plan_after_save(plan_id, _granted_feature_keys(request.form))
             cur.close(); conn.close()
             insert_audit_log(action="plan_update", admin_username=_admin_user(),
                              details={"plan_id": plan_id, "slug": data["slug"]})
@@ -5584,7 +5733,7 @@ def admin_plans_edit(plan_id: int):
             conn.rollback()
             cur.close(); conn.close()
             flash(f"A plan with slug \"{data['slug']}\" already exists — choose a different slug.", "danger")
-            return render_template("portal/admin_plan_form.html", plan=dict(data, id=plan_id),
+            return _plan_form_render( plan=dict(data, id=plan_id),
                                     parent_candidates=parent_candidates,
                                     feature_catalog=PLAN_EDITOR_CATALOG,
                                     granted_keys=_granted_feature_keys(request.form), is_new=False)
@@ -5597,7 +5746,7 @@ def admin_plans_edit(plan_id: int):
     if not plan:
         flash("Plan not found.", "danger")
         return redirect(url_for("portal_admin.admin_plans"))
-    return render_template("portal/admin_plan_form.html", plan=plan,
+    return _plan_form_render( plan=plan,
                             parent_candidates=parent_candidates,
                             feature_catalog=PLAN_EDITOR_CATALOG,
                             granted_keys=granted_keys, is_new=False,
@@ -6738,3 +6887,182 @@ def _am_managers() -> list:
     """Admin logins an account can be assigned to: [{id: username, name}]."""
     return [{"id": u["username"], "name": f"{_admin_accounts.manager_name(u['username'])} ({u['username']})"}
             for u in _admin_accounts.admin_users()]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PLANS › PRICING PAGE (pricing_lines.py, 25 Nov 2026)
+# The comparison table on phixtra.com/pricing, worked out from the plans.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _pricing_ctx(cur, tbl):
+    import plan_catalog, pricing_lines
+    from flask import current_app
+    pending, removed = pricing_lines._catalog_sets(cur)
+    view = pricing_lines.table_view(cur, tbl, pending, removed)
+    entries, _menu = plan_catalog.build(current_app, PLAN_EDITOR_CATALOG, PLAN_LOCK_CODE_PATHS)
+    labels = {e["key"]: (f"{e['page']} — {e['action']}" if e["page"] else e["action"]) for e in entries}
+    tick_choices = [(e["group"], e["key"], labels[e["key"]]) for e in entries
+                    if e["key"] not in removed]
+    for r in view["rows"]:
+        r["ticks_named"] = [labels.get(k, k) for k in (r["ticks"] or [])]
+        r["limit_named"] = pricing_lines.LIMIT_FIELDS.get(r["limit_field"] or "", ("", ""))[0]
+        r["requires_named"] = labels.get(r["requires_key"] or "", r["requires_key"] or "")
+    unlisted = pricing_lines.unlisted_features(cur, entries)
+    headings = []
+    for r in view["rows"]:
+        if r["heading"] not in headings:
+            headings.append(r["heading"])
+    return dict(view=view, tick_choices=tick_choices, unlisted=unlisted, headings=headings,
+                limit_fields=pricing_lines.LIMIT_FIELDS, channel_names=pricing_lines.CHANNEL_NAMES,
+                tables=pricing_lines.TABLES)
+
+
+@portal_admin_bp.route("/plans/pricing")
+def admin_plans_pricing():
+    r = _require_admin("plans", "view")
+    if r: return r
+    import pricing_lines
+    tbl = request.args.get("tbl") if request.args.get("tbl") in pricing_lines.TABLES else "b2b"
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        ctx = _pricing_ctx(cur, tbl)
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    ch = request.args.get("ch") if request.args.get("ch") in ctx["view"]["channels"] else ctx["view"]["channels"][0]
+    return render_template("portal/admin_plans_pricing.html", tbl=tbl, ch=ch,
+                           open_id=request.args.get("open", type=int),
+                           can_modify=_is_owner() or bool(
+                               session.get("portal_admin_permissions", {}).get("plans", {}).get("modify")),
+                           **ctx)
+
+
+def _pricing_done(tbl, msg, line_id=None):
+    import pricing_lines
+    pricing_lines.clear_cache()
+    if msg:
+        flash(msg, "success")
+    return redirect(url_for("portal_admin.admin_plans_pricing", tbl=tbl, ch=request.form.get("ch") or None)
+                    + (f"#line-{line_id}" if line_id else ""))
+
+
+@portal_admin_bp.route("/plans/pricing/line/<int:line_id>", methods=["POST"])
+def admin_plans_pricing_line(line_id):
+    """Save / hide / show / accept / move one pricing line."""
+    r = _require_admin("plans", "modify")
+    if r: return r
+    import pricing_lines
+    act = request.form.get("act") or "save"
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        pricing_lines.ensure_tables(cur)
+        cur.execute("SELECT tbl, sort, heading, text FROM pricing_lines WHERE id=%s", (line_id,))
+        row = cur.fetchone()
+        if not row:
+            flash("That line no longer exists.", "warning")
+            return redirect(url_for("portal_admin.admin_plans_pricing"))
+        tbl, sort, heading, text = row
+        msg = ""
+        if act == "save":
+            new_text = (request.form.get("text") or "").strip()[:160]
+            if not new_text:
+                flash("The wording can't be empty.", "danger")
+                return redirect(url_for("portal_admin.admin_plans_pricing", tbl=tbl, open=line_id))
+            kind = request.form.get("kind") if request.form.get("kind") in ("ticks", "limit", "support") else "ticks"
+            ticks = [k for k in request.form.getlist("ticks") if k][:12] if kind == "ticks" else []
+            if kind == "ticks" and not ticks:
+                flash("Choose at least one tick, or pick a limit or the support line.", "danger")
+                return redirect(url_for("portal_admin.admin_plans_pricing", tbl=tbl, open=line_id))
+            limit_field = request.form.get("limit_field") if kind == "limit" and request.form.get("limit_field") in pricing_lines.LIMIT_FIELDS else None
+            if kind == "limit" and not limit_field:
+                flash("Choose which plan limit this line shows.", "danger")
+                return redirect(url_for("portal_admin.admin_plans_pricing", tbl=tbl, open=line_id))
+            req = (request.form.get("requires_key") or "").strip() or None
+            new_heading = (request.form.get("heading_new") or "").strip()[:80] or (request.form.get("heading") or heading)
+            link = (request.form.get("link") or "").strip().strip("/")[:120]
+            cur.execute("""UPDATE pricing_lines SET text=%s, link=%s, heading=%s, kind=%s, ticks=%s, limit_field=%s,
+                           requires_key=%s, review_note=CASE WHEN text<>%s OR ticks<>%s THEN NULL ELSE review_note END,
+                           updated_at=NOW(), updated_by=%s WHERE id=%s""",
+                        (new_text, link, new_heading, kind, ticks, limit_field, req, new_text, ticks,
+                         _admin_user(), line_id))
+            msg = "Line saved. The website shows it within 5 minutes."
+        elif act in ("hide", "show"):
+            cur.execute("UPDATE pricing_lines SET hidden=%s, updated_at=NOW(), updated_by=%s WHERE id=%s",
+                        (act == "hide", _admin_user(), line_id))
+            msg = "Line hidden from the pricing page." if act == "hide" else "Line shown on the pricing page again."
+        elif act == "accept":
+            cur.execute("""UPDATE pricing_lines SET site_vals=NULL, review_note=NULL, updated_at=NOW(), updated_by=%s
+                           WHERE id=%s""", (_admin_user(), line_id))
+            msg = "The website now shows what the plans say for this line."
+        elif act in ("up", "down"):
+            cur.execute(f"""SELECT id, sort FROM pricing_lines WHERE tbl=%s AND heading=%s AND sort {'<' if act == 'up' else '>'} %s
+                            ORDER BY sort {'DESC' if act == 'up' else 'ASC'} LIMIT 1""", (tbl, heading, sort))
+            other = cur.fetchone()
+            if other:
+                cur.execute("UPDATE pricing_lines SET sort=%s WHERE id=%s", (other[1], line_id))
+                cur.execute("UPDATE pricing_lines SET sort=%s WHERE id=%s", (sort, other[0]))
+        elif act == "delete":
+            cur.execute("DELETE FROM pricing_lines WHERE id=%s", (line_id,))
+            msg = f"Line “{text}” deleted."
+            line_id = None
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    insert_audit_log(action=f"pricing_line_{act}", admin_username=_admin_user(), details={"line_id": line_id, "table": tbl})
+    return _pricing_done(tbl, msg, line_id)
+
+
+@portal_admin_bp.route("/plans/pricing/new-line", methods=["POST"])
+def admin_plans_pricing_new_line():
+    """+ Add a line under a heading (or for a new feature: ticks prefilled)."""
+    r = _require_admin("plans", "modify")
+    if r: return r
+    import pricing_lines
+    tbl = request.form.get("tbl") if request.form.get("tbl") in pricing_lines.TABLES else "b2b"
+    heading = (request.form.get("heading") or "").strip()[:80] or "New"
+    key = (request.form.get("key") or "").strip()
+    text = (request.form.get("text") or "").strip()[:160] or "New line"
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        pricing_lines.ensure_tables(cur)
+        cur.execute("SELECT COALESCE(MAX(sort), 0) FROM pricing_lines WHERE tbl=%s AND heading=%s", (tbl, heading))
+        sort = cur.fetchone()[0] + 5
+        cur.execute("""INSERT INTO pricing_lines (tbl, heading, text, kind, ticks, sort, hidden, updated_by)
+                       VALUES (%s,%s,%s,'ticks',%s,%s,TRUE,%s) RETURNING id""",
+                    (tbl, heading, text, [key] if key else [], sort, _admin_user()))
+        new_id = cur.fetchone()[0]
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    flash("New line added, hidden for now. Set its wording and ticks, then press Show.", "success")
+    return redirect(url_for("portal_admin.admin_plans_pricing", tbl=tbl, open=new_id) + f"#line-{new_id}")
+
+
+@portal_admin_bp.route("/plans/pricing/feature", methods=["POST"])
+def admin_plans_pricing_feature():
+    """"Show this new feature on the pricing page?" — add to a line, or keep off."""
+    r = _require_admin("plans", "modify")
+    if r: return r
+    import pricing_lines
+    key = (request.form.get("key") or "").strip()
+    act = request.form.get("act")
+    tbl = request.form.get("tbl") if request.form.get("tbl") in pricing_lines.TABLES else "b2b"
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        pricing_lines.ensure_tables(cur)
+        if act == "keep_off":
+            cur.execute("""INSERT INTO pricing_feature_dismissed (feature_key, by_who) VALUES (%s,%s)
+                           ON CONFLICT (feature_key) DO NOTHING""", (key, _admin_user()))
+            msg = "Kept off the pricing page."
+        elif act == "add_to" and request.form.get("line_id", type=int):
+            lid = request.form.get("line_id", type=int)
+            cur.execute("""UPDATE pricing_lines SET ticks = array_append(ticks, %s), kind='ticks',
+                           updated_at=NOW(), updated_by=%s WHERE id=%s AND NOT (%s = ANY(ticks))""",
+                        (key, _admin_user(), lid, key))
+            msg = "Added. That line now needs this tick too for a ✓."
+        else:
+            msg = ""
+        conn.commit()
+    finally:
+        cur.close(); conn.close()
+    return _pricing_done(tbl, msg)

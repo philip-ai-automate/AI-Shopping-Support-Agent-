@@ -93,13 +93,92 @@
 
 .grandfather-toggle { display:inline-flex; align-items:center; gap:7px; cursor:pointer; font-size:11px; color:var(--muted) }
 .grandfather-toggle input { width:15px; height:15px; accent-color: var(--ink); cursor:pointer }
+
+/* New / removed feature boxes (plan_catalog.py, 25 Nov 2026) */
+.pc-box { background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin-bottom:16px }
+.pc-box-new { border-color:#B9CEF5; border-left:4px solid #2E90FA }
+.pc-box-removed { border-color:#FECDCA; border-left:4px solid #F04438 }
+.pc-box-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start }
+.pc-box-title { font-size:15px; font-weight:800; color:var(--ink) }
+.pc-box-head p { margin:4px 0 0; font-size:13px; color:var(--muted); line-height:1.5; max-width:820px }
+.pc-box-foot { display:flex; justify-content:flex-end; margin-top:12px }
+.pc-scroll { overflow-x:auto; margin-top:12px; border:1px solid var(--line); border-radius:10px }
+.pc-grid { border-collapse:collapse; width:100%; font-size:12.5px }
+.pc-grid th { background:#F6F8FB; padding:8px 4px; font-weight:600; font-size:11.5px; line-height:1.25; text-align:center; min-width:64px }
+.pc-grid td { text-align:center; padding:6px 4px; border-top:1px solid rgba(3,12,24,0.08) }
+.pc-grid .pc-first { text-align:left; padding:9px 12px; min-width:220px }
+.pc-grid td.pc-first span { display:block; font-size:11.5px; color:var(--muted) }
+.pc-grid input { width:16px; height:16px; accent-color:var(--ink); cursor:pointer }
+.pc-link { background:none; border:0; color:#2E90FA; font-weight:700; font-size:12px; cursor:pointer; padding:6px }
+.pc-see { font-size:11.5px; font-weight:700; padding:3px 8px; border-radius:999px; white-space:nowrap; background:#F2F4F7; color:#475467 }
+.pc-see.on { background:#E7F6EE; color:#0B6B3A }
+.pc-removed-list { margin:10px 0 0; padding-left:20px; font-size:13px; color:rgba(3,12,24,0.75); line-height:1.9 }
+.pc-review { align-self:flex-start; font-size:11px; font-weight:800; padding:3px 8px; border-radius:999px; background:#2E90FA; color:#fff }
 </style>
 
 <div class="page-header" style="margin-bottom:18px">
   <div><div class="section-title">Plans Management</div>
   <p class="muted">Create/edit plan definitions and assign plans to tenants</p></div>
-  <a href="{{ url_for('portal_admin.admin_plans_new') }}" class="btn btn-primary">+ New Plan</a>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a href="{{ url_for('portal_admin.admin_plans_pricing') }}" class="btn btn-sm" style="background:#fff;border:1px solid var(--line);color:var(--ink)">Pricing page</a>
+    <a href="{{ url_for('portal_admin.admin_plans_check') }}" class="btn btn-sm" style="background:#fff;border:1px solid var(--line);color:var(--ink)">Plan check</a>
+    <a href="{{ url_for('portal_admin.admin_plans_new') }}" class="btn btn-primary">+ New Plan</a>
+  </div>
 </div>
+
+{# ── New features waiting for plans / ticks that left the portal (plan_catalog.py, 25 Nov 2026) ── #}
+{% if pc_pending %}
+<form method="POST" action="{{ url_for('portal_admin.admin_plans_new_features') }}" class="pc-box pc-box-new">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+  <div class="pc-box-head">
+    <div>
+      <div class="pc-box-title">{{ pc_pending|length }} new feature{{ '' if pc_pending|length == 1 else 's' }}: choose which plans get {{ 'it' if pc_pending|length == 1 else 'them' }}</div>
+      <p>Added to the portal since plans were last saved. Until you tick plans and save, {{ 'it is' if pc_pending|length == 1 else 'they are' }} <b>hidden from every business</b>: no menu item, no padlock, not on the pricing page. After you save, ticked plans see {{ 'it' if pc_pending|length == 1 else 'them' }} and other plans see {{ 'it' if pc_pending|length == 1 else 'them' }} with a padlock.</p>
+    </div>
+  </div>
+  <div class="pc-scroll">
+    <table class="pc-grid">
+      <thead><tr>
+        <th class="pc-first">New feature (menu place)</th>
+        {% for p in plans if not p.is_custom %}<th title="{{ p.name }}">{{ p.name|replace('Retail ', '')|replace(' · ', ' · ') }}</th>{% endfor %}
+        <th>All</th><th class="pc-first">Businesses see it</th>
+      </tr></thead>
+      <tbody>
+      {% for f in pc_pending %}
+        <tr data-row="{{ loop.index }}">
+          <td class="pc-first"><b>{{ f.page }} — {{ f.action }}</b><span>{{ f.group }}</span></td>
+          {% for p in plans if not p.is_custom %}
+          <td><input type="checkbox" name="g::{{ f.key }}::{{ p.id }}" aria-label="{{ f.action }} on {{ p.name }}" {% if not pc_can_modify %}disabled{% endif %}></td>
+          {% endfor %}
+          <td><button type="button" class="pc-link" data-tickall>Tick all</button></td>
+          <td class="pc-first"><span class="pc-see" data-see>Hidden from all</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if pc_can_modify %}
+  <div class="pc-box-foot"><button type="submit" class="btn btn-primary">Save</button></div>
+  {% endif %}
+</form>
+{% endif %}
+
+{% if pc_removed %}
+<form method="POST" action="{{ url_for('portal_admin.admin_plans_removed_cleanup') }}" class="pc-box pc-box-removed"
+      onsubmit="return confirm('Take these ticks off every plan? Businesses lose nothing — the pages are already gone.')">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+  <div class="pc-box-head">
+    <div>
+      <div class="pc-box-title">{{ pc_removed|length }} tick{{ '' if pc_removed|length == 1 else 's' }} removed from the portal</div>
+      <p>Their pages are gone, so the ticks no longer do anything. Businesses lose nothing.</p>
+    </div>
+    {% if pc_can_modify %}<button type="submit" class="btn btn-sm" style="background:#fff;border:1px solid var(--ink);color:var(--ink)">Clean up from all plans</button>{% endif %}
+  </div>
+  <ul class="pc-removed-list">
+    {% for x in pc_removed %}<li>{{ x.page or 'No page' }} — {{ x.action }} · {{ x.why }}{% if x.when %} ({{ x.when.strftime('%-d %b') }}){% endif %} · on {{ x.plans }} plan{{ '' if x.plans == 1 else 's' }}</li>{% endfor %}
+  </ul>
+</form>
+{% endif %}
 
 {# ── Summary strip ────────────────────────────────────────────────────────── #}
 <div class="plan-summary-strip">
@@ -183,6 +262,8 @@
              style="width:{{ feat_pct }}%"></div>
       </div>
     </div>
+
+    {% if pc_pending %}<span class="pc-review">{{ pc_pending|length }} new to review</span>{% endif %}
 
     <div class="pc-footer">
       <a href="{{ url_for('portal_admin.admin_plans_edit', plan_id=p.id) }}" class="pc-edit-btn">Edit plan</a>
@@ -329,5 +410,20 @@
   var m = location.hash.match(/^#delete-(\d+)$/);
   if (m) { var b = document.getElementById('delete-' + m[1]); if (b) open(b); }
 })();
+</script>
+
+<script>
+// New-features box: "Tick all" per row + live "Businesses see it" text.
+document.querySelectorAll('.pc-grid tbody tr').forEach(function (tr) {
+  var boxes = tr.querySelectorAll('input[type=checkbox]'), see = tr.querySelector('[data-see]');
+  function upd() {
+    var n = 0; boxes.forEach(function (b) { if (b.checked) n++; });
+    see.textContent = n ? ('After Save: ' + n + ' plan' + (n > 1 ? 's' : '') + ', padlock on the rest') : 'Hidden from all';
+    see.classList.toggle('on', n > 0);
+  }
+  boxes.forEach(function (b) { b.addEventListener('change', upd); });
+  var all = tr.querySelector('[data-tickall]');
+  if (all) all.addEventListener('click', function () { boxes.forEach(function (b) { if (!b.disabled) b.checked = true; }); upd(); });
+});
 </script>
 {% endblock %}

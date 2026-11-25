@@ -1,0 +1,65 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Plan check — PhiXtra Admin{% endblock %}
+
+{% block content %}
+<style>
+.pk-tabs { display:flex; gap:8px; flex-wrap:wrap }
+.pk-tab { padding:8px 14px; border-radius:9px; font-weight:700; font-size:13px; border:1px solid var(--line); background:#fff; color:var(--ink) }
+.pk-tab.on { background:var(--ink); color:#fff; border-color:var(--ink) }
+.pk-sum { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:12px; margin:14px 0 }
+.pk-sum div { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px 16px; font-size:13px; color:var(--muted) }
+.pk-sum b { display:block; color:var(--ink); font-size:14px; margin-top:4px }
+.pk-sec { background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:14px }
+.pk-sec h2 { margin:0 0 4px; font-size:16px; font-weight:800; color:var(--ink) }
+.pk-sec p { margin:0 0 10px; font-size:13px; color:var(--muted) }
+.pk-sec ul { margin:0; padding-left:20px; font-size:13.5px; line-height:1.8 }
+.pk-sec li span { color:var(--muted); font-size:12.5px }
+.pk-n { font-weight:800 }
+.pk-n.bad { color:#B42318 } .pk-n.warn { color:#93370D } .pk-n.ok { color:#12804A }
+</style>
+
+<div class="page-header" style="margin-bottom:6px">
+  <div><div class="section-title">Plan check</div>
+  <p class="muted">Compares plans with the live portal menu, the pages and the pricing page. It also runs on every portal update.</p></div>
+  <div class="pk-tabs">
+    <a class="pk-tab" href="{{ url_for('portal_admin.admin_plans') }}">Plan list</a>
+    <a class="pk-tab" href="{{ url_for('portal_admin.admin_plans_pricing') }}">Pricing page</a>
+    <span class="pk-tab on">Plan check</span>
+  </div>
+</div>
+
+<div class="pk-sum">
+  <div>Stops a portal update<b class="pk-n {{ 'bad' if res.blocking else 'ok' }}">{{ res.blocking|length }} problem{{ '' if res.blocking|length == 1 else 's' }}</b></div>
+  <div>Needs a look<b class="pk-n {{ 'warn' if res.warnings else 'ok' }}">{{ res.warnings|length }}</b></div>
+  <div>New features waiting for plans<b class="pk-n {{ 'warn' if pending else 'ok' }}">{{ pending|length }}</b></div>
+  <div>Pricing page lines to fix<b class="pk-n {{ 'warn' if price_issues else 'ok' }}">{{ price_issues|length }}</b></div>
+</div>
+
+<section class="pk-sec">
+  <h2>Stops a portal update <span class="pk-n {{ 'bad' if res.blocking else 'ok' }}">· {{ res.blocking|length }}</span></h2>
+  <p>A menu page no plan tick controls, or a tick with no page. A portal update won't go live until these are fixed.</p>
+  {% if res.blocking %}<ul>{% for x in res.blocking %}<li><b>{{ x.area }}:</b> {{ x.item }} <span>— {{ x.fix }}</span></li>{% endfor %}</ul>
+  {% else %}<p style="color:#12804A;font-weight:600;margin:0">All clear.</p>{% endif %}
+</section>
+
+<section class="pk-sec">
+  <h2>New features waiting for plans <span class="pk-n {{ 'warn' if pending else 'ok' }}">· {{ pending|length }}</span></h2>
+  <p>Hidden from every business until you choose plans on the <a href="{{ url_for('portal_admin.admin_plans') }}">Plans page</a>.</p>
+  {% if pending %}<ul>{% for f in pending %}<li>{{ f.page }} — {{ f.action }} <span>({{ f.group }})</span></li>{% endfor %}</ul>
+  {% else %}<p style="color:#12804A;font-weight:600;margin:0">None.</p>{% endif %}
+</section>
+
+<section class="pk-sec">
+  <h2>Needs a look <span class="pk-n {{ 'warn' if res.warnings else 'ok' }}">· {{ res.warnings|length }}</span></h2>
+  <p>Doesn't stop an update, but plans and the portal are out of step here.</p>
+  {% if res.warnings %}<ul>{% for x in res.warnings %}<li><b>{{ x.area }}:</b> {{ x.item }} <span>— {{ x.fix }}</span></li>{% endfor %}</ul>
+  {% else %}<p style="color:#12804A;font-weight:600;margin:0">All clear.</p>{% endif %}
+</section>
+
+<section class="pk-sec">
+  <h2>Pricing page vs plans <span class="pk-n {{ 'warn' if price_issues else 'ok' }}">· {{ price_issues|length }}</span></h2>
+  <p>Lines on phixtra.com/pricing that don't match the plans. Fix them on the <a href="{{ url_for('portal_admin.admin_plans_pricing') }}">Pricing page</a> tab.</p>
+  {% if price_issues %}<ul>{% for x in price_issues %}<li><b>{{ x.table }} › {{ x.line }}:</b> <span>{{ x.issue }}</span></li>{% endfor %}</ul>
+  {% else %}<p style="color:#12804A;font-weight:600;margin:0">All clear.</p>{% endif %}
+</section>
+{% endblock %}

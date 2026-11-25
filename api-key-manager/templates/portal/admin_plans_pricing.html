@@ -1,0 +1,239 @@
+{% extends "portal/admin_base.html" %}
+{% block title %}Pricing page — PhiXtra Admin{% endblock %}
+
+{% block content %}
+<style>
+.pp-tabs { display:flex; gap:8px; flex-wrap:wrap }
+.pp-tab { padding:8px 14px; border-radius:9px; font-weight:700; font-size:13px; border:1px solid var(--line); background:#fff; color:var(--ink) }
+.pp-tab.on { background:var(--ink); color:#fff; border-color:var(--ink) }
+.pp-chip { padding:7px 13px; border-radius:999px; font-weight:700; font-size:12.5px; border:1px solid var(--line); background:#fff; color:var(--ink) }
+.pp-chip.on { background:var(--ink); color:#fff; border-color:var(--ink) }
+.pp-wrap { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start; margin-top:14px }
+.pp-card { background:#fff; border:1px solid var(--line); border-radius:14px; overflow:hidden }
+.pp-card-head { padding:14px 16px; border-bottom:1px solid rgba(3,12,24,0.08); display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center }
+.pp-card-head b { color:var(--ink) }
+.pp-card-head span { font-size:12px; color:var(--muted) }
+.pp-scroll { overflow-x:auto }
+.pp-t { border-collapse:collapse; width:100%; font-size:13px }
+.pp-t th { background:#F6F8FB; padding:9px 8px; font-weight:700; text-align:left; font-size:12px }
+.pp-t td { padding:9px 8px; vertical-align:top; border-top:1px solid rgba(3,12,24,0.07) }
+.pp-t .num { text-align:center; white-space:nowrap }
+.pp-head td { background:#EEF2F8; font-weight:800; font-size:12.5px; color:var(--ink) }
+.pp-hidden { opacity:.5 }
+.pp-text { font-weight:600; color:var(--ink) }
+.pp-link { display:block; font-size:11.5px; color:#1D5FD1 }
+.pp-src { font-size:12px; color:rgba(3,12,24,0.7) }
+.pp-src b { color:var(--muted) }
+.pp-warn { display:block; margin-top:5px; font-size:11.5px; line-height:1.45; font-weight:600; padding:5px 8px; border-radius:7px; background:#FFF6E5; color:#93370D }
+.pp-warn.r { background:#FEF3F2; color:#B42318 }
+.pp-badge { display:inline-block; margin-top:4px; font-size:11px; font-weight:700; padding:2px 7px; border-radius:999px; background:#F2F4F7; color:#475467 }
+.pp-y { color:#12804A; font-weight:800 }
+.pp-n { color:#98A2B3 }
+.pp-site { font-size:11px; color:var(--muted) }
+.pp-edit { background:#F8FAFD }
+.pp-edit td { padding:14px 16px 16px }
+.pp-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px }
+.pp-f { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600 }
+.pp-f input, .pp-f select { padding:8px 10px; border:1px solid rgba(3,12,24,0.15); border-radius:8px; font-size:13px; background:#fff }
+.pp-ticks { max-height:220px; overflow:auto; border:1px solid rgba(3,12,24,0.15); border-radius:8px; padding:6px 10px; background:#fff; font-size:12.5px; font-weight:400 }
+.pp-ticks .g { font-weight:800; font-size:11.5px; margin-top:6px; color:var(--muted) }
+.pp-ticks label { display:flex; gap:6px; align-items:flex-start; padding:2px 0 }
+.pp-btns { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:12px }
+.pp-sbtn { padding:6px 10px; border:1px solid rgba(3,12,24,0.2); border-radius:8px; background:#fff; font-size:12px; font-weight:600; cursor:pointer; color:var(--ink) }
+.pp-prev { flex:1 1 100%; min-width:0; max-width:760px }
+.pp-prev .pp-t th { background:#fff; border-bottom:1px solid rgba(3,12,24,0.12) }
+.pp-prices { display:grid; gap:8px; padding:12px 16px; text-align:center; border-bottom:1px solid rgba(3,12,24,0.08) }
+.pp-prices b { display:block; font-size:13px }
+.pp-prices span { font-size:20px; font-weight:800; color:var(--ink) }
+.pp-ask { background:#fff; border:1px solid #B9CEF5; border-left:4px solid #2E90FA; border-radius:14px; padding:14px 16px; margin-top:14px }
+.pp-ask-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px }
+</style>
+
+<div class="page-header" style="margin-bottom:14px">
+  <div><div class="section-title">Plans Management</div>
+  <p class="muted">Pricing page: the comparison table on phixtra.com/pricing, worked out from your plans</p></div>
+  <div class="pp-tabs">
+    <a class="pp-tab" href="{{ url_for('portal_admin.admin_plans') }}">Plan list</a>
+    <span class="pp-tab on">Pricing page</span>
+    <a class="pp-tab" href="{{ url_for('portal_admin.admin_plans_check') }}">Plan check</a>
+  </div>
+</div>
+
+{% for f in unlisted %}
+<div class="pp-ask">
+  <div style="font-weight:800;color:var(--ink)">You put “{{ f.label }}” on {{ f.plans }} plan{{ '' if f.plans == 1 else 's' }}. Show it on the pricing page?</div>
+  <div style="font-size:13px;color:var(--muted);margin-top:3px">Until you choose, the pricing page doesn't mention it.</div>
+  {% if can_modify %}
+  <div class="pp-ask-row">
+    <form method="POST" action="{{ url_for('portal_admin.admin_plans_pricing_feature') }}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input type="hidden" name="key" value="{{ f.key }}"><input type="hidden" name="tbl" value="{{ tbl }}"><input type="hidden" name="act" value="add_to">
+      <label class="sr-only" for="addto-{{ loop.index }}">Line to add it to</label>
+      <select id="addto-{{ loop.index }}" name="line_id" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+        {% for r in view.rows if not r.hidden %}<option value="{{ r.id }}">{{ r.heading }} › {{ r.text }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn btn-sm btn-primary">Add to this line</button>
+    </form>
+    <form method="POST" action="{{ url_for('portal_admin.admin_plans_pricing_new_line') }}">
+      <input type="hidden" name="key" value="{{ f.key }}"><input type="hidden" name="tbl" value="{{ tbl }}">
+      <input type="hidden" name="heading" value="{{ headings[0] if headings else 'New' }}"><input type="hidden" name="text" value="{{ f.label }}">
+      <button type="submit" class="pp-sbtn">Write a new line</button>
+    </form>
+    <form method="POST" action="{{ url_for('portal_admin.admin_plans_pricing_feature') }}">
+      <input type="hidden" name="key" value="{{ f.key }}"><input type="hidden" name="tbl" value="{{ tbl }}"><input type="hidden" name="act" value="keep_off">
+      <button type="submit" class="pp-sbtn">Keep it off the pricing page</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px">
+  {% for k, T in tables.items() %}
+  <a class="pp-chip {% if k == tbl %}on{% endif %}" href="{{ url_for('portal_admin.admin_plans_pricing', tbl=k) }}">{{ T.title }} table</a>
+  {% endfor %}
+  {% if view.channels|length > 1 %}
+  <span style="margin-left:10px;font-size:12px;color:var(--muted)">Showing:</span>
+  {% for c in view.channels %}
+  <a class="pp-chip {% if c == ch %}on{% endif %}" href="{{ url_for('portal_admin.admin_plans_pricing', tbl=tbl, ch=c) }}">{{ channel_names[c] }}</a>
+  {% endfor %}
+  {% endif %}
+  <span style="margin-left:auto;font-size:12px;color:var(--muted)">The website updates within 5 minutes of a change · prices come from each plan's Pricing card</span>
+</div>
+
+<div class="pp-wrap">
+  <section class="pp-card" style="flex:1 1 100%;min-width:0">
+    <div class="pp-card-head"><b>Lines on the pricing page</b><span>✓ / — is worked out from each plan's ticks. You never tick plans here.</span></div>
+    <div class="pp-scroll">
+    <table class="pp-t">
+      <thead><tr>
+        <th style="min-width:230px">Wording customers see</th><th style="min-width:180px">What decides it</th>
+        {% for c in view.columns %}<th class="num">{{ c }}</th>{% endfor %}<th></th>
+      </tr></thead>
+      <tbody>
+      {% set ns = namespace(last=None) %}
+      {% for r in view.rows %}
+        {% if r.heading != ns.last %}{% set ns.last = r.heading %}
+        <tr class="pp-head"><td colspan="{{ view.columns|length + 3 }}">{{ r.heading }}
+          {% if can_modify %}<form method="POST" action="{{ url_for('portal_admin.admin_plans_pricing_new_line') }}" style="display:inline;margin-left:10px">
+            <input type="hidden" name="tbl" value="{{ tbl }}"><input type="hidden" name="heading" value="{{ r.heading }}">
+            <button type="submit" class="pp-sbtn" style="padding:3px 8px;font-size:11px">+ Add a line</button></form>{% endif %}
+        </td></tr>
+        {% endif %}
+        <tr id="line-{{ r.id }}" class="{% if r.hidden %}pp-hidden{% endif %}">
+          <td>
+            <span class="pp-text">{{ r.text }}</span>
+            {% if r.link %}<span class="pp-link">/{{ r.link }}</span>{% endif %}
+            {% for lvl, msg in r.issues %}<span class="pp-warn {{ lvl }}">{{ msg }}</span>{% endfor %}
+            {% if r.hidden %}<span class="pp-badge">Hidden from the pricing page</span>{% endif %}
+          </td>
+          <td class="pp-src">
+            {% if r.kind == 'ticks' %}<b>Ticks:</b> {{ r.ticks_named|join(', ') }}
+            {% elif r.kind == 'limit' %}<b>Limit:</b> {{ r.limit_named }}
+            {% else %}<b>Text:</b> each plan's support line{% endif %}
+            {% if r.requires_key %}<br><b>Only if:</b> {{ r.requires_named }}{% endif %}
+          </td>
+          {% for v in r.computed[ch] %}
+          <td class="num">
+            <span class="{{ 'pp-y' if v == '✓' else ('pp-n' if v == '—' else '') }}">{{ v }}</span>
+            {% if r.differs and r.site and r.site[ch][loop.index0] != v %}<span class="pp-site" style="display:block">website: {{ r.site[ch][loop.index0] }}</span>{% endif %}
+          </td>
+          {% endfor %}
+          <td style="white-space:nowrap">
+            {% if can_modify %}<button type="button" class="pp-sbtn" data-open="{{ r.id }}" aria-expanded="{{ 'true' if open_id == r.id else 'false' }}">Edit</button>{% endif %}
+          </td>
+        </tr>
+        {% if can_modify %}
+        <tr class="pp-edit" data-edit="{{ r.id }}" {% if open_id != r.id %}hidden{% endif %}>
+          <td colspan="{{ view.columns|length + 3 }}">
+            <form method="POST" action="{{ url_for('portal_admin.admin_plans_pricing_line', line_id=r.id) }}">
+              <input type="hidden" name="ch" value="{{ ch }}">
+              <div class="pp-grid">
+                <label class="pp-f">Wording customers see<input type="text" name="text" value="{{ r.text }}" maxlength="160" required></label>
+                <label class="pp-f">Link (optional, a phixtra.com page)<input type="text" name="link" value="{{ r.link }}" maxlength="120" placeholder="e.g. quotation-software"></label>
+                <label class="pp-f">Heading
+                  <select name="heading">{% for h in headings %}<option {% if h == r.heading %}selected{% endif %}>{{ h }}</option>{% endfor %}</select></label>
+                <label class="pp-f">Or a new heading<input type="text" name="heading_new" maxlength="80" placeholder="Leave empty to keep the one above"></label>
+              </div>
+              <div class="pp-grid" style="margin-top:12px">
+                <label class="pp-f">What decides ✓ or the number
+                  <select name="kind" data-kind>
+                    <option value="ticks" {% if r.kind == 'ticks' %}selected{% endif %}>Plan ticks (✓ when the plan has all of them)</option>
+                    <option value="limit" {% if r.kind == 'limit' %}selected{% endif %}>A plan limit (a number)</option>
+                    <option value="support" {% if r.kind == 'support' %}selected{% endif %}>Each plan's support line</option>
+                  </select></label>
+                <label class="pp-f" data-for="limit" {% if r.kind != 'limit' %}hidden{% endif %}>Plan limit
+                  <select name="limit_field">{% for f, lab in limit_fields.items() %}<option value="{{ f }}" {% if f == r.limit_field %}selected{% endif %}>{{ lab[0] }}</option>{% endfor %}</select></label>
+                <label class="pp-f">Only show a value when the plan has (optional)
+                  <select name="requires_key"><option value="">— always —</option>
+                    {% for g, k, lab in tick_choices %}<option value="{{ k }}" {% if k == r.requires_key %}selected{% endif %}>{{ lab }}</option>{% endfor %}
+                  </select></label>
+              </div>
+              <div class="pp-f" data-for="ticks" style="margin-top:12px" {% if r.kind != 'ticks' %}hidden{% endif %}>Plan ticks
+                <div class="pp-ticks">
+                  {% set gs = namespace(g=None) %}
+                  {% for g, k, lab in tick_choices %}
+                    {% if g != gs.g %}{% set gs.g = g %}<div class="g">{{ g }}</div>{% endif %}
+                    <label><input type="checkbox" name="ticks" value="{{ k }}" {% if k in (r.ticks or []) %}checked{% endif %}> {{ lab }}</label>
+                  {% endfor %}
+                </div>
+              </div>
+              <div class="pp-btns">
+                <button type="submit" name="act" value="save" class="btn btn-sm btn-primary">Save line</button>
+                {% if r.differs or r.issues %}<button type="submit" name="act" value="accept" class="pp-sbtn" formnovalidate>Use the plan values on the website</button>{% endif %}
+                <button type="submit" name="act" value="{{ 'show' if r.hidden else 'hide' }}" class="pp-sbtn" formnovalidate>{{ 'Show on the pricing page' if r.hidden else 'Hide from the pricing page' }}</button>
+                <button type="submit" name="act" value="up" class="pp-sbtn" formnovalidate aria-label="Move up">↑</button>
+                <button type="submit" name="act" value="down" class="pp-sbtn" formnovalidate aria-label="Move down">↓</button>
+                <button type="submit" name="act" value="delete" class="pp-sbtn" formnovalidate style="color:#B42318" onclick="return confirm('Delete this line from the pricing page?')">Delete</button>
+              </div>
+            </form>
+          </td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section class="pp-card pp-prev">
+    <div class="pp-card-head" style="flex-direction:column;align-items:flex-start">
+      <b>What phixtra.com/pricing will show{% if view.channels|length > 1 %} · {{ channel_names[ch] }}{% endif %}</b>
+      <span>A line with a warning keeps the website's current value until it's fixed.</span>
+    </div>
+    <div class="pp-prices" style="grid-template-columns:repeat({{ view.columns|length }}, minmax(0,1fr))">
+      {% for p in view.prices %}
+      <div><b>{{ p._name }}</b><span>{% if p[ch] %}{% if p[ch].gbp %}£{{ '{:,.0f}'.format(p[ch].gbp) }}{% else %}Free{% endif %}{% else %}—{% endif %}</span></div>
+      {% endfor %}
+    </div>
+    <table class="pp-t">
+      <tbody>
+      {% set ns2 = namespace(last=None) %}
+      {% for r in view.rows if not r.hidden %}
+        {% if r.heading != ns2.last %}{% set ns2.last = r.heading %}
+        <tr><th colspan="{{ view.columns|length + 1 }}" style="padding-top:12px">{{ r.heading }}</th></tr>{% endif %}
+        <tr><td style="font-weight:500">{{ r.text }}</td>
+          {% for v in r.shown[ch] %}<td class="num"><span class="{{ 'pp-y' if v == '✓' else ('pp-n' if v == '—' else '') }}">{{ v }}</span></td>{% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<script>
+document.querySelectorAll('[data-open]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var row = document.querySelector('[data-edit="' + b.getAttribute('data-open') + '"]');
+    var open = row.hidden; row.hidden = !open; b.setAttribute('aria-expanded', open ? 'true' : 'false');
+    b.textContent = open ? 'Close' : 'Edit';
+  });
+});
+document.querySelectorAll('[data-kind]').forEach(function (s) {
+  function upd() {
+    var f = s.closest('form');
+    f.querySelectorAll('[data-for]').forEach(function (x) { x.hidden = x.getAttribute('data-for') !== s.value; });
+  }
+  s.addEventListener('change', upd);
+});
+</script>
+{% endblock %}

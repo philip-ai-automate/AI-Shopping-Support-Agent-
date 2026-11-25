@@ -181,8 +181,26 @@ def ensure_tables():
 
 
 def allowed(tenant_id) -> bool:
-    import lead_qualify
-    return lead_qualify.allowed(tenant_id)
+    """Quotations is its own plan tick, "quotes.page" (25 Nov 2026,
+    plan_catalog.py). It used to borrow AI Lead Qualification; on the switch-over
+    every plan that had that tick was given this one, so nobody lost access.
+    The platform business (PhiXtra) always has it."""
+    if not tenant_id:
+        return False
+    try:
+        import accounts_core
+        if accounts_core.is_platform_tenant(tenant_id):
+            return True
+    except Exception:
+        pass
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""SELECT 1 FROM tenants t JOIN plan_feature_grants g ON g.plan_id = t.plan_id
+                        WHERE t.id = %s AND g.feature_key = 'quotes.page' LIMIT 1""", (int(tenant_id),))
+        return cur.fetchone() is not None
+    finally:
+        cur.close(); conn.close()
 
 
 # ── settings ────────────────────────────────────────────────────────────────

@@ -75,6 +75,30 @@
 .pf-flags-grid .pf-check input { accent-color:var(--grp-color,var(--ink)) }
 .pf-flags-grid .pf-check:hover { color:var(--grp-color,var(--ink)) }
 
+/* Live plan list (25 Nov 2026) */
+.pf-sync-note { background:#EEF4FF; border:1px solid #B9CEF5; border-radius:10px; padding:12px 14px; margin-bottom:12px; display:flex; flex-direction:column; gap:4px; font-size:13px; line-height:1.5; color:#26344F }
+.pf-sync-note > b { color:#1D3F8A }
+.pf-filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px }
+.pf-filter { padding:7px 13px; border-radius:999px; font-size:12.5px; font-weight:700; cursor:pointer; border:1px solid rgba(3,12,24,0.15); background:#fff; color:var(--ink) }
+.pf-filter.on { background:var(--ink); color:#fff; border-color:var(--ink) }
+.pf-page { padding:6px 14px 4px; border-top:1px solid rgba(3,12,24,0.06) }
+.pf-page:first-of-type { border-top:0 }
+.pf-page-name { font-size:11.5px; font-weight:800; color:var(--grp-color,var(--ink)); text-transform:none; margin-top:4px }
+.pf-also { font-weight:500; color:var(--muted) }
+.pf-page .pf-flags-grid { padding:4px 0 6px }
+.pf-item { display:flex; flex-direction:column; gap:1px; min-width:0 }
+.pf-note { font-size:11px; color:var(--muted) }
+.pf-check.pf-is-new { background:#F2F7FF; border-radius:6px; padding:6px; margin:0 -6px }
+.pf-flags-grid .pf-check { align-items:flex-start }
+.pf-flags-grid .pf-check input { margin-top:2px }
+.pf-pill { font-size:10px; font-weight:800; padding:1px 6px; border-radius:5px; margin-left:4px; white-space:nowrap }
+.pf-pill-new { background:#2E90FA; color:#fff }
+.pf-pill-ren { background:#FEF0C7; color:#93370D }
+.pf-pill-mov { background:#EDE9FE; color:#5B21B6 }
+.pf-removed { border:1px dashed #F04438; border-radius:12px; overflow:hidden; margin-top:4px }
+.pf-removed-head { padding:11px 14px; background:#FEF3F2; border-bottom:1px solid #FECDCA; display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:12px; color:#912018 }
+.pf-removed-head span:first-child { font-weight:800; font-size:12.5px }
+.pf-removed ul { margin:0; padding:10px 14px 10px 30px; font-size:13px; color:var(--muted); line-height:1.8 }
 .pf-actions-spacer { height:8px }
 </style>
 
@@ -235,47 +259,83 @@
     <div class="pf-card-title"><span class="pf-badge" style="background:rgba(240,68,56,0.14)">🔓</span> Features unlocked on this plan</div>
     <p class="pf-hint" style="margin:-8px 0 14px">Tick every page/action this plan's merchants can use. Unchecked ones show an upgrade prompt instead.</p>
 
-    {% set group_icons = {
-      'Leads': '🔥', 'Team': '👥', 'Store Information': '🏬', 'Analytics': '📈',
-      'Inbox': '💬', 'Channels': '📡', 'Voice Calls': '📞', 'WhatsApp': '📱',
-      'CRM': '🗂️', 'AI Assistant': '🤖', 'WooCommerce Plugin': '🛍️',
-      'WhatsApp Campaigns': '📣', 'Email Campaigns': '✉️', 'Reports': '📊',
-      'Products & Orders': '🔌'
-    } %}
-    {% set group_colors = ['#F04438','#F79009','#EAAA08','#12B76A','#15B79E','#0BA5EC',
-                            '#2E90FA','#6172F3','#7A5AF8','#7C3AED','#9E77ED','#EE46BC',
-                            '#F63D68','#DC6803','#667085'] %}
+    {# Built from the live portal menu (plan_catalog.py, 25 Nov 2026): groups and
+       page names follow the menu by themselves; labels show what changed since
+       this plan was last saved. #}
+    {% if pc_counts.new or pc_counts.renamed or pc_counts.moved or pc_counts.removed %}
+    <div class="pf-sync-note">
+      <b>This list updates itself from the portal</b>
+      <span>Groups and page names come from the portal menu.{% if not is_new %} Since this plan was last saved:{% endif %}
+        {% set _bits = [] %}
+        {% if pc_counts.new %}{% set _ = _bits.append('<b>' ~ pc_counts.new ~ ' new</b>' ~ (' (' ~ pc_counts.pending ~ ' hidden from every business until you choose plans)' if pc_counts.pending else '')) %}{% endif %}
+        {% if pc_counts.renamed %}{% set _ = _bits.append('<b>' ~ pc_counts.renamed ~ ' renamed</b>') %}{% endif %}
+        {% if pc_counts.moved %}{% set _ = _bits.append('<b>' ~ pc_counts.moved ~ ' moved</b> to the menu group they now sit in') %}{% endif %}
+        {% if pc_counts.removed %}{% set _ = _bits.append('<b>' ~ pc_counts.removed ~ ' removed</b> (bottom of this list)') %}{% endif %}
+        {{ _bits|join(', ')|safe }}.
+      </span>
+    </div>
+    {% endif %}
+
+    <div class="pf-filters" role="group" aria-label="Show">
+      <button type="button" class="pf-filter on" data-f="all" aria-pressed="true">All ({{ pc_total }})</button>
+      <button type="button" class="pf-filter" data-f="new" aria-pressed="false">New ({{ pc_counts.new }})</button>
+      <button type="button" class="pf-filter" data-f="chg" aria-pressed="false">Renamed or moved ({{ pc_counts.renamed + pc_counts.moved }})</button>
+    </div>
 
     <div id="pfWaNote" style="{% if plan.channel_mode != 'woocommerce' %}display:none;{% endif %}background:#FFFAEB;border:1px solid #FEDF89;color:#93370D;border-radius:10px;padding:12px 14px;font-size:13px;font-weight:600;margin-bottom:14px">
       🔒 WhatsApp needs a Dual Agent plan. The WhatsApp ticks (greyed out below) do nothing on a Website plan — website merchants on this plan won't get WhatsApp.
     </div>
     <style>.pf-wa-off .pf-wa{opacity:.4;pointer-events:none}</style>
-    {% for group_name, items in feature_catalog.items() %}
-    {% set grp_color = group_colors[loop.index0 % group_colors|length] %}
-    <div class="pf-feature-group" data-group="{{ loop.index }}" style="--grp-color:{{ grp_color }};--grp-tint:{{ grp_color }}14">
+
+    {% for g in pc_groups %}
+    <div class="pf-feature-group" data-group="{{ loop.index }}" style="--grp-color:{{ g.colour }};--grp-tint:{{ g.colour }}14">
       <div class="pf-feature-group-head">
         <div class="pf-feature-group-title">
-          <span class="pf-group-icon">{{ group_icons.get(group_name, '⚙️') }}</span> {{ group_name }}
-          <span class="pf-group-count">({{ items|length }})</span>
+          <span class="pf-group-icon"></span> {{ g.name }}
+          <span class="pf-group-count">({{ g.total }})</span>
+          {% if g.new %}<span class="pf-pill pf-pill-new">{{ g.new }} new</span>{% endif %}
         </div>
         <div class="pf-group-links">
           <a onclick="setGroup({{ loop.index }}, true)">All</a>
           <a class="none-link" onclick="setGroup({{ loop.index }}, false)">None</a>
         </div>
       </div>
-      <div class="pf-flags-grid">
-        {% for feature_key, label in items %}
-          {% set _is_wa = feature_key.startswith(('wa.', 'campaigns_wa.', 'woo.message_templates', 'legacy:feat_broadcasts', 'legacy:feat_fw_checkout')) %}
-          {% if feature_key.startswith('legacy:') %}
-            {% set col = feature_key.split(':')[1] %}
-            <label class="pf-check{% if _is_wa %} pf-wa{% endif %}"><input type="checkbox" class="pf-feat-cb" name="{{ feature_key }}" {% if plan[col] %}checked{% endif %} onchange="updateCounter()"> {{ label }}</label>
-          {% else %}
-            <label class="pf-check{% if _is_wa %} pf-wa{% endif %}"><input type="checkbox" class="pf-feat-cb" name="{{ feature_key }}" {% if feature_key in granted_keys %}checked{% endif %} onchange="updateCounter()"> {{ label }}</label>
-          {% endif %}
-        {% endfor %}
+      {% for pg in g.pages %}
+      <div class="pf-page">
+        <div class="pf-page-name">{{ pg.name }}{% if pg.pill == 'moved' %} <span class="pf-pill pf-pill-mov">MOVED</span> <span class="pf-also">{{ pg.note }}</span>{% elif pg.pill == 'renamed' %} <span class="pf-pill pf-pill-ren">RENAMED</span> <span class="pf-also">{{ pg.note }}</span>{% endif %}{% if pg.also %} <span class="pf-also">· also opens {{ pg.also|join(', ') }}</span>{% endif %}</div>
+        <div class="pf-flags-grid">
+          {% for it in pg["items"] %}
+          {% set _is_wa = it.key.startswith(('wa.', 'campaigns_wa.', 'woo.message_templates', 'legacy:feat_broadcasts', 'legacy:feat_fw_checkout')) %}
+          <label class="pf-check{% if _is_wa %} pf-wa{% endif %}{% if it.pill == 'new' %} pf-is-new{% endif %}" data-pill="{{ it.pill or '' }}">
+            <input type="checkbox" class="pf-feat-cb" name="{{ it.key }}" {% if it.checked %}checked{% endif %} onchange="updateCounter()">
+            <span class="pf-item">
+              <span>{{ it.action }}
+                {% if it.pill == 'new' %}<span class="pf-pill pf-pill-new">NEW</span>{% elif it.pill == 'renamed' and not it.quiet %}<span class="pf-pill pf-pill-ren">RENAMED</span>{% elif it.pill == 'moved' and not it.quiet %}<span class="pf-pill pf-pill-mov">MOVED</span>{% endif %}
+              </span>
+              {% if it.note and not it.quiet %}<span class="pf-note">{{ it.note }}</span>{% endif %}
+            </span>
+          </label>
+          {% endfor %}
+        </div>
       </div>
+      {% endfor %}
     </div>
     {% endfor %}
+
+    {% if pc_removed %}
+    <div class="pf-removed" data-removed>
+      <div class="pf-removed-head">
+        <span>Removed from the portal ({{ pc_removed|length }})</span>
+        <span>These ticks no longer open anything. Clean them up once on the Plans page.</span>
+      </div>
+      <ul>
+        {% for x in pc_removed %}
+        <li><s>{{ x.page }} — {{ x.action }}</s>{% if x.why %} · {{ x.why }}{% endif %}
+          {% if x.checked %}<input type="hidden" name="{{ x.key }}" value="on">{% endif %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
   </div>
 
   <div class="pf-actions-spacer"></div>
@@ -310,6 +370,31 @@ function updateCounter() {
   var ringColor = pct >= 80 ? '#12B76A' : (pct >= 40 ? '#F79009' : '#F04438');
   ring.style.setProperty('--ring-color', ringColor);
 }
+
+// Show: All / New / Renamed or moved (25 Nov 2026)
+document.querySelectorAll('.pf-filter').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var f = b.getAttribute('data-f');
+    document.querySelectorAll('.pf-filter').forEach(function (x) { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+    document.querySelectorAll('.pf-feature-group').forEach(function (g) {
+      var any = false;
+      g.querySelectorAll('.pf-page').forEach(function (pg) {
+        var pAny = false;
+        pg.querySelectorAll('.pf-check').forEach(function (c) {
+          var p = c.getAttribute('data-pill');
+          var show = f === 'all' || (f === 'new' && p === 'new') || (f === 'chg' && (p === 'renamed' || p === 'moved'));
+          c.style.display = show ? '' : 'none';
+          if (show) pAny = true;
+        });
+        pg.style.display = pAny ? '' : 'none';
+        if (pAny) any = true;
+      });
+      g.style.display = any ? '' : 'none';
+    });
+    var rm = document.querySelector('[data-removed]');
+    if (rm) rm.style.display = f === 'all' ? '' : 'none';
+  });
+});
 
 document.addEventListener('DOMContentLoaded', updateCounter);
 </script>

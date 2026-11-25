@@ -112,6 +112,21 @@ def create_app():
     flask_app.register_blueprint(shopify_app.shopify_root_bp)
     flask_app.before_request(enforce_demo_lock)
 
+    # phixtra.com/pricing reads its prices and comparison table from here
+    # (pricing_lines.py, 25 Nov 2026). Public, read-only, cached 60 s.
+    @flask_app.route("/public/pricing.json")
+    def public_pricing_json():
+        from flask import Response
+        import pricing_lines
+        try:
+            body = pricing_lines.feed()
+        except Exception as e:
+            print("⚠️ /public/pricing.json:", e)
+            return Response('{"error":"unavailable"}', status=503, mimetype="application/json")
+        resp = Response(body, mimetype="application/json")
+        resp.headers["Cache-Control"] = "public, max-age=60"
+        return resp
+
     # Who's Online (portal_presence): real page opens/actions, once a minute per person
     import portal_presence
     from flask import request as _pr_req, session as _pr_sess
@@ -122,17 +137,25 @@ def create_app():
     flask_app.after_request(access_log.after_request)
     flask_app.context_processor(demo_bar_context)
 
-    # Feature -> Roles/Modules update policy (feature_access.py): grant any
-    # brand-new catalog key to every plan once, then log anything that
-    # doesn't line up. Warns only — never stops the portal starting.
+    # Feature -> Plans/Roles update policy (feature_access.py + plan_catalog.py,
+    # 25 Nov 2026): the Plan editor's list follows the live menu; a brand-new
+    # key is PENDING (on no plan, hidden from businesses) until an admin
+    # chooses plans in Admin › Plans. Then log anything that doesn't line up.
+    # Warns only here — deploy_portal.sh is what stops a bad update.
     try:
         from db import get_db_connection
-        from feature_access import (check_feature_access, sync_new_feature_keys_to_plans,
-                                    PLAN_LOCK_CODE_PATHS)
+        from feature_access import check_feature_access, PLAN_LOCK_CODE_PATHS
         from portal_routes import PLAN_FEATURE_CATALOG, PLAN_EDITOR_CATALOG, ROLE_FORM_GRID, PLAN_ONLY_FEATURE_KEYS
-        added = sync_new_feature_keys_to_plans(PLAN_EDITOR_CATALOG, get_db_connection)  # Accounts is never sold
-        if added:
-            print(f"✅ New features granted to every plan: {', '.join(added)}")
+        import plan_catalog
+        _pc = plan_catalog.sync_state(flask_app, PLAN_EDITOR_CATALOG, get_db_connection, PLAN_LOCK_CODE_PATHS)
+        if _pc.get("new"):
+            print(f"🆕 New plan features (see Admin › Plans): {', '.join(_pc['new'])}")
+        if _pc.get("changed"):
+            print(f"✏️ Plan features renamed or moved with the menu: {', '.join(_pc['changed'])}")
+        if _pc.get("removed"):
+            print(f"🗑️ Plan features no longer in the portal: {', '.join(_pc['removed'])}")
+        for p in plan_catalog.check(flask_app, PLAN_EDITOR_CATALOG, PLAN_LOCK_CODE_PATHS)["blocking"]:
+            print(f"⛔ PLAN CHECK — {p['area']}: {p['item']} — {p['fix']}")
         problems = check_feature_access(flask_app, PLAN_FEATURE_CATALOG, ROLE_FORM_GRID,
                                         PLAN_ONLY_FEATURE_KEYS, code_paths=PLAN_LOCK_CODE_PATHS)
         for p in problems:
@@ -286,6 +309,16 @@ def create_app():
         from feature_access import route_access, TEAM, TEAM_ANY
 
         def staff_can_open(endpoint):
+            # A page whose ticks are all still waiting for plans (plan_catalog)
+            # is hidden from every business; PhiXtra staff opening the
+            # account from Admin still see it, to try it out.
+            if not session.get("impersonate_customer_id"):
+                try:
+                    import plan_catalog
+                    if plan_catalog.endpoint_hidden(flask_app, endpoint):
+                        return False
+                except Exception:
+                    pass
             if not session.get("team_member_id"):
                 return True
             view = flask_app.view_functions.get(endpoint)
@@ -304,7 +337,34 @@ def create_app():
                 return True
             perms = session.get("team_member_permissions") or {}
             return bool(perms.get(feature_key))
-        return {"staff_can_open": staff_can_open, "staff_can": staff_can}
+        def plan_hidden(feature_key):
+            """True while a plan tick is still waiting for plans (plan_catalog):
+            templates hide the item completely — no link, no padlock."""
+            if session.get("impersonate_customer_id"):
+                return False
+            try:
+                import plan_catalog
+                return feature_key in plan_catalog.pending_keys()
+            except Exception:
+                return False
+        return {"staff_can_open": staff_can_open, "staff_can": staff_can, "plan_hidden": plan_hidden}
+
+    @flask_app.before_request
+    def _close_pending_pages():
+        """A page whose ticks are all still waiting for plans is closed to
+        businesses (typed-in links too) until an admin chooses plans."""
+        from flask import session, url_for
+        ep = request.endpoint
+        if not ep or ep == "static" or not session.get("portal_logged_in") \
+                or session.get("impersonate_customer_id") or ep == "portal.dashboard":
+            return None
+        try:
+            import plan_catalog
+            if plan_catalog.endpoint_hidden(flask_app, ep):
+                return redirect(url_for("portal.dashboard"))
+        except Exception as e:
+            print("⚠️ _close_pending_pages:", e)
+        return None
 
     @flask_app.context_processor
     def _inject_sms_enabled():
