@@ -1,0 +1,158 @@
+{# Inbox: send a photo, video or document (26 Nov 2026, approved mock-up
+   "Board 10"). The ＋ button left of the typing box opens this menu (a
+   bottom sheet on phones, a small pop-over on a computer). Choosing a file
+   shows it above the typing box; Send sends it, with whatever is typed as
+   its caption. The form then posts to /inbox/<chat>/attach instead of
+   /reply. The buttons, inputs and preview rows are in _inbox_attach_ui.html. #}
+<div class="att-backdrop" id="attBackdrop" hidden></div>
+<div class="att-sheet" id="attSheet" role="menu" aria-label="Send a file" hidden>
+  <div class="att-grab" aria-hidden="true"></div>
+  <button type="button" role="menuitem" class="att-opt" data-pick="camera">
+    <span class="att-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
+    <span class="att-txt"><b>Take a photo</b></span>
+  </button>
+  <button type="button" role="menuitem" class="att-opt" data-pick="media">
+    <span class="att-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg></span>
+    <span class="att-txt"><b>Photo or video from phone</b></span>
+  </button>
+  <button type="button" role="menuitem" class="att-opt" data-pick="doc">
+    <span class="att-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg></span>
+    <span class="att-txt"><b>Document</b><small>PDF, Word, Excel, e.g. a price list or delivery note</small></span>
+  </button>
+  <button type="button" class="att-cancel" data-att-close>Cancel</button>
+</div>
+<style>
+.reply-textarea-wrap.att-row{display:flex;align-items:flex-start;gap:2px}
+.reply-textarea-wrap.att-row textarea{flex:1;min-width:0}
+.att-btn{flex-shrink:0;width:40px;height:40px;margin:6px 0 0 6px;border-radius:999px;border:1px solid rgba(3,12,24,.18);background:#F2F4F7;
+  color:var(--ink,#030C18);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:.15s;padding:0}
+.att-btn:hover{background:#E4E7EC}
+.att-btn:focus-visible{outline:2px solid #1F3A6B;outline-offset:2px}
+.att-btn.open{background:#1F3A6B;color:#fff;border-color:#1F3A6B}
+.att-btn:disabled{opacity:.45;cursor:not-allowed;background:#F2F4F7;color:var(--muted,#667085)}
+.chat-reply textarea:disabled{background:#F6F7F8;cursor:not-allowed;min-height:48px}
+.att-prev{display:flex;align-items:center;gap:10px;margin:8px 10px 0;padding:8px 10px;border:1px solid #D0D5DD;border-radius:12px;background:#F8FAFC}
+.att-prev[hidden],.att-err[hidden]{display:none}
+.att-thumb{width:44px;height:44px;border-radius:8px;background:#E4E7EC;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:20px}
+.att-thumb img{width:100%;height:100%;object-fit:cover}
+.att-meta{flex:1;min-width:0;display:flex;flex-direction:column}
+.att-name{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.att-size{font-size:11.5px;color:var(--muted,#667085)}
+.att-x{flex-shrink:0;width:32px;height:32px;border-radius:999px;border:none;background:transparent;cursor:pointer;font-size:15px;color:#475467}
+.att-x:hover{background:#E4E7EC}
+.att-err{margin:8px 12px 0;font-size:12.5px;color:#B42318}
+.att-backdrop{position:fixed;inset:0;z-index:1200;background:transparent}
+.att-sheet{position:fixed;z-index:1201;width:300px;background:#fff;border:1px solid var(--line,#E4E7EC);border-radius:14px;
+  box-shadow:0 12px 32px rgba(3,12,24,.18);padding:6px;display:flex;flex-direction:column}
+.att-sheet[hidden],.att-backdrop[hidden]{display:none}
+.att-grab{display:none}
+.att-opt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:none;background:none;border-radius:10px;padding:10px;
+  cursor:pointer;font:inherit;color:var(--ink,#030C18)}
+.att-opt:hover,.att-opt:focus-visible{background:#F2F4F7;outline:none}
+.att-ic{width:38px;height:38px;border-radius:999px;background:#E8EEF8;color:#1F3A6B;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.att-txt{display:flex;flex-direction:column;min-width:0}
+.att-txt b{font-size:14px;font-weight:650}
+.att-txt small{font-size:12px;color:var(--muted,#667085);line-height:1.35}
+.att-cancel{display:none}
+@media(max-width:640px){
+  .att-backdrop{background:rgba(3,12,24,.35)}
+  .att-sheet{left:0!important;right:0;bottom:0!important;top:auto!important;width:auto;border-radius:18px 18px 0 0;
+    padding:8px 12px calc(12px + env(safe-area-inset-bottom))}
+  .att-grab{display:block;width:40px;height:4px;border-radius:999px;background:#D0D5DD;margin:2px auto 8px}
+  .att-opt{padding:12px 8px;min-height:56px}
+  .att-cancel{display:block;margin-top:6px;border:1px solid var(--line,#E4E7EC);background:#fff;border-radius:12px;padding:12px;font:inherit;font-weight:650;cursor:pointer}
+  .att-btn{width:44px;height:44px}
+}
+</style>
+<script>
+// Messenger / website chat bubbles for a file the team sent (also used by
+// the website chat's live updates).
+function attMediaHtml(m){
+  function e(t){return String(t==null?'':t).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  var h;
+  if(m.media_kind==='image') h='<img src="'+e(m.media_url)+'" alt="Photo" class="bubble-media-img" onclick="window.open(this.src,\'_blank\')">';
+  else if(m.media_kind==='video') h='<video src="'+e(m.media_url)+'" controls class="bubble-media-video"></video>';
+  else h='<a href="'+e(m.media_url)+'" target="_blank" rel="noopener" class="bubble-media-doc">📄 '+e(m.media_name||'Document')+'</a>';
+  if(m.content) h+='<div class="bubble-caption">'+(window.chatFmt?chatFmt(m.content):e(m.content))+'</div>';
+  return h;
+}
+(function(){
+  var MB=1024*1024;
+  var KINDS={jpg:'image',jpeg:'image',png:'image',mp4:'video','3gp':'video',pdf:'document',doc:'document',docx:'document',
+             xls:'document',xlsx:'document',csv:'document',txt:'document'};
+  // Photos over 5 MB are made smaller on the server, so up to 25 MB is fine here.
+  var LIMIT={image:25*MB,video:16*MB,document:25*MB}, WORDS={image:'Photos',video:'Videos',document:'Documents'};
+  var sheet=document.getElementById('attSheet'), back=document.getElementById('attBackdrop');
+  if(!sheet) return;
+  var form=null, btn=null;
+  function closeSheet(){
+    sheet.hidden=true; back.hidden=true;
+    if(btn){ btn.classList.remove('open'); btn.setAttribute('aria-expanded','false'); }
+  }
+  function openSheet(b){
+    form=b.closest('form'); btn=b; if(!form) return;
+    b.classList.add('open'); b.setAttribute('aria-expanded','true');
+    sheet.hidden=false; back.hidden=false;
+    if(window.matchMedia('(min-width:641px)').matches){
+      var r=b.getBoundingClientRect();
+      sheet.style.left=Math.max(8,Math.min(r.left,window.innerWidth-sheet.offsetWidth-8))+'px';
+      sheet.style.top=''; sheet.style.bottom=(window.innerHeight-r.top+8)+'px';
+    } else { sheet.style.left=''; sheet.style.bottom=''; }
+    var first=sheet.querySelector('.att-opt'); if(first) first.focus();
+  }
+  function size(n){ return n>=MB ? (n/MB).toFixed(1)+' MB' : Math.max(1,Math.round(n/1024))+' KB'; }
+  function err(f,msg){ var p=f.querySelector('.att-err'); if(p){ p.textContent=msg||''; p.hidden=!msg; } }
+  function clear(f,keep){
+    f.querySelectorAll('.att-in').forEach(function(i){ if(i!==keep) i.value=''; i.removeAttribute('name'); });
+    var pv=f.querySelector('.att-prev'); if(pv){ pv.hidden=true; var th=pv.querySelector('.att-thumb img'); if(th&&th.src) URL.revokeObjectURL(th.src); }
+    if(f.dataset.replyUrl){ f.setAttribute('action',f.dataset.replyUrl); }
+    f.removeAttribute('enctype'); delete f.dataset.attReady;
+  }
+  function picked(input){
+    var f=input.form||input.closest('form'), file=input.files&&input.files[0]; if(!f||!file) return;
+    var ext=(file.name.split('.').pop()||'').toLowerCase(), kind=KINDS[ext];
+    // A photo straight from some phone cameras has no usual name ending.
+    if(!kind && /^image\/(jpeg|png)$/.test(file.type)) kind='image';
+    clear(f,input); err(f,'');
+    if(!kind){ input.value=''; err(f,'This file type can’t be sent. Send a photo (JPG or PNG), a video (MP4 or 3GP) or a document (PDF, Word, Excel, CSV or text).'); return; }
+    if(file.size>LIMIT[kind]){ input.value=''; err(f,'This file is too big to send. '+WORDS[kind]+' can be up to '+(kind==='image'?5:LIMIT[kind]/MB)+' MB.'); return; }
+    input.setAttribute('name','file');
+    if(!f.dataset.replyUrl) f.dataset.replyUrl=f.getAttribute('action');
+    f.setAttribute('action',f.getAttribute('data-attach-url'));
+    f.setAttribute('enctype','multipart/form-data');
+    f.dataset.attReady='1';
+    var pv=f.querySelector('.att-prev'), th=pv.querySelector('.att-thumb');
+    th.innerHTML='';
+    if(kind==='image'){ var im=document.createElement('img'); im.alt=''; im.src=URL.createObjectURL(file); th.appendChild(im); }
+    else th.textContent=kind==='video'?'🎬':'📄';
+    pv.querySelector('.att-name').textContent=file.name;
+    pv.querySelector('.att-size').textContent=size(file.size)+' · anything you type is sent with it';
+    pv.hidden=false;
+    var ta=f.querySelector('textarea[name=reply]'); if(ta) ta.focus();
+  }
+  document.addEventListener('click',function(e){
+    var b=e.target.closest('[data-att-open]');
+    if(b){ e.preventDefault(); if(b.disabled) return; if(!sheet.hidden&&btn===b){ closeSheet(); } else { openSheet(b); } return; }
+    var rm=e.target.closest('[data-att-remove]');
+    if(rm){ e.preventDefault(); var f=rm.closest('form'); clear(f); err(f,''); return; }
+    var o=e.target.closest('[data-pick]');
+    if(o&&form){ var inp=form.querySelector('.att-in[data-att="'+o.getAttribute('data-pick')+'"]'); closeSheet(); if(inp) inp.click(); return; }
+    if(e.target.closest('[data-att-close]')||e.target===back){ closeSheet(); }
+  });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&!sheet.hidden){ closeSheet(); if(btn) btn.focus(); } });
+  document.addEventListener('change',function(e){ if(e.target.classList&&e.target.classList.contains('att-in')) picked(e.target); });
+  window.addEventListener('resize',function(){ if(!sheet.hidden) closeSheet(); });
+  // Sending a file can take a few seconds on a phone: show it's going.
+  document.addEventListener('submit',function(e){
+    var f=e.target; if(!f.dataset||!f.dataset.attReady||e.defaultPrevented) return;
+    var s=f.querySelector('.send-btn');
+    if(s) setTimeout(function(){ s.disabled=true; s.textContent='Sending…'; },0);
+  });
+  // Ctrl+Enter / translation send through form.submit() (no submit event).
+  var P=HTMLFormElement.prototype, ps=P.submit;
+  P.submit=function(){
+    if(this.dataset&&this.dataset.attReady){ var s=this.querySelector('.send-btn'); if(s){ s.disabled=true; s.textContent='Sending…'; } }
+    return ps.apply(this,arguments);
+  };
+})();
+</script>

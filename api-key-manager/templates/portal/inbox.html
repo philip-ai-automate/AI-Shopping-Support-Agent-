@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% import "portal/_inbox_attach_ui.html" as att %}
 {% block title %}Conversations — PhiXtra Portal{% endblock %}
 {% block wrap_class %}inbox-fullpage{% endblock %}
 {% block footer %}{% endblock %}
@@ -1157,15 +1158,19 @@ html, body { overflow: hidden; height: 100%; }
         </div>{% endif -%}
       {%- endmacro %}
       {% macro msg_body(msg) %}
-        {% if msg.media_url and msg.message_type == 'image' %}
+        {% set _mk = msg.media_kind or msg.message_type %}
+        {% if msg.media_url and _mk == 'image' %}
           <img src="{{ msg.media_url }}" alt="Photo" class="bubble-media-img" onclick="window.open(this.src,'_blank')">
           {% if msg.content %}<div class="bubble-caption">{{ msg.content|chat_fmt }}</div>{% endif %}
-        {% elif msg.media_url and msg.message_type == 'video' %}
+        {% elif msg.media_url and _mk == 'video' %}
           <video src="{{ msg.media_url }}" controls class="bubble-media-video"></video>
           {% if msg.content %}<div class="bubble-caption">{{ msg.content|chat_fmt }}</div>{% endif %}
-        {% elif msg.media_url and msg.message_type == 'audio' %}
+        {% elif msg.media_url and _mk == 'audio' %}
           <audio src="{{ msg.media_url }}" controls class="bubble-media-audio"></audio>
-        {% elif msg.media_url and msg.message_type == 'document' %}
+        {% elif msg.media_url and _mk == 'document' and msg.media_name %}
+          <a href="{{ msg.media_url }}" target="_blank" rel="noopener" class="bubble-media-doc">📄 {{ msg.media_name }}</a>
+          {% if msg.content %}<div class="bubble-caption">{{ msg.content|chat_fmt }}</div>{% endif %}
+        {% elif msg.media_url and _mk == 'document' %}
           <a href="{{ msg.media_url }}" target="_blank" rel="noopener" class="bubble-media-doc">📄 {{ msg.content or 'Document' }}</a>
         {% else %}
           {{ (msg.content or '(media message)')|chat_fmt }}
@@ -1266,6 +1271,7 @@ html, body { overflow: hidden; height: 100%; }
           {% endif %}
         </div>
         {% else %}
+        {% if wa_window_closed %}{% include "portal/_inbox_wa24.html" %}{% endif %}
         <div class="reply-wrap">
           <div class="emoji-picker" id="emojiPicker">
             <div class="ep-tabs" id="epTabs"></div>
@@ -1273,24 +1279,33 @@ html, body { overflow: hidden; height: 100%; }
             <div class="ep-grid" id="epGrid"></div>
           </div>
           <div class="reply-inner">
-            <form method="POST" action="{{ url_for('portal.inbox_reply', phone=active_phone) }}" id="replyForm">
+            <form method="POST" action="{{ url_for('portal.inbox_reply', phone=active_phone) }}" id="replyForm"
+                  data-attach-url="{{ url_for('portal.inbox_attach', phone=active_phone) }}">
+              {{ att.inputs() }}
               <div class="reply-field">
                 <div class="reply-toolbar">
-                  <button type="button" class="emoji-trigger" id="emojiBtn" onclick="togglePicker(event)" title="Emoji">😊</button>
+                  <button type="button" class="emoji-trigger" id="emojiBtn" onclick="togglePicker(event)" title="Emoji" {% if wa_window_closed %}disabled{% endif %}>😊</button>
                   <span class="reply-to-label">Message +{{ active_phone }}</span>
                   {% if inbox_ui2 and multi_number and active_conv and active_conv.agent_color %}
                   <span class="reply-from">Replying from <b><i style="background:{{ active_conv.agent_color }}"></i>{{ active_conv.conv_agent_name or '' }}{% if active_conv.conv_wa_number %} · {{ active_conv.conv_wa_number|with_plus }}{% endif %}</b></span>
                   {% endif %}
                 </div>
-                <div class="reply-textarea-wrap">
+                {{ att.preview() }}
+                <div class="reply-textarea-wrap att-row">
+                  {{ att.button(disabled=wa_window_closed) }}
+                  {% if wa_window_closed %}
+                  <textarea name="reply" id="replyBox" rows="3" disabled
+                            placeholder="You can type again when {{ wa_first_name or 'the customer' }} replies"></textarea>
+                  {% else %}
                   <textarea name="reply" id="replyBox" rows="3"
                             placeholder="Type a message…"
                             onkeydown="if(event.ctrlKey&&event.key==='Enter'){this.form.submit()}"></textarea>
+                  {% endif %}
                 </div>
               </div>
               <div class="reply-actions">
                 <span class="reply-hint">Ctrl+Enter to send</span>
-                <button type="submit" class="send-btn">Send&nbsp;➤</button>
+                <button type="submit" class="send-btn" {% if wa_window_closed %}disabled{% endif %}>Send&nbsp;➤</button>
               </div>
             </form>
           </div>
@@ -1414,12 +1429,16 @@ html, body { overflow: hidden; height: 100%; }
           {% else %}
           <div class="reply-wrap">
             <div class="reply-inner">
-              <form method="POST" action="{{ url_for('portal.inbox_reply', phone=active_phone) }}">
+              <form method="POST" action="{{ url_for('portal.inbox_reply', phone=active_phone) }}"
+                    data-attach-url="{{ url_for('portal.inbox_attach', phone=active_phone) }}">
+                {{ att.inputs() }}
                 <div class="reply-field">
                   <div class="reply-toolbar">
                     <span class="reply-to-label">Message this Facebook contact</span>
                   </div>
-                  <div class="reply-textarea-wrap">
+                  {{ att.preview() }}
+                  <div class="reply-textarea-wrap att-row">
+                    {{ att.button() }}
                     <textarea name="reply" rows="3" placeholder="Type a message… (only works within 24h of their last message — Facebook's own rule)"
                               onkeydown="if(event.ctrlKey&&event.key==='Enter'){this.form.submit()}"></textarea>
                   </div>
@@ -1602,7 +1621,8 @@ html, body { overflow: hidden; height: 100%; }
               <div class="bubble-col">
                 <div class="bubble-sender">{{ (msg.sent_by_label|who) or 'You' }}</div>
                 <div class="chat-bubble bubble-agent">
-                  {{ (msg.content or '(message)')|chat_fmt }}
+                  {% if msg.media_url %}{{ att.media(msg) }}{% else %}
+                  {{ (msg.content or '(message)')|chat_fmt }}{% endif %}
                   <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
                 </div>
                 {% if msg.products %}
@@ -1671,14 +1691,18 @@ html, body { overflow: hidden; height: 100%; }
           {% endif %}
           <div class="reply-wrap">
             <div class="reply-inner">
-              <form method="POST" action="{{ url_for('portal.inbox_reply', phone=active_phone) }}">
+              <form method="POST" action="{{ url_for('portal.inbox_reply', phone=active_phone) }}"
+                    data-attach-url="{{ url_for('portal.inbox_attach', phone=active_phone) }}">
+                {{ att.inputs() }}
                 <div class="reply-field">
                   <div class="reply-toolbar">
                     <span class="reply-to-label" id="webReplyLabel"
                           data-online="The visitor is on the website. Your reply shows in their chat box straight away."
                           data-away="The visitor has left. {{ _wc_away }}">{% if _wc_online %}The visitor is on the website. Your reply shows in their chat box straight away.{% else %}The visitor has left. {{ _wc_away }}{% endif %}</span>
                   </div>
-                  <div class="reply-textarea-wrap">
+                  {{ att.preview() }}
+                  <div class="reply-textarea-wrap att-row">
+                    {{ att.button() }}
                     <textarea name="reply" rows="3" placeholder="Type your reply…"
                               onkeydown="if(event.ctrlKey&&event.key==='Enter'){this.form.submit()}"></textarea>
                   </div>
@@ -2118,18 +2142,23 @@ function showNotif(ch,key,name,preview){
 // Mirrors the Jinja msg_body() macro used for the initial server-rendered
 // thread — kept in sync manually since one's Jinja and one's JS.
 function msgBodyHtml(msg){
-  if(msg.media_url && msg.message_type==='image'){
+  var mk=msg.media_kind||msg.message_type;
+  if(msg.media_url && mk==='image'){
     var cap = msg.content ? '<div class="bubble-caption">'+chatFmt(msg.content)+'</div>' : '';
     return '<img src="'+escHtml(msg.media_url)+'" alt="Photo" class="bubble-media-img" onclick="window.open(this.src,\'_blank\')">'+cap;
   }
-  if(msg.media_url && msg.message_type==='video'){
+  if(msg.media_url && mk==='video'){
     var cap = msg.content ? '<div class="bubble-caption">'+chatFmt(msg.content)+'</div>' : '';
     return '<video src="'+escHtml(msg.media_url)+'" controls class="bubble-media-video"></video>'+cap;
   }
-  if(msg.media_url && msg.message_type==='audio'){
+  if(msg.media_url && mk==='audio'){
     return '<audio src="'+escHtml(msg.media_url)+'" controls class="bubble-media-audio"></audio>';
   }
-  if(msg.media_url && msg.message_type==='document'){
+  if(msg.media_url && mk==='document' && msg.media_name){
+    return '<a href="'+escHtml(msg.media_url)+'" target="_blank" rel="noopener" class="bubble-media-doc">📄 '+escHtml(msg.media_name)+'</a>'
+      +(msg.content?'<div class="bubble-caption">'+chatFmt(msg.content)+'</div>':'');
+  }
+  if(msg.media_url && mk==='document'){
     return '<a href="'+escHtml(msg.media_url)+'" target="_blank" rel="noopener" class="bubble-media-doc">📄 '+escHtml(msg.content||'Document')+'</a>';
   }
   return chatFmt(msg.content||'(media message)');
@@ -2213,6 +2242,11 @@ function rtUpdateMessages(messages){
   rtUpdateTicks(messages);
   var newMsgs=RT.lastMsgAt ? messages.filter(function(m){return m.created_at>RT.lastMsgAt;}) : [];
   if(!newMsgs.length) return;
+  // WhatsApp 24-hour box (26 Nov 2026): the customer wrote again, so the
+  // normal reply box comes back.
+  if(document.getElementById('waWindowBox') && newMsgs.some(function(m){return m.direction==='inbound';})){
+    location.reload(); return;
+  }
   RT.lastMsgAt=messages[messages.length-1].created_at;
   newMsgs.forEach(function(msg){ rtAppendMessage(msg, chatEl); });
   var lbl=document.getElementById('msgCountLabel');
@@ -2454,7 +2488,7 @@ document.addEventListener('DOMContentLoaded', function(){
           return '<a class="wc-prod" href="'+esc(p.url||'#')+'" target="_blank" rel="noopener">'+(p.image_url?'<img src="'+esc(p.image_url)+'" alt="" loading="lazy">':'')+'<b>'+esc(p.name)+'</b>'+(p.price?'<span>'+esc(p.price)+'</span>':'')+'<span class="'+(p.in_stock?'ok':'no')+'">'+(p.in_stock?'In stock':'Out of stock')+'</span></a>';
         }).join('')+'</div>';
       }
-      w.innerHTML='<div class="bubble-col"><div class="bubble-sender">'+esc(m.is_ai?'AI Agent':(m.by||'You'))+'</div><div class="chat-bubble bubble-agent">'+chatFmt(m.content)+' <span class="bubble-time">'+esc(m.time)+'</span></div>'+pc+'</div>';
+      w.innerHTML='<div class="bubble-col"><div class="bubble-sender">'+esc(m.is_ai?'AI Agent':(m.by||'You'))+'</div><div class="chat-bubble bubble-agent">'+(m.media_url?attMediaHtml(m):chatFmt(m.content))+' <span class="bubble-time">'+esc(m.time)+'</span></div>'+pc+'</div>';
     }
     box.appendChild(w);
   }
@@ -2528,6 +2562,7 @@ document.addEventListener('DOMContentLoaded', function(){
 })();
 </script>
 {% include "portal/_fix_answer_modal.html" %}
+{% include "portal/_inbox_attach.html" %}
 {% if chat_tr %}{% include "portal/_inbox_translate.html" %}{% endif %}
 {% if staff_can('inbox.send_new') %}{% include 'portal/_send_one_wa.html' %}{% endif %}
 <script>

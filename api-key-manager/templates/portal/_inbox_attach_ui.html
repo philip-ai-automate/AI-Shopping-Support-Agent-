@@ -1,0 +1,38 @@
+{# Inbox: send a photo, video or document (26 Nov 2026, approved mock-up
+   "Board 10"). Pieces used inside each reply form; the menu, styles and
+   script that drive them are in _inbox_attach.html (included once). #}
+
+{% macro button(disabled=False) -%}
+<button type="button" class="att-btn" data-att-open aria-haspopup="menu"
+        aria-label="Send a photo, video or document" title="Send a photo, video or document"{% if disabled %} disabled{% endif %}>
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+{%- endmacro %}
+
+{% macro inputs() -%}
+<input type="file" class="att-in" data-att="camera" accept="image/*" capture="environment" hidden tabindex="-1">
+<input type="file" class="att-in" data-att="media" accept="image/*,video/*" hidden tabindex="-1">
+<input type="file" class="att-in" data-att="doc" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" hidden tabindex="-1">
+{%- endmacro %}
+
+{% macro preview() -%}
+<div class="att-prev" hidden aria-live="polite">
+  <span class="att-thumb" aria-hidden="true"></span>
+  <span class="att-meta"><b class="att-name"></b><small class="att-size"></small></span>
+  <button type="button" class="att-x" data-att-remove aria-label="Remove this file" title="Remove this file">✕</button>
+</div>
+<p class="att-err" hidden role="alert"></p>
+{%- endmacro %}
+
+{# A file the team sent (Messenger / website chat thread). msg has
+   media_url, media_kind, media_name and content (the caption). #}
+{% macro media(msg) -%}
+{% if msg.media_kind == 'image' %}
+  <img src="{{ msg.media_url }}" alt="Photo" class="bubble-media-img" onclick="window.open(this.src,'_blank')">
+{% elif msg.media_kind == 'video' %}
+  <video src="{{ msg.media_url }}" controls class="bubble-media-video"></video>
+{% else %}
+  <a href="{{ msg.media_url }}" target="_blank" rel="noopener" class="bubble-media-doc">📄 {{ msg.media_name or 'Document' }}</a>
+{% endif %}
+{% if msg.content %}<div class="bubble-caption">{{ msg.content|chat_fmt }}</div>{% endif %}
+{%- endmacro %}

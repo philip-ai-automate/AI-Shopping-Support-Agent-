@@ -5,6 +5,7 @@ Extends the existing Flask app. db.py, app.py, invoice_pdf.py, portal_utils.py a
 import psycopg2
 import staff_activity
 import data_crypto   # chat words encrypted at rest (10 Nov 2026)
+import inbox_attach as _inbox_attach   # Inbox files + WhatsApp 24-hour rule (26 Nov 2026)
 import contact_status as _contact_status
 import lead_linkedin as _li
 import lead_followups as _fu
@@ -23131,6 +23132,102 @@ def whatsapp_send_one_upload():
     return _save_wa_media_upload(request.files.get("file"))
 
 
+def _wa_send_template(tenant_id: int, conn_row: dict, to: str, f, actor: dict):
+    """Send one approved WhatsApp message (template) to `to` from the number
+    `conn_row`, with the blanks from form `f`; log it in the Inbox. Shared by
+    New message (whatsapp_send_one) and the Inbox's 24-hour box (26 Nov
+    2026). (ok, error words)."""
+    # Re-read the template from Meta — never trust the page for what it needs.
+    name, lang = (f.get("template_name") or "").strip(), (f.get("language_code") or "en").strip()
+    try:
+        tpl = next((t for t in _send_one_templates(conn_row)
+                    if t["name"] == name and t["language"] == lang), None)
+    except Exception as e:
+        print("⚠️ send_one template fetch error:", e)
+        return False, "Could not reach Meta. Try again."
+    if not tpl:
+        return False, "That message is not approved on this number."
+    if tpl["unsupported"]:
+        return False, f"This message {tpl['unsupported']}, so it can't be sent from here."
+
+    components, preview_top = [], ""
+    hfmt = tpl["header_format"]
+    if hfmt in ("IMAGE", "VIDEO", "DOCUMENT"):
+        link = (f.get("header_url") or "").strip()
+        if not link.startswith("https://"):
+            return False, "This message needs an attachment. Upload it first."
+        key = hfmt.lower()
+        media = {"link": link}
+        if hfmt == "DOCUMENT":
+            media["filename"] = _campaign_doc_filename(f.get("header_filename")) or "document.pdf"
+            preview_top = f"📄 {media['filename']}"
+        else:
+            preview_top = "📷 Picture" if hfmt == "IMAGE" else "🎬 Video"
+        components.append({"type": "header", "parameters": [{"type": key, key: media}]})
+    elif hfmt == "TEXT":
+        htext = tpl["header_text"]
+        if tpl["header_blank"]:
+            hval = " ".join((f.get("header_text") or "").split())[:60]
+            if not hval:
+                return False, "Fill in the blank in the title."
+            components.append({"type": "header", "parameters": [{"type": "text", "text": hval}]})
+            htext = htext.replace("{{1}}", hval)
+        preview_top = htext
+
+    body = tpl["body"]
+    if tpl["blanks"]:
+        # WhatsApp refuses blanks with line breaks, tabs or 4+ spaces in a row.
+        import re as _re
+        vals = [_re.sub(r"\s+", " ", (f.get(f"blank_{i}") or "")).strip()[:1000]
+                for i in range(1, tpl["blanks"] + 1)]
+        if not all(vals):
+            return False, "Fill in every blank in the message."
+        components.append({"type": "body", "parameters": [{"type": "text", "text": v} for v in vals]})
+        body = _re.sub(r"\{\{\s*(\d+)\s*\}\}", lambda m: vals[int(m.group(1)) - 1], body)
+
+    payload = {"name": name, "language": {"code": lang}}
+    if components:
+        payload["components"] = components
+    import requests as _req
+    graph = os.getenv("META_GRAPH_URL", "https://graph.facebook.com/v19.0")
+    try:
+        resp = _req.post(f"{graph}/{conn_row['phone_number_id']}/messages",
+                         headers={"Authorization": f"Bearer {conn_row['access_token']}"},
+                         json={"messaging_product": "whatsapp", "to": to,
+                               "type": "template", "template": payload}, timeout=15)
+    except Exception as e:
+        print("⚠️ send_one send error:", e)
+        return False, "Could not reach WhatsApp. Try again."
+    if resp.status_code != 200:
+        print(f"⚠️ [SEND ONE] tenant={tenant_id} to={to} {resp.status_code} {resp.text[:400]}")
+        try:
+            err = resp.json().get("error", {})
+            why = (err.get("error_data") or {}).get("details") or err.get("message") or ""
+        except Exception:
+            why = ""
+        return False, "WhatsApp did not accept the message." + (f" ({why})" if why else "")
+
+    try:
+        msg_id = (resp.json().get("messages") or [{}])[0].get("id")
+    except Exception:
+        msg_id = None
+    shown = "\n\n".join(x for x in (preview_top, body, tpl["footer"]) if x)
+    if tpl["buttons"]:
+        shown += "\n\n" + "  ".join(f"[ {b} ]" for b in tpl["buttons"])
+    try:
+        lc = get_db_connection(); lcc = lc.cursor()
+        lcc.execute("""INSERT INTO wa_message_log
+                         (tenant_id, phone_number_id, customer_phone, direction, content,
+                          message_type, meta_message_id, sent_by_label)
+                       VALUES (%s, %s, %s, 'outbound', %s, 'agent_reply', %s, %s)""",
+                    (tenant_id, conn_row["phone_number_id"], to, data_crypto.enc(shown), msg_id, actor["label"]))
+        lc.commit(); lcc.close(); lc.close()
+    except Exception as e:
+        print("⚠️ send_one log error:", e)
+    staff_activity.log("wa_sent", tenant_id, phone=to)
+    return True, ""
+
+
 @portal_bp.route("/whatsapp/send-one", methods=["POST"])
 @team_feature("inbox.send_new")
 def whatsapp_send_one():
@@ -23159,95 +23256,9 @@ def whatsapp_send_one():
         return jsonify({"ok": False, "error": "Choose a number you can send from."})
     conn_row = _get_wa_connection_scoped(tenant_id, wa_id=wa_id)
 
-    # Re-read the template from Meta — never trust the page for what it needs.
-    name, lang = (f.get("template_name") or "").strip(), (f.get("language_code") or "en").strip()
-    try:
-        tpl = next((t for t in _send_one_templates(conn_row)
-                    if t["name"] == name and t["language"] == lang), None)
-    except Exception as e:
-        print("⚠️ send_one template fetch error:", e)
-        return jsonify({"ok": False, "error": "Could not reach Meta. Try again."})
-    if not tpl:
-        return jsonify({"ok": False, "error": "That message is not approved on this number."})
-    if tpl["unsupported"]:
-        return jsonify({"ok": False, "error": f"This message {tpl['unsupported']}, so it can't be sent from here."})
-
-    components, preview_top = [], ""
-    hfmt = tpl["header_format"]
-    if hfmt in ("IMAGE", "VIDEO", "DOCUMENT"):
-        link = (f.get("header_url") or "").strip()
-        if not link.startswith("https://"):
-            return jsonify({"ok": False, "error": "This message needs an attachment. Upload it first."})
-        key = hfmt.lower()
-        media = {"link": link}
-        if hfmt == "DOCUMENT":
-            media["filename"] = _campaign_doc_filename(f.get("header_filename")) or "document.pdf"
-            preview_top = f"📄 {media['filename']}"
-        else:
-            preview_top = "📷 Picture" if hfmt == "IMAGE" else "🎬 Video"
-        components.append({"type": "header", "parameters": [{"type": key, key: media}]})
-    elif hfmt == "TEXT":
-        htext = tpl["header_text"]
-        if tpl["header_blank"]:
-            hval = " ".join((f.get("header_text") or "").split())[:60]
-            if not hval:
-                return jsonify({"ok": False, "error": "Fill in the blank in the title."})
-            components.append({"type": "header", "parameters": [{"type": "text", "text": hval}]})
-            htext = htext.replace("{{1}}", hval)
-        preview_top = htext
-
-    body = tpl["body"]
-    if tpl["blanks"]:
-        # WhatsApp refuses blanks with line breaks, tabs or 4+ spaces in a row.
-        import re as _re
-        vals = [_re.sub(r"\s+", " ", (f.get(f"blank_{i}") or "")).strip()[:1000]
-                for i in range(1, tpl["blanks"] + 1)]
-        if not all(vals):
-            return jsonify({"ok": False, "error": "Fill in every blank in the message."})
-        components.append({"type": "body", "parameters": [{"type": "text", "text": v} for v in vals]})
-        import re as _re
-        body = _re.sub(r"\{\{\s*(\d+)\s*\}\}", lambda m: vals[int(m.group(1)) - 1], body)
-
-    payload = {"name": name, "language": {"code": lang}}
-    if components:
-        payload["components"] = components
-    import requests as _req
-    graph = os.getenv("META_GRAPH_URL", "https://graph.facebook.com/v19.0")
-    try:
-        resp = _req.post(f"{graph}/{conn_row['phone_number_id']}/messages",
-                         headers={"Authorization": f"Bearer {conn_row['access_token']}"},
-                         json={"messaging_product": "whatsapp", "to": contact["whatsapp"],
-                               "type": "template", "template": payload}, timeout=15)
-    except Exception as e:
-        print("⚠️ send_one send error:", e)
-        return jsonify({"ok": False, "error": "Could not reach WhatsApp. Try again."})
-    if resp.status_code != 200:
-        print(f"⚠️ [SEND ONE] tenant={tenant_id} to={contact['whatsapp']} {resp.status_code} {resp.text[:400]}")
-        try:
-            err = resp.json().get("error", {})
-            why = (err.get("error_data") or {}).get("details") or err.get("message") or ""
-        except Exception:
-            why = ""
-        return jsonify({"ok": False, "error": "WhatsApp did not accept the message." + (f" ({why})" if why else "")})
-
-    try:
-        msg_id = (resp.json().get("messages") or [{}])[0].get("id")
-    except Exception:
-        msg_id = None
-    shown = "\n\n".join(x for x in (preview_top, body, tpl["footer"]) if x)
-    if tpl["buttons"]:
-        shown += "\n\n" + "  ".join(f"[ {b} ]" for b in tpl["buttons"])
-    try:
-        lc = get_db_connection(); lcc = lc.cursor()
-        lcc.execute("""INSERT INTO wa_message_log
-                         (tenant_id, phone_number_id, customer_phone, direction, content,
-                          message_type, meta_message_id, sent_by_label)
-                       VALUES (%s, %s, %s, 'outbound', %s, 'agent_reply', %s, %s)""",
-                    (tenant_id, conn_row["phone_number_id"], contact["whatsapp"], data_crypto.enc(shown), msg_id, actor["label"]))
-        lc.commit(); lcc.close(); lc.close()
-    except Exception as e:
-        print("⚠️ send_one log error:", e)
-    staff_activity.log("wa_sent", tenant_id, phone=contact["whatsapp"])
+    ok, msg = _wa_send_template(tenant_id, conn_row, contact["whatsapp"], f, actor)
+    if not ok:
+        return jsonify({"ok": False, "error": msg})
     return jsonify({"ok": True, "message": f"Sent to {contact['name'] or '+' + contact['whatsapp']}.",
                     "inbox_url": url_for("portal.my_inbox", phone=contact["whatsapp"])})
 
@@ -36100,8 +36111,17 @@ def _get_inbox_messages(tenant_id: int, phone: str, limit: int = 100) -> list:
         """, (tenant_id, phone, limit))
         rows = cur.fetchall() or []
         cur.close(); conn.close()
+        names = _inbox_attach.names_by_tokens(
+            tenant_id, [_inbox_attach.token_from_inbox_url(r.get("media_url")) for r in rows])
         for r in rows:
             r["content"] = data_crypto.dec(r.get("content"))
+            # Photo / video / document: imported and incoming rows say so in
+            # message_type; files the team sent from the Inbox stay
+            # 'agent_reply' and the kind comes from the link (26 Nov 2026).
+            mt = r.get("message_type")
+            r["media_kind"] = mt if mt in ("image", "video", "audio", "document") else \
+                (_inbox_attach.kind_from_url(r.get("media_url")) if r.get("media_url") else None)
+            r["media_name"] = names.get(_inbox_attach.token_from_inbox_url(r.get("media_url")))
         return rows
     except Exception as e:
         print("⚠️ _get_inbox_messages error:", e)
@@ -36260,9 +36280,9 @@ def _get_messenger_messages(tenant_id: int, key: str, limit: int = 100) -> list:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
-            SELECT direction, content, message_type, created_at, sent_by_label
+            SELECT id, direction, content, message_type, created_at, sent_by_label
             FROM (
-                SELECT direction, content, message_type, created_at, sent_by_label
+                SELECT id, direction, content, message_type, created_at, sent_by_label
                 FROM fb_message_log
                 WHERE tenant_id=%s AND page_id=%s AND psid=%s
                 ORDER BY created_at DESC LIMIT %s
@@ -36271,8 +36291,14 @@ def _get_messenger_messages(tenant_id: int, key: str, limit: int = 100) -> list:
         """, (tenant_id, page_id, psid, limit))
         rows = cur.fetchall() or []
         cur.close(); conn.close()
+        files = _inbox_attach.by_refs(tenant_id, [f"fb:{r['id']}" for r in rows if r["direction"] != "inbound"])
         for r in rows:
             r["content"] = data_crypto.dec(r.get("content"))
+            f = files.get(f"fb:{r['id']}")     # a file sent with the ＋ button (26 Nov 2026)
+            if f:
+                r.update(media_url=f["url"], media_kind=f["kind"], media_name=f["name"])
+                if r["content"] == f["name"]:
+                    r["content"] = ""
         return rows
     except Exception as e:
         print("⚠️ _get_messenger_messages error:", e)
@@ -36600,6 +36626,15 @@ def _get_webchat_messages(tenant_id: int, key: str, limit: int = 200) -> list:
             for r in rows:
                 r["products"] = [cards[t.strip().lower()] for t in r.pop("_titles", [])
                                  if t.strip().lower() in cards]
+        # Files sent with the ＋ button (26 Nov 2026): the visitor got a link
+        # line; the Inbox shows the file itself instead of that line.
+        wr = [r["msg_ref"] for r in rows if (r.get("msg_ref") or "").startswith("wr:")]
+        files = _inbox_attach.by_refs(tenant_id, wr) if wr else {}
+        for r in rows:
+            f = files.get(r.get("msg_ref"))
+            if f:
+                r["content"] = _inbox_attach.split_webchat_text(r.get("content") or "")[0]
+                r.update(media_url=f["url"], media_kind=f["kind"], media_name=f["name"])
         return rows
     except Exception as e:
         print("⚠️ _get_webchat_messages error:", e)
@@ -36655,7 +36690,7 @@ def _webchat_product_cards(tenant_id: int, titles: list) -> dict:
     return out
 
 
-def _send_webchat_reply(tenant_id: int, key: str, text: str, actor: dict):
+def _send_webchat_reply(tenant_id: int, key: str, text: str, actor: dict, attach_token: str = None):
     """Handle an Inbox reply to a website chat (2026-10-06). While the
     visitor is on the page (their chat box checked in within 30 seconds) the
     reply shows in their chat box live. If they've left, it goes by email to
@@ -36692,6 +36727,9 @@ def _send_webchat_reply(tenant_id: int, key: str, text: str, actor: dict):
         VALUES (%s, %s, %s, %s) RETURNING id
     """, (tenant_id, session_id, data_crypto.enc(text), actor["label"]))
     reply_id = cur.fetchone()["id"]
+    if attach_token:   # a file sent with the ＋ button (26 Nov 2026)
+        cur.execute("UPDATE inbox_files SET log_ref=%s WHERE token=%s AND tenant_id=%s",
+                    (f"wr:{reply_id}", attach_token, tenant_id))
     cur.execute("""
         UPDATE handoff_requests SET status='handled', handled_at=NOW()
         WHERE tenant_id=%s AND session_id=%s AND status='pending'
@@ -36763,7 +36801,9 @@ def inbox_api_webchat_poll():
                     "time": m["created_at"].strftime("%H:%M") if m.get("created_at") else "",
                     "by": display_actor(m.get("sent_by_label")) or "",
                     "is_ai": bool(m.get("is_ai")),
-                    "products": m.get("products") or []})
+                    "products": m.get("products") or [],
+                    "media_url": m.get("media_url") or "", "media_kind": m.get("media_kind") or "",
+                    "media_name": m.get("media_name") or ""})
     return jsonify({"count": len(msgs), "new": out, "online": bool(conv.get("online")),
                     "presence": conv.get("presence_words") or "",
                     "visitor": conv.get("visitor_name") or "Visitor"})
@@ -37024,6 +37064,15 @@ def my_inbox():
                 webchat_messages = _get_webchat_messages(tenant_id, active_phone)
                 g.access_inbox_key = active_phone     # access log (item 15)
 
+    # WhatsApp's 24-hour rule (26 Nov 2026, Board 11): past it, the reply box
+    # becomes the amber "send an approved message" box.
+    wa_window_closed, wa_first_name = False, None
+    if active_phone and messages is not None and not is_messenger_active and not is_webchat_active \
+            and any(c["customer_phone"] == active_phone for c in conversations):
+        wa_window_closed = not _wa_window_open(tenant_id, active_phone)
+        _wac = next((c for c in conversations if c["customer_phone"] == active_phone), None)
+        wa_first_name = _inbox_attach.first_name((_wac or {}).get("display_name"))
+
     shopify_strip = {}
     if active_phone and not is_messenger_active:
         try:
@@ -37067,6 +37116,8 @@ def my_inbox():
         disc=_disc_inbox_ctx(tenant_id, active_phone) if is_webchat_active else None,   # Discounts in Chat (11 Nov 2026)
         web_taken_over=_web_chat_is_taken_over(tenant_id, active_phone) if is_webchat_active else False,
         inbox_ui2=inbox_ui2,
+        wa_window_closed=wa_window_closed,
+        wa_first_name=wa_first_name,
     )
 
 
@@ -37111,22 +37162,9 @@ def inbox_customer_panel():
         return jsonify({"error": "unavailable"}), 503
 
 
-@portal_bp.route("/inbox/<path:phone>/reply", methods=["POST"])
-@team_feature("inbox.reply")
-def inbox_reply(phone: str):
-    r = _require_login()
-    if r: return r
-    r2 = _require_team_permission("inbox.reply")
-    if r2: return r2
-    customer  = _get_customer(_customer_id())
-    tenant_id = int(customer["tenant_id"])
-
-    reply_text = (request.form.get("reply") or "").strip()
-    if not reply_text:
-        flash("Reply cannot be empty.", "danger")
-        return redirect(url_for("portal.my_inbox", phone=phone))
-
-    actor = _current_actor(customer)
+def _inbox_reply_gate(tenant_id: int, actor: dict, phone: str):
+    """Access + compulsory-claim checks shared by every way of sending from
+    an Inbox chat (text, file, approved message). A redirect, or None."""
     if not _team_can_access_phone(tenant_id, actor, phone):
         flash("You don't have access to this conversation.", "danger")
         return redirect(url_for("portal.my_inbox"))
@@ -37144,19 +37182,15 @@ def inbox_reply(phone: str):
         if assignment["assigned_to_key"] != actor["key"]:
             flash(f"This conversation is claimed by {assignment['assigned_to_label']}. Release it first if you need to take over.", "danger")
             return redirect(url_for("portal.my_inbox", phone=phone))
+    return None
 
-    # Facebook Messenger conversations use a 'fb:<page_id>:<psid>' key, Web
-    # Chat a 'web:<session_id>' key — everything above (empty-reply check,
-    # access check, claim check) is channel-agnostic already, only how the
-    # message actually gets sent differs from here down.
-    if phone.startswith("fb:"):
-        return _send_messenger_reply(tenant_id, phone, reply_text, actor)
-    if phone.startswith("web:"):
-        return _send_webchat_reply(tenant_id, phone, reply_text, actor)
 
-    # Reply from the SAME number this conversation is actually on — a tenant
-    # with 2+ connected numbers must not have a reply silently go out from an
-    # arbitrary other number (same bug class fixed for campaign sending).
+def _inbox_wa_conn(tenant_id: int, phone: str):
+    """The WhatsApp connection a chat's replies go out from: the SAME number
+    this conversation is actually on — a tenant with 2+ connected numbers
+    must not have a reply silently go out from an arbitrary other number
+    (same bug class fixed for campaign sending). Falls back to the tenant's
+    first active connection (conversations with no prior message row)."""
     wa = None
     try:
         conn = get_db_connection()
@@ -37172,32 +37206,113 @@ def inbox_reply(phone: str):
         if last and last.get("phone_number_id"):
             wa = _get_wa_connection_scoped(tenant_id, phone_number_id=last["phone_number_id"])
     except Exception as e:
-        print("⚠️ inbox_reply lookup error:", e)
+        print("⚠️ inbox WhatsApp number lookup error:", e)
         wa = None
 
     if not wa:
-        # Fall back to the tenant's single active connection (covers
-        # conversations with no prior message row to key off).
         try:
             conn = get_db_connection()
             cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute(
-                "SELECT phone_number_id, access_token FROM wa_tenants "
+                "SELECT id FROM wa_tenants "
                 "WHERE tenant_id=%s AND active=TRUE ORDER BY id ASC LIMIT 1",
                 (tenant_id,)
             )
-            wa = cur.fetchone()
+            row = cur.fetchone()
             cur.close(); conn.close()
+            wa = _get_wa_connection_scoped(tenant_id, wa_id=row["id"]) if row else None
         except Exception as e:
-            print("⚠️ inbox_reply fallback lookup error:", e)
+            print("⚠️ inbox WhatsApp fallback lookup error:", e)
             wa = None
+    return wa
 
+
+def _wa_window_open(tenant_id: int, phone: str) -> bool:
+    """WhatsApp's 24-hour rule (26 Nov 2026, Board 11): free-form messages
+    only within 24 hours of the customer's last message (live, not
+    imported). After that, or if they never wrote, only an approved
+    message. On a database error the chat is treated as open (WhatsApp
+    itself still enforces the rule)."""
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("""SELECT MAX(created_at) > NOW() - INTERVAL '24 hours'
+                         FROM wa_message_log
+                        WHERE tenant_id=%s AND customer_phone=%s
+                          AND direction='inbound' AND is_historical IS NOT TRUE""", (tenant_id, phone))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        return bool(row and row[0])
+    except Exception as e:
+        print("⚠️ _wa_window_open error:", e)
+        return True
+
+
+def _inbox_wa_first_name(tenant_id: int, phone: str):
+    """The first name the chat header shows for a WhatsApp chat, or None."""
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        cur.execute("""SELECT COALESCE(wc.display_name,
+                                       NULLIF(TRIM(COALESCE(cu.first_name,'') || ' ' || COALESCE(cu.last_name,'')), ''))
+                         FROM (SELECT 1) x
+                         LEFT JOIN wa_contacts wc ON wc.tenant_id=%s AND wc.whatsapp_number=%s
+                         LEFT JOIN customers cu ON cu.tenant_id=%s
+                              AND REPLACE(REPLACE(COALESCE(cu.phone_number,''), '+', ''), ' ', '') = %s
+                        LIMIT 1""", (tenant_id, phone, tenant_id, phone))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        return _inbox_attach.first_name(row[0] if row else None)
+    except Exception as e:
+        print("⚠️ _inbox_wa_first_name error:", e)
+        return None
+
+
+def _wa_window_closed_words(first) -> str:
+    return (f"{first or 'This customer'}'s last message was over 24 hours ago, so WhatsApp only allows an "
+            "approved message. Choose one above the typing box.")
+
+
+@portal_bp.route("/inbox/<path:phone>/reply", methods=["POST"])
+@team_feature("inbox.reply")
+def inbox_reply(phone: str):
+    r = _require_login()
+    if r: return r
+    r2 = _require_team_permission("inbox.reply")
+    if r2: return r2
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+
+    reply_text = (request.form.get("reply") or "").strip()
+    if not reply_text:
+        flash("Reply cannot be empty.", "danger")
+        return redirect(url_for("portal.my_inbox", phone=phone))
+
+    actor = _current_actor(customer)
+    gate = _inbox_reply_gate(tenant_id, actor, phone)
+    if gate:
+        return gate
+
+    # Facebook Messenger conversations use a 'fb:<page_id>:<psid>' key, Web
+    # Chat a 'web:<session_id>' key — everything above (empty-reply check,
+    # access check, claim check) is channel-agnostic already, only how the
+    # message actually gets sent differs from here down.
+    if phone.startswith("fb:"):
+        return _send_messenger_reply(tenant_id, phone, reply_text, actor)
+    if phone.startswith("web:"):
+        return _send_webchat_reply(tenant_id, phone, reply_text, actor)
+
+    wa = _inbox_wa_conn(tenant_id, phone)
     if not wa:
         flash("WhatsApp connection not found.", "danger")
         return redirect(url_for("portal.my_inbox", phone=phone))
 
     if _wa_locked_for_tenant(tenant_id):
         flash("WhatsApp is part of the Dual Agent plan. Upgrade to a Dual Agent plan to reply on WhatsApp.", "danger")
+        return redirect(url_for("portal.my_inbox", phone=phone))
+
+    # WhatsApp's 24-hour rule (26 Nov 2026): this used to come back as
+    # "check your WhatsApp credentials", which was wrong.
+    if not _wa_window_open(tenant_id, phone):
+        flash(_wa_window_closed_words(_inbox_wa_first_name(tenant_id, phone)), "warning")
         return redirect(url_for("portal.my_inbox", phone=phone))
 
     ok = _send_wa_text_from_portal(
@@ -37224,6 +37339,232 @@ def inbox_reply(phone: str):
         flash("Failed to send — check your WhatsApp credentials.", "danger")
 
     return redirect(url_for("portal.my_inbox", phone=phone))
+
+
+# ── Inbox: send a photo, video or document (26 Nov 2026, Board 10) ─────────
+
+@portal_bp.route("/inbox/<path:phone>/attach", methods=["POST"])
+@team_feature("inbox.reply")
+def inbox_attach(phone: str):
+    """The ＋ button: one file (and the typing box as its caption) to the
+    open chat, on WhatsApp, Messenger or the website chat."""
+    r = _require_login()
+    if r: return r
+    r2 = _require_team_permission("inbox.reply")
+    if r2: return r2
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    actor     = _current_actor(customer)
+    gate = _inbox_reply_gate(tenant_id, actor, phone)
+    if gate:
+        return gate
+    back = redirect(url_for("portal.my_inbox", phone=phone))
+
+    up = request.files.get("file")
+    caption = (request.form.get("reply") or "").strip()
+    data = up.read(_inbox_attach.LIMITS["document"] + 1) if up else b""
+    info, data, problem = _inbox_attach.prepare(up.filename if up else "", data)
+    if problem:
+        flash(problem, "danger")
+        return back
+    _inbox_attach.remove_expired()
+
+    # ── Website chat: a private link in a normal team message ──
+    if phone.startswith("web:"):
+        try:
+            token = _inbox_attach.save(tenant_id, phone, "web", info, data, public=True, sent_by=actor["label"])
+        except Exception as e:
+            print("⚠️ inbox_attach web save:", e)
+            flash("The file couldn't be saved just now. Please try again.", "danger")
+            return back
+        line = _inbox_attach.webchat_line(info["name"], f"{_PORTAL_BASE_URL}/f/{token}")
+        text = f"{caption}\n{line}" if caption else line
+        return _send_webchat_reply(tenant_id, phone, text, actor, attach_token=token)
+
+    # ── Messenger ──
+    if phone.startswith("fb:"):
+        try:
+            _, page_id, psid = phone.split(":", 2)
+        except ValueError:
+            flash("Invalid Messenger conversation.", "danger")
+            return redirect(url_for("portal.my_inbox"))
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT access_token FROM fb_pages WHERE tenant_id=%s AND page_id=%s AND active=TRUE",
+                    (tenant_id, page_id))
+        pg = cur.fetchone()
+        cur.close(); conn.close()
+        if not pg:
+            flash("Facebook Page connection not found.", "danger")
+            return back
+        ok, why = _inbox_attach.fb_send(pg["access_token"], psid, info, data, caption)
+        if not ok:
+            flash(f"Failed to send — {why.rstrip('.')}.", "danger")
+            return back
+        try:
+            token = _inbox_attach.save(tenant_id, phone, "fb", info, data, sent_by=actor["label"])
+            conn = get_db_connection(); cur = conn.cursor()
+            cur.execute("""INSERT INTO fb_message_log (tenant_id, page_id, psid, direction, content, message_type, sent_by_label)
+                           VALUES (%s, %s, %s, 'outbound', %s, %s, %s) RETURNING id""",
+                        (tenant_id, page_id, psid, data_crypto.enc(caption or info["name"]), info["kind"], actor["label"]))
+            row_id = cur.fetchone()[0]
+            conn.commit(); cur.close(); conn.close()
+            _inbox_attach.link(token, f"fb:{row_id}")
+        except Exception as e:
+            print("⚠️ inbox_attach Messenger log:", e)
+        flash("Sent. ✅", "success")
+        staff_activity.log("messenger_sent", tenant_id, detail=psid)
+        return back
+
+    # ── WhatsApp ──
+    wa = _inbox_wa_conn(tenant_id, phone)
+    if not wa:
+        flash("WhatsApp connection not found.", "danger")
+        return back
+    if _wa_locked_for_tenant(tenant_id):
+        flash("WhatsApp is part of the Dual Agent plan. Upgrade to a Dual Agent plan to reply on WhatsApp.", "danger")
+        return back
+    if not _wa_window_open(tenant_id, phone):
+        flash(_wa_window_closed_words(_inbox_wa_first_name(tenant_id, phone)), "warning")
+        return back
+    ok, meta_id, why = _inbox_attach.wa_send(wa["phone_number_id"], wa["access_token"], phone, info, data, caption)
+    if not ok:
+        flash(why, "danger")
+        return back
+    try:
+        token = _inbox_attach.save(tenant_id, phone, "wa", info, data, sent_by=actor["label"])
+        conn = get_db_connection(); cur = conn.cursor()
+        # message_type stays 'agent_reply' (a person on the team sent it:
+        # response times and reports count it); the file kind comes from
+        # media_url's ending.
+        cur.execute("""INSERT INTO wa_message_log
+                         (tenant_id, phone_number_id, customer_phone, direction, content, message_type,
+                          media_url, sent_by_label, meta_message_id)
+                       VALUES (%s, %s, %s, 'outbound', %s, 'agent_reply', %s, %s, %s) RETURNING id""",
+                    (tenant_id, wa["phone_number_id"], phone, data_crypto.enc(caption) if caption else None,
+                     _inbox_attach.inbox_url(token, info["ext"]), actor["label"], meta_id))
+        row_id = cur.fetchone()[0]
+        conn.commit(); cur.close(); conn.close()
+        _inbox_attach.link(token, f"wa:{row_id}")
+    except Exception as e:
+        print("⚠️ inbox_attach WhatsApp log:", e)
+    flash("Sent. ✅", "success")
+    staff_activity.log("wa_sent", tenant_id, phone=phone)
+    return back
+
+
+def _inbox_file_response(row: dict, public: bool):
+    path = _inbox_attach.file_path(row)
+    if not os.path.exists(path):
+        return ("Not found", 404)
+    inline = row["kind"] in ("image", "video") or row["ext"] == "pdf"
+    resp = send_file(path, mimetype=row["mime"], as_attachment=not inline,
+                     download_name=row["filename"], conditional=True,
+                     max_age=(3600 if public else 86400))
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    if row["ext"] != "pdf":   # a sandboxed page can't show the browser's PDF viewer
+        resp.headers["Content-Security-Policy"] = ("default-src 'none'; img-src 'self'; media-src 'self'; "
+                                                   "style-src 'unsafe-inline'; sandbox")
+    resp.headers["Cache-Control"] = "private, max-age=" + ("3600" if public else "86400")
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return resp
+
+
+@portal_bp.route("/inbox/files/<name>")
+@team_feature("inbox.page")
+def inbox_file(name: str):
+    """A file the team sent from the Inbox, for the Inbox thread (same
+    business only, and only for people who may see that chat)."""
+    r = _require_login()
+    if r: return ("Not found", 404)
+    if not _team_member_has_permission("inbox.page"):
+        return ("Not found", 404)
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    row = _inbox_attach.get(name.rsplit(".", 1)[0])
+    if not row or int(row["tenant_id"]) != tenant_id or row["expired"] \
+            or not _team_can_access_phone(tenant_id, _current_actor(customer), row["conv_key"]):
+        return ("Not found", 404)
+    return _inbox_file_response(row, public=False)
+
+
+@portal_bp.route("/f/<token>")
+@public_route
+def inbox_public_file(token: str):
+    """No login by design: a website visitor opens a file the team sent in
+    the chat. Only website-chat files, only that one file, for 90 days;
+    the link is random and can't be guessed."""
+    row = _inbox_attach.get(token)
+    if not row or not row["is_public"] or row["expired"]:
+        return ("This file is no longer available.", 404)
+    return _inbox_file_response(row, public=True)
+
+
+# ── WhatsApp chat older than 24 hours: send an approved message (Board 11) ──
+
+@portal_bp.route("/inbox/<path:phone>/approved-messages")
+@team_feature("inbox.reply")
+def inbox_approved_messages(phone: str):
+    """The business's approved WhatsApp messages that can be sent from the
+    Inbox (no attachment needed), for the amber box."""
+    r = _require_login()
+    if r: return jsonify({"error": "Please log in again."}), 401
+    if not _team_member_has_permission("inbox.reply"):
+        return jsonify({"error": "forbidden"}), 403
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    if phone.startswith(("fb:", "web:")) or not _team_can_access_phone(tenant_id, _current_actor(customer), phone):
+        return jsonify({"error": "forbidden"}), 403
+    wa = _inbox_wa_conn(tenant_id, phone)
+    if not wa or not wa.get("waba_id"):
+        return jsonify({"error": "WhatsApp connection not found."}), 400
+    try:
+        tpls = _send_one_templates(wa)
+    except Exception as e:
+        print("⚠️ inbox approved messages error:", e)
+        return jsonify({"error": "Couldn't load your approved messages just now. Reload the page to try again."}), 502
+    out = []
+    for t in tpls:
+        if t["unsupported"] or t["header_format"] in ("IMAGE", "VIDEO", "DOCUMENT"):
+            continue
+        out.append({"name": t["name"], "language": t["language"], "body": t["body"],
+                    "header_text": t["header_text"] if t["header_format"] == "TEXT" else "",
+                    "header_blank": bool(t["header_blank"]), "blanks": t["blanks"],
+                    "name_blank": _inbox_attach.blank_is_name(t["body"]),
+                    "footer": t["footer"], "buttons": t["buttons"]})
+    return jsonify({"templates": out, "templates_url": url_for("portal.whatsapp_message_templates")})
+
+
+@portal_bp.route("/inbox/<path:phone>/send-approved", methods=["POST"])
+@team_feature("inbox.reply")
+def inbox_send_approved(phone: str):
+    r = _require_login()
+    if r: return r
+    r2 = _require_team_permission("inbox.reply")
+    if r2: return r2
+    customer  = _get_customer(_customer_id())
+    tenant_id = int(customer["tenant_id"])
+    actor     = _current_actor(customer)
+    back = redirect(url_for("portal.my_inbox", phone=phone))
+    if phone.startswith(("fb:", "web:")):
+        return back
+    gate = _inbox_reply_gate(tenant_id, actor, phone)
+    if gate:
+        return gate
+    if _wa_locked_for_tenant(tenant_id):
+        flash("WhatsApp is part of the Dual Agent plan. Upgrade to a Dual Agent plan to reply on WhatsApp.", "danger")
+        return back
+    wa = _inbox_wa_conn(tenant_id, phone)
+    if not wa or not wa.get("waba_id"):
+        flash("WhatsApp connection not found.", "danger")
+        return back
+    ok, msg = _wa_send_template(tenant_id, wa, phone, request.form, actor)
+    if not ok:
+        flash(msg, "danger")
+        return back
+    first = _inbox_wa_first_name(tenant_id, phone)
+    flash(f"Approved message sent. You can chat normally once {first or 'the customer'} replies.", "success")
+    return back
 
 
 @portal_bp.route("/inbox/<path:phone>/claim", methods=["POST"])

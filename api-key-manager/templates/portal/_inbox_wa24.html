@@ -1,0 +1,120 @@
+{# WhatsApp chat older than 24 hours (26 Nov 2026, approved mock-up
+   "Board 11"). WhatsApp only allows an approved message (template) once the
+   customer's last message is over 24 hours old. Shown in place of the
+   normal reply box; the business's approved messages load from Meta. #}
+{% set _w_first = wa_first_name %}
+<div class="wa24" id="waWindowBox"
+     data-url="{{ url_for('portal.inbox_approved_messages', phone=active_phone) }}"
+     data-first="{{ _w_first or '' }}">
+  <div class="wa24-h">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    <span>{{ (_w_first ~ "'s") if _w_first else "This customer's" }} last message was 24 hours ago</span>
+  </div>
+  <p class="wa24-t">WhatsApp only lets you send an approved message now. Once {{ _w_first or 'the customer' }} replies, you can chat normally again.</p>
+  <form method="POST" action="{{ url_for('portal.inbox_send_approved', phone=active_phone) }}" id="wa24Form">
+    <input type="hidden" name="template_name" value="">
+    <input type="hidden" name="language_code" value="">
+    <div class="wa24-list" id="wa24List"><p class="wa24-note">Loading your approved messages…</p></div>
+    <div class="wa24-go" id="wa24Go" hidden>
+      <button type="submit" class="send-btn" id="wa24Send" disabled>Send to restart the chat</button>
+    </div>
+  </form>
+</div>
+<style>
+.wa24{background:#FFFAEB;border:1px solid #FEC84B;border-radius:14px;padding:12px 14px;margin:0 0 10px;color:#4E2A06;font-size:13.5px;line-height:1.45}
+.wa24-h{display:flex;align-items:center;gap:8px;font-weight:800;font-size:14.5px;color:#7A2E0E}
+.wa24-h svg{flex-shrink:0;color:#B54708}
+.wa24-t{margin:4px 0 10px}
+.wa24-list{display:flex;flex-direction:column;gap:8px;max-height:46vh;overflow-y:auto}
+.wa24-note{margin:0;color:#7A2E0E}
+.wa24-note a{color:#7A2E0E;font-weight:700;text-decoration:underline}
+.wa24-opt{display:flex;gap:10px;align-items:flex-start;background:#fff;border:1.5px solid #FEDF89;border-radius:12px;padding:10px 12px;cursor:pointer}
+.wa24-opt:has(input:checked){border-color:#B54708;box-shadow:0 0 0 3px rgba(247,144,9,.18)}
+.wa24-opt input[type=radio]{margin:3px 0 0;accent-color:#B54708;flex-shrink:0;width:18px;height:18px}
+.wa24-body{flex:1;min-width:0}
+.wa24-name{display:block;font-size:11.5px;font-weight:700;color:#93370D;margin-bottom:2px;overflow-wrap:anywhere}
+.wa24-prev{white-space:pre-wrap;overflow-wrap:anywhere;color:#1D2939;font-size:13.5px}
+.wa24-prev b{font-weight:700}
+.wa24-foot{display:block;color:#667085;font-size:12px;margin-top:4px}
+.wa24-blanks{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.wa24-blanks label{display:flex;flex-direction:column;gap:3px;font-size:12.5px;font-weight:600;color:#344054}
+.wa24-blanks input{font:inherit;font-size:14px;font-weight:400;border:1px solid #D0D5DD;border-radius:10px;padding:8px 10px;background:#fff;width:100%;box-sizing:border-box}
+.wa24-go{display:flex;justify-content:flex-end;margin-top:10px}
+.wa24-go .send-btn{background:#B54708}
+.wa24-go .send-btn:hover{background:#93370D}
+.wa24-go .send-btn:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:640px){
+  .wa24{padding:10px 12px}
+  .wa24-list{max-height:40vh}
+  .wa24-go .send-btn{width:100%;justify-content:center;padding:12px 16px}
+}
+</style>
+<script>
+(function(){
+  var box=document.getElementById('waWindowBox'); if(!box) return;
+  var list=document.getElementById('wa24List'), go=document.getElementById('wa24Go'), send=document.getElementById('wa24Send');
+  var form=document.getElementById('wa24Form'), first=box.getAttribute('data-first')||'';
+  function esc(t){return String(t==null?'':t).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function note(html){ list.innerHTML='<p class="wa24-note">'+html+'</p>'; go.hidden=true; }
+  var tpls=[], LB='{'+'{', RB='}'+'}';
+  function fill(t, vals, text){
+    return esc(text).replace(/\{\{\s*(\d+)\s*\}\}/g,function(m,n){ var v=vals[n]; return v?'<b>'+esc(v)+'</b>':m; });
+  }
+  function previewFor(i){
+    var t=tpls[i], opt=list.querySelector('[data-i="'+i+'"]'); if(!opt) return;
+    var vals={}, hval='';
+    opt.querySelectorAll('input[data-n]').forEach(function(x){ vals[x.getAttribute('data-n')]=x.value.trim(); });
+    var h=opt.querySelector('input[name=header_text]'); if(h) hval=h.value.trim();
+    var top=t.header_text ? (t.header_blank ? fill(t,{1:hval},t.header_text) : esc(t.header_text))+'\n\n' : '';
+    opt.querySelector('.wa24-prev').innerHTML=top+fill(t,vals,t.body);
+  }
+  function check(){
+    var picked=list.querySelector('input[type=radio]:checked');
+    var ok=!!picked && [].every.call(list.querySelectorAll('.wa24-blanks input'),function(x){return x.value.trim();});
+    send.disabled=!ok;
+  }
+  function choose(i){
+    var t=tpls[i];
+    form.elements.template_name.value=t.name; form.elements.language_code.value=t.language;
+    list.querySelectorAll('.wa24-blanks').forEach(function(b){ b.remove(); });
+    var opt=list.querySelector('[data-i="'+i+'"] .wa24-body'), h='';
+    if(t.header_blank) h+='<label>Fill in the title<input type="text" name="header_text" maxlength="60" required autocomplete="off"></label>';
+    for(var n=1;n<=t.blanks;n++){
+      var v=(n===1&&t.name_blank&&first)?first:'';
+      h+='<label>Fill in '+LB+n+RB+((n===1&&t.name_blank)?' (the customer’s name)':'')
+        +'<input type="text" name="blank_'+n+'" data-n="'+n+'" maxlength="1000" required autocomplete="off" value="'+esc(v)+'"></label>';
+    }
+    if(h){ opt.insertAdjacentHTML('beforeend','<div class="wa24-blanks">'+h+'</div>');
+      opt.querySelectorAll('.wa24-blanks input').forEach(function(x){ x.addEventListener('input',function(){ previewFor(i); check(); }); }); }
+    go.hidden=false; previewFor(i); check();
+  }
+  fetch(box.getAttribute('data-url'),{credentials:'same-origin',cache:'no-store'})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+    .then(function(x){
+      if(!x.ok||x.d.error){ note(esc((x.d&&x.d.error)||'Couldn’t load your approved messages just now. Reload the page to try again.')); return; }
+      tpls=x.d.templates||[];
+      if(!tpls.length){
+        note('You don’t have an approved message yet. <a href="'+esc(x.d.templates_url)+'">Create one on the WhatsApp Templates page</a>');
+        return;
+      }
+      list.innerHTML=tpls.map(function(t,i){
+        var foot=t.footer?'<span class="wa24-foot">'+esc(t.footer)+'</span>':'';
+        var btns=(t.buttons||[]).length?'<span class="wa24-foot">'+t.buttons.map(function(b){return '[ '+esc(b)+' ]';}).join('  ')+'</span>':'';
+        return '<label class="wa24-opt" data-i="'+i+'"><input type="radio" name="wa24pick" value="'+i+'">'
+          +'<span class="wa24-body"><span class="wa24-name">'+esc(t.name.replace(/_/g,' '))+'</span>'
+          +'<span class="wa24-prev"></span>'+foot+btns+'</span></label>';
+      }).join('');
+      tpls.forEach(function(t,i){ previewFor(i); });
+      list.querySelectorAll('input[type=radio]').forEach(function(r){
+        r.addEventListener('change',function(){ choose(parseInt(r.value,10)); });
+      });
+      if(tpls.length===1){ var r=list.querySelector('input[type=radio]'); r.checked=true; choose(0); }
+      go.hidden=false; check();
+    })
+    .catch(function(){ note('Couldn’t load your approved messages just now. Reload the page to try again.'); });
+  form.addEventListener('submit',function(e){
+    if(send.disabled){ e.preventDefault(); return; }
+    setTimeout(function(){ send.disabled=true; send.textContent='Sending…'; },0);
+  });
+})();
+</script>
