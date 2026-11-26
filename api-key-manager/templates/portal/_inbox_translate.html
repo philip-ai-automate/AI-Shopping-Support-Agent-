@@ -150,7 +150,7 @@
   function send(form){
     var ta = form.querySelector('textarea[name=reply]');
     if (!wantsTranslate(form)) { form.submit(); return; }
-    if (!ta.value.trim()) return;
+    if (!ta.value.trim()) { if (form.dataset.attReady) form.submit(); return; }   // a file with no caption (26 Nov 2026)
     var ready = form._ctr && form._ctr.src === ta.value && form._ctr.to === form.querySelector('.ctr-lang').value;
     (ready ? Promise.resolve(form._ctr) : doTranslate(form)).then(function(t){
       if (!t || !t.out) return;

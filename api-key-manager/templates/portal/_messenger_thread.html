@@ -1,4 +1,5 @@
 {# Messenger thread bubbles - shared by the Inbox page and the live poll (16 Nov 2026) #}
+{% import "portal/_inbox_attach_ui.html" as att %}
           {% if not messenger_messages %}
           <div class="empty-pane">
             <div class="empty-icon" style="font-size:36px">💬</div>
@@ -28,7 +29,8 @@
               <div class="bubble-col">
                 <div class="bubble-sender">{{ (msg.sent_by_label|who) if (has_team and (msg.sent_by_label|who)) else 'You' }}</div>
                 <div class="chat-bubble bubble-agent">
-                  {{ (msg.content or '(message)')|chat_fmt }}
+                  {% if msg.media_url %}{{ att.media(msg) }}{% else %}
+                  {{ (msg.content or '(message)')|chat_fmt }}{% endif %}
                   <span class="bubble-time">{{ msg.created_at.strftime('%H:%M') if msg.created_at }}</span>
                 </div>
               </div>
