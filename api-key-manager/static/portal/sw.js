@@ -1,4 +1,4 @@
-const CACHE = 'phixtra-v1';
+const CACHE = 'phixtra-v2';
 const STATIC = [
   '/static/portal/phixtra-logo.png',
   '/static/portal/favicon.png',
@@ -75,8 +75,8 @@ self.addEventListener('push', function(e) {
   try { d = e.data ? e.data.json() : {}; } catch (err) { d = {body: e.data ? e.data.text() : ''}; }
   e.waitUntil(self.registration.showNotification(d.title || 'PhiXtra', {
     body: d.body || '',
-    icon: '/static/portal/pwa-icon-192.png',
-    badge: '/static/portal/pwa-icon-192.png',
+    icon: '/static/portal/app-icon-192.png',        // new PhiXtra icon (26 Nov 2026)
+    badge: '/static/portal/notify-badge-96.png',    // one-colour mark for the status bar
     tag: d.tag || undefined,
     renotify: !!d.tag,
     data: {url: d.url || '/inbox'}

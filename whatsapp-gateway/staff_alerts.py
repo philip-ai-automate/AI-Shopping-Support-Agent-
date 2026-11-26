@@ -64,6 +64,55 @@ def _support_ids() -> set:
     return {x.strip() for x in raw.split(",") if x.strip()}
 
 
+def _setting(cur, key: str, default: str = "") -> str:
+    """system_settings value (26 Nov 2026: staff_wa_alerts, android_app_url).
+    Set by PhiXtra, never hard-coded here."""
+    try:
+        cur.execute("SELECT setting_value FROM system_settings WHERE setting_key=%s", (key,))
+        r = cur.fetchone()
+        v = (r or {}).get("setting_value") if isinstance(r, dict) else (r[0] if r else None)
+        return (v if v is not None else default).strip()
+    except Exception:
+        return default
+
+
+def _wa_alerts_on(cur) -> bool:
+    """WhatsApp alerts to staff end on the day the Android app goes live
+    (user 26 Nov 2026: handovers by the PhiXtra app + email only).
+    system_settings staff_wa_alerts = 'off' turns them off."""
+    return _setting(cur, "staff_wa_alerts", "on").lower() != "off"
+
+
+def _app_url(cur) -> str:
+    """Google Play link for the PhiXtra app; empty until the app is live, and
+    then nothing about the app is shown."""
+    u = _setting(cur, "android_app_url", "")
+    return u if u.startswith("https://") else ""
+
+
+def _mark_app_box(cur, tenant_id: int, recips: list) -> None:
+    """Recipients whose phone doesn't get PhiXtra app alerts yet get a 'Get the
+    app' box at the bottom of the alert email (stops once they turn alerts on)."""
+    url = _app_url(cur)
+    for r in recips:
+        r.pop("app_url", None)
+        if not url or not r.get("email"):
+            continue
+        try:
+            if r.get("kind") == "member" and r.get("id"):
+                cur.execute("SELECT 1 FROM push_devices WHERE tenant_id=%s AND team_member_id=%s LIMIT 1",
+                            (tenant_id, r["id"]))
+                has = bool(cur.fetchone())
+            elif r.get("kind") == "owner":
+                has = push_notify.has_owner_devices(cur, tenant_id)
+            else:
+                has = True
+        except Exception:
+            has = True
+        if not has:
+            r["app_url"] = url
+
+
 def _ensure_schema(cur) -> None:
     """Idempotent. The portal's migrations create these too; the gateway
     creates them itself so an alert never fails on a fresh start order."""
@@ -239,7 +288,7 @@ def _customer_label(cur, phone_number_id: str, customer_phone: str, profile_name
 # ── Sending ──────────────────────────────────────────────────────────────────
 
 def _send_email(to_email: str, subject: str, heading: str, account: str,
-                rows: list, footer: str) -> None:
+                rows: list, footer: str, app_url: str = "", url: str = "/inbox") -> None:
     host = os.getenv("SMTP_HOST", "").strip()
     port = int(os.getenv("SMTP_PORT", "587"))
     user = os.getenv("SMTP_USER", "").strip()
@@ -247,6 +296,14 @@ def _send_email(to_email: str, subject: str, heading: str, account: str,
     sender = os.getenv("SMTP_FROM", user or "no-reply@phixtra.com").strip()
     if not host or not to_email:
         return
+    app_box = ""
+    if app_url:
+        app_box = (
+            '<div style="margin-top:16px;background:#E8F0FE;border-radius:10px;padding:14px 16px">'
+            '<p style="margin:0 0 4px;font-weight:800;font-size:14px;color:#0B2A5B">Get handovers instantly: install the PhiXtra app</p>'
+            '<p style="margin:0 0 10px;font-size:13px;color:#344054">Your phone alerts you the moment a customer needs a person.</p>'
+            f'<a href="{_html.escape(app_url)}" style="display:inline-block;background:#000;color:#fff;padding:8px 14px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px">Get it on Google Play</a>'
+            '</div>')
     trs = "".join(
         f'<tr><td style="padding:7px 10px;border:1px solid #E5E7EB;background:#F9FAFB;font-weight:700;width:130px;font-size:13px">{_html.escape(k)}</td>'
         f'<td style="padding:7px 10px;border:1px solid #E5E7EB;font-size:13.5px">{_html.escape(v)}</td></tr>'
@@ -259,13 +316,14 @@ def _send_email(to_email: str, subject: str, heading: str, account: str,
       </div>
       <div style="border:1px solid #E5E7EB;border-top:none;border-radius:0 0 12px 12px;padding:18px 20px">
         <table style="border-collapse:collapse;width:100%;margin:0 0 16px">{trs}</table>
-        <a href="{_PORTAL}/inbox" style="display:inline-block;background:#25D366;color:#03240F;padding:11px 18px;border-radius:10px;text-decoration:none;font-weight:800">Open the Inbox and reply</a>
-        <p style="color:#667085;font-size:12.5px;margin-top:14px">{_html.escape(footer)}</p>
+        <a href="{_html.escape(_PORTAL + url if url.startswith('/') else _PORTAL + '/inbox')}" style="display:inline-block;background:#25D366;color:#03240F;padding:11px 18px;border-radius:10px;text-decoration:none;font-weight:800">Open the Inbox and reply</a>
+        <p style="color:#667085;font-size:12.5px;margin-top:14px">{_html.escape(footer)}</p>{app_box}
       </div>
     </div>"""
     msg = EmailMessage()
     msg["From"], msg["To"], msg["Subject"] = sender, to_email, subject
-    msg.set_content("\n".join(f"{k}: {v}" for k, v in rows) + f"\n\nReply: {_PORTAL}/inbox\n\n{footer}")
+    msg.set_content("\n".join(f"{k}: {v}" for k, v in rows) + f"\n\nReply: {_PORTAL}/inbox\n\n{footer}"
+                    + (f"\n\nGet handovers instantly: install the PhiXtra app. {app_url}" if app_url else ""))
     msg.add_alternative(body, subtype="html")
     try:
         with smtplib.SMTP(host, port, timeout=15) as s:
@@ -303,8 +361,19 @@ async def _send_whatsapp(to_phone: str, template_type: str, params: list, text: 
 
 async def _deliver(recipients: list, *, account: str, label: str, preview: str,
                    when: str, reminder: bool, channel: str = "WhatsApp",
-                   tenant_id: int = None, url: str = "/inbox", tag: str = "") -> None:
+                   tenant_id: int = None, url: str = "/inbox", tag: str = "",
+                   reason: str = "new_chat") -> None:
     preview80 = (preview or "")[:80]
+    wa_on, app_url = True, ""
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        try:
+            wa_on = _wa_alerts_on(cur)
+            if tenant_id:
+                _mark_app_box(cur, int(tenant_id), recipients)
+        finally:
+            cur.close(); conn.close()
     for r in recipients:
         if reminder and not r.get("alert_reminder"):
             continue
@@ -322,7 +391,7 @@ async def _deliver(recipients: list, *, account: str, label: str, preview: str,
             subject = f"🆘 New chat needs a reply: {label}"
             heading = "A chat is waiting for a reply"
             footer = "If nobody replies within 10 minutes, you'll get one reminder."
-        if r.get("alert_phone"):
+        if r.get("alert_phone") and wa_on:
             try:
                 await _send_whatsapp(r["alert_phone"],
                                      "staff_chat_reminder" if reminder else "staff_chat_alert",
@@ -332,7 +401,8 @@ async def _deliver(recipients: list, *, account: str, label: str, preview: str,
         if r.get("email"):
             await asyncio.to_thread(_send_email, r["email"], subject, heading, account,
                                     [("From", label), ("Channel", channel),
-                                     ("Message", preview or "-"), ("Received", when)], footer)
+                                     ("Message", preview or "-"), ("Received", when)], footer,
+                                    r.get("app_url") or "", url)
     # Phone notifications (2026-10-11): the same people's devices, plus every
     # device the owner turned on. Each person's WhatsApp/email above is unchanged.
     if tenant_id:
@@ -345,6 +415,9 @@ async def _deliver(recipients: list, *, account: str, label: str, preview: str,
             elif channel == "Website chat":
                 title = f"{account} · Website chat"
                 body = f'{label}: "{preview80}"' if preview80 else "A website visitor asked to talk to a person."
+            elif reason == "handoff":
+                title = f"{account} · AI Agent handed over {label}"
+                body = f'"{preview80}"' if preview80 else "A customer is waiting for a person."
             else:
                 title = f"{account} · {label} needs a reply"
                 body = f'"{preview80}"' if preview80 else "A new chat is waiting for a reply."
@@ -379,6 +452,11 @@ async def alert_chat_needs_reply(tenant_id: int, phone_number_id: str, customer_
         _prev = cur.fetchone()
         if _prev:
             conn.commit()
+            # Already alerted for this chat: whoever took it over hears about
+            # each new message (26 Nov 2026).
+            asyncio.create_task(alert_customer_replied(
+                tenant_id, "whatsapp", customer_phone,
+                _customer_label(cur, phone_number_id, customer_phone, profile_name), text))
             # Only the owner's devices were told → the caller's own owner
             # alert still runs, exactly as before phone notifications.
             return _real(_prev.get("recipients"))
@@ -410,9 +488,90 @@ async def alert_chat_needs_reply(tenant_id: int, phone_number_id: str, customer_
     when = datetime.now(_WAT).strftime("%-d %b, %H:%M WAT")
     await _deliver(recips, account=account, label=label, preview=text, when=when, reminder=False,
                    tenant_id=tenant_id, url=push_notify.chat_url("whatsapp", _digits(customer_phone)),
-                   tag=f"chat-{tenant_id}-{_digits(customer_phone)}")
+                   tag=f"chat-{tenant_id}-{_digits(customer_phone)}", reason=reason)
     print(f"✅ [STAFF ALERT] tenant={tenant_id} chat={_digits(customer_phone)} → {len(recips)} recipient(s) ({reason})")
     return alerted
+
+
+def _claimer(cur, tenant_id: int, channel: str, chat_key: str):
+    """Who took over / claimed this chat: ('member', id) or ('owner', None),
+    or None. Website chats: the take-over row first, then a claim."""
+    keys = []
+    if channel == "web":
+        try:
+            cur.execute("SELECT taken_by_key FROM web_chat_takeover WHERE tenant_id=%s AND session_id=%s",
+                        (tenant_id, chat_key[:64]))
+            r = cur.fetchone()
+            if r and r.get("taken_by_key"):
+                keys.append(r["taken_by_key"])
+        except Exception:
+            cur.connection.rollback()
+        cur.execute("SELECT assigned_to_key FROM wa_conversation_assignments WHERE tenant_id=%s AND customer_phone=%s",
+                    (tenant_id, "web:" + chat_key))
+    elif channel == "messenger":
+        cur.execute("SELECT assigned_to_key FROM wa_conversation_assignments WHERE tenant_id=%s AND customer_phone=%s",
+                    (tenant_id, chat_key))
+    else:
+        cur.execute("""SELECT assigned_to_key FROM wa_conversation_assignments
+                        WHERE tenant_id=%s AND customer_phone NOT LIKE 'web:%%' AND customer_phone NOT LIKE 'fb:%%'
+                          AND regexp_replace(customer_phone, '\\D', '', 'g') = %s""",
+                    (tenant_id, _digits(chat_key)))
+    r = cur.fetchone()
+    if r and r.get("assigned_to_key"):
+        keys.append(r["assigned_to_key"])
+    for k in keys:
+        if k.startswith("team:"):
+            try:
+                mid = int(k[5:])
+            except ValueError:
+                continue
+            cur.execute("SELECT 1 FROM team_members WHERE id=%s AND tenant_id=%s AND is_active", (mid, tenant_id))
+            if cur.fetchone():
+                return ("member", mid)
+        elif k.startswith("owner:"):
+            return ("owner", None)
+    return None
+
+
+async def alert_customer_replied(tenant_id: int, channel: str, chat_key: str,
+                                 label: str, preview: str) -> int:
+    """26 Nov 2026 (board 9): after someone takes over / claims a chat, every
+    new message from that customer alerts that person only, on their phone
+    (PhiXtra app). Alerts from one chat share a tag, so they stack instead of
+    filling the lock screen. No email: one per message would be too many.
+    channel: 'whatsapp' (chat_key = phone), 'web' (session id), 'messenger'
+    (chat_key = 'fb:<page>:<psid>'). Never raises."""
+    conn = get_db_connection()
+    if not conn:
+        return 0
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        who = _claimer(cur, int(tenant_id), channel, chat_key)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"⚠️ [STAFF ALERT] claimer lookup tenant={tenant_id}: {e}")
+        who = None
+    finally:
+        cur.close(); conn.close()
+    if not who:
+        return 0
+    name = (label or "").strip() or "Your customer"
+    p80 = (preview or "").strip()[:80]
+    if channel == "web":
+        url, tag = push_notify.chat_url("web", chat_key), f"chat-{tenant_id}-{chat_key}"
+    elif channel == "messenger":
+        url, tag = push_notify.chat_url("messenger", chat_key), f"chat-{tenant_id}-{chat_key}"
+    else:
+        url, tag = push_notify.chat_url("whatsapp", _digits(chat_key)), f"chat-{tenant_id}-{_digits(chat_key)}"
+    try:
+        return await push_notify.push_to(int(tenant_id), [who[1]] if who[0] == "member" else [],
+                                         who[0] == "owner", title=f"{name} replied",
+                                         body=f'"{p80}"' if p80 else "Sent you a message.",
+                                         url=url, tag=tag)
+    except Exception as e:
+        print(f"⚠️ [STAFF ALERT] customer replied tenant={tenant_id}: {e}")
+        return 0
 
 
 async def run_alert_reminders() -> int:
@@ -504,7 +663,7 @@ async def process_web_chat_alerts() -> int:
     if not conn:
         return 0
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    todo = []
+    todo, replied = [], []
     try:
         cur.execute("""
             UPDATE web_chat_alert_queue SET processed_at = NOW()
@@ -523,6 +682,7 @@ async def process_web_chat_alerts() -> int:
                              AND first_alert_at > NOW() - %s LIMIT 1""",
                         (q["tenant_id"], q["session_id"], NEW_CHAT_WINDOW))
             if cur.fetchone():
+                replied.append(q)
                 continue
             _wn, _we = _web_identity(cur, q["tenant_id"], q["session_id"])
             recips = _only_who_may_see(cur, q["tenant_id"], _web_recipients(cur, q["tenant_id"]),
@@ -548,6 +708,9 @@ async def process_web_chat_alerts() -> int:
         return 0
     finally:
         cur.close(); conn.close()
+    for q in replied:
+        await alert_customer_replied(q["tenant_id"], "web", q["session_id"],
+                                     q["label"] or "Website visitor", q["preview"] or "")
     for recips, account, q in todo:
         when = q["created_at"].astimezone(_WAT).strftime("%-d %b, %H:%M WAT")
         await _deliver(recips, account=account, label=q["label"] or "Website visitor",

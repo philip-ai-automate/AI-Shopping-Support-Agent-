@@ -17,6 +17,12 @@ load_dotenv()
 def create_app():
     flask_app = Flask(__name__, template_folder="templates", static_folder="static")
     flask_app.secret_key = os.getenv("PORTAL_SECRET_KEY", "change-this-secret-in-env")
+    # 26 Nov 2026 (user): once signed in, the PhiXtra app stays signed in.
+    # Only app sessions are made permanent (portal_routes._app_stays_signed_in);
+    # browser logins still end when the browser closes. Removing a team
+    # member still logs them out at once (_refresh_team_member_access).
+    from datetime import timedelta as _td
+    flask_app.config["PERMANENT_SESSION_LIFETIME"] = _td(days=3650)
     # Form security (CSRF): every form/action needs this session's token (QA Lead, live 25 Nov 2026)
     import csrf_protect
     csrf_protect.init_app(flask_app)

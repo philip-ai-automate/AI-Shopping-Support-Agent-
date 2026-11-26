@@ -46,6 +46,13 @@ def main():
             WH.tick()
         except Exception as e:
             print("⚠️ wa_health tick:", e)
+        # Quote approvals (26 Nov 2026, decision E): one reminder to the
+        # approver when nobody has decided within 1 hour.
+        try:
+            import quote_approval as QA
+            QA.remind_tick()
+        except Exception as e:
+            print("⚠️ quote approval reminders:", e)
     st = M.get_settings()
     if st["alerts_on"] != "1" and not a.dry_run:
         print("reply alerts are switched off in Admin › Accounts › Settings")

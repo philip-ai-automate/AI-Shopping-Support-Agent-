@@ -94,6 +94,27 @@
 .sug-b.ai-v{background-position:8px 12px}
 .sug-b.alt{border-style:dashed;border-color:#98A2B3;color:#344054}
 .sug-b .s{display:block;font-size:11.5px;color:#667085;font-weight:400}
+/* approver's box (26 Nov 2026) */
+.qa-top{border:2px solid var(--navy,#0B1D40);border-radius:14px;padding:16px;display:grid;gap:10px;background:#fff;max-width:720px}
+.qa-head{display:grid;gap:2px}.qa-head b{font-size:18px;color:#101828}
+.qa-k{font-size:12.5px;color:#667085}
+.qa-why{background:#FFF4D6;border-radius:10px;padding:10px 12px;font-size:13px;color:#6B4600;display:grid;gap:2px}.qa-why b{color:#4A3000}
+.qa-lines{display:grid;gap:6px}
+.qa-l{border:1px solid #E4E7EC;border-radius:10px;padding:9px 12px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;font-size:13px}
+.qa-l b{font-size:13.5px;color:#101828;min-width:0;overflow-wrap:anywhere}.qa-l span{color:#667085;font-size:12.5px}
+.qa-l .qa-amt{grid-row:span 2;align-self:center;font-weight:700;color:#101828;font-size:13.5px;font-variant-numeric:tabular-nums}
+.qa-tot{display:flex;justify-content:space-between;font-weight:800;font-size:16px;padding:2px 2px;font-variant-numeric:tabular-nums}
+.qa-full{font-size:13px;font-weight:700;color:#1F5FD0;text-decoration:none}
+.qa-note{display:grid;gap:5px;font-size:13px;font-weight:600}.qa-note textarea{width:100%;box-sizing:border-box;font:inherit;font-weight:400;border:1px solid #D0D5DD;border-radius:10px;padding:8px 10px}
+.qa-note[hidden]{display:none}
+.qa-bar{display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:420px}
+.qa-bar .qt-btn{justify-content:center;padding:11px}
+#qaBack{border-color:#B54708;color:#B54708}
+@media (max-width:640px){
+  .qa-top{padding-bottom:78px}
+  .qa-bar{position:fixed;left:0;right:0;bottom:0;z-index:800;max-width:none;background:#fff;border-top:1px solid #E4E7EC;
+          padding:10px max(12px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
+}
 </style>
 {% endblock %}
 {% block content %}
@@ -115,6 +136,53 @@
       {% if versions|length > 1 %}{% for v in versions %}{% if v.id != q.id %}<a class="qt-btn sm" href="{{ url_for('portal.quotes_quotation', qid=v.id) }}">{{ v.number }}{{ ' v%d'|format(v.version) if v.version > 1 }} · {{ {'draft': 'draft', 'sending': 'sending', 'sent': 'sent', 'superseded': 'replaced'}.get(v.status, v.status) }}</a>{% endif %}{% endfor %}{% endif %}
     </div>
   </div>
+
+  {# Approve on the phone (26 Nov 2026, Android app plan board 13): the
+     approver's box at the top of the quotation, lines as cards, Approve /
+     Send back. On a phone the two buttons stay at the bottom of the screen. #}
+  {% set _top_ast = (appr or {}).get('status') %}
+  {% set _top_approver = can_approve and _top_ast == 'asked' and (me_key in (appr.approvers or [])|map(attribute='key')|list or me_key.startswith('owner:')) %}
+  {% if _top_approver %}
+  <form method="post" class="qa-top" id="qaTop">
+    <input type="hidden" name="action" id="qaAction" value="appr_approve">
+    <div class="qa-head">
+      <span class="qa-k">Waiting for your approval · asked by {{ appr.asked_by or 'a salesperson' }}{% if appr.asked_at %}, {{ (appr.asked_at or '')[11:16] }}{% endif %}</span>
+      <b>{{ req.buyer_company or req.buyer_name }}</b>
+      <span class="qa-k">Valid until {{ doc.valid_until.strftime('%d %b %Y') }}{% if (q.data or {}).get('payment_terms') %} · {{ q.data.payment_terms }}{% endif %}</span>
+    </div>
+    <div class="qa-why"><b>Why it needs approval</b>{{ (appr.reasons or [])|join(' · ')|capitalize }}</div>
+    <div class="qa-lines">
+      {% for ln in doc.lines %}
+      <div class="qa-l"><b>{{ ln.name }}</b><span class="qa-amt">{{ qr.money(ln.amount, doc.currency) }}</span>
+        <span>{{ '%g'|format(ln.qty|float) }}{{ ' ' ~ ln.unit if ln.unit }} × {{ qr.money(ln.price, doc.currency) }}{% if ln.disc %} · {{ '%g'|format(ln.disc|float) }}% off{% endif %}</span></div>
+      {% endfor %}
+      {% for c in doc.charges %}
+      <div class="qa-l"><b>{{ c.name }}</b><span class="qa-amt">{{ qr.money(c.amount, doc.currency) }}</span><span>Charge</span></div>
+      {% endfor %}
+    </div>
+    <div class="qa-tot"><span>Total{{ ' incl. ' ~ doc.tax.label.split(' ')[0] if doc.tax_amount }}</span><span>{{ qr.money(doc.total, doc.currency) }}</span></div>
+    <a class="qa-full" href="#secProducts">See the full quotation</a>
+    <label class="qa-note" id="qaNoteWrap" hidden>What should they change? <textarea name="note" id="qaNote" rows="2" maxlength="500" placeholder="e.g. Drop the table discount to 10% and ask again."></textarea></label>
+    <div class="qa-bar">
+      <button type="submit" class="qt-btn" id="qaBack">Send back</button>
+      <button type="submit" class="qt-btn ok" id="qaApprove">Approve</button>
+    </div>
+  </form>
+  <script>
+  (function(){
+    var f = document.getElementById('qaTop'), act = document.getElementById('qaAction'),
+        wrap = document.getElementById('qaNoteWrap'), note = document.getElementById('qaNote');
+    document.getElementById('qaApprove').addEventListener('click', function(){ act.value = 'appr_approve'; });
+    document.getElementById('qaBack').addEventListener('click', function(e){
+      act.value = 'appr_back';
+      if (wrap.hidden || !note.value.trim()) {     // first tap opens the note; it's needed to send back
+        e.preventDefault(); wrap.hidden = false; note.focus();
+        this.textContent = 'Send back with this note';
+      }
+    });
+  })();
+  </script>
+  {% endif %}
 
   {% if has_ai %}
   <div class="qe-legend" id="qeLegend">
@@ -207,11 +275,9 @@
           {% set _needs = appr_why and not can_approve and _ast != 'approved' %}
           {% if _ast == 'asked' %}
             {% if _approver_here %}
-            <div class="qe-appr" style="border:1.5px solid var(--navy);border-radius:10px;padding:12px;display:grid;gap:10px">
+            <div class="qe-appr" style="border:1.5px solid var(--navy);border-radius:10px;padding:12px;display:grid;gap:6px">
               <b style="color:var(--navy)">{{ appr.asked_by }} asks for your approval</b>
-              <span class="qt-small">Reason: {{ appr.reasons|join('; ') }}</span>
-              <label class="qe-lab" style="display:grid;gap:5px">Note (needed to send back) <textarea name="note" rows="2" maxlength="500"></textarea></label>
-              <div class="qt-btns"><button class="qt-btn ok" data-act="appr_approve">Approve</button><button class="qt-btn" data-act="appr_back" style="border-color:#B54708;color:#B54708">Send back</button></div>
+              <a href="#qaTop" class="qt-small" style="font-weight:700">Approve or send back at the top of the page ↑</a>
             </div>
             {% else %}
             <div class="qe-appr" style="background:#F2F4F7;border-radius:10px;padding:12px;font-size:13.5px"><b>Waiting for approval from {{ (appr.approvers or [])|map(attribute='label')|join(', ') }}</b>

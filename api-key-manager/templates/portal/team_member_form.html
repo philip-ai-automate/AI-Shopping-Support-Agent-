@@ -143,13 +143,17 @@
     <div class="card" style="margin-bottom:16px">
       <p class="card-title">🔔 Chat alerts</p>
       <p class="muted" style="font-size:13px;margin:-4px 0 12px">Tell this person straight away when a customer's chat needs a reply — only for chats they can see.</p>
-      <label class="agent-check"><input type="checkbox" name="alert_enabled"/> Alert them on WhatsApp and email when a chat needs a reply</label>
+      <label class="agent-check"><input type="checkbox" name="alert_enabled"/> Alert them {{ 'on WhatsApp and email' if staff_wa_alerts_on() else 'in the PhiXtra app and by email' }} when a chat needs a reply</label>
       <label class="agent-check" style="margin-bottom:12px"><input type="checkbox" name="alert_reminder" checked/> Remind them after 10 minutes if nobody has replied</label>
+      {% if staff_wa_alerts_on() %}
       <div class="form-group" style="margin-bottom:0">
         <label>Their personal WhatsApp number for alerts</label>
         {{ phone_box('alert_phone', cls='', style='max-width:420px', own=True) }}
         <p class="muted" style="font-size:12px;margin-top:6px">Alerts come from PhiXtra's WhatsApp number. Email alerts go to the email address above.</p>
       </div>
+      {% else %}
+      <p class="muted" style="font-size:12px;margin:0">Email alerts go to the email address above. For alerts on their phone, they install the PhiXtra app and turn alerts on.</p>
+      {% endif %}
     </div>
     {% endif %}
 

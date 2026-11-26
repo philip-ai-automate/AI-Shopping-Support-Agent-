@@ -1763,6 +1763,8 @@
       {% endif %}
     {% endwith %}
 
+    {# Android app plan (26 Nov 2026): handover alerts on this phone / get the app #}
+    {% if session.get('portal_logged_in') and not session.get('impersonate_customer_id') %}{% include "portal/_app_alerts_prompt.html" %}{% endif %}
 
     {% block content %}{% endblock %}
 

@@ -136,3 +136,12 @@ async def handle_messenger_webhook(payload: dict, body: bytes, sig_header: str) 
             ok = _log_message(tenant_id, page_id, psid, "inbound", text, message_type, mid)
             if ok:
                 print(f"📩 [MESSENGER] tenant={tenant_id} page={page_id} psid={psid} ({len(text or '')} chars)")
+                # 26 Nov 2026: whoever claimed this chat hears about each new
+                # message on their phone (PhiXtra app). Messenger has no name.
+                try:
+                    import staff_alerts
+                    await staff_alerts.alert_customer_replied(
+                        tenant_id, "messenger", f"fb:{page_id}:{psid}",
+                        "Messenger customer", text if not text.startswith("[") else "Sent a photo or file.")
+                except Exception as _ae:
+                    print("⚠️ [MESSENGER] customer replied alert:", _ae)

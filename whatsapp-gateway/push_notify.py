@@ -187,6 +187,30 @@ async def push_test(req: _TestReq, authorization: str = Header(default="")):
     return {"sent": sent}
 
 
+class _SendReq(BaseModel):
+    tenant_id: int
+    team_member_ids: list[int] = []
+    include_owner: bool = False
+    title: str
+    body: str = ""
+    url: str = "/dashboard"
+    tag: str = "phixtra"
+
+
+@router.post("/internal/push-send")
+async def push_send(req: _SendReq, authorization: str = Header(default="")):
+    """26 Nov 2026: app alerts the portal asks for (quote approvals). The
+    portal has no push library or private key."""
+    token = authorization.removeprefix("Bearer ").strip()
+    expected = os.getenv("PHIXTRA_INTERNAL_TOKEN", "")
+    if not expected or token != expected:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    url = req.url if req.url.startswith("/") else "/dashboard"
+    sent = await push_to(req.tenant_id, req.team_member_ids, req.include_owner,
+                         title=req.title, body=req.body, url=url, tag=req.tag)
+    return {"sent": sent}
+
+
 # ── Admin (PhiXtra staff) phone notifications — support requests (23 Nov 2026) ──
 class _AdminPushReq(BaseModel):
     usernames: list[str]

@@ -818,6 +818,15 @@ async def receive_webhook(
             await handle_shopping_message(msg, tenant, _hs)
             return {"status": "ok", "reason": "shopping"}
         print(f"   [META] Handoff active for session={session_id} — AI skipped")
+        # 26 Nov 2026: whoever took this chat over hears about each new message.
+        try:
+            from staff_alerts import alert_customer_replied
+            asyncio.create_task(alert_customer_replied(
+                tenant_id, "whatsapp", customer_phone,
+                (msg.get("customer_name") or "").strip() or f"+{customer_phone}",
+                text or "Sent a photo or file."))
+        except Exception as _ae:
+            print(f"⚠️ [META] customer replied alert: {_ae}")
         return {"status": "ok", "reason": "handoff_active"}
 
     # ── Automatic replies (2026-10-31): don't let the AI answer a customer's

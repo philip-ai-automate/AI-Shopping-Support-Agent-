@@ -78,6 +78,8 @@
            flex-shrink:0;object-fit:cover}
 .tm-identity{display:flex;align-items:center;gap:11px;min-width:220px}
 .tm-name{font-size:13.5px;font-weight:700}
+.tm-app{font-size:11.5px;font-weight:600;margin-top:2px}.tm-app.on{color:#0F9F5F}.tm-app.off{color:#B42318}
+.tm-app-warn{background:#FFF4D6;color:#6B4600;border-radius:10px;padding:10px 12px;font-size:13px;margin:0 0 12px}
 .tm-email{font-size:11.5px;color:var(--muted)}
 
 .tm-pill{font-size:10.5px;font-weight:700;border-radius:999px;padding:3px 9px;display:inline-block;
@@ -260,6 +262,9 @@
     <span class="tm-count" id="tmCount">{{ members|length }} member{{ 's' if members|length != 1 }}</span>
   </div>
 
+  {% if android_app_url() and app_email_only %}
+  <div class="tm-app-warn">{{ app_email_only }} {{ 'person who gets chat alerts doesn\'t' if app_email_only == 1 else 'people who get chat alerts don\'t' }} have the PhiXtra app. Handovers reach {{ 'them' }} by email only, which is slower.</div>
+  {% endif %}
   <div class="tm-table-wrap">
     <table class="tm-table">
       <thead>
@@ -273,6 +278,15 @@
         </tr>
       </thead>
       <tbody>
+        {# 26 Nov 2026 (Android app plan board 5): PhiXtra app line under each name, once the app is on Google Play #}
+        {% macro app_line(st, alerts) -%}
+          {%- if android_app_url() and alerts -%}
+            {%- if st and st.phone -%}<div class="tm-app on">PhiXtra app: alerts on · {{ 'Android phone' if st.phone == 'Android phone' else st.phone }}</div>
+            {%- elif st and st.computer -%}<div class="tm-app off">PhiXtra app: not installed · computer alerts only</div>
+            {%- else -%}<div class="tm-app off">PhiXtra app: not installed · email only</div>{%- endif -%}
+          {%- endif -%}
+        {%- endmacro %}
+        
         {# Account owner — owner's own view only (team members see only the company name, never the owner — user 2026-09-27). Always first, read-only: the owner isn't a team_members row, so it can't be edited or removed here. #}
         {% if not session.get('team_member_id') %}
         {% set _owner_name = ((customer.first_name or '') ~ ' ' ~ (customer.last_name or ''))|trim %}
@@ -287,6 +301,7 @@
               <div>
                 <div class="tm-name">{{ _owner_name or customer.email }}</div>
                 <div class="tm-email">{{ customer.email }}</div>
+                {{ app_line(app_status.get('owner'), True) }}
               </div>
             </div>
           </td>
@@ -309,6 +324,7 @@
               <div>
                 <div class="tm-name">{{ m.name }}</div>
                 <div class="tm-email">{{ m.email }}</div>
+                {% if m.is_active %}{{ app_line(app_status.get(m.id), m.alert_enabled) }}{% endif %}
               </div>
             </div>
           </td>
@@ -465,7 +481,7 @@
                   <div class="tm-card-h"><h3>Chat alerts</h3><span>Only for chats {{ _first }} can open</span></div>
                   <div class="tm-group">
                     <div class="tm-item">
-                      <div class="tm-item-main"><b>Alert when a chat needs a reply</b><small>WhatsApp and email, within seconds</small></div>
+                      <div class="tm-item-main"><b>Alert when a chat needs a reply</b><small>{{ 'WhatsApp and email' if staff_wa_alerts_on() else 'PhiXtra app and email' }}, within seconds</small></div>
                       <label class="tm-sw"><input type="checkbox" name="alert_enabled" {% if m.alert_enabled %}checked{% endif %}
                              aria-label="Alert {{ _first }} when a chat needs a reply"><span></span></label>
                     </div>
@@ -475,8 +491,10 @@
                              aria-label="10-minute reminder for {{ _first }}"><span></span></label>
                     </div>
                     <div class="tm-field">
+                      {% if staff_wa_alerts_on() %}
                       <label for="tmAlertPhone{{ m.id }}">Personal WhatsApp for alerts</label>
                       {{ phone_box('alert_phone', m.alert_phone, cls='', id='tmAlertPhone' ~ m.id, own=True) }}
+                      {% endif %}
                       <small>Email alerts go to {{ m.email }}</small>
                     </div>
                   </div>

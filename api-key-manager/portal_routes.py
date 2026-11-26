@@ -1163,6 +1163,21 @@ def _app_blocks_billing(path: str) -> bool:
     return True
 
 
+@portal_bp.before_app_request
+def _app_stays_signed_in():
+    """26 Nov 2026 (user: "once signed in then app MUST remain signed in").
+    The Android app opens /dashboard?app=android and app-mode.js sets the
+    px_app cookie; a signed-in session seen from the app becomes permanent
+    (PERMANENT_SESSION_LIFETIME, portal_app.py) instead of ending when the
+    phone closes the app. Signing out still clears it."""
+    if request.args.get("app") == "android":
+        session["px_app"] = True
+    if session.get("portal_logged_in") and not session.permanent and \
+            (request.cookies.get("px_app") == "1" or session.get("px_app")):
+        session.permanent = True
+    return None
+
+
 @portal_bp.before_request
 def _no_payments_in_app():
     if request.cookies.get("px_app") == "1" and _app_blocks_billing(request.path):
@@ -5560,8 +5575,28 @@ def team_page():
     assignable_roles = _assignable_roles_for_actor(roles, acting_is_owner)
     assignable_role_ids = None if acting_is_owner else {r["id"] for r in assignable_roles}
 
+    # 26 Nov 2026 (Android app plan board 5): who gets handovers on a phone.
+    app_status = {}
+    try:
+        _c = get_db_connection(); _cur = _c.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        _cur.execute("""SELECT team_member_id, device_label FROM push_devices
+                         WHERE tenant_id=%s ORDER BY created_at DESC""", (tenant_id,))
+        for _d in _cur.fetchall() or []:
+            _k = _d["team_member_id"] or "owner"
+            _st = app_status.setdefault(_k, {"phone": "", "computer": False})
+            if (_d["device_label"] or "") in ("Android phone", "iPhone", "iPad"):
+                _st["phone"] = _st["phone"] or _d["device_label"]
+            else:
+                _st["computer"] = True
+        _cur.close(); _c.close()
+    except Exception as _e:
+        print("⚠️ team app status:", _e)
+    app_email_only = sum(1 for m in members if m.get("is_active") and m.get("alert_enabled")
+                         and not app_status.get(m["id"]))
     return render_template(
         "portal/team.html",
+        app_status=app_status,
+        app_email_only=app_email_only,
         customer=customer,
         members=members,
         staff_limit=limit,
@@ -18779,6 +18814,47 @@ def _push_device_label(ua: str) -> str:
     system = ("Windows" if "Windows" in ua else "Mac" if "Mac OS X" in ua else
               "Linux" if "Linux" in ua else "computer")
     return f"{browser} on {system}"
+
+
+def _system_setting(key: str, default: str = "") -> str:
+    """One value from system_settings (set by PhiXtra), cached 60 s."""
+    import time as _t
+    hit = _SYS_SETTING_CACHE.get(key)
+    if hit and _t.time() - hit[0] < 60:
+        return hit[1]
+    val = default
+    try:
+        conn = get_db_connection(); cur = conn.cursor()
+        try:
+            cur.execute("SELECT setting_value FROM system_settings WHERE setting_key=%s", (key,))
+            r = cur.fetchone()
+            if r and r[0] is not None:
+                val = str(r[0]).strip()
+        finally:
+            cur.close(); conn.close()
+    except Exception as e:
+        print(f"⚠️ system setting {key}: {e}")
+    _SYS_SETTING_CACHE[key] = (_t.time(), val)
+    return val
+
+
+_SYS_SETTING_CACHE: dict = {}
+
+
+@portal_bp.app_template_global()
+def android_app_url() -> str:
+    """Google Play link for the PhiXtra app (26 Nov 2026). Empty until the
+    app is live on Google Play, and then nothing about the app shows."""
+    u = _system_setting("android_app_url", "")
+    return u if u.startswith("https://") else ""
+
+
+@portal_bp.app_template_global()
+def staff_wa_alerts_on() -> bool:
+    """WhatsApp alerts to staff end on the day the app goes live (user 26 Nov
+    2026: handovers by the PhiXtra app + email only). The gateway reads the
+    same system_settings key."""
+    return _system_setting("staff_wa_alerts", "on").lower() != "off"
 
 
 @portal_bp.app_template_global()

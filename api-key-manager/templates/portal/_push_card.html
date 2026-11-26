@@ -27,7 +27,7 @@
 </style>
 <div class="pn-card" id="push-card">
   <h2>🔔 Phone notifications</h2>
-  <p class="pn-sub">Get a pop-up on this phone or computer when a customer needs a reply — even when PhiXtra is closed. Your WhatsApp and email alerts stay as they are.</p>
+  <p class="pn-sub">Get a pop-up on this phone or computer when a customer needs a reply — even when PhiXtra is closed. Your {{ 'WhatsApp and email alerts stay' if staff_wa_alerts_on() else 'email alerts stay' }} as they are.</p>
 
   {% if not pd.alerts_on %}
   <div class="pn-box pn-warn"><b>Chat alerts are off for you</b>You'll only get notifications once the account owner or IT switches on chat alerts for you on the Team page.</div>
@@ -61,6 +61,14 @@
       <li>Reload this page and tap <b>Turn on for this device</b>.</li>
     </ol>
   </div>
+
+  {% if android_app_url() %}
+  {# 26 Nov 2026: on an Android phone, alerts come through the PhiXtra app, not the browser #}
+  <div data-pn="store" hidden>
+    <div class="pn-box pn-warn"><b>On your phone, get alerts in the PhiXtra app</b>The app alerts you the moment a customer needs a person, even when your phone is locked.</div>
+    <div class="pn-row"><a class="btn btn-primary" href="{{ android_app_url() }}" target="_blank" rel="noopener">Get it on Google Play</a></div>
+  </div>
+  {% endif %}
 
   <div data-pn="unsupported" hidden>
     <div class="pn-box pn-warn"><b>This browser can't show notifications</b>Use Chrome or Edge on a computer or Android phone, or Safari on iPhone after adding PhiXtra to your Home Screen.</div>
@@ -121,7 +129,10 @@
   var standalone = window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
   var supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 
+  var inApp = document.documentElement.classList.contains('in-app');
+  var androidPhone = /Android/i.test(navigator.userAgent) && /Mobile/i.test(navigator.userAgent);
   function refresh(){
+    if (androidPhone && !inApp && card.querySelector('[data-pn="store"]')) { show('store'); return; }
     if (isIOS && !standalone && !supported) { show('ios'); return; }
     if (!supported) { show(isIOS ? 'ios' : 'unsupported'); return; }
     if (Notification.permission === 'denied') { show('blocked'); return; }

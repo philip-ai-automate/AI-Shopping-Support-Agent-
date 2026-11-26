@@ -325,6 +325,37 @@ def _mail(to, subject, lines, link, button):
         return False
 
 
+def _push(tenant_id: int, keys, title: str, body: str, url: str, tag: str, wait: bool = False) -> None:
+    """App alerts (26 Nov 2026, Android app plan boards 12 and 14): to these
+    people's phones through the WhatsApp gateway, which holds the push key.
+    In the background, so a slow gateway never holds up the page."""
+    mids = [int(k[5:]) for k in keys if k and k.startswith("team:") and k[5:].isdigit()]
+    owner = any(k and k.startswith("owner:") for k in keys)
+    if not mids and not owner:
+        return
+
+    def _go():
+        try:
+            import os, requests
+            requests.post(os.getenv("WA_GATEWAY_INTERNAL_URL", "http://127.0.0.1:8001") + "/internal/push-send",
+                          json={"tenant_id": int(tenant_id), "team_member_ids": mids, "include_owner": owner,
+                                "title": title[:120], "body": body[:180], "url": url, "tag": tag},
+                          headers={"Authorization": "Bearer " + os.getenv("PHIXTRA_INTERNAL_TOKEN", "")},
+                          timeout=15)
+        except Exception as e:
+            print("⚠️ approval app alert:", e)
+    if wait:          # the minute job ends right after, so send before it does
+        _go()
+        return
+    import threading
+    threading.Thread(target=_go, daemon=True).start()
+
+
+def _why_text(why) -> str:
+    t = "; ".join(why or [])
+    return (t[:1].upper() + t[1:] + ".") if t else ""
+
+
 def _alert(tenant_id, q, req, who, actor, why, portal_url):
     import quote_quotes as qq
     import quote_design as qd
@@ -340,6 +371,9 @@ def _alert(tenant_id, q, req, who, actor, why, portal_url):
               [f"Hi {first}," if first else "Hello,",
                f"{actor.get('label') or 'A salesperson'} asks you to approve quotation {num} for {buyer} ({total}).",
                "Reason: " + "; ".join(why) + "."], link, "Open the quotation")
+    _push(tenant_id, [w.get("key") for w in who], f"Quote {num} needs your approval",
+          f"{buyer} · {total} · from {actor.get('label') or 'a salesperson'}. {_why_text(why)}".strip(),
+          f"/quotations/q/{q['id']}", f"quote-approval-{q['id']}")
 
 
 def _tell_asker(tenant_id, q, req, a):
@@ -355,11 +389,25 @@ def _tell_asker(tenant_id, q, req, a):
             email = (cur.fetchone() or {}).get("email")
     finally:
         cur.close(); conn.close()
-    if not email:
-        return
     import quote_quotes as qq
     import auto_followups as _af
     num = qq.full_number(q)
+    # App alert to the salesperson who asked (26 Nov 2026, board 14).
+    try:
+        import quote_design as qd
+        total = qr.money(qq.to_doc(tenant_id, q, qd.get(tenant_id), req)["total"], q.get("currency"))
+    except Exception:
+        total = ""
+    buyer = req.get("buyer_company") or req.get("buyer_name") or "Your buyer"
+    if a["status"] == "approved":
+        _push(tenant_id, [key], f"{num} approved by {a['by_label']}",
+              f"{buyer}{' · ' + total if total else ''} · ready to send.",
+              f"/quotations/q/{q['id']}", f"quote-approval-{q['id']}")
+    else:
+        _push(tenant_id, [key], f"{num} sent back by {a['by_label']}", f"“{a.get('note') or ''}”",
+              f"/quotations/q/{q['id']}", f"quote-approval-{q['id']}")
+    if not email:
+        return
     if a["status"] == "approved":
         _mail(email, f"{num} is approved", [f"{a['by_label']} approved quotation {num}. You can send it now."],
               f"{_af.PORTAL}/quotations/q/{q['id']}", "Open the quotation")
@@ -367,3 +415,89 @@ def _tell_asker(tenant_id, q, req, a):
         _mail(email, f"{num} was sent back", [f"{a['by_label']} sent quotation {num} back:", f"“{a.get('note')}”",
                                                "Make the change, then ask again."],
               f"{_af.PORTAL}/quotations/q/{q['id']}", "Open the quotation")
+
+
+# ── reminder (26 Nov 2026, decision E) ──────────────────────────────────────
+
+REMIND_AFTER_MIN = 60
+
+
+def remind_tick() -> int:
+    """Every minute (am_reply_alerts.py): one reminder, by app alert and
+    email, to the approvers of a quotation nobody has decided on within
+    1 hour of asking. Marked in the approval so it's only ever sent once."""
+    import quote_quotes as qq
+    import auto_followups as _af
+    conn, cur = _db()
+    try:
+        cur.execute("""SELECT q.id, q.tenant_id FROM quotations q
+                        WHERE q.status='draft' AND q.data->'approval'->>'status' = 'asked'
+                          AND q.data->'approval'->>'reminded_at' IS NULL
+                          AND (q.data->'approval'->>'asked_at')::timestamptz < NOW() - make_interval(mins => %s)
+                          AND (q.data->'approval'->>'asked_at')::timestamptz > NOW() - INTERVAL '3 days'
+                        ORDER BY q.id LIMIT 50""", (REMIND_AFTER_MIN,))
+        due = [dict(r) for r in cur.fetchall()]
+    finally:
+        cur.close(); conn.close()
+    sent = 0
+    for d in due:
+        conn, cur = _db()
+        try:
+            # mark first (only while still waiting), so a slow send never repeats
+            cur.execute("""UPDATE quotations
+                              SET data = jsonb_set(data, '{approval,reminded_at}', to_jsonb(%s::text))
+                            WHERE id=%s AND tenant_id=%s AND status='draft'
+                              AND data->'approval'->>'status' = 'asked'
+                              AND data->'approval'->>'reminded_at' IS NULL
+                        RETURNING id""", (_now(), d["id"], d["tenant_id"]))
+            ok = cur.fetchone() is not None
+            conn.commit()
+            if not ok:
+                continue
+            cur.execute("SELECT * FROM quotations WHERE id=%s", (d["id"],))
+            q = dict(cur.fetchone())
+            cur.execute("SELECT * FROM quote_requests WHERE id=%s", (q["request_id"],))
+            req = dict(cur.fetchone() or {})
+        finally:
+            cur.close(); conn.close()
+        try:
+            import quote_design as qd
+            a = (q.get("data") or {}).get("approval") or {}
+            keys = [w.get("key") for w in a.get("approvers") or []]
+            num = qq.full_number(q)
+            buyer = req.get("buyer_company") or req.get("buyer_name") or "a buyer"
+            total = qr.money(qq.to_doc(d["tenant_id"], q, qd.get(d["tenant_id"]), req)["total"], q.get("currency"))
+            asker = a.get("asked_by") or "A salesperson"
+            _push(d["tenant_id"], keys, f"Reminder · Quote {num} still needs your approval",
+                  f"{buyer} · {total} · from {asker}. The buyer is waiting for the quote.",
+                  f"/quotations/q/{q['id']}", f"quote-approval-{q['id']}", wait=True)
+            for w in approvers_emails(d["tenant_id"], keys):
+                _mail(w["email"], f"Reminder: {num} still needs your approval",
+                      [f"{asker} asked you to approve quotation {num} for {buyer} ({total}) over an hour ago.",
+                       "The buyer is waiting for the quote."],
+                      f"{_af.PORTAL}/quotations/q/{q['id']}", "Open the quotation")
+            sent += 1
+        except Exception as e:
+            print(f"⚠️ approval reminder quotation {d['id']}: {e}")
+    return sent
+
+
+def approvers_emails(tenant_id: int, keys) -> list:
+    """Current email of each approver key (people can change their email)."""
+    out = []
+    conn, cur = _db()
+    try:
+        for k in keys or []:
+            if k and k.startswith("team:") and k[5:].isdigit():
+                cur.execute("SELECT email FROM team_members WHERE id=%s AND tenant_id=%s AND is_active", (int(k[5:]), tenant_id))
+            elif k and k.startswith("owner:") and k[6:].isdigit():
+                cur.execute("SELECT COALESCE(handoff_notify_email, email) AS email FROM customers WHERE id=%s AND tenant_id=%s",
+                            (int(k[6:]), tenant_id))
+            else:
+                continue
+            r = cur.fetchone()
+            if r and r.get("email"):
+                out.append({"key": k, "email": r["email"]})
+    finally:
+        cur.close(); conn.close()
+    return out
