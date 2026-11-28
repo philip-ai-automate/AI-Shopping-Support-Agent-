@@ -205,6 +205,10 @@ def _save_tokens(shop: str, data: dict):
                                   THEN 'queued' ELSE shopify_shops.b2b_status END,
                 installed_at = CASE WHEN shopify_shops.uninstalled_at IS NOT NULL
                                     THEN NOW() ELSE shopify_shops.installed_at END,
+                -- 28 Nov 2026 (Shopify review 149816): a reinstall is a new app
+                -- installation with no app data, so the chat key is saved again.
+                embed_key_set_for = CASE WHEN shopify_shops.uninstalled_at IS NOT NULL
+                                         THEN NULL ELSE shopify_shops.embed_key_set_for END,
                 uninstalled_at = NULL,
                 updated_at = NOW()""",
             (shop, data["access_token"], int(data.get("expires_in") or 3600),
@@ -518,8 +522,10 @@ def webhooks():
                      # carried full customer details and was stored too).
                      json.dumps(payload if topic in ("customers/data_request", "customers/redact", "shop/redact") else {})))
         if topic == "app/uninstalled":
+            # 28 Nov 2026: Shopify deletes the app's data (chat key) on uninstall,
+            # so a reinstall must save it again (embed_key_set_for cleared).
             cur.execute("""UPDATE shopify_shops SET uninstalled_at=NOW(), access_token=NULL,
-                              refresh_token=NULL, updated_at=NOW() WHERE shop=%s""", (shop,))
+                              refresh_token=NULL, embed_key_set_for=NULL, updated_at=NOW() WHERE shop=%s""", (shop,))
         elif topic == "shop/redact":
             # 48 h after uninstall: remove what we hold about the shop,
             # including its products on the AI agent (Part 2).
